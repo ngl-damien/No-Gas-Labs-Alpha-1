@@ -1,3 +1,69 @@
+## Run 269 — Shared Character Sheet / Chronicle offline inspection and reconnect recovery — 2026-11-20T15:47Z
+
+**Worker:** Worker B / Build NGL MMORPG. **Runtime PR:** [#713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/713), draft/unmerged, child of [#712](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/712). Exact base `a4d2e0b9a9f682b2abbac9008dfafbeb2bdbbb2c`; exact code/test head `dff447df2278a48fff99ff077ab425448ad09992`. Documentation checkpoint branch: `docs/run269-offline-chronicle-20261120`.
+
+### Player-facing improvement
+
+The shared Character Sheet now explicitly labels the last accepted shared-world snapshot as stale when the EventSource is disconnected or the browser is offline. The notice includes the accepted world revision, explains that local inspection remains available, and states that shared actions require reconnection and a server-confirmed response. The player can still follow a retained recent-activity link into the exact World Chronicle event while offline; Chronicle labels the disconnected snapshot as potentially stale.
+
+On reconnection, the Character Sheet notice is removed only after the shared stream and accepted state recover. The PWA cache namespace rotates to `20261120-character-sheet-offline-stale-snapshot-21`; shared APIs and authenticated state remain network-only and are not cached.
+
+Four changed paths: `game/client.mjs`, `game/sw.js`, `scripts/verify-combat-yard-mobile.py`, and `test/game-package.test.mjs`. PR #713 currently has 9 commits, 4 changed files, 213 additions and 9 deletions.
+
+### Test-first and correction history
+
+- Test-only commit `49c8b44926a4eb9c948b4e5269cf0383add5f1a1` added the offline Character Sheet assertion before runtime changes. Full Verify [44763235890](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44763235890) and Genesis [44763236068](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44763236068) passed. Combat Yard mobile [44763236186](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44763236186) failed exactly because the stale notice was absent (expected count 1, actual 0).
+- Runtime and offline shell changes followed. An intermediate mobile run [44764045182](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44764045182) then exposed a test-baseline error: Evidence Archive navigation legitimately appended a discovery event, so the Character Sheet's newest-six list no longer equalled the earlier combat-only six IDs. Diagnostic commit `769fa7362f58139ac91e1c2feca82d01fbe1f8fe` exposed the exact additional event. Commit `4e80820760bc368c8af31f6ae6312e29ed010917` corrected the assertion to compare against the six links visible immediately before the outage, not the older pre-navigation list. The retained discovery event was preserved.
+- Commit `dff447df2278a48fff99ff077ab425448ad09992` extends the mobile journey through reconnection. It verifies the Character Sheet stale notice clears after the stream and server snapshot recover, the accepted revision/updatedAt/XP/event IDs/creation versions remain unchanged, and a newly opened Chronicle is fresh and read-only.
+
+### Independently observed mobile behavior
+
+At both 320px and 390px the real shared-world Combat Yard journey:
+- rejects an out-of-range combat start with `409 COMBAT_YARD_REQUIRED` and no world mutation;
+- records six deterministic Scout moves and a first victory, awarding 30 actor Combat XP while world XP remains unchanged;
+- navigates from Character Sheet to the exact final Combat event in Chronicle;
+- goes offline with the Character Sheet open, displays the stale revision, preserves the outage-boundary event links, and permits local Chronicle inspection;
+- makes no offline `/api/state`, `/api/action`, or `/api/presence` request and no offline mutation;
+- reconnects, clears the Character Sheet stale notice after server-state recovery, preserves the same accepted snapshot, and reopens the exact Chronicle event without a stale warning.
+
+No model/NPC/UI assertion creates canonical state, evidence, progress, approval, truth, or authority. Offline inspection grants no XP. The deterministic Combat Yard actions—not inspection—account for the 30 actor Combat XP.
+
+### Exact-head verification
+
+**Exact-head verification on `dff447df2278a48fff99ff077ab425448ad09992`:**
+- Full Verify [44766380733](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380733) PASS; hosted preflight `ready`, warnings/failures empty, Node 24 tests, Python inspector, package build, and institutional exercise exit 0.
+- Genesis [44766380798](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380798) PASS.
+- Combat Yard mobile [44766380859](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380859) PASS at 320px/390px; artifact [14646025695](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380859/artifacts/14646025695).
+- Quest Board [44766380762](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380762) PASS; artifact [14645421201](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380762/artifacts/14645421201).
+- Council Chamber [44766380786](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380786) PASS.
+- Academy Study Shelf [44766380887](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380887) PASS.
+- Synthesis Clerk [44766380814](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380814) PASS; artifact [14644722667](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380814/artifacts/14644722667).
+- Browser [44766380835](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380835) FAIL at the inherited Worker A-owned `scripts/verify-browser.py:472` Guild Hall Contradiction Clerk locator after offline PWA recovery passed. Exact handoff [#472 comment 7043847174](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7043847174).
+- Android [44766380766](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380766) IN PROGRESS at Android SDK setup; preflight, fake-ADB probe and Java setup passed. No APK or terminal emulator result yet. Worker A retains Android ownership.
+
+### Worker ownership and donor review
+
+Worker A retains Browser and Android paths. The Browser failure is the inherited Guild Hall Clerk locator mismatch; the actual single Contradiction Clerk remains in Evidence Archive. No NPC was moved or duplicated and no Browser-owned script was edited. The latest exact-head handoff is [#472 comment 7043847174](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7043847174). The latest Worker A Android discussion remains [#533 comment 7043437516](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7043437516); no newer Worker A response was observed.
+
+Re-inspected Alpha-1 RAE detached SHA-256/size receipts (byte identity is not truth), Guild proposal-versus-verified-authorization separation, institutional kernel canonical JSON/trusted roster/receipt checks, and Chronicle's safe retained-event projection. No donor code was copied. External `ngl-mesh` and TownSquare repositories were found, but their root `AGENTS.md` files returned 404, so source inspection stopped at that boundary; RuneUX was not found. No external code was imported.
+
+### Repository state, process and authority
+
+- Canonical main: `6f1a4aefb87334ddad359af12f754505965e29a5` — unchanged.
+- Integration candidate #429: `d08658d174a333346abb6e3ad9ec36c433443e3d` — unchanged.
+- PR #713 compares 905 commits ahead of main and 681 ahead of #429, zero behind, across 116/58 paths. This is a large stacked proposal, not merge-ready; do not merge/rebase wholesale.
+- Root AGENTS, full shared protocol and Institutional Charter were read and match the branch. No nested AGENTS files were found in touched game/scripts/test/docs directories. Both authorized Desktop Commander devices were offline; local pre-edit preflight and local Node/Playwright/Gradle execution were unavailable. Hosted exact-head preflight passed after the edit. Procedural compliance remains PARTIAL.
+- G0–G8 remain IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No merge, rebase, release, deployment, physical-device acceptance, Founder approval or authority transition.
+
+### Next
+
+1. Obtain terminal Android emulator evidence on exact head `dff447df2278a48fff99ff077ab425448ad09992`.
+2. Preserve Worker A ownership of Browser/Android repairs.
+3. Consider dynamic refresh of an already-open Chronicle stale intro on reconnection; this run verifies reopening Chronicle after recovery, not in-place refresh of an already-open Chronicle.
+4. Reconcile the accumulated stack against #429 path-by-path before any integration proposal.
+
+---
+
 ## Run 268 — Character Sheet Recent field trail opens exact Chronicle events — 2026-11-20T14:33Z
 
 **Worker:** Worker B / Build NGL MMORPG. **Runtime PR:** [#711](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/711), draft/unmerged, child of [#710](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/710). Parent exact head `7891cf73038b910e0c87409ff895838820baf3e3`; current code/test head `38fa09c6229bab8f84acc2baeac0e33711b5d469`; test-only head `df0f03508434c210fef72fec6b031699305e3950`.
