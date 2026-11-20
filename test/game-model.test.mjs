@@ -3,6 +3,7 @@ import {projectCombatHistory} from '../game/combat.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
+import {validateStoredWorldHistory} from '../game/server.mjs';
 import * as browserModel from '../game/model.mjs';
 import {recordSourceArchiveAttemptFailure} from '../game/source-archive-failures.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
@@ -1324,4 +1325,43 @@ test('server-observed Source Archive failures are retained as bounded non-progre
   const forgedAuthorityFields = structuredClone(recorded.world);
   forgedAuthorityFields.events[0].requestId = 'client-controlled-id';
   await assert.rejects(validateWorld(forgedAuthorityFields), error => error.code === 'INVALID_WORLD');
+});
+
+
+test('Combat Yard clock regressions preserve retained append order and the world timestamp high-water mark', async () => {
+  const founderActor = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const base = Date.parse('2026-11-20T12:00:00.000Z');
+  const at = seconds => new Date(base + seconds * 1000).toISOString();
+  let world = createWorld({ id: 'combat-clock-skew-world', now: at(0) });
+  const started = await applyAction(world, {
+    type: 'start-combat-encounter', opponentId: 'yard-scout'
+  }, founderActor, { now: at(10) });
+  world = started.world;
+  const encounterId = started.result.encounterId;
+  const actions = [
+    ['feint', 20], ['guard', 15], ['strike', 30],
+    ['feint', 25], ['guard', 40], ['strike', 35]
+  ];
+  for (const [move, second] of actions) {
+    const result = await applyAction(world, {
+      type: 'combat-move', encounterId, move
+    }, founderActor, { now: at(second) });
+    world = result.world;
+  }
+
+  const combatEvents = world.events.filter(event => event.type.startsWith('combat-'));
+  assert.deepEqual(combatEvents.map(event => event.at), [
+    at(10), at(20), at(15), at(30), at(25), at(40), at(35)
+  ]);
+  assert.equal(world.updatedAt, at(40), 'world updatedAt remains the maximum observed wall-clock time');
+  const projection = projectCombatHistory(world.events);
+  assert.equal(projection.encounters[0].status, 'victory');
+  assert.equal(projection.xpByActor[JSON.stringify(['damien', 'founder'])], 30);
+  await validateWorld(world);
+  assert.doesNotThrow(() => validateStoredWorldHistory(world));
+
+  await assert.rejects(applyAction(world, {
+    type: 'discover', locationId: 'overlook'
+  }, founderActor, { now: at(39) }), error => error.code === 'INVALID_CHRONOLOGY',
+  'the clock-regression exception is limited to Source Observatory and Combat Yard actions');
 });
