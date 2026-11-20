@@ -1718,8 +1718,18 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
             "!document.querySelector('#sheet').hidden"
         )
-        declined_item = witness_page.locator('#sheet-content [data-field-item-id]').filter(
-            has_text=second_forge_event_id
+        second_forge_item_id = witness_page.evaluate("""async eventId => {
+          const response = await fetch('/api/state', {
+            cache: 'no-store', credentials: 'same-origin'
+          });
+          if (!response.ok) throw new Error('Shared state read failed: ' + response.status);
+          const dto = await response.json();
+          const event = dto.world.events.find(candidate => candidate.id === eventId);
+          return event?.itemId || null;
+        }""", second_forge_event_id)
+        assert isinstance(second_forge_item_id, str) and second_forge_item_id
+        declined_item = witness_page.locator(
+            '#sheet-content [data-field-item-id="' + second_forge_item_id + '"]'
         )
         expect(declined_item).to_have_count(1)
         expect(declined_item).to_contain_text('current owner ' + witness_before['viewerId'])
