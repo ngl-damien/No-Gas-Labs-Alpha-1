@@ -9,7 +9,7 @@ import {PixelWorldView, GUILD_NPCS, LOCAL_NPCS} from './pixel-world-view.mjs';
 import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench} from './guild-npc-workbench.mjs';
 import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS,projectSourceArchiveFailureObjects} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
-import {renderCharterCodex,renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
+import {renderCharterCodex,renderEvidenceArchive,renderInstitution,renderWorldChronicle} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
@@ -554,6 +554,7 @@ const recipes={comic:{title:'The First Field Notes',description:'An actual reade
 const guides={relay:{title:'Carry the question.',name:'The Relay',voice:'An authored note from the relay keeper',body:'A relay is useful because something can leave it. Write a request that another person or tool can understand without this conversation. Give it a boundary, the evidence you have, and a way to tell whether it helped.',practice:'Make a portable request. Carry it to a provider you choose. Until a response actually returns, record “not executed”.',recipe:'custom'},river:{title:'The river remembers bytes.',name:'River of Receipts',voice:'An authored note from the river keeper',body:'A receipt can tell you which bytes crossed this bridge. It cannot tell you whether the words inside are true. Keep the source, keep the uncertainty, and leave enough of the trail for someone else to disagree.',practice:'Make an observatory. Put one claim beside a source and one thing that could change your mind.',recipe:'observatory'},overlook:{title:'Make room for another voice.',name:'The Long View',voice:'An authored note from the lookout',body:'From here the buildings look like a plan. Down on the path, each one is an attempt. A useful institution can keep the attempt, hear a contribution, and repair the part that failed without pretending the first version never happened.',practice:'Publish a creation, add a note, then repair it. Version one stays in the archive. A checked repair earns a game method.',recipe:'loom'},ruins:{title:'Unfinished is a useful state.',name:'The Unfinished',voice:'An authored note left among the stones',body:'These stones are not a failed city full of imaginary inhabitants. They are an invitation to make one small thing that works. A readable page. A playable sound. A question with a source. Start with something you can actually open.',practice:'Give the recovered comic a home. Read a page before making a claim about it.',recipe:'comic'}};
 let mode=null,world=createWorld(),viewer={id:'private-founder',name:'Damien',role:'founder'},presence=[],institution=null,stream=null,selectedDraft=null,selectedCreation=null,selectedVersion=null,lastFocus=null,toastTimer,launchReport=null,launchHTML=null,busy=false,savingError=false,activeNoteRenderer=null,portalGeneration=0,portalReadyListener=null,portalInteractionListener=null;
 const fieldForgePager=createFieldItemSourcePager();
+const fieldItemTransferHistoryPager=createFieldItemSourcePager();
 // The Evidence Archive cursor is presentation-only and is rebound to the live world revision and viewer.
 const sourceArchiveFailurePager=createFieldItemSourcePager();
 const node=(tag,attrs={},children=[])=>{const e=document.createElement(tag);for(const [k,v]of Object.entries(attrs)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else if(k==='onClick')e.addEventListener('click',v);else if(k==='value')e.value=v;else if(k==='hidden')e.hidden=v;else e.setAttribute(k,v)}for(const child of Array.isArray(children)?children:[children])if(child!==undefined&&child!==null)e.append(typeof child==='string'?document.createTextNode(child):child);return e};
@@ -2420,6 +2421,13 @@ function openCouncilChamber(){
     'form-help'
   ));
 }
+function openWorldChronicle(eventId){
+  const content=showSheet('World Chronicle','RETAINED WORLD EVENTS · READ ONLY');
+  renderWorldChronicle(content,world,eventId,{
+    stale:mode==='shared'&&!sharedStreamOpen,
+    onOpenArtifact:(id,version)=>openCreation(id,version)
+  });
+}
 function refreshForgePanels(){
   const content=$('sheet-content');
   if(!content)return;
@@ -2428,8 +2436,21 @@ function refreshForgePanels(){
   if(forgeRoot)forgeRoot.replaceWith(buildFieldForgeSection());
   if(kitRoot)kitRoot.replaceWith(buildFieldKitSection({onChange:refreshForgePanels}));
 }
-function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
-  const record=projectCharacter(world,viewer);
+function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=openWorldChronicle}={}){
+  const historyPageContext={
+    mode,
+    worldId:world?.id,
+    actorId:viewer?.id,
+    actorRole:viewer?.role,
+    revision:world?.revision
+  };
+  const historyPageIndex=fieldItemTransferHistoryPager.currentPage(
+    historyPageContext,'participant-handoff-history'
+  );
+  const record=projectCharacter(world,viewer,{
+    fieldItemTransferHistoryPage:historyPageIndex
+  });
+  const historyPage=record.fieldItemTransferHistoryPageInfo;
   const section=node('section',{'data-field-kit-root':'true'});
   section.append(node('h3',{class:'section-title',text:'FIELD KIT · EQUIPMENT AND INVENTORY'}));
   section.append(paragraph('Equip only items currently owned by this actor. Unequipped items can be offered to one active shared-world recipient; only that recipient can accept or decline. Acceptance changes current ownership; decline preserves the sender as owner. Original creator/source provenance remains immutable. Transfers grant no XP, combat statistics or authority.','form-help'));
@@ -2528,7 +2549,11 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
       class:'field-card',
       'data-field-item-participant-history':'true',
       'data-history-total':String(record.fieldItemTransferHistoryTotal),
-      'data-history-omitted-count':String(record.fieldItemTransferHistoryOmittedCount)
+      'data-history-omitted-count':String(record.fieldItemTransferHistoryOmittedCount),
+      'data-history-page':String(historyPage.page),
+      'data-history-pages':String(historyPage.totalPages),
+      'data-history-has-older':String(historyPage.hasOlder),
+      'data-history-has-newer':String(historyPage.hasNewer)
     });
     historySection.append(node('h3',{class:'section-title',text:'MY HANDOFF HISTORY'}));
     historySection.append(paragraph(
@@ -2561,10 +2586,61 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
         paragraph(direction+' · '+outcome),
         paragraph('Item ref '+entry.itemId+' · Forge event '+entry.itemEventId+
           ' · source event '+(entry.item?.sourceEventId||'unavailable')),
+        paragraph('Source activity '+(entry.item?.sourceKind||'unavailable')+
+          ' · retained source reference; inspection is not verification.','form-help'),
         paragraph('Offer event '+entry.offerEventId+' · '+entry.offeredAt),
         paragraph('Current in-game owner '+(entry.item?.ownerId||'unavailable')+
           ' ('+(entry.item?.ownerRole||'unknown')+').')
       ]);
+      const eventChainLinks=[];
+      const appendHandoffEventLink=(kind,label,eventId)=>{
+        if(typeof eventId!=='string'||!eventId.trim())return;
+        eventChainLinks.push(button(label+' →',()=>onInspectEvent(eventId),{
+          class:'list-button',
+          'data-field-item-history-event-link':kind,
+          'data-field-item-history-offer':entry.offerId,
+          'data-chronicle-event-id':eventId,
+          'data-chronicle-source':'world',
+          'aria-label':label+' in World Chronicle'
+        }));
+      };
+      appendHandoffEventLink('source','Inspect source activity',entry.item?.sourceEventId);
+      appendHandoffEventLink('forge','Inspect Forge event',entry.itemEventId);
+      appendHandoffEventLink('offer','Inspect offer event',entry.offerEventId);
+      if(entry.status==='accepted')
+        appendHandoffEventLink('accepted','Inspect recipient acceptance',entry.transferEventId);
+      else if(entry.status==='cancelled')
+        appendHandoffEventLink('cancelled','Inspect sender cancellation',entry.cancelEventId);
+      else if(entry.status==='declined')
+        appendHandoffEventLink('declined','Inspect recipient refusal',entry.declineEventId);
+      if(eventChainLinks.length){
+        const eventChain=node('details',{
+          'data-field-item-history-event-chain':entry.offerId
+        });
+        eventChain.append(node('summary',{
+          text:'Inspect retained event chain · '+eventChainLinks.length+' events'
+        }));
+        eventChain.append(...eventChainLinks);
+        row.append(eventChain);
+      }
+      const sourceAction=entry.item?.action;
+      if(sourceAction?.type==='creation'&&typeof sourceAction.id==='string'&&
+        Number.isSafeInteger(sourceAction.version)&&sourceAction.version>0){
+        row.append(button('Inspect source version →',()=>followQuestAction(sourceAction),{
+          class:'list-button',
+          'data-field-item-history-source':entry.itemId,
+          'data-source-action-type':'creation',
+          'data-source-creation-id':sourceAction.id,
+          'data-source-version':String(sourceAction.version)
+        }));
+      }else if(sourceAction?.type==='location'&&typeof sourceAction.id==='string'){
+        row.append(button('Return to source location →',()=>followQuestAction(sourceAction),{
+          class:'list-button',
+          'data-field-item-history-source':entry.itemId,
+          'data-source-action-type':'location',
+          'data-source-location-id':sourceAction.id
+        }));
+      }
       if(entry.status==='accepted'&&entry.transferEventId){
         row.append(paragraph('Accepted transfer event '+entry.transferEventId+' · '+entry.transferredAt));
       }else if(entry.status==='cancelled'&&entry.cancelEventId){
@@ -2574,14 +2650,58 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
       }
       return row;
     });
-    historySection.append(node('ol',{},rows));
-    if(record.fieldItemTransferHistoryOmittedCount>0){
-      historySection.append(paragraph(
-        'Showing the latest '+participantHistory.length+' of '+
-        record.fieldItemTransferHistoryTotal+' handoff records involving this session; '+
-        record.fieldItemTransferHistoryOmittedCount+
-        ' older records remain in Chronicle.','form-help'
-      ));
+    const historyPageStatus=paragraph(
+      'Showing entries '+historyPage.firstOrdinal+'–'+historyPage.lastOrdinal+' of '+
+      historyPage.total+' validated handoff records involving this session. Page '+
+      (historyPage.page+1)+' of '+historyPage.totalPages+
+      '. Entries remain in retained append order. Paging is read-only; it changes no world state, ownership, XP, skill or authority.',
+      'form-help'
+    );
+    historyPageStatus.id='field-item-history-page-status';
+    historyPageStatus.dataset.fieldItemHistoryPageStatus='true';
+    historyPageStatus.setAttribute('role','status');
+    historyPageStatus.setAttribute('aria-live','polite');
+    historyPageStatus.setAttribute('aria-atomic','true');
+    historySection.append(historyPageStatus);
+    historySection.append(node('ol',{id:'field-item-history-entries'},rows));
+    const changeHistoryPage=(nextPage,direction)=>{
+      fieldItemTransferHistoryPager.setPageIndex(
+        historyPageContext,'participant-handoff-history',nextPage,historyPage.totalPages
+      );
+      onChange();
+      // Rebuilding the Field Kit replaces the activated button. Restore focus
+      // to the same navigation direction when possible, or its only available
+      // opposite-direction control at the end of the history.
+      const currentSection=$('sheet-content')?.querySelector('[data-field-kit-root]');
+      const preferredSelector=direction==='older'
+        ?'[data-field-item-history-older]':'[data-field-item-history-newer]';
+      const fallbackSelector=direction==='older'
+        ?'[data-field-item-history-newer]':'[data-field-item-history-older]';
+      const nextControl=currentSection?.querySelector(preferredSelector)||
+        currentSection?.querySelector(fallbackSelector);
+      nextControl?.focus?.({preventScroll:true});
+    };
+    if(historyPage.hasNewer){
+      historySection.append(button('Newer handoffs',()=>{
+        changeHistoryPage(historyPage.page-1,'newer');
+      },{
+        class:'list-button',
+        'data-field-item-history-newer':'true',
+        'aria-label':'Show newer retained handoff records',
+        'aria-describedby':'field-item-history-page-status',
+        'aria-controls':'field-item-history-entries'
+      }));
+    }
+    if(historyPage.hasOlder){
+      historySection.append(button('Load older handoffs',()=>{
+        changeHistoryPage(historyPage.page+1,'older');
+      },{
+        class:'list-button',
+        'data-field-item-history-older':'true',
+        'aria-label':'Load older retained handoff records',
+        'aria-describedby':'field-item-history-page-status',
+        'aria-controls':'field-item-history-entries'
+      }));
     }
     section.append(historySection);
   }
