@@ -7,7 +7,7 @@
 - Exact-head Full Verify [44675327592](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327592) PASS with hosted preflight warnings/failures empty; Genesis [44675327580](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327580) PASS; Source Archive [44675327597](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327597) PASS after retry; Academy [44675327654](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327654) PASS.
 - Quest Board 44675327619, Browser 44675327575, Council 44675327732, Synthesis 44675327578, and Android 44675327657 remain in progress. Prior Browser run 44674770210 failed the Worker A-owned Guild Hall Clerk locator; handoff #472 comment 7030456537. Quest Board required two test-only corrections (item ID selection; keep Founder sheet open for follow-on equip); exact-head rerun is pending.
 - Donor: existing Alpha-1 Guild leadership-transfer decline pattern inspected and adapted. External donor root AGENTS files returned 404; external inspection stopped; no donor code copied.
-- Main and #429 unchanged. G6 remains IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No integration, release, deployment, or authority transition.
+- Main and #429 unchanged. G6 remains IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No integration, release, deployment, or authority transition. The docs-only child PR #695 was rebased onto PR #694 exact code head `99f57fe7c22502e0ed364b3b9841d048a9d93991`; no runtime code changed in that branch-only rebase.
 
 ---
 

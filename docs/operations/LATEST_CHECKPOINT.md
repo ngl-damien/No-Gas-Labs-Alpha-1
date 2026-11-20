@@ -48,7 +48,7 @@ On `99f57fe7c22502e0ed364b3b9841d048a9d93991`:
 
 ### Gate disposition and next actions
 
-No MMORPG gate is upgraded by this player-consent feature. G6 remains **IN PROGRESS**; G9 remains **NOT STARTED**; Founder trust remains **NOT_ENROLLED**. No merge, rebase, release, deployment, physical-device acceptance, Founder approval, or authority transition occurred.
+No MMORPG gate is upgraded by this player-consent feature. G6 remains **IN PROGRESS**; G9 remains **NOT STARTED**; Founder trust remains **NOT_ENROLLED**. No mainline merge or rebase, release, deployment, physical-device acceptance, Founder approval, trust enrollment, or authority transition occurred. The docs-only child PR #695 was rebased onto PR #694 exact code head `99f57fe7c22502e0ed364b3b9841d048a9d93991`; no runtime code changed in that branch-only rebase.
 
 Next: obtain terminal Quest Board, Browser, Council, Synthesis, and Android results on the exact head; preserve Worker A ownership of Browser/Android repairs; then reconcile the stacked proposal path-by-path against #429 before any integration decision.
 

@@ -7,7 +7,7 @@
 - **Ownership:** Worker B owns field-item reducer/model/projection, Forge client, field-item/server/character/package tests, Quest Board acceptance, and service-worker shell. Worker A retains Browser/Clerk placement and Android manifest/native bridge/instrumentation/lifecycle/retry. Browser handoff #472 comment 7030456537. Do not move/duplicate the Clerk or edit Worker A Android paths.
 - **Donor:** Alpha-1 Guild leadership-transfer decline pattern inspected and adapted. External RAE/Mesh/Guild/Command Center/TownSquare roots lacked AGENTS.md (404), so inspection stopped; RuneUX/Decision Chamber/AGP not found as standalone repos in scoped search. No external code copied.
 - **Process:** Desktop Commander devices offline; local pre-edit preflight and local Node/Playwright/Gradle unavailable. Root/protocol/Charter/checkpoint/ownership/nested paths reviewed; initial inventory was bundled before bootstrap, discarded, and baseline re-observed. Hosted preflight passed. Compliance PARTIAL.
-- **Next:** terminal Quest Board/Browser/Council/Synthesis/Android results on exact head; preserve Worker A ownership; path-by-path reconcile #694/#693/#692 ancestry against #429 before integration. Main unchanged; no merge/rebase/release/deployment/Founder approval/authority transition.
+- **Next:** terminal Quest Board/Browser/Council/Synthesis/Android results on exact head; preserve Worker A ownership; path-by-path reconcile #694/#693/#692 ancestry against #429 before integration. Main unchanged; no mainline merge/rebase/release/deployment/Founder approval/authority transition. The docs-only child PR #695 was rebased onto PR #694 exact code head `99f57fe7c22502e0ed364b3b9841d048a9d93991`; no runtime code changed in that branch-only rebase.
 
 ---
 
