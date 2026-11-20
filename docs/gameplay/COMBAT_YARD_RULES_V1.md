@@ -1,6 +1,6 @@
 # Combat Yard — Deterministic Rules v1
 
-**Status:** Server-exposed prototype with retained world-model events and actor-scoped character progression; no walkable location, NPC, or player-facing combat UI yet.  
+**Status:** Walkable in-world institution with a fixed local Combat Marshal, player-facing deterministic workbench, server-gated shared actions, and actor-scoped Character/Quest Board progression. The replay-derived Chronicle cards and focused 320px/390px acceptance are proposed in PR #705; they are not on canonical main until integrated. Virtual coordinates are not GPS evidence, and combat XP is game-only.  
 **Scope:** First conventional-combat mechanic for the No_Gas_Labs MMORPG.  
 **Companion system:** Research, adversarial reasoning, strategy, and consequential-decision encounters remain a separate first-class encounter mode. This system does not replace or narrow that mode.
 
@@ -56,8 +56,18 @@ Retreat ends an encounter from any phase. An encounter is also bounded to 24 pla
 - Each accepted request is retained with its request ID, action fingerprint, and exact result. A byte-identical retry by the same actor returns the original result without appending another event.
 - The service-store validator reconstructs the combat history before accepting persisted state. A foreign-actor move or unsupported authority field makes startup fail closed.
 - Combat XP remains a character projection from validated events; publication-only world.xp is unchanged. A model-generated description or UI label is not evidence of real-world mastery or institutional authority.
-## World integration status — Run 4
 
-The deterministic rules and event projection are integrated on child branch `game/combat-yard-world-integration-20261108-run4` as a walkable `combat_yard` institution. The fixed-local Combat Marshal only opens the workbench; explicit player choices start and advance encounters. Shared actions require the server-held virtual player position to be within the Combat Yard action radius. This is in-world position validation, not proof of physical GPS presence. Private offline practice is device-local and self-attested.
+## Chronicle history — proposed in PR #705
 
-First victories are projected from retained actor-bound events into Combatant activity, fixed game XP, and a Quest Board objective. The NPC cannot award XP, certify skill, create evidence, or grant authority. Exact-head browser and Android acceptance for this integrated branch remain pending; physical-device acceptance and mainline integration are not established.
+- Each retained encounter-start and player-move event appears as its own WORLD STREAM entry in the Evidence Archive Chronicle.
+- The projection replays the complete retained combat sequence through `projectCombatHistory` and binds each move event ID to its exact replay receipt in append order.
+- Opponent, phase, damage, remaining game HP, outcome, and first-victory versus rematch XP are derived from deterministic receipts, never from event-supplied `outcome` or `xpAwarded` fields.
+- Missing, duplicate, or ambiguous combat event identities and any malformed sequence fail closed: retained events remain visible as unvalidated history, with no inferred outcome, XP, or quest progress.
+- Chronicle inspection is read-only. The entries explicitly state that this deterministic game simulation is not real-world combat-skill evidence, truth, approval, or institutional authority.
+- The focused mobile journey enters the shared Combat Yard, completes six explicit moves, then searches the exact final move event in Evidence Archive at 320px and 390px. Session IDs do not prove distinct human participants; server-accepted virtual coordinates do not prove physical location.
+
+## World integration status — current proposal
+
+The walkable `combat_yard` institution is part of the proposed Run 263/264 stack. The fixed-local Combat Marshal only opens the workbench; explicit player choices start and advance deterministic encounters. Shared actions require the server-held virtual player position to be within the Combat Yard action radius. This is in-world position validation, not proof of physical GPS presence. Private offline practice is device-local and self-attested.
+
+First victories are projected from retained actor-bound events into Combatant activity, fixed game XP, and a Quest Board objective. The NPC cannot award XP, certify skill, create evidence, or grant authority. PR #705 adds replay-derived Chronicle cards and a focused shared-world mobile journey; its exact-head acceptance is still pending. Browser and Android inherited checks remain separate, and physical-device acceptance and canonical-main integration are not established.

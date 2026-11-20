@@ -1713,3 +1713,166 @@ test("Chronicle preserves conflicting repeated Source Analyst outcomes as a read
   assert.equal(conflicted.xp, 100, "a contradiction dossier awards no XP");
   assert.deepEqual(conflicted, beforeProjection, "Chronicle contradiction projection is read-only");
 });
+
+
+const chronicleCombatActor = Object.freeze({
+  id: "chronicle-founder",
+  name: "Chronicle Founder",
+  role: "founder",
+});
+
+async function buildChronicleCombatVictoryWorld() {
+  const base = Date.parse("2026-11-20T10:00:00.000Z");
+  const offsets = [10, 20, 30, 40, 50, 60, 70];
+  let offsetIndex = 0;
+  let world = createWorld({
+    id: "chronicle-combat-victory-world",
+    now: new Date(base).toISOString(),
+  });
+  const act = async action => {
+    const now = new Date(base + offsets[offsetIndex++] * 1000).toISOString();
+    const result = await applyAction(world, action, chronicleCombatActor, { now });
+    world = result.world;
+    return result;
+  };
+  const started = await act({ type: "start-combat-encounter", opponentId: "yard-scout" });
+  for (const move of ["feint", "guard", "strike", "feint", "guard", "strike"]) {
+    await act({ type: "combat-move", encounterId: started.result.encounterId, move });
+  }
+  return world;
+}
+
+test("Chronicle renders replay-validated Combat Yard turns in retained order", async () => {
+  const world = await buildChronicleCombatVictoryWorld();
+  const before = structuredClone(world);
+  const entries = projectChronicle({ world }).entries.filter(entry =>
+    entry.eventType === "combat-encounter-started" || entry.eventType === "combat-move-resolved"
+  );
+
+  assert.equal(entries.length, 7);
+  assert.deepEqual(entries.map(entry => entry.streamPosition), [7, 6, 5, 4, 3, 2, 1]);
+  assert.match(entries[0].title, /Training Scout.*turn 6/i);
+  assert.match(entries[0].summary, /first in-game victory/i);
+  assert.match(entries[0].summary, /30 game XP/i);
+  assert.equal(entries.filter(entry => entry.summary.includes("30 game XP")).length, 1);
+  assert.match(entries.at(-1).title, /encounter started.*Training Scout/i);
+  assert.match(entries.at(-1).summary, /grants no XP or skill/i);
+  assert.ok(entries.every(entry => entry.category === "COMBAT YARD"));
+  assert.ok(entries.every(entry => /deterministic game simulation/i.test(entry.warning)));
+  assert.equal(world.updatedAt, new Date(Date.parse("2026-11-20T10:00:00.000Z") + 70_000).toISOString());
+  assert.deepEqual(world, before, "Chronicle replay must remain read-only");
+});
+
+test("Chronicle ignores untrusted event-supplied combat outcome and XP fields", async () => {
+  const base = Date.parse("2026-11-20T10:30:00.000Z");
+  let world = createWorld({ id: "chronicle-combat-untrusted-fields", now: new Date(base).toISOString() });
+  const started = await applyAction(
+    world,
+    { type: "start-combat-encounter", opponentId: "yard-scout" },
+    chronicleCombatActor,
+    { now: new Date(base + 1_000).toISOString() },
+  );
+  world = started.world;
+  const moved = await applyAction(
+    world,
+    { type: "combat-move", encounterId: started.result.encounterId, move: "feint" },
+    chronicleCombatActor,
+    { now: new Date(base + 2_000).toISOString() },
+  );
+  world = moved.world;
+  world.events.at(-1).outcome = "victory";
+  world.events.at(-1).xpAwarded = 999;
+
+  const entry = projectChronicle({ world }).entries.find(item => item.eventType === "combat-move-resolved");
+  assert.equal(entry.category, "COMBAT YARD");
+  assert.match(entry.summary, /encounter remains active/i);
+  assert.doesNotMatch(entry.summary, /victory|999/i);
+  assert.doesNotMatch(entry.detail, /999/);
+});
+
+test("Chronicle fails closed for malformed combat history instead of displaying a forged victory", async () => {
+  const world = await buildChronicleCombatVictoryWorld();
+  world.events.find(event => event.type === "combat-move-resolved").move = "guard";
+
+  const entries = projectChronicle({ world }).entries.filter(entry =>
+    entry.eventType === "combat-encounter-started" || entry.eventType === "combat-move-resolved"
+  );
+  assert.equal(entries.length, 7);
+  assert.ok(entries.every(entry => entry.title === "Unvalidated Combat Yard event"));
+  assert.ok(entries.every(entry => /failed closed/i.test(entry.warning)));
+  assert.ok(entries.every(entry => !/first in-game victory|game XP/i.test(entry.summary)));
+});
+
+test("Chronicle preserves retreat as a completed game outcome without XP", async () => {
+  const base = Date.parse("2026-11-20T11:00:00.000Z");
+  let world = createWorld({ id: "chronicle-combat-retreat", now: new Date(base).toISOString() });
+  const started = await applyAction(
+    world,
+    { type: "start-combat-encounter", opponentId: "yard-scout" },
+    chronicleCombatActor,
+    { now: new Date(base + 1_000).toISOString() },
+  );
+  world = started.world;
+  const retreated = await applyAction(
+    world,
+    { type: "combat-move", encounterId: started.result.encounterId, move: "retreat" },
+    chronicleCombatActor,
+    { now: new Date(base + 2_000).toISOString() },
+  );
+  world = retreated.world;
+
+  const entry = projectChronicle({ world }).entries.find(item => item.eventType === "combat-move-resolved");
+  assert.match(entry.summary, /ended as retreated/i);
+  assert.match(entry.summary, /No victory XP is projected/i);
+  assert.match(entry.detail, /Move: retreat/);
+});
+
+test("Chronicle distinguishes a rematch victory without another first-win reward", async () => {
+  let world = await buildChronicleCombatVictoryWorld();
+  const base = Date.parse(world.updatedAt);
+  let tick = 0;
+  const act = async action => {
+    const result = await applyAction(
+      world,
+      action,
+      chronicleCombatActor,
+      { now: new Date(base + (++tick * 1000)).toISOString() },
+    );
+    world = result.world;
+    return result;
+  };
+  const started = await act({ type: "start-combat-encounter", opponentId: "yard-scout" });
+  for (const move of ["feint", "guard", "strike", "feint", "guard", "strike"]) {
+    await act({ type: "combat-move", encounterId: started.result.encounterId, move });
+  }
+
+  const finalEvent = world.events.at(-1);
+  const entry = projectChronicle({ world }).entries.find(item => item.id === "world:" + finalEvent.id);
+  assert.match(entry.summary, /rematch victory/i);
+  assert.match(entry.summary, /No additional first-win XP is projected/i);
+  assert.doesNotMatch(entry.summary, /game XP/);
+  assert.equal(world.events.filter(event => event.type === "combat-encounter-started").length, 2);
+});
+
+
+test("Chronicle fails closed when a combat event ID collides with another world event", async () => {
+  const world = await buildChronicleCombatVictoryWorld();
+  const start = world.events.find(event => event.type === "combat-encounter-started");
+  world.events.push({
+    id: start.id,
+    type: "draft",
+    actor: { id: "other-actor", name: "Other Actor", role: "witness" },
+    at: new Date(Date.parse(world.updatedAt) + 1_000).toISOString(),
+    creationId: "unavailable-creation",
+    version: 1,
+  });
+  const before = structuredClone(world);
+
+  const entries = projectChronicle({ world }).entries.filter(entry =>
+    entry.eventType === "combat-encounter-started" || entry.eventType === "combat-move-resolved"
+  );
+  assert.equal(entries.length, 7);
+  assert.ok(entries.every(entry => entry.title === "Unvalidated Combat Yard event"));
+  assert.ok(entries.every(entry => /failed closed/i.test(entry.warning)));
+  assert.deepEqual(world, before, "ambiguous event identity must not mutate retained history");
+});
