@@ -687,7 +687,7 @@ def assert_source_observation_queue_mobile(page, challenge_id, challenge_event_i
         expected_position = accepted['eventIds'].index(challenge_event_id) + 1
     except ValueError as error:
         raise AssertionError(
-            'The challenge card must link to an event in this client's accepted world stream.'
+            "The challenge card must link to an event in this client accepted world stream."
         ) from error
     assert expected_position > 0
     expect(card).to_have_attribute('data-history-position', str(expected_position))
