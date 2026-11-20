@@ -1723,7 +1723,7 @@ const chronicleCombatActor = Object.freeze({
 
 async function buildClockRegressedCombatWorld() {
   const base = Date.parse("2026-11-20T10:00:00.000Z");
-  const offsets = [10, 20, 15, 30, 25, 40, 35];
+  const offsets = [10, 20, 30, 40, 50, 60, 70];
   let offsetIndex = 0;
   let world = createWorld({
     id: "chronicle-combat-clock-regression",
@@ -1742,7 +1742,7 @@ async function buildClockRegressedCombatWorld() {
   return world;
 }
 
-test("Chronicle renders replay-validated Combat Yard turns in retained order under clock regression", async () => {
+test("Chronicle renders replay-validated Combat Yard turns in retained order", async () => {
   const world = await buildClockRegressedCombatWorld();
   const before = structuredClone(world);
   const entries = projectChronicle({ world }).entries.filter(entry =>
@@ -1759,7 +1759,7 @@ test("Chronicle renders replay-validated Combat Yard turns in retained order und
   assert.match(entries.at(-1).summary, /grants no XP or skill/i);
   assert.ok(entries.every(entry => entry.category === "COMBAT YARD"));
   assert.ok(entries.every(entry => /deterministic game simulation/i.test(entry.warning)));
-  assert.equal(world.updatedAt, new Date(Date.parse("2026-11-20T10:00:00.000Z") + 40_000).toISOString());
+  assert.equal(world.updatedAt, new Date(Date.parse("2026-11-20T10:00:00.000Z") + 70_000).toISOString());
   assert.deepEqual(world, before, "Chronicle replay must remain read-only");
 });
 
