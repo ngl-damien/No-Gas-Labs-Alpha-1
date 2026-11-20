@@ -211,6 +211,7 @@ def run_viewport(browser, url, out, width):
         page.locator("#sheet-close").tap()
         page.locator("#character-button").tap()
         expect(page.locator("#sheet-title")).to_have_text("Character & field record")
+        expect(page.locator("#sheet-content [data-character-snapshot-stale]")).to_have_count(0)
         recent_links = page.locator("#sheet-content [data-recent-activity-event-link]")
         expect(recent_links).to_have_count(6)
         recent_link_ids = recent_links.evaluate_all(
@@ -284,6 +285,86 @@ def run_viewport(browser, url, out, width):
             if after_inspection[key] != before_inspection[key]:
                 raise AssertionError("Chronicle inspection must be read-only; changed " + key + ".")
 
+        # Lose the shared connection after the last accepted snapshot. Character
+        # Sheet -> Chronicle must remain locally navigable, but label the snapshot
+        # stale and never pretend an offline inspection is a server-confirmed write.
+        api_requests_after_offline = []
+        origin = url.rstrip("/")
+        def record_offline_api_request(request):
+            if request.url.startswith(origin + "/api/"):
+                api_requests_after_offline.append({
+                    "method": request.method,
+                    "path": request.url.split("?", 1)[0][len(origin):]
+                })
+        page.on("request", record_offline_api_request)
+        page.locator("#sheet-close").tap()
+        context.set_offline(True)
+        page.wait_for_function(
+            """() => navigator.onLine === false &&
+              document.querySelector('#connection-dot')?.dataset.connectionState === 'offline' &&
+              document.querySelector('#mode-label')?.textContent.includes('reconnecting')""",
+            timeout=15000
+        )
+        page.locator("#character-button").tap()
+        expect(page.locator("#sheet-title")).to_have_text("Character & field record")
+        offline_character_notice = page.locator(
+            "#sheet-content [data-character-snapshot-stale]"
+        )
+        expect(offline_character_notice).to_have_count(1)
+        expect(offline_character_notice).to_contain_text(
+            "last accepted shared-world snapshot and may be stale"
+        )
+        offline_recent_links = page.locator(
+            "#sheet-content [data-recent-activity-event-link]"
+        )
+        expect(offline_recent_links).to_have_count(6)
+        offline_recent_ids = offline_recent_links.evaluate_all(
+            "nodes => nodes.map(node => node.getAttribute('data-recent-activity-event-link'))"
+        )
+        if offline_recent_ids != expected_recent_ids:
+            raise AssertionError(
+                "Offline Character Sheet must retain the same six accepted actor event links."
+            )
+        offline_final_link = page.locator(
+            '#sheet-content [data-recent-activity-event-link="' + final_event_id + '"]'
+        )
+        expect(offline_final_link).to_have_count(1)
+        offline_final_link.tap()
+        expect(page.locator("#sheet-title")).to_have_text("World Chronicle")
+        expect(page.locator("#sheet-content")).to_contain_text(
+            "The shared stream is disconnected; this is the last accepted snapshot and may be stale."
+        )
+        offline_card = page.locator(
+            '#chronicle-entries [data-event-id="world:' + final_event_id + '"]'
+        )
+        expect(offline_card).to_have_count(1)
+        expect(offline_card).to_have_attribute("data-ordering-basis", "retained-append-position")
+        expect(offline_card).to_have_attribute("data-stream-position", str(final_position))
+        offline_snapshot = page.evaluate("""() => ({
+          revision: document.querySelector('#world')?.dataset.worldRevision ?? null,
+          xp: document.querySelector('#xp-count')?.textContent ?? null,
+          creationCount: document.querySelector('#creation-count')?.textContent ?? null
+        })""")
+        if offline_snapshot != {
+            "revision": str(after_inspection["revision"]),
+            "xp": str(after_inspection["xp"]),
+            "creationCount": str(len(after_inspection["creationVersions"]))
+        }:
+            raise AssertionError(
+                "Offline Character Sheet/Chronicle navigation must preserve the last accepted snapshot."
+            )
+        offline_api_mutations = [
+            request for request in api_requests_after_offline
+            if request["method"] != "GET" or request["path"] in (
+                "/api/state", "/api/action", "/api/presence"
+            )
+        ]
+        if offline_api_mutations:
+            raise AssertionError(
+                "Offline read-only navigation must not request shared state or submit mutations: " +
+                json.dumps(offline_api_mutations)
+            )
+
         horizontal_overflow = page.evaluate(
             "() => document.documentElement.scrollWidth <= window.innerWidth"
         )
@@ -294,7 +375,7 @@ def run_viewport(browser, url, out, width):
         if external_requests:
             raise AssertionError("The local acceptance made external requests: " + json.dumps(external_requests))
 
-        screenshot = out / ("combat-yard-chronicle-" + str(width) + ".png")
+        screenshot = out / ("combat-yard-chronicle-offline-" + str(width) + ".png")
         page.screenshot(path=str(screenshot), full_page=True)
         result = {
             "passed": True,
@@ -320,6 +401,13 @@ def run_viewport(browser, url, out, width):
             "characterChronicleEventId": final_event_id,
             "characterChronicleAppendPosition": final_position,
             "characterChronicleInspectionReadOnly": True,
+            "offlineCharacterSheetChronicleNavigation": True,
+            "offlineCharacterSheetStaleNotice": True,
+            "offlineChronicleStaleNotice": True,
+            "offlineInspectionReadOnly": True,
+            "offlineSnapshot": offline_snapshot,
+            "offlineApiRequests": api_requests_after_offline,
+            "offlineApiMutationRequests": offline_api_mutations,
             "horizontalOverflow": False,
             "pageErrors": page_errors,
             "externalRequests": external_requests,
