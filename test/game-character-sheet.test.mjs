@@ -2193,7 +2193,7 @@ test('personal field inventory preserves bounded item-specific handoff history w
     recipientId: founder.id, recipientRole: founder.role
   }, witness, { now: at(5), allowTransfers: true });
   const cancelled = await applyAction(cancelledOffer.world, {
-    type: 'cancel-field-item-transfer', offerId: cancelledOffer.result.offerId
+    type: 'cancel-field-item-transfer', offerId: cancelledOffer.world.events.at(-1).offerId
   }, witness, { now: at(6), allowTransfers: true });
 
   const acceptedOffer = await applyAction(cancelled.world, {
@@ -2201,7 +2201,7 @@ test('personal field inventory preserves bounded item-specific handoff history w
     recipientId: founder.id, recipientRole: founder.role
   }, witness, { now: at(7), allowTransfers: true });
   const accepted = await applyAction(acceptedOffer.world, {
-    type: 'accept-field-item-transfer', offerId: acceptedOffer.result.offerId
+    type: 'accept-field-item-transfer', offerId: acceptedOffer.world.events.at(-1).offerId
   }, founder, { now: at(8), allowTransfers: true });
   const founderEquipped = await applyAction(accepted.world, {
     type: 'equip-field-item', slotId: 'scouting', sourceEventId: forgeEvent.id
@@ -2214,7 +2214,7 @@ test('personal field inventory preserves bounded item-specific handoff history w
     recipientId: witness.id, recipientRole: witness.role
   }, founder, { now: at(11), allowTransfers: true });
   const returned = await applyAction(returnedOffer.world, {
-    type: 'accept-field-item-transfer', offerId: returnedOffer.result.offerId
+    type: 'accept-field-item-transfer', offerId: returnedOffer.world.events.at(-1).offerId
   }, witness, { now: at(12), allowTransfers: true });
 
   const beforePadding = structuredClone(returned.world);
@@ -2260,9 +2260,9 @@ test('personal field inventory preserves bounded item-specific handoff history w
       recipientId: founder.id, recipientRole: founder.role
     }, witness, { now: at(20 + index * 2), allowTransfers: true });
     const cancelledAgain = await applyAction(offered.world, {
-      type: 'cancel-field-item-transfer', offerId: offered.result.offerId
+      type: 'cancel-field-item-transfer', offerId: offered.world.events.at(-1).offerId
     }, witness, { now: at(21 + index * 2), allowTransfers: true });
-    if (index === 1) secondPaddingOfferId = offered.result.offerId;
+    if (index === 1) secondPaddingOfferId = offered.world.events.at(-1).offerId;
     world = cancelledAgain.world;
   }
 
