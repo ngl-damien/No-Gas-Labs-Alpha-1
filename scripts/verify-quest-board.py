@@ -1661,12 +1661,96 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         )
         assert contribution_event_id and second_forge_event_id
 
+        decline_offer_payload = post_action(witness_page, {
+            'type': 'offer-field-item-transfer',
+            'itemEventId': second_forge_event_id,
+            'recipientId': founder_before['viewerId'],
+            'recipientRole': 'founder',
+            'requestId': 'quest-board-witness-second-field-decline-offer'
+        })
+        decline_offer_id = decline_offer_payload.get('result', {}).get('offerId')
+        assert isinstance(decline_offer_id, str) and decline_offer_id
+
+        founder_page.reload(wait_until='networkidle')
+        founder_page.locator('#start-shared').tap()
+        founder_page.locator('#world').wait_for(state='visible')
+        founder_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+        )
+        founder_page.locator('#character-button').tap()
+        founder_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
+        incoming_decline_card = founder_page.locator(
+            '#sheet-content [data-field-transfer-offer="' + decline_offer_id + '"]'
+        )
+        expect(incoming_decline_card).to_have_count(1)
+        decline_button = incoming_decline_card.get_by_role(
+            'button', name='Decline transfer', exact=True
+        )
+        expect(decline_button).to_be_visible()
+        decline_before = authoritative_snapshot(founder_page)
+        decline_button.tap()
+        decline_event_id = wait_for_retained_event_id(
+            founder_page, 'field-item-transfer-declined', 'offerId',
+            decline_offer_id, founder_before['viewerId'], 'founder', timeout=15000
+        )
+        assert decline_event_id
+        expect(founder_page.locator(
+            '#sheet-content [data-field-transfer-offer="' + decline_offer_id + '"]'
+        )).to_have_count(0)
+        decline_after = authoritative_snapshot(founder_page)
+        assert decline_after['xp'] == decline_before['xp'], (
+            'Declining a field-item offer must not award XP.'
+        )
+        assert decline_after['revision'] == decline_before['revision'] + 1
+        # Leave the Founder sheet open for the already-existing recipient-equip
+        # step later in this shared-world journey.
+
         witness_page.reload(wait_until='networkidle')
         witness_page.locator('#start-shared').tap()
         witness_page.locator('#world').wait_for(state='visible')
         witness_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        witness_page.locator('#character-button').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
+        second_forge_item_id = witness_page.evaluate("""async eventId => {
+          const response = await fetch('/api/state', {
+            cache: 'no-store', credentials: 'same-origin'
+          });
+          if (!response.ok) throw new Error('Shared state read failed: ' + response.status);
+          const dto = await response.json();
+          const event = dto.world.events.find(candidate => candidate.id === eventId);
+          return event?.itemId || null;
+        }""", second_forge_event_id)
+        assert isinstance(second_forge_item_id, str) and second_forge_item_id
+        declined_item = witness_page.locator(
+            '#sheet-content [data-field-item-id="' + second_forge_item_id + '"]'
+        )
+        expect(declined_item).to_have_count(1)
+        expect(declined_item).to_contain_text('current owner ' + witness_before['viewerId'])
+        declined_history = declined_item.locator(
+            '[data-field-item-transfer-history-entry="' + decline_offer_id + '"]'
+        )
+        expect(declined_history).to_have_count(1)
+        expect(declined_history).to_have_attribute('data-transfer-status', 'declined')
+        expect(declined_history).to_contain_text('Declined')
+        expect(declined_history).to_contain_text(decline_event_id)
+        decline_history_before = authoritative_snapshot(witness_page)
+        decline_history_after = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(decline_history_after) == shared_world_snapshot(decline_history_before), (
+            'Inspecting a declined handoff remains read-only.'
+        )
+        assert decline_history_after['xp'] == decline_history_before['xp']
+        witness_page.locator('#sheet-close').tap()
+
+        # Keep the Founder sheet open: the next existing step equips the
+        # previously accepted Contradiction Ward through its current owner card.
         open_quest_board(witness_page)
         assert_board(witness_page, 'witness')
         assert_armor_bearer_delivery_objective(witness_page, 'witness', '1/4', complete=False)
@@ -1746,8 +1830,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert after_founder['xp'] == founder_before['xp'] == after_silent['xp'], (
             'Guild membership, observations, dissent and response award no XP.'
         )
-        assert after_founder['revision'] == founder_before['revision'] + 15, (
-            'Exactly fifteen canonical actions should be retained: the original nine, four transfer/equipment actions, and the second contribution plus Forge.'
+        assert after_founder['revision'] == founder_before['revision'] + 17, (
+            'Exactly seventeen canonical actions should be retained: the original nine, four transfer/equipment actions, the second contribution plus Forge, and one recipient offer plus decline.'
         )
         assert after_witness['xp'] == witness_before['xp'] == after_silent['xp']
         event_summary = founder_page.evaluate("""async () => {
@@ -1790,6 +1874,9 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             transfers: events.filter(event => event.type === 'field-item-transferred').map(event => ({
               id: event.id, actorId: event.actor.id, itemEventId: event.itemEventId,
               offerId: event.offerId, fromActorId: event.fromActorId, fromActorRole: event.fromActorRole
+            })),
+            declines: events.filter(event => event.type === 'field-item-transfer-declined').map(event => ({
+              id: event.id, actorId: event.actor.id, offerId: event.offerId
             }))
           };
         }""")
@@ -1832,12 +1919,23 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert len(event_summary['unequips']) == 1
         assert event_summary['unequips'][0]['actorId'] == witness_before['viewerId']
         assert event_summary['unequips'][0]['slotId'] == 'adversarial'
-        assert len(event_summary['transferOffers']) == 1
-        assert event_summary['transferOffers'][0]['actorId'] == witness_before['viewerId']
-        assert event_summary['transferOffers'][0]['itemEventId'] == forge_event_id
-        assert event_summary['transferOffers'][0]['offerId'] == transfer_offer['offerId']
-        assert event_summary['transferOffers'][0]['recipientId'] == founder_before['viewerId']
-        assert event_summary['transferOffers'][0]['recipientRole'] == 'founder'
+        assert len(event_summary['transferOffers']) == 2
+        accepted_offer = next(item for item in event_summary['transferOffers']
+                              if item['itemEventId'] == forge_event_id)
+        declined_offer = next(item for item in event_summary['transferOffers']
+                              if item['itemEventId'] == second_forge_event_id)
+        assert accepted_offer['actorId'] == witness_before['viewerId']
+        assert accepted_offer['offerId'] == transfer_offer['offerId']
+        assert accepted_offer['recipientId'] == founder_before['viewerId']
+        assert accepted_offer['recipientRole'] == 'founder'
+        assert declined_offer['actorId'] == witness_before['viewerId']
+        assert declined_offer['offerId'] == decline_offer_id
+        assert declined_offer['recipientId'] == founder_before['viewerId']
+        assert declined_offer['recipientRole'] == 'founder'
+        assert len(event_summary['declines']) == 1
+        assert event_summary['declines'][0]['id'] == decline_event_id
+        assert event_summary['declines'][0]['actorId'] == founder_before['viewerId']
+        assert event_summary['declines'][0]['offerId'] == decline_offer_id
         assert len(event_summary['transfers']) == 1
         assert event_summary['transfers'][0]['actorId'] == founder_before['viewerId']
         assert event_summary['transfers'][0]['itemEventId'] == forge_event_id

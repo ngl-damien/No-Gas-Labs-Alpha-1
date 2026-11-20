@@ -889,9 +889,10 @@ export function projectCharacter(world, viewer, options = {}) {
       offer.event?.itemEventId!==offer.itemEventId||
       !sameFieldActor(offer.event.actor,{id:offer.fromActorId,role:offer.fromActorRole})||
       !Number.isInteger(position)||!isStrictTimestamp(offer.at)||
-      !['offered','cancelled','accepted'].includes(offer.status))continue;
+      !['offered','cancelled','declined','accepted'].includes(offer.status))continue;
     const transfer=offer.status==='accepted'?offer.transferEvent:null;
     const cancellation=offer.status==='cancelled'?offer.cancelEvent:null;
+    const decline=offer.status==='declined'?offer.declineEvent:null;
     const transferPosition=transfer?positionByEvent.get(transfer):-1;
     const cancellationPosition=cancellation?positionByEvent.get(cancellation):-1;
     if(offer.status==='accepted'&&(
@@ -916,7 +917,17 @@ export function projectCharacter(world, viewer, options = {}) {
       !Number.isInteger(cancellationPosition)||cancellationPosition<=position||
       !isStrictTimestamp(cancellation.at)||Date.parse(cancellation.at)<Date.parse(offer.at)
     ))continue;
-    if(offer.status==='offered'&&(offer.transferEventId||offer.cancelEventId))continue;
+    if(offer.status==='declined'&&(
+      !isSafeFieldItemReferenceId(offer.declineEventId)||
+      decline?.id!==offer.declineEventId||
+      decline?.type!=='field-item-transfer-declined'||
+      decline?.offerId!==offer.offerId||
+      !sameFieldActor(decline.actor,{id:offer.recipientId,role:offer.recipientRole})||
+      !Number.isInteger(positionByEvent.get(decline))||
+      positionByEvent.get(decline)<=position||
+      !isStrictTimestamp(decline.at)||Date.parse(decline.at)<Date.parse(offer.at)
+    ))continue;
+    if(offer.status==='offered'&&(offer.transferEventId||offer.cancelEventId||offer.declineEventId))continue;
     const entry=Object.freeze({
       offerId:offer.offerId,
       status:offer.status,
@@ -928,6 +939,8 @@ export function projectCharacter(world, viewer, options = {}) {
       recipientRole:offer.recipientRole,
       cancelEventId:cancellation?offer.cancelEventId:null,
       cancelledAt:cancellation?cancellation.at:null,
+      declineEventId:decline?offer.declineEventId:null,
+      declinedAt:decline?decline.at:null,
       transferEventId:transfer?offer.transferEventId:null,
       transferredAt:transfer?transfer.at:null
     });
@@ -977,7 +990,7 @@ export function projectCharacter(world, viewer, options = {}) {
     .filter(offer=>fieldItemById.has(offer.itemId)&&offer.status==='offered'&&
       (sameFieldActor({id:offer.fromActorId,role:offer.fromActorRole},viewer)||
        (offer.recipientId===viewer.id&&offer.recipientRole===viewer.role)))
-    .map(({event,cancelEvent,transferEvent,...offer})=>
+    .map(({event,cancelEvent,declineEvent,transferEvent,...offer})=>
       Object.freeze({...offer,item:fieldItemById.get(offer.itemId)})));
   const forgedItems=[...fieldItemById.values()].filter(item=>item.creatorId===viewer.id&&item.creatorRole===viewer.role);
   const forgedItemCount=forgedItems.length;
@@ -985,7 +998,7 @@ export function projectCharacter(world, viewer, options = {}) {
   const fieldItemHistoryEventIds=Object.freeze([...fieldItemById.values()].map(item=>item.eventId));
   const fieldItemTransferEventIds=Object.freeze([...fieldItemState.offers.values()]
     .filter(offer=>fieldItemById.has(offer.itemId))
-    .flatMap(offer=>[offer.eventId,offer.cancelEventId,offer.transferEventId]
+    .flatMap(offer=>[offer.eventId,offer.cancelEventId,offer.declineEventId,offer.transferEventId]
       .filter(value=>typeof value==='string')));
   fieldInventoryEntries.sort((left,right)=>right.position-left.position||left.item.itemId.localeCompare(right.item.itemId));
   const fieldInventoryTotal=fieldInventoryEntries.length;

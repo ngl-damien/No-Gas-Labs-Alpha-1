@@ -492,6 +492,22 @@ export function projectFieldItemState(events, {
       continue;
     }
 
+    if (event.type === 'field-item-transfer-declined') {
+      const offer = safeId(event.offerId) ? offers.get(event.offerId) : null;
+      const item = offer && items.get(offer.itemId);
+      const offerAt = offer ? Date.parse(offer.at) : NaN;
+      if (!offer || offer.status !== 'offered' || !item || !validActor(event.actor) ||
+          at === null || !Number.isFinite(offerAt) || at < offerAt || at < item.lastAt ||
+          event.actor.id !== offer.recipientId || event.actor.role !== offer.recipientRole ||
+          activeOffersByItem.get(offer.itemId) !== offer.offerId) continue;
+      offer.status = 'declined';
+      offer.declineEventId = event.id;
+      offer.declineEvent = event;
+      activeOffersByItem.delete(offer.itemId);
+      item.lastAt = at;
+      continue;
+    }
+
     if (event.type === 'field-item-transferred') {
       const offer = safeId(event.offerId) ? offers.get(event.offerId) : null;
       const item = offer && items.get(offer.itemId);

@@ -2282,3 +2282,50 @@ test('personal field inventory preserves bounded item-specific handoff history w
   assert.deepEqual(world, beforeBoundedProjection,
     'bounded handoff-history projection remains read-only');
 });
+
+
+test('recipient decline remains in bounded item custody history without ownership, XP, or authority changes', async () => {
+  const at = seconds => new Date(Date.parse(t1) + seconds * 1000).toISOString();
+  const created = createWorld({ id: 'field-item-recipient-decline', now: at(0) });
+  const discovered = await applyAction(created, {
+    type: 'discover', locationId: 'river'
+  }, witness, { now: at(1) });
+  const sourceEvent = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: 'forge-field-item', slotId: 'scouting', sourceEventId: sourceEvent.id
+  }, witness, { now: at(2) });
+  const forgeEvent = forged.world.events.at(-1);
+  const offered = await applyAction(forged.world, {
+    type: 'offer-field-item-transfer', itemEventId: forgeEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: at(3), allowTransfers: true });
+  const offerEvent = offered.world.events.at(-1);
+  const declined = await applyAction(offered.world, {
+    type: 'decline-field-item-transfer', offerId: offerEvent.offerId
+  }, founder, { now: at(4), allowTransfers: true });
+  const declineEvent = declined.world.events.at(-1);
+
+  assert.equal(declineEvent.type, 'field-item-transfer-declined');
+  assert.equal(declineEvent.actor.id, founder.id);
+  assert.equal(declineEvent.offerId, offerEvent.offerId);
+  const beforeProjection = structuredClone(declined.world);
+  const sender = projectCharacter(declined.world, witness);
+  const recipient = projectCharacter(declined.world, founder);
+  const item = sender.fieldInventory.find(candidate => candidate.eventId === forgeEvent.id);
+  assert.ok(item);
+  assert.equal(item.ownerId, witness.id);
+  assert.equal(sender.fieldInventoryTotal, 1);
+  assert.equal(recipient.fieldInventoryTotal, 0);
+  assert.equal(sender.fieldItemTransferOffers.length, 0);
+  assert.equal(recipient.fieldItemTransferOffers.length, 0);
+  assert.deepEqual(item.transferHistory.map(entry => entry.status), ['declined']);
+  assert.equal(item.transferHistory[0].offerEventId, offerEvent.id);
+  assert.equal(item.transferHistory[0].declineEventId, declineEvent.id);
+  assert.equal(item.transferHistory[0].declinedAt, declineEvent.at);
+  assert.ok(sender.fieldItemTransferEventIds.includes(declineEvent.id));
+  assert.equal(sender.xp, 0);
+  assert.equal(recipient.xp, 0);
+  assert.equal(declined.world.xp, 0);
+  assert.deepEqual(declined.world, beforeProjection,
+    'decline history is a read-only projection and does not rewrite canonical events');
+});
