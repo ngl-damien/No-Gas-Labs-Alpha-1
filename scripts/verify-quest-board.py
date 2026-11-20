@@ -1584,6 +1584,25 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         accept_button = incoming_offer.locator('[data-accept-field-item-transfer]')
         expect(accept_button).to_have_count(1)
         assert accept_button.get_attribute('data-accept-field-item-transfer') == transfer_offer['offerId']
+        pending_history_before = authoritative_snapshot(founder_page)
+        pending_history = incoming_offer.locator('[data-field-item-transfer-history]')
+        expect(pending_history).to_have_count(1)
+        expect(pending_history).to_have_attribute('data-history-total', '1')
+        pending_entry = pending_history.locator(
+            '[data-field-item-transfer-history-entry="' + transfer_offer['offerId'] + '"]'
+        )
+        expect(pending_entry).to_have_count(1)
+        expect(pending_entry).to_have_attribute('data-transfer-status', 'offered')
+        expect(pending_history).to_contain_text('HANDOFF HISTORY')
+        expect(pending_entry).to_contain_text('Pending')
+        expect(pending_entry).to_contain_text(transfer_offer['eventId'])
+        expect(pending_entry).to_contain_text(witness_before['viewerId'])
+        expect(pending_entry).to_contain_text(founder_before['viewerId'])
+        pending_history_after = authoritative_snapshot(founder_page)
+        assert shared_world_snapshot(pending_history_after) == shared_world_snapshot(pending_history_before), (
+            'Inspecting a pending incoming item’s handoff history must be read-only.'
+        )
+        assert pending_history_after['xp'] == pending_history_before['xp']
         accept_button.tap()
         founder_ward = founder_page.locator('#sheet-content [data-field-item-id]').filter(
             has_text='Contradiction Ward'
