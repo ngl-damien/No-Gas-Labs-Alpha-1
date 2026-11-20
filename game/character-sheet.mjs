@@ -15,6 +15,7 @@ const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
 const MAX_FIELD_SATCHEL_ITEMS = 100;
 export const MAX_FIELD_INVENTORY_ITEMS = 100;
+const MAX_FIELD_ITEM_TRANSFER_HISTORY = 12;
 const MAX_FIELD_EQUIPMENT_CHOICES = 100;
 export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
   Object.freeze({id:'provenance',label:'Receipt Buckler',kinds:Object.freeze(['published-artifact']),sourceTypes:Object.freeze(['publish']),description:'A version-matched publication receipt. It identifies retained bytes, not truth.'}),
@@ -871,6 +872,72 @@ export function projectCharacter(world, viewer, options = {}) {
   const fieldItemState=projectFieldItemState(allEvents,{
     slotIds:FIELD_EQUIPMENT_SLOTS.map(slot=>slot.id),validForgeEventIds
   });
+  // Keep the item's own handoff ledger beside its immutable Forge/source
+  // provenance. The reducer supplies only validated offer states; this view
+  // preserves cancelled and accepted outcomes without changing ownership.
+  const transferHistoryByItem=new Map();
+  for(const offer of fieldItemState.offers.values()){
+    const position=positionByEvent.get(offer?.event);
+    if(!offer||!isSafeFieldItemReferenceId(offer.itemId)||
+      !isSafeFieldItemReferenceId(offer.itemEventId)||
+      !isSafeFieldItemReferenceId(offer.offerId)||
+      !isSafeFieldItemReferenceId(offer.eventId)||
+      offer.event?.id!==offer.eventId||
+      offer.event?.type!=='field-item-transfer-offered'||
+      offer.event?.offerId!==offer.offerId||
+      offer.event?.itemId!==offer.itemId||
+      offer.event?.itemEventId!==offer.itemEventId||
+      !sameFieldActor(offer.event.actor,{id:offer.fromActorId,role:offer.fromActorRole})||
+      !Number.isInteger(position)||!isStrictTimestamp(offer.at)||
+      !['offered','cancelled','accepted'].includes(offer.status))continue;
+    const transfer=offer.status==='accepted'?offer.transferEvent:null;
+    const cancellation=offer.status==='cancelled'?offer.cancelEvent:null;
+    const transferPosition=transfer?positionByEvent.get(transfer):-1;
+    const cancellationPosition=cancellation?positionByEvent.get(cancellation):-1;
+    if(offer.status==='accepted'&&(
+      !isSafeFieldItemReferenceId(offer.transferEventId)||
+      transfer?.id!==offer.transferEventId||
+      transfer?.type!=='field-item-transferred'||
+      transfer?.offerId!==offer.offerId||
+      transfer?.itemId!==offer.itemId||
+      transfer?.itemEventId!==offer.itemEventId||
+      transfer?.fromActorId!==offer.fromActorId||
+      transfer?.fromActorRole!==offer.fromActorRole||
+      !sameFieldActor(transfer.actor,{id:offer.recipientId,role:offer.recipientRole})||
+      !Number.isInteger(transferPosition)||transferPosition<=position||
+      !isStrictTimestamp(transfer.at)||Date.parse(transfer.at)<Date.parse(offer.at)
+    ))continue;
+    if(offer.status==='cancelled'&&(
+      !isSafeFieldItemReferenceId(offer.cancelEventId)||
+      cancellation?.id!==offer.cancelEventId||
+      cancellation?.type!=='field-item-transfer-cancelled'||
+      cancellation?.offerId!==offer.offerId||
+      !sameFieldActor(cancellation.actor,{id:offer.fromActorId,role:offer.fromActorRole})||
+      !Number.isInteger(cancellationPosition)||cancellationPosition<=position||
+      !isStrictTimestamp(cancellation.at)||Date.parse(cancellation.at)<Date.parse(offer.at)
+    ))continue;
+    if(offer.status==='offered'&&(offer.transferEventId||offer.cancelEventId))continue;
+    const entry=Object.freeze({
+      offerId:offer.offerId,
+      status:offer.status,
+      offerEventId:offer.eventId,
+      offeredAt:offer.at,
+      fromActorId:offer.fromActorId,
+      fromActorRole:offer.fromActorRole,
+      recipientId:offer.recipientId,
+      recipientRole:offer.recipientRole,
+      cancelEventId:cancellation?offer.cancelEventId:null,
+      cancelledAt:cancellation?cancellation.at:null,
+      transferEventId:transfer?offer.transferEventId:null,
+      transferredAt:transfer?transfer.at:null
+    });
+    const history=transferHistoryByItem.get(offer.itemId)||{total:0,entries:[]};
+    history.total+=1;
+    history.entries.push({position,entry});
+    history.entries.sort((left,right)=>left.position-right.position);
+    if(history.entries.length>MAX_FIELD_ITEM_TRANSFER_HISTORY)history.entries.shift();
+    transferHistoryByItem.set(offer.itemId,history);
+  }
   const fieldItemById=new Map(),fieldInventoryEntries=[];
   for(const state of fieldItemState.items.values()){
     const event=state.event;
@@ -881,6 +948,10 @@ export function projectCharacter(world, viewer, options = {}) {
     if(!validForgeEventIds.has(event.id)||!Number.isInteger(position)||!slot||!source||!sourceItem)continue;
     const activeOfferId=fieldItemState.activeOffersByItem.get(event.itemId);
     const activeOffer=activeOfferId?fieldItemState.offers.get(activeOfferId):null;
+    const handoffs=transferHistoryByItem.get(event.itemId)||{total:0,entries:[]};
+    const transferHistoryTotal=handoffs.total;
+    const transferHistoryOmittedCount=Math.max(0,transferHistoryTotal-handoffs.entries.length);
+    const transferHistory=Object.freeze(handoffs.entries.map(({entry})=>entry));
     const transferred=!sameFieldActor(state.owner,state.creator);
     const item=Object.freeze({
       id:event.itemId,itemId:event.itemId,eventId:event.id,kind:'forged-field-item',
@@ -894,7 +965,10 @@ export function projectCharacter(world, viewer, options = {}) {
       sourceVersion:sourceItem.sourceVersion??null,receipt:sourceItem.receipt??null,
       sourceDissent:sourceItem.dissent??null,
       action:sourceItem.action??null,
-      transferOffer:activeOffer?Object.freeze({...activeOffer}):null
+      transferOffer:activeOffer?Object.freeze({...activeOffer}):null,
+      transferHistory,
+      transferHistoryTotal,
+      transferHistoryOmittedCount
     });
     fieldItemById.set(event.itemId,item);
     if(sameFieldActor(state.owner,viewer))fieldInventoryEntries.push({position,item});

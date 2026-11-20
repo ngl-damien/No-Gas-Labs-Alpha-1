@@ -2168,3 +2168,117 @@ test('Armor Bearer skill and Quest Board carry-forward evidence agree across rea
   assert.deepEqual(world, beforeProjection,
     'Character Sheet and Quest Board projections leave retained world history unchanged');
 });
+
+
+test('personal field inventory preserves bounded item-specific handoff history without XP', async () => {
+  const at = seconds => new Date(Date.parse(t1) + seconds * 1000).toISOString();
+  const created = createWorld({ id: 'field-item-handoff-history', now: at(0) });
+  const discovered = await applyAction(created, {
+    type: 'discover', locationId: 'river'
+  }, witness, { now: at(1) });
+  const sourceEvent = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: 'forge-field-item', slotId: 'scouting', sourceEventId: sourceEvent.id
+  }, witness, { now: at(2) });
+  const forgeEvent = forged.world.events.at(-1);
+  const equipped = await applyAction(forged.world, {
+    type: 'equip-field-item', slotId: 'scouting', sourceEventId: forgeEvent.id
+  }, witness, { now: at(3) });
+  const unequipped = await applyAction(equipped.world, {
+    type: 'unequip-field-item', slotId: 'scouting'
+  }, witness, { now: at(4) });
+
+  const cancelledOffer = await applyAction(unequipped.world, {
+    type: 'offer-field-item-transfer', itemEventId: forgeEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: at(5), allowTransfers: true });
+  const cancelled = await applyAction(cancelledOffer.world, {
+    type: 'cancel-field-item-transfer', offerId: cancelledOffer.world.events.at(-1).offerId
+  }, witness, { now: at(6), allowTransfers: true });
+
+  const acceptedOffer = await applyAction(cancelled.world, {
+    type: 'offer-field-item-transfer', itemEventId: forgeEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: at(7), allowTransfers: true });
+  const accepted = await applyAction(acceptedOffer.world, {
+    type: 'accept-field-item-transfer', offerId: acceptedOffer.world.events.at(-1).offerId
+  }, founder, { now: at(8), allowTransfers: true });
+  const founderEquipped = await applyAction(accepted.world, {
+    type: 'equip-field-item', slotId: 'scouting', sourceEventId: forgeEvent.id
+  }, founder, { now: at(9) });
+  const founderUnequipped = await applyAction(founderEquipped.world, {
+    type: 'unequip-field-item', slotId: 'scouting'
+  }, founder, { now: at(10) });
+  const returnedOffer = await applyAction(founderUnequipped.world, {
+    type: 'offer-field-item-transfer', itemEventId: forgeEvent.id,
+    recipientId: witness.id, recipientRole: witness.role
+  }, founder, { now: at(11), allowTransfers: true });
+  const returned = await applyAction(returnedOffer.world, {
+    type: 'accept-field-item-transfer', offerId: returnedOffer.world.events.at(-1).offerId
+  }, witness, { now: at(12), allowTransfers: true });
+
+  const beforePadding = structuredClone(returned.world);
+  const initialRecord = projectCharacter(returned.world, witness);
+  const initialItem = initialRecord.fieldInventory.find(item => item.eventId === forgeEvent.id);
+  assert.ok(initialItem);
+  assert.equal(initialItem.ownerId, witness.id);
+  assert.equal(initialItem.creatorId, witness.id);
+  assert.equal(initialItem.transferHistoryTotal, 3);
+  assert.equal(initialItem.transferHistoryOmittedCount, 0);
+  assert.deepEqual(initialItem.transferHistory.map(item => item.status), [
+    'cancelled', 'accepted', 'accepted'
+  ]);
+  assert.deepEqual(initialItem.transferHistory.map(item => item.offerEventId), [
+    cancelledOffer.world.events.at(-1).id,
+    acceptedOffer.world.events.at(-1).id,
+    returnedOffer.world.events.at(-1).id
+  ]);
+  assert.equal(initialItem.transferHistory[0].cancelEventId, cancelled.world.events.at(-1).id);
+  assert.equal(initialItem.transferHistory[0].transferEventId, null);
+  assert.equal(initialItem.transferHistory[1].transferEventId, accepted.world.events.at(-1).id);
+  assert.equal(initialItem.transferHistory[1].cancelEventId, null);
+  assert.equal(initialItem.transferHistory[2].transferEventId, returned.world.events.at(-1).id);
+  assert.deepEqual(initialItem.transferHistory.map(item => [
+    item.fromActorId, item.fromActorRole, item.recipientId, item.recipientRole
+  ]), [
+    [witness.id, witness.role, founder.id, founder.role],
+    [witness.id, witness.role, founder.id, founder.role],
+    [founder.id, founder.role, witness.id, witness.role]
+  ]);
+  assert.ok(Object.isFrozen(initialItem.transferHistory));
+  assert.ok(initialItem.transferHistory.every(Object.isFrozen));
+  assert.equal(initialRecord.xp, 0);
+  assert.equal(returned.world.xp, 0);
+  assert.deepEqual(returned.world, beforePadding,
+    'the inventory projection must not mutate the retained ownership or offer history');
+
+  let world = returned.world;
+  let secondPaddingOfferId = null;
+  for (let index = 0; index < 13; index += 1) {
+    const offered = await applyAction(world, {
+      type: 'offer-field-item-transfer', itemEventId: forgeEvent.id,
+      recipientId: founder.id, recipientRole: founder.role
+    }, witness, { now: at(20 + index * 2), allowTransfers: true });
+    const cancelledAgain = await applyAction(offered.world, {
+      type: 'cancel-field-item-transfer', offerId: offered.world.events.at(-1).offerId
+    }, witness, { now: at(21 + index * 2), allowTransfers: true });
+    if (index === 1) secondPaddingOfferId = offered.world.events.at(-1).offerId;
+    world = cancelledAgain.world;
+  }
+
+  const beforeBoundedProjection = structuredClone(world);
+  const boundedRecord = projectCharacter(world, witness);
+  const boundedItem = boundedRecord.fieldInventory.find(item => item.eventId === forgeEvent.id);
+  assert.ok(boundedItem);
+  assert.equal(boundedItem.transferHistoryTotal, 16);
+  assert.equal(boundedItem.transferHistory.length, 12);
+  assert.equal(boundedItem.transferHistoryOmittedCount, 4);
+  assert.equal(boundedItem.transferHistory[0].offerId, secondPaddingOfferId,
+    'the bounded inventory shows the newest twelve attempts in retained append order');
+  assert.ok(boundedItem.transferHistory.every(item => item.status === 'cancelled'));
+  assert.equal(boundedItem.ownerId, witness.id,
+    'cancelled offers do not change the current item owner');
+  assert.equal(boundedRecord.xp, 0);
+  assert.deepEqual(world, beforeBoundedProjection,
+    'bounded handoff-history projection remains read-only');
+});
