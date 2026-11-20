@@ -1026,22 +1026,30 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,onOpen
   returnButton.onclick=onReturnToEvidenceArchive;
   container.append(returnButton);
  }
- const renderSnapshot=(snapshot,isStale)=>renderChronicle(container,projectChronicle({world:snapshot}),onOpenArtifact,{
-  heading:'WORLD CHRONICLE',
-  intro:isStale?WORLD_CHRONICLE_STALE_INTRO:WORLD_CHRONICLE_CURRENT_INTRO,
-  staleIntro:WORLD_CHRONICLE_STALE_INTRO,
-  freshnessState:isStale?'stale':'current',
-  exactEventLookup:{eventId,source:'world'}
- });
+ const snapshotRevision=snapshot=>Number.isSafeInteger(snapshot?.revision)&&snapshot.revision>=0
+  ?String(snapshot.revision):'unavailable';
+ const renderSnapshot=(snapshot,isStale)=>{
+  const update=renderChronicle(container,projectChronicle({world:snapshot}),onOpenArtifact,{
+   heading:'WORLD CHRONICLE',
+   intro:isStale?WORLD_CHRONICLE_STALE_INTRO:WORLD_CHRONICLE_CURRENT_INTRO,
+   staleIntro:WORLD_CHRONICLE_STALE_INTRO,
+   freshnessState:isStale?'stale':'current',
+   exactEventLookup:{eventId,source:'world'}
+  });
+  container.dataset.chronicleSnapshotRevision=snapshotRevision(snapshot);
+  return update;
+ };
  const refresh=renderSnapshot(world,stale);
  return (nextWorld,nextStale)=>{
   if(!nextWorld||typeof nextWorld!=='object'||Array.isArray(nextWorld))
    throw new TypeError('Chronicle refresh requires a world snapshot.');
   if(typeof nextStale!=='boolean')
    throw new TypeError('Chronicle refresh requires explicit snapshot freshness.');
-  return refresh(()=>projectChronicle({world:nextWorld}),
+  const refreshed=refresh(()=>projectChronicle({world:nextWorld}),
    nextStale?WORLD_CHRONICLE_STALE_INTRO:WORLD_CHRONICLE_CURRENT_INTRO,
    nextStale?'stale':'current');
+  if(refreshed)container.dataset.chronicleSnapshotRevision=snapshotRevision(nextWorld);
+  return refreshed;
  };
 }
 

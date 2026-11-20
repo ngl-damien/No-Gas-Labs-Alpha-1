@@ -20,7 +20,7 @@ import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from 
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
 registerOfflineShell();
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0,positionConflictNoticeKey=null,sharedMovementPaused=false,sharedStreamOpen=false,sharedConnectionRecovery=null,activeWorldChronicleRefresh=null;let commonsDraftText='';
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0,positionConflictNoticeKey=null,sharedMovementPaused=false,sharedStreamOpen=false,sharedConnectionRecovery=null,activeWorldChronicleRefresh=null,activeWorldChronicleSnapshot=null;let commonsDraftText='';
 const timedSharedPositionWrite=createPositionWriteDeadline((position,{signal})=>{
   const expectedEpoch=positionEpoch;
   const expectedRevision=positionWriteRevision;
@@ -2522,15 +2522,35 @@ function refreshEvidenceArchiveSnapshotFreshnessNotice(){
 function refreshWorldChronicleSnapshot(){
   if(mode!=='shared'||$('sheet').hidden||$('sheet-title').textContent!=='World Chronicle'||
      typeof activeWorldChronicleRefresh!=='function')return;
-  try{activeWorldChronicleRefresh(world,isSharedSnapshotStale())}
+  const currentRevision=world?.revision;
+  const pinnedRevision=activeWorldChronicleSnapshot?.revision;
+  const revisionUnavailable=!Number.isSafeInteger(currentRevision)||currentRevision<0;
+  const revisionRegressed=Number.isSafeInteger(pinnedRevision)&&Number.isSafeInteger(currentRevision)&&currentRevision<pinnedRevision;
+  const stale=isSharedSnapshotStale()||revisionUnavailable||revisionRegressed;
+  const snapshot=stale?(activeWorldChronicleSnapshot||world):world;
+  if(!stale)activeWorldChronicleSnapshot=snapshot;
+  try{activeWorldChronicleRefresh(snapshot,stale)}
   catch(error){handleError(error)}
 }
-function openWorldChronicle(eventId,{returnToEvidenceArchive=false}={}){
+function openWorldChronicle(eventId,{returnToEvidenceArchive=false,snapshot=world,onReturnToEvidenceArchive}={}){
+  const chronicleSnapshot=snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)?snapshot:world;
+  activeWorldChronicleSnapshot=chronicleSnapshot;
   const content=showSheet('World Chronicle','RETAINED WORLD EVENTS · READ ONLY');
-  activeWorldChronicleRefresh=renderWorldChronicle(content,world,eventId,{
-    stale:isSharedSnapshotStale(),
+  const returnAction=typeof onReturnToEvidenceArchive==='function'
+    ?onReturnToEvidenceArchive
+    :returnToEvidenceArchive
+      ?()=>openEvidenceArchive(null,null,{snapshot:activeWorldChronicleSnapshot||chronicleSnapshot})
+      :undefined;
+  const currentRevision=world?.revision;
+  const chronicleRevision=chronicleSnapshot?.revision;
+  const revisionUnavailable=mode==='shared'&&(!Number.isSafeInteger(currentRevision)||currentRevision<0||
+    !Number.isSafeInteger(chronicleRevision)||chronicleRevision<0);
+  const revisionMismatch=mode==='shared'&&Number.isSafeInteger(currentRevision)&&
+    Number.isSafeInteger(chronicleRevision)&&currentRevision!==chronicleRevision;
+  activeWorldChronicleRefresh=renderWorldChronicle(content,chronicleSnapshot,eventId,{
+    stale:isSharedSnapshotStale()||revisionUnavailable||revisionMismatch,
     onOpenArtifact:(id,version)=>openCreation(id,version),
-    onReturnToEvidenceArchive:returnToEvidenceArchive?()=>openEvidenceArchive():undefined
+    onReturnToEvidenceArchive:returnAction
   });
 }
 function refreshForgePanels(){
@@ -3140,8 +3160,8 @@ function openSourceObservatory(prefillNote=null,prefillOrigin='project-state-sna
   }
   content.append(button('Review retained records and dissent →',()=>openEvidenceArchive(),{class:'list-button','data-source-observatory-archive':'true'}));
 }
-function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
-  const archiveWorld=world;
+function openEvidenceArchive(focusRoleId = null, focusResponseId = null,{snapshot=world}={}){
+  const archiveWorld=snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)?snapshot:world;
   const archiveSnapshotRevision=Number.isSafeInteger(archiveWorld?.revision)&&archiveWorld.revision>=0
     ?archiveWorld.revision:0;
   const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
@@ -3566,7 +3586,12 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
   const renderHistory=(kernel,kernelUnavailable=false)=>renderEvidenceArchive(history,{
     world:archiveWorld,kernel,kernelUnavailable,shared:mode==='shared',
     onOpenArtifact:(id,version)=>openCreation(id,version),
-    onInspectEvent:eventId=>openWorldChronicle(eventId,{returnToEvidenceArchive:true})
+    onInspectEvent:eventId=>openWorldChronicle(eventId,{
+      snapshot:archiveWorld,
+      onReturnToEvidenceArchive:()=>openEvidenceArchive(focusRoleId,focusResponseId,{
+        snapshot:activeWorldChronicleSnapshot||archiveWorld
+      })
+    })
   });
   if(mode!=='shared'){
     renderHistory(null,false);
