@@ -847,7 +847,19 @@ function openCharacterSheet(){
   for(const item of record.recentActivity){
     const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;
     const details=[item.creationId?'creation '+item.creationId:null,item.version!==null?'version '+item.version:null,item.locationId?'location '+item.locationId:null].filter(Boolean).join(' · ');
-    content.append(node('article',{class:'field-card'},[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))]));
+    const children=[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))];
+    if(typeof item.id==='string'&&item.id.trim()===item.id&&item.id){
+      children.push(button('Inspect in World Chronicle →',()=>openWorldChronicle(item.id),{
+        class:'list-button',
+        'data-recent-activity-event-link':item.id,
+        'data-chronicle-event-id':item.id,
+        'data-chronicle-source':'world',
+        'aria-label':'Inspect this retained event in World Chronicle'
+      }));
+    }else{
+      children.push(paragraph('This retained activity has no usable source event ID; direct Chronicle navigation is unavailable.','form-help'));
+    }
+    content.append(node('article',{class:'field-card','data-recent-activity-event-id':typeof item.id==='string'?item.id:''},children));
   }
 }
 function followResearchTarget(object,fallback,targetType){
