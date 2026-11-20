@@ -213,6 +213,30 @@ function sameFieldActor(left,right) {
   return left?.id === right?.id && left?.role === right?.role;
 }
 
+function fieldItemTransferHistoryEntry(offer) {
+  const cancellation=offer.cancelEvent;
+  const decline=offer.declineEvent;
+  const transfer=offer.transferEvent;
+  return Object.freeze({
+    offerId:offer.offerId,
+    itemId:offer.itemId,
+    itemEventId:offer.itemEventId,
+    status:offer.status,
+    offerEventId:offer.eventId,
+    offeredAt:offer.at,
+    fromActorId:offer.fromActorId,
+    fromActorRole:offer.fromActorRole,
+    recipientId:offer.recipientId,
+    recipientRole:offer.recipientRole,
+    cancelEventId:cancellation?offer.cancelEventId:null,
+    cancelledAt:cancellation?cancellation.at:null,
+    declineEventId:decline?offer.declineEventId:null,
+    declinedAt:decline?decline.at:null,
+    transferEventId:transfer?offer.transferEventId:null,
+    transferredAt:transfer?transfer.at:null
+  });
+}
+
 function validActivityField(field, value) {
   if (field === 'version') return Number.isSafeInteger(value) && value > 0;
   return typeof value === 'string' && value.length > 0 && value.trim() === value;
@@ -280,6 +304,9 @@ export function projectCharacter(world, viewer, options = {}) {
       (!fieldItemSourcePageRequests || typeof fieldItemSourcePageRequests !== 'object' ||
        Array.isArray(fieldItemSourcePageRequests)))
     throw new TypeError('Forge source page requests must be a slot-to-page object.');
+  const fieldItemTransferHistoryPage=options?.fieldItemTransferHistoryPage??0;
+  if(!Number.isSafeInteger(fieldItemTransferHistoryPage)||fieldItemTransferHistoryPage<0)
+    throw new RangeError('Field-item transfer history page must be a non-negative integer.');
   const retainedEvents = rows(world?.events);
   const allEvents = uniqueEvents(retainedEvents);
   let combatProjection = { xpByActor: {}, victoryRecords: [] };
@@ -928,39 +955,12 @@ export function projectCharacter(world, viewer, options = {}) {
       !isStrictTimestamp(decline.at)||Date.parse(decline.at)<Date.parse(offer.at)
     ))continue;
     if(offer.status==='offered'&&(offer.transferEventId||offer.cancelEventId||offer.declineEventId))continue;
-    const entry=Object.freeze({
-      offerId:offer.offerId,
-      itemId:offer.itemId,
-      itemEventId:offer.itemEventId,
-      status:offer.status,
-      offerEventId:offer.eventId,
-      offeredAt:offer.at,
-      fromActorId:offer.fromActorId,
-      fromActorRole:offer.fromActorRole,
-      recipientId:offer.recipientId,
-      recipientRole:offer.recipientRole,
-      cancelEventId:cancellation?offer.cancelEventId:null,
-      cancelledAt:cancellation?cancellation.at:null,
-      declineEventId:decline?offer.declineEventId:null,
-      declinedAt:decline?decline.at:null,
-      transferEventId:transfer?offer.transferEventId:null,
-      transferredAt:transfer?transfer.at:null
-    });
-    const history=transferHistoryByItem.get(offer.itemId)||{
-      total:0,entries:[],participantTotal:0,participantEntries:[]
-    };
+    const entry=fieldItemTransferHistoryEntry(offer);
+    const history=transferHistoryByItem.get(offer.itemId)||{total:0,entries:[]};
     history.total+=1;
     history.entries.push({position,entry});
     history.entries.sort((left,right)=>left.position-right.position);
     if(history.entries.length>MAX_FIELD_ITEM_TRANSFER_HISTORY)history.entries.shift();
-    if(sameFieldActor(viewer,{id:offer.fromActorId,role:offer.fromActorRole})||
-      sameFieldActor(viewer,{id:offer.recipientId,role:offer.recipientRole})){
-      history.participantTotal+=1;
-      history.participantEntries.push({position,entry});
-      history.participantEntries.sort((left,right)=>left.position-right.position);
-      if(history.participantEntries.length>MAX_FIELD_ITEM_TRANSFER_HISTORY)
-        history.participantEntries.shift();
-    }
     transferHistoryByItem.set(offer.itemId,history);
   }
   const fieldItemById=new Map(),fieldInventoryEntries=[];
@@ -998,22 +998,51 @@ export function projectCharacter(world, viewer, options = {}) {
     fieldItemById.set(event.itemId,item);
     if(sameFieldActor(state.owner,viewer))fieldInventoryEntries.push({position,item});
   }
+  // The field-item reducer inserts validated offers while walking the retained
+  // append log. Two passes over that ordered Map count the participant's full
+  // history, then materialize only the requested bounded page.
+  const visitParticipantOffers=callback=>{
+    let previousPosition=-1;
+    for(const offer of fieldItemState.offers.values()){
+      const position=positionByEvent.get(offer.event);
+      if(!Number.isInteger(position))continue;
+      if(position<=previousPosition)
+        throw new Error('Validated field-item offers are not in retained append order.');
+      previousPosition=position;
+      const item=fieldItemById.get(offer.itemId);
+      if(!item||
+        (!sameFieldActor(viewer,{id:offer.fromActorId,role:offer.fromActorRole})&&
+         !sameFieldActor(viewer,{id:offer.recipientId,role:offer.recipientRole})))continue;
+      callback({offer,item,position});
+    }
+  };
   let fieldItemTransferHistoryTotal=0;
+  visitParticipantOffers(()=>{fieldItemTransferHistoryTotal+=1;});
+  const fieldItemTransferHistoryPageSize=MAX_FIELD_ITEM_TRANSFER_HISTORY;
+  const fieldItemTransferHistoryTotalPages=Math.ceil(
+    fieldItemTransferHistoryTotal/fieldItemTransferHistoryPageSize
+  );
+  if(fieldItemTransferHistoryPage>0&&fieldItemTransferHistoryPage>=fieldItemTransferHistoryTotalPages)
+    throw new RangeError('Field-item transfer history page is outside the retained history.');
+  const fieldItemTransferHistoryPageEnd=Math.max(
+    0,fieldItemTransferHistoryTotal-fieldItemTransferHistoryPage*fieldItemTransferHistoryPageSize
+  );
+  const fieldItemTransferHistoryPageStart=Math.max(
+    0,fieldItemTransferHistoryPageEnd-fieldItemTransferHistoryPageSize
+  );
   const participantTransferCandidates=[];
-  for(const item of fieldItemById.values()){
-    const history=transferHistoryByItem.get(item.itemId);
-    if(!history)continue;
-    fieldItemTransferHistoryTotal+=history.participantTotal||0;
-    for(const candidate of history.participantEntries||[]){
+  let participantOfferOrdinal=0;
+  visitParticipantOffers(candidate=>{
+    if(participantOfferOrdinal>=fieldItemTransferHistoryPageStart&&
+      participantOfferOrdinal<fieldItemTransferHistoryPageEnd){
       participantTransferCandidates.push({
-        position:candidate.position,entry:candidate.entry,item
+        ...candidate,entry:fieldItemTransferHistoryEntry(candidate.offer)
       });
     }
-  }
-  participantTransferCandidates.sort((left,right)=>
-    left.position-right.position||left.entry.offerId.localeCompare(right.entry.offerId));
+    participantOfferOrdinal+=1;
+  });
   const fieldItemTransferHistory=Object.freeze(
-    participantTransferCandidates.slice(-MAX_FIELD_ITEM_TRANSFER_HISTORY).map(({entry,item})=>
+    participantTransferCandidates.map(({entry,item})=>
       Object.freeze({
         ...entry,
         item:Object.freeze({
@@ -1022,6 +1051,16 @@ export function projectCharacter(world, viewer, options = {}) {
         })
       }))
   );
+  const fieldItemTransferHistoryPageInfo=Object.freeze({
+    page:fieldItemTransferHistoryPage,
+    pageSize:fieldItemTransferHistoryPageSize,
+    total:fieldItemTransferHistoryTotal,
+    totalPages:fieldItemTransferHistoryTotalPages,
+    firstOrdinal:participantTransferCandidates.length?fieldItemTransferHistoryPageStart+1:0,
+    lastOrdinal:participantTransferCandidates.length?fieldItemTransferHistoryPageEnd:0,
+    hasOlder:fieldItemTransferHistoryPageStart>0,
+    hasNewer:fieldItemTransferHistoryPage>0
+  });
   const fieldItemTransferHistoryOmittedCount=Math.max(
     0,fieldItemTransferHistoryTotal-fieldItemTransferHistory.length
   );
@@ -1304,6 +1343,7 @@ export function projectCharacter(world, viewer, options = {}) {
     fieldItemTransferHistory,
     fieldItemTransferHistoryTotal,
     fieldItemTransferHistoryOmittedCount,
+    fieldItemTransferHistoryPageInfo,
     fieldItemHistoryEventIds,
     fieldItemTransferEventIds,
     forgedSourceEventIds,
