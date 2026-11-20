@@ -1925,7 +1925,9 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
     staleReason: 'revision-mismatch'
   });
   assert.equal(mismatchContainer.dataset.chronicleSnapshotFreshnessReason, 'revision-mismatch');
-  assert.match(mismatchContainer.querySelector('[data-chronicle-snapshot-freshness]').textContent,
+  const mismatchFreshness = walk(mismatchContainer).find(item => item.dataset?.chronicleSnapshotFreshness);
+  assert.ok(mismatchFreshness);
+  assert.match(mismatchFreshness.textContent,
     /accepted world revision has advanced or regressed/i);
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
   assert.match(freshness().textContent, /shared stream is disconnected/i);
