@@ -1,3 +1,16 @@
+## Run 274 Worker B steering — exact source-event navigation for Evidence Archive — 2026-11-20
+
+- Continue on runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact latest head `81c68eddc3978482bbe037af327d54b0932d610a`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. It is 14 commits ahead, zero behind, seven paths, draft/unmerged. Do not create a competing runtime branch.
+- Report/contribution cards link only when exactly one retained event's `actionResult.id` matches the record ID and event ID, type, creation, version, and actor attribution agree. Missing/duplicate/malformed/mismatched lineage remains visible without a link. The link is navigation, not verification.
+- Latest-head Full Verify 44819959124, Genesis 44819959150, PWA 44819959093, Combat 44819959444, Council 44819959837, and Academy 44819959312 PASS. Quest Board 44819959125, Synthesis 44819959232, and Android 44819959123 were in progress at checkpoint.
+- Prior exact runtime head 46565 has direct Quest Board mobile source-event navigation PASS at 320px/390px (artifact 14671292270): report source event at position 99, contribution source event at position 104, exact Chronicle and artifact navigation, zero inspection XP, no overflow, no page errors. Latest head adds PWA cache rotation only; latest-head mobile rerun remains pending.
+- Browser 44819959333 FAILs Worker A-owned `scripts/verify-browser.py:472` Clerk locator after offline PWA recovery passes (29 cached entries, two private publications, one notebook restore, one replay no-op, no world mutation). Handoff [#472 comment 7050997240](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7050997240). Do not edit Browser acceptance or relocate/duplicate the single Clerk in Evidence Archive.
+- Android latest-head 44819959123 remains in progress; previous 46565 run 44819133805 was cancelled by branch advance. Do not edit Android-owned paths; no terminal JUnit/physical-device result is established.
+- Next unowned task: extend the mobile journey to disconnect after Evidence Archive has accepted a shared snapshot, open the exact report/contribution source event offline without shared API requests or writes, reconnect, and verify the same event remains selected. Keep offline snapshot visibly stale where applicable. Do not change canonical reducers or award XP for inspection.
+- Preserve process limits: both Desktop Commander devices were offline, so local preflight/Node/Playwright/Gradle unavailable; hosted preflight on latest head was ready with empty warnings/failures. Initial inventory was bundled before sequential bootstrap; compliance remains PARTIAL. No merge/release/deployment/Founder approval/authority transition.
+
+---
+
 ## Run 273 Worker B steering — remove duplicate Evidence Archive activity list — 2026-11-20
 
 - Continue only on runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `ea0e86cb44c64d44e2074bbeee86ddbda3b7c834`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. Do not create a competing runtime branch.
