@@ -1916,6 +1916,43 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
 }));
 
 
+
+test('World Chronicle exposes a bounded return path to Evidence Archive and keeps it through snapshot refresh', () => withDocument(() => {
+  const { world } = sourceObservationWorld();
+  const beforeWorld = structuredClone(world);
+  const returned = [];
+  const container = element('div');
+  const refresh = renderWorldChronicle(container, world, 'publish-observatory', {
+    stale: true,
+    onReturnToEvidenceArchive: () => returned.push('Evidence Archive')
+  });
+  const returnButton = () => walk(container).find(item =>
+    item.dataset?.chronicleReturnEvidenceArchive === 'true'
+  );
+
+  assert.ok(returnButton(), 'an Archive-origin Chronicle must expose a return action');
+  assert.equal(returnButton().textContent, 'Return to Evidence Archive →');
+  returnButton().onclick();
+  assert.deepEqual(returned, ['Evidence Archive']);
+
+  const nextWorld = structuredClone(world);
+  nextWorld.events.push({
+    id: 'chronicle-return-reconnect-discovery',
+    type: 'discover',
+    locationId: 'academy',
+    actor: { id: 'damien', name: 'Damien', role: 'founder' },
+    at: '2026-10-27T09:05:00.000Z'
+  });
+  const beforeNextWorld = structuredClone(nextWorld);
+  assert.equal(refresh(nextWorld, false), true);
+  assert.ok(returnButton(), 'the return action must survive in-place Chronicle refresh');
+  returnButton().onclick();
+  assert.deepEqual(returned, ['Evidence Archive', 'Evidence Archive']);
+  assert.deepEqual(world, beforeWorld, 'the return path must not mutate the old snapshot');
+  assert.deepEqual(nextWorld, beforeNextWorld, 'the return path must not mutate the refreshed snapshot');
+}));
+
+
 test('Evidence Archive keeps report and contribution streams separate and ordered by retained append position', () => {
   const actor = { id: 'damien', name: 'Damien', role: 'founder' };
   const world = {
