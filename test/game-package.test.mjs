@@ -96,8 +96,10 @@ test('service-worker installation rotates the offline shell and precaches curren
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261120-armor-bearer-chain-ledger-4');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261120-field-item-handoff-history-5');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
+  assert.ok(precachedUrls.includes('https://ngl.test/character-sheet.mjs'),
+    'the item-specific handoff history projection must remain available in the offline core shell');
   assert.ok(precachedUrls.includes('https://ngl.test/world-view.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/quests.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/field-items.mjs'),
