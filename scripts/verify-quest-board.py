@@ -1719,36 +1719,72 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         expect(declined_participant_row).to_have_attribute('data-transfer-status', 'declined')
         expect(declined_participant_row).to_contain_text('You declined')
         expect(declined_participant_row).to_contain_text(decline_event_id)
-        chronicle_handoff_button = declined_participant_row.locator(
-            '[data-field-item-history-chronicle]'
+        event_chain = declined_participant_row.locator(
+            '[data-field-item-history-event-chain]'
         )
-        expect(chronicle_handoff_button).to_have_count(1)
-        expect(chronicle_handoff_button).to_have_attribute(
-            'data-chronicle-event-id', decline_event_id
-        )
-        chronicle_before = authoritative_snapshot(founder_page)
-        chronicle_handoff_button.tap()
-        expect(founder_page.locator('#sheet-title')).to_have_text('World Chronicle')
-        exact_handoff_card = founder_page.locator(
-            '#sheet-content [data-event-id="world:' + decline_event_id + '"]'
-        )
-        expect(exact_handoff_card).to_have_count(1)
-        expect(exact_handoff_card).to_have_attribute('data-event-source', 'world')
-        chronicle_status = founder_page.locator(
-            '#sheet-content [data-chronicle-page-status]'
-        )
-        expect(chronicle_status).to_contain_text('exact source event ID')
-        chronicle_after = authoritative_snapshot(founder_page)
-        assert shared_world_snapshot(chronicle_after) == shared_world_snapshot(chronicle_before), (
-            'Opening a handoff event in Chronicle must not mutate the shared world.'
-        )
-        assert chronicle_after['xp'] == chronicle_before['xp']
-        founder_page.locator('#sheet-close').tap()
-        founder_page.locator('#character-button').tap()
-        founder_page.wait_for_function(
-            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
-            "!document.querySelector('#sheet').hidden"
-        )
+        expect(event_chain).to_have_count(1)
+        event_chain.locator('summary').tap()
+        offer_event_id = founder_page.evaluate("""async offerId => {
+          const response = await fetch('/api/state', {
+            cache: 'no-store', credentials: 'same-origin'
+          });
+          if (!response.ok) throw new Error('Could not inspect the retained offer event.');
+          const dto = await response.json();
+          const matches = dto.world.events.filter(event =>
+            event.type === 'field-item-transfer-offered' && event.offerId === offerId
+          );
+          return matches.length === 1 ? matches[0].id : null;
+        }""", decline_offer_id)
+        assert offer_event_id
+        expected_chain_events = [
+            ('source', contribution_event_id),
+            ('forge', second_forge_event_id),
+            ('offer', offer_event_id),
+            ('decline', decline_event_id)
+        ]
+        expect(event_chain.locator('[data-field-item-history-event-link]')).to_have_count(4)
+        chain_navigation_results = []
+        for event_index, (event_kind, event_id) in enumerate(expected_chain_events):
+            event_link = event_chain.locator(
+                '[data-field-item-history-event-link="' + event_kind + '"]'
+            )
+            expect(event_link).to_have_count(1)
+            expect(event_link).to_have_attribute('data-chronicle-event-id', event_id)
+            chronicle_before = authoritative_snapshot(founder_page)
+            event_link.tap()
+            expect(founder_page.locator('#sheet-title')).to_have_text('World Chronicle')
+            exact_handoff_card = founder_page.locator(
+                '#sheet-content [data-event-id="world:' + event_id + '"]'
+            )
+            expect(exact_handoff_card).to_have_count(1)
+            expect(exact_handoff_card).to_have_attribute('data-event-source', 'world')
+            chronicle_status = founder_page.locator(
+                '#sheet-content [data-chronicle-page-status]'
+            )
+            expect(chronicle_status).to_contain_text('exact source event ID')
+            chronicle_after = authoritative_snapshot(founder_page)
+            assert shared_world_snapshot(chronicle_after) == shared_world_snapshot(chronicle_before), (
+                'Opening each retained handoff-chain event in Chronicle must not mutate the shared world.'
+            )
+            assert chronicle_after['xp'] == chronicle_before['xp']
+            chain_navigation_results.append(event_kind)
+            founder_page.locator('#sheet-close').tap()
+            founder_page.locator('#character-button').tap()
+            founder_page.wait_for_function(
+                "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+                "!document.querySelector('#sheet').hidden"
+            )
+            recipient_history = founder_page.locator(
+                '#sheet-content [data-field-item-participant-history]'
+            )
+            declined_participant_row = recipient_history.locator(
+                '[data-field-item-participant-history-entry="' + decline_offer_id + '"]'
+            )
+            event_chain = declined_participant_row.locator(
+                '[data-field-item-history-event-chain]'
+            )
+            if event_index + 1 < len(expected_chain_events):
+                event_chain.locator('summary').tap()
         accepted_participant_row = recipient_history.locator(
             '[data-field-item-participant-history-entry="' + transfer_offer['offerId'] + '"]'
         )
