@@ -119,7 +119,7 @@ async function preserveOptionalShellAssets(staleNames) {
   }))).filter(Boolean);
 
   await Promise.all(OPTIONAL_SHELL.map(async path => {
-    const url = new URL(path, self.location.origin).href;
+    const url = new URL(path.startsWith('/') ? path.slice(1) : path, self.registration.scope).href;
     // Wrap the match result so a successful cache miss is distinct from a
     // stalled/failed Cache Storage operation. On uncertainty, do not overwrite.
     const existing = await boundedCacheOperation(async () => ({
@@ -161,7 +161,7 @@ function scheduleCacheResponse(event, request, responsePromise) {
 async function offlineNavigation(request) {
   const cache = await openCache();
   return await matchCache(cache, request) ||
-    await matchCache(cache, new URL('/index.html', self.location.origin).href) ||
+    await matchCache(cache, new URL('index.html', self.registration.scope).href) ||
     Response.error();
 }
 
@@ -172,7 +172,7 @@ self.addEventListener('install', event => {
       'Offline shell cache open failed'
     );
     await requiredCacheOperation(async () => {
-      await cache.addAll(CORE_SHELL.map(path => new URL(path, self.location.origin).href));
+      await cache.addAll(CORE_SHELL.map(path => new URL(path.startsWith('/') ? path.slice(1) : path, self.registration.scope).href));
       return true;
     }, 'Offline shell precache failed', SHELL_INSTALL_TIMEOUT_MS);
   })());
@@ -198,9 +198,10 @@ self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin || url.search ||
-      url.pathname === '/api' || url.pathname.startsWith('/api/') ||
-      !SHELL_PATHS.has(url.pathname)) return;
+  const scope = new URL(self.registration.scope);
+  if (url.origin !== scope.origin || url.search || !url.pathname.startsWith(scope.pathname)) return;
+  const scopedPath = '/' + url.pathname.slice(scope.pathname.length);
+  if (scopedPath === '/api' || scopedPath.startsWith('/api/') || !SHELL_PATHS.has(scopedPath)) return;
 
   if (request.mode === 'navigate') {
     const networkResponse = fetch(request);
