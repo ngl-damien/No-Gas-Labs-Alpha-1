@@ -3776,13 +3776,31 @@ def evidence_archive_activity_collection_ids(page):
       if (!Array.isArray(world?.reports) || !Array.isArray(world?.contributions)) {
         throw new Error('The actor-visible report and contribution collections are unavailable.');
       }
+      if (!Array.isArray(world.events)) {
+        throw new Error('The retained world event history is unavailable; source links cannot be checked.');
+      }
       const ids = values => values.map(item => item?.id);
-      const result = { reports: ids(world.reports), contributions: ids(world.contributions) };
-      for (const [name, values] of Object.entries(result)) {
+      const result = { reports: ids(world.reports), contributions: ids(world.contributions), sourceEvents: {} };
+      for (const [name, values] of Object.entries({ reports: result.reports, contributions: result.contributions })) {
         if (values.some(id => typeof id !== 'string' || !id)) {
           throw new Error('The retained ' + name + ' collection contains an unidentified record.');
         }
       }
+      world.events.forEach((event, index) => {
+        const recordId = event?.actionResult?.id;
+        if (typeof recordId !== 'string' || !recordId) return;
+        if (!result.sourceEvents[recordId]) result.sourceEvents[recordId] = [];
+        result.sourceEvents[recordId].push({
+          eventId: event.id,
+          eventPosition: index + 1,
+          type: event.type,
+          creationId: event.creationId,
+          version: event.version,
+          actorId: event.actor?.id,
+          actorRole: event.actor?.role,
+          actorName: event.actor?.name
+        });
+      });
       return result;
     }""")
 
@@ -3892,15 +3910,58 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors):
         json.dumps(legacy_activity_headings)
     )
 
+    target_record_id = report_ids[-1] if width == 320 else contribution_ids[-1]
+    target_record_type = 'report' if width == 320 else 'contribution'
+    expected_event_type = 'report' if width == 320 else 'contribute'
+    source_matches = after_streams['sourceEvents'].get(target_record_id, [])
+    assert len(source_matches) == 1, (
+        'The server-retained actionResult.id must identify exactly one source event for ' +
+        target_record_type + ': ' + json.dumps(source_matches)
+    )
+    source_event = source_matches[0]
+    assert source_event['type'] == expected_event_type
+    assert source_event['creationId'] == creation_id
+    assert source_event['version'] == version
+    assert source_event['actorId'] == after_actions['viewerId']
+    assert source_event['actorRole'] == after_actions['viewerRole']
+    assert isinstance(source_event['actorName'], str) and source_event['actorName']
+
+    target_card = page.locator(
+        '#sheet-content [data-activity-record-id="' + target_record_id + '"]'
+    )
+    expect(target_card).to_have_attribute('data-record-status', 'linked')
+    source_link = target_card.locator('[data-evidence-archive-open-event="true"]')
+    expect(source_link).to_have_count(1)
+    expect(source_link).to_have_attribute('data-event-id', source_event['eventId'])
+    expect(source_link).to_have_attribute('data-event-position', str(source_event['eventPosition']))
+    expect(source_link).to_have_attribute('data-event-type', expected_event_type)
+    expect(target_card).to_contain_text('does not verify the claim')
+    source_link.tap()
+    expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
+    expect(page.locator(
+        '#sheet-content [data-event-id="world:' + source_event['eventId'] + '"]'
+    )).to_have_count(1)
+    chronicle_search = page.locator('#sheet-content [data-chronicle-search="true"]')
+    expect(chronicle_search).to_have_value(source_event['eventId'])
+    after_chronicle_inspection = authoritative_snapshot(page)
+    assert after_chronicle_inspection == inspection_before, (
+        'Following the exact source event into World Chronicle must remain read-only.'
+    )
+    assert after_chronicle_inspection['xp'] == inspection_before['xp']
+    page.locator('#sheet-close').tap()
+    open_evidence_archive(page)
+    expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    artifact_inspection_before = authoritative_snapshot(page)
+
     open_button = report_cards.first.get_by_role('button', name='Open retained artifact version →', exact=True)
     expect(open_button).to_be_visible()
     open_button.tap()
     expect(page.locator('#version-select')).to_have_value(str(version))
     after_inspection = authoritative_snapshot(page)
-    assert after_inspection == inspection_before, (
+    assert after_inspection == artifact_inspection_before, (
         'Opening an exact retained report artifact version must remain read-only.'
     )
-    assert after_inspection['xp'] == inspection_before['xp']
+    assert after_inspection['xp'] == artifact_inspection_before['xp']
 
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').tap()
@@ -3931,6 +3992,11 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors):
         'submissionRevisionDelta': 4,
         'submissionXpDelta': after_actions['xp'] - baseline['xp'],
         'inspectionReadOnly': True,
+        'exactChronicleSourceNavigation': True,
+        'sourceEventId': source_event['eventId'],
+        'sourceEventPosition': source_event['eventPosition'],
+        'sourceEventType': source_event['type'],
+        'sourceEventRecordType': target_record_type,
         'exactArtifactVersionNavigation': True,
         'horizontalOverflow': False,
         'screenshot': screenshot.name
