@@ -296,8 +296,11 @@ def run_viewport(browser, url, out, width):
                     "method": request.method,
                     "path": request.url.split("?", 1)[0][len(origin):]
                 })
-        page.on("request", record_offline_api_request)
         page.locator("#sheet-close").tap()
+        page.locator("#character-button").tap()
+        expect(page.locator("#sheet-title")).to_have_text("Character & field record")
+        expect(page.locator("#sheet-content [data-character-snapshot-stale]")).to_have_count(0)
+        page.on("request", record_offline_api_request)
         context.set_offline(True)
         page.wait_for_function(
             """() => navigator.onLine === false &&
@@ -305,8 +308,6 @@ def run_viewport(browser, url, out, width):
               document.querySelector('#mode-label')?.textContent.includes('reconnecting')""",
             timeout=15000
         )
-        page.locator("#character-button").tap()
-        expect(page.locator("#sheet-title")).to_have_text("Character & field record")
         offline_character_notice = page.locator(
             "#sheet-content [data-character-snapshot-stale]"
         )
@@ -314,6 +315,8 @@ def run_viewport(browser, url, out, width):
         expect(offline_character_notice).to_contain_text(
             "last accepted shared-world snapshot and may be stale"
         )
+        if offline_character_notice.get_attribute("data-snapshot-revision") != str(after_inspection["revision"]):
+            raise AssertionError("The stale notice must identify the exact last accepted world revision.")
         offline_recent_links = page.locator(
             "#sheet-content [data-recent-activity-event-link]"
         )
