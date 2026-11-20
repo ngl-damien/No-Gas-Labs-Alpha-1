@@ -2147,6 +2147,11 @@ test('Evidence Archive withholds source-event links for missing, duplicate, or m
       mutate: world => { world.events.push({ id: 'event-report-1', type: 'discover', actor, at: '2026-11-20T12:03:00.000Z' }); }
     },
     {
+      name: 'unnormalized event identity',
+      status: 'ambiguous',
+      mutate: world => { world.events[0].id = ' event-report-1 '; }
+    },
+    {
       name: 'wrong event type',
       status: 'mismatched',
       mutate: world => { world.events[0].type = 'contribute'; }
