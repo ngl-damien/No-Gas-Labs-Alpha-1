@@ -1,3 +1,14 @@
+## Run 274 latest-head verification update — 2026-11-20
+
+- **Latest runtime/test head:** `81c68eddc3978482bbe037af327d54b0932d610a` (PR #718, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`).
+- **Direct Quest Board mobile acceptance:** PASS at 320px and 390px — [run 44819959125](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959125), artifact [14671573327](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959125/artifacts/14671573327). The 320px report opened exact Chronicle event `event-76e69f08-dcd7-4bc8-a70d-ebddd4da7941` at actor-visible position 99. The 390px contribution opened exact event `event-b237fc4d-de85-40a3-995c-e0942dfeebd9` at position 104. Both exact source-event and artifact-version navigations passed; inspection read-only, XP delta 0, no horizontal overflow, main journey page errors empty.
+- **Synthesis Clerk mobile:** PASS at both widths — [44819959232](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959232), artifact [14672365205](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959232/artifacts/14672365205).
+- **Latest exact-head suite:** Full Verify [44819959124](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959124), Genesis [44819959150](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959150), PWA [44819959093](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959093), Combat [44819959444](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959444), Council [44819959837](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959837), and Academy [44819959312](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959312) all PASS.
+- **Remaining:** Browser [44819959333](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959333) FAILs the known Worker A-owned Clerk locator after offline PWA recovery passes; handoff [#472 comment 7050997240](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7050997240). Android [44819959123](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959123) remains in the offline-world emulator journey; no terminal instrumentation result.
+- No canonical state, XP, approval, authority, release, deployment, or main-branch change. PR #718 remains draft/unmerged. Next priority: offline-in-session Chronicle navigation and reconnect continuity.
+
+---
+
 ## Run 274 — Evidence Archive reports and contributions open their exact source event — 2026-11-20
 
 - **Worker:** Worker B / Build NGL MMORPG. **Runtime PR:** [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), draft/unmerged. Branch `feat/evidence-archive-visible-stream-order-20261120-run272`; exact runtime/test head `81c68eddc3978482bbe037af327d54b0932d610a`; base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. Compare: 14 commits ahead, zero behind, seven changed paths.
