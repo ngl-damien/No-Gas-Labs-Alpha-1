@@ -1,3 +1,58 @@
+## Run 266 — Character Sheet chronology follows retained world-event order — 2026-11-20T13:31:55Z
+
+**Worker:** Worker B / Build NGL MMORPG. **Runtime PR:** [#708](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/708), draft/unmerged, child of documentation checkpoint [#707](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/707). Base is #707 exact head `2138863a61d62970cf9dcee8800c667a35bcc55d`. Final code/test head: `43d14a46da85b7a2d215c6965575a4dd7598e4bc`. Test-only head: `abae3b43a9213c1bd8b591be0524c5d16a52dbb0`.
+
+### Selected defect and player impact
+
+Combat Yard and World Chronicle now use retained event-array position as sequence authority because strict UTC timestamps are metadata and server clocks can regress. The Character Sheet still sorted the actor-scoped recent activity list by wall-clock timestamp. After a valid Combat Yard clock regression, the retained world history could be correct while the player's **Recent field trail** displayed later-appended moves out of order.
+
+The UI iterates `record.recentActivity` directly, so this projection order is the player's visible chronology. The defect affected history comprehension, not combat outcome or XP.
+
+### Test-first reproduction
+
+The test-only commit `abae3b43a9213c1bd8b591be0524c5d16a52dbb0` added a real Scout first-victory sequence with timestamp offsets 10, 20, 15, 30, 25, 40, 35 seconds. Full Verify [44743885047](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44743885047) reproduced exactly one new regression failure: **1,437 passed / 1 failed**. The failure at `test/game-character-sheet.test.mjs:646` showed timestamp-sorted activity IDs differed from retained append order. Genesis [44743885001](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44743885001) PASS.
+
+### Implementation
+
+- `game/character-sheet.mjs`: after actor/role scoping, duplicate-ID elimination and strict per-event timestamp validation, keep the newest six valid events by retained array position with `.slice(-6).reverse()`. Timestamps remain displayed metadata; they no longer reorder the stream.
+- `test/game-character-sheet.test.mjs`: the real six-move first victory asserts newest-first retained order, the exact final retained move first, Combat XP 30, Combatant count 1, and a read-only projection.
+- `game/sw.js`: rotate the public offline shell to `20261120-character-sheet-retained-order-18`. `/character-sheet.mjs` was already in the core shell; the rotation ensures installed offline clients receive the changed projection.
+- `test/game-package.test.mjs`: update the install namespace, current-cache fixtures for activation and optional-art migration, and source assertion. All four stale namespace references were updated after an intermediate run exposed them.
+
+No event schema, combat rules, rewards, skill rules, quests, authority or canonical world state changed. Invalid timestamps remain excluded. Actor ID + role scoping remains unchanged. Character Sheet and recent activity inspection remain read-only. No model/NPC/UI can manufacture progress, evidence, truth, approval or authority.
+
+### Verification on final exact code/test head
+
+On `43d14a46da85b7a2d215c6965575a4dd7598e4bc`:
+
+- Full Verify [44744365355](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44744365355): **PASS**. Hosted portable preflight `ready`, warnings `[]`, failures `[]`; Node 24 tests, Python inspector, package build and institutional exercise all exited 0.
+- Genesis Evidence Invariant [44744365361](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44744365361): **PASS**.
+- Combat Yard mobile [44744365494](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44744365494): **PASS** at 320px and 390px. Both receipts show the six-move Scout victory, out-of-range `COMBAT_YARD_REQUIRED` 409 without mutation, Combat XP 0→30, WORLD XP unchanged, Chronicle append positions 7 and 15, read-only Chronicle inspection, no horizontal overflow, no main page errors and no external requests. This is ordinary mobile gameplay; it does not simulate a regressed client clock.
+- Quest Board mobile [44744365439](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44744365439): **PASS** at 320px and 390px. The journeys retain actor-scoped objectives, item handoff/refusal navigation, read-only inspection and zero XP from inspection. The Source Archive route is a server-rechecked mock GitHub Contents fixture; independent verification remains `NOT_PERFORMED`, source truth `NOT_ASSESSED`, model assertions `LEADS_ONLY`. Separate browser contexts establish session actor IDs, not distinct humans.
+- Synthesis Clerk mobile [44744365713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44744365713): **PASS** at 320px and 390px. Source retrieval `NOT_PERFORMED`, independent verification `NOT_PERFORMED`, model assertions `LEADS_ONLY`, execution `NOT_EXECUTED`; the 100 WORLD XP fixture comes from an explicit publication. The Relay retry subjourney recorded two sandboxed artifact-frame service-worker SecurityErrors; the main journey pageErrors arrays were empty and the workflow passed.
+- Academy Study Shelf [44744365522](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44744365522): **PASS**.
+- Browser Acceptance [44744365603](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44744365603): **FAIL** at Worker A-owned `scripts/verify-browser.py:472`, expecting `#contradiction-clerk-npc` / `BOUNDED ADVERSARY` in Guild Hall. Offline PWA recovery passed first: 29 cached entries, two private publications, one notebook restore, one replay no-op, no world mutation. The single Clerk remains in Evidence Archive. Exact handoff [#472 comment 7040736106](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7040736106). Worker B did not edit Browser/NPC-placement paths.
+- Android Alpha-1 [44744365360](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44744365360): at checkpoint time, repository preflight, fake-ADB probe, SDK setup, project-state snapshot, Gradle setup and debug APK assembly had passed; the offline-world emulator journey remained **IN PROGRESS**. No terminal instrumentation result or physical-device acceptance is claimed. Worker A retains Android instrumentation/lifecycle/retry ownership.
+
+An intermediate post-runtime head `d9b674fa19799bdb6c738878e14923fb5e95da5e` exposed three stale service-worker namespace fixtures in package tests (Full Verify within Synthesis run [44744148088](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44744148088)). The four remaining old namespace references in activation/current-cache fixtures and the source regex were corrected in `43d14a46`; final Full Verify and Synthesis mobile pass on that exact head. The intermediate failure is retained here, not erased.
+
+### Donor review, repository state and process
+
+- Re-inspected Alpha-1 RAE content-addressed SHA-256/size receipts (byte identity is not factual truth), Guild proposal-versus-authorization separation, and institutional kernel replay/receipt re-verification. No external donor code copied.
+- External Mesh, Command Center and TownSquare source inspection remains stopped where root `AGENTS.md` returned 404; RuneUX was not found. No external code imported.
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration candidate #429 remains `d08658d174a333346abb6e3ad9ec36c433443e3d`. PR #708 compares 876 commits ahead of main / 652 ahead of #429, zero behind, across 116 / 58 paths. This is a large stacked proposal, not merge-ready; do not merge/rebase wholesale.
+- Both authorized Desktop Commander devices were offline. Local pre-edit portable preflight and local Node/Playwright/Gradle execution were unavailable. Root AGENTS, complete scheduler protocol and Charter were read sequentially; latest checkpoint, completion contract, ledger, Worker B steering/registry, Worker A steering and DO_NOT_DELETE were inspected; relevant nested AGENTS checks for game/test/docs/operations/hourly-agents/scripts returned 404. Initial repository metadata discovery was bundled before instruction bootstrap; those observations were discarded and the baseline was re-observed after sequential bootstrap. Hosted exact-head preflight passed. Procedural compliance **PARTIAL**.
+- G6 remains **IN PROGRESS**; G9 **NOT STARTED**; Founder trust **NOT_ENROLLED**. No merge, rebase, release, deployment, physical-device acceptance, Founder approval or authority transition occurred.
+
+### Next actions
+
+1. Obtain the terminal Android emulator result on #708 exact head and preserve Worker A ownership of Android instrumentation/lifecycle/retry.
+2. Preserve Worker A ownership of the Browser Clerk route mismatch; retain the single Clerk in Evidence Archive.
+3. Add a direct mobile Character Sheet recent-field-trail assertion if it can be done without touching Worker A-owned paths; the clock-regression itself is currently proven by the Node regression, not a mobile clock-skew simulation.
+4. Reconcile the large #708/#707/#706 ancestry against #429 path-by-path before proposing integration.
+
+---
+
 ## Run 265 follow-up — Synthesis completion and Android ownership handoff — 2026-11-20T13:04:06Z
 
 - #706 exact runtime head `e3778915b58ed20b09d380c8977bd758110c19af`: Synthesis Clerk mobile [44739549412](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44739549412) has now completed **PASS** at 320px and 390px. The earlier Run 265 checkpoint accurately recorded it as in progress at its own timestamp.
