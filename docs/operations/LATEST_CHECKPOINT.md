@@ -35,7 +35,7 @@ Test-first commit `903a52b40d089ef54f31547768a82d9a717a97dc` reproduced this on 
 
 ### Next action
 
-Obtain terminal Quest Board, Synthesis, and Android results on exact head `c781088642b5968e6f7cb373476bf04f9f41ece3`; preserve Worker A ownership of Browser and Android repairs; then reconcile the stacked #690/#688 ancestry against #429 path-by-path before any integration proposal.
+Obtain the terminal Android result on exact head `c781088642b5968e6f7cb373476bf04f9f41ece3`; preserve Worker A ownership of Browser and Android repairs; then reconcile the stacked #690/#688 ancestry against #429 path-by-path before any integration proposal.
 
 ---
 
