@@ -1,3 +1,18 @@
+## Run 277 — 2026-11-20: cross-actor Evidence Archive attribution
+
+**Objective:** Make retained Evidence Archive activity visibly attributable to its recorded pseudonymous actor ID/role and prove a distinct Witness actor can append a report while a Founder client retains an older snapshot.
+
+**Runtime:** PR #718 head `184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588`. Activity cards expose `data-activity-actor-id` and `data-activity-actor-role`, plus a visible non-authority disclosure. PWA cache namespace: `20261120-evidence-archive-actor-attribution-29`.
+
+**Acceptance:** Separate Founder/Witness browser contexts; Witness report event actor ID/role checked; Archive refresh compares common world projection separately from actor identity and XP; no report/inspection XP. Test-first red at `f1063dee` (1,450/1,452); runtime at `3b769c1a`; snapshot-comparison correction at `184601ae`.
+
+**Exact-head checks at checkpoint:** Full Verify, Genesis, PWA, Council, Academy, and Combat PASS. Quest Board, Synthesis, Browser, and Android IN PROGRESS; Android debug APK assembly PASS, offline-world emulator journey IN PROGRESS. Browser's prior exact-head run reproduced the known Worker A Clerk-location mismatch after offline PWA recovery; handoff #472 comment 7053054525.
+
+**Governance:** main unchanged; #718 draft/unmerged, 29 ahead/0 behind; #719 remains 8 commits behind its moving base and mergeable. No merge/release/deployment/Founder approval/authority transition. Local devices offline; hosted preflight ready with empty warnings/failures; procedural compliance PARTIAL. G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+
+
+---
+
 ## Run 276 — pin offline Chronicle navigation to the accepted Evidence Archive snapshot — 2026-11-20
 
 - **Runtime/test head:** `b1b340995cf474ccfea1fb10f9ddda9e92a65a1d` on [PR #718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. PR remains draft/unmerged; 23 commits ahead, zero behind, eight changed paths. Main is unchanged.

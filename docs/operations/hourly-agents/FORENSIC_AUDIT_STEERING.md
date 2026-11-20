@@ -1,3 +1,18 @@
+## Run 277 — Worker B steering (2026-11-20)
+
+**Current runtime:** Continue PR #718, branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588`. Do not create a competing runtime branch. PR #718 remains draft and unmerged.
+
+**Completed:** Evidence Archive report/contribution cards expose retained pseudonymous actor ID and recorded actor role, with explicit disclosure that role attribution is not proof of a distinct human, endorsement, or authority. The mobile snapshot journey now uses a separate Witness actor; shared world projection is compared independently from viewer identity and actor-scoped XP.
+
+**Exact-head checks:** Full Verify, Genesis, PWA, Council, Academy, and Combat PASS. Quest Board, Synthesis, Browser, and Android were still running at checkpoint. Android debug APK assembly completed; offline-world emulator journey in progress.
+
+**Ownership:** Worker A owns Browser and Android paths. Browser's prior exact-head run reproduced the single Contradiction Clerk locator mismatch at `scripts/verify-browser.py:472` after offline PWA recovery; see [PR #472 comment 7053054525](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7053054525). Do not move or duplicate the NPC and do not edit Worker A-owned Browser/Android files.
+
+**Next:** collect terminal exact-head workflow results; hand off any Android instrumentation failure to PR #533; then perform a path-by-path integration reconciliation of #718 against `main`. No merge, release, deployment, or Founder/authority transition.
+
+
+---
+
 ## Run 276 Worker B steering — pin Chronicle to the Evidence Archive snapshot — 2026-11-20
 
 - Continue only on runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `b1b340995cf474ccfea1fb10f9ddda9e92a65a1d`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. Do not create a competing runtime branch.

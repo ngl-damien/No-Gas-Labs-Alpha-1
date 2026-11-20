@@ -1,3 +1,60 @@
+# Run 277 — Cross-actor Evidence Archive provenance (2026-11-20)
+
+## Objective and decision
+Advance the persistent institution's evidence layer by making retained report/contribution cards identify the recorded pseudonymous actor and role, then exercise that projection with a separate Witness actor while a Founder client holds an older Evidence Archive snapshot. This advances cross-actor shared-world continuity and provenance without treating a role or report as proof of a distinct human, truth, endorsement, approval, or authority.
+
+## Exact implementation
+Runtime head: `184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588` on PR #718.
+
+- `game/institution-view.mjs`: report/contribution cards now expose `data-activity-actor-id` and `data-activity-actor-role` from the retained record. The visible label identifies the **recorded actor role** and explicitly says the attribution is pseudonymous, not proof of a distinct human, endorsement, or authority. Missing roles are rendered unavailable rather than inferred.
+- `game/sw.js`: cache namespace rotated to `20261120-evidence-archive-actor-attribution-29`.
+- `test/game-package.test.mjs`: asserts the new cache namespace.
+- `test/institution-view.test.mjs`: asserts actor ID/role metadata and the non-authority disclosure.
+- `scripts/verify-quest-board.py`: uses a separate Witness browser context to append a report while the Founder retains an older Archive snapshot; it checks event actor ID/role, card attribution after refresh, and actor-scoped XP invariants.
+
+The runtime only projects existing retained record metadata. It does not append events, award XP, certify evidence, change authority, or mutate canonical world state.
+
+## Test-first history
+1. Test-only commit `f1063dee138fd1737301adfa23457ac64009e515`. Full Verify [44835812782](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44835812782) failed as intended at 1,450/1,452 because the new assertions found the actor metadata absent.
+2. Runtime commit `3b769c1a27fb2c6e15c3428c5392e6f3b83bd120`. Full Verify [44835953833](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44835953833), Genesis [44835953901](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44835953901), PWA [44835953752](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44835953752), Combat [44835953632](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44835953632), Council [44835953748](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44835953748), Academy [44835953735](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44835953735), and Synthesis [44835953812](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44835953812) passed. The first cross-actor Quest Board run [44835953729](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44835953729) reached the explicit refresh and exposed a test-design error: it compared the entire Founder snapshot to the Witness snapshot, including actor-specific viewer identity.
+3. Test correction commit `184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588`. The acceptance now compares common world fields (revision, mutually visible event IDs, creation versions) separately from viewer identity and actor-scoped XP. Each actor's XP is compared only with its own baseline.
+
+## Exact-current-head evidence
+At the time this checkpoint was written, exact head `184601ae` had:
+
+| Workflow | Result |
+|---|---|
+| Full Verify [44836592811](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44836592811) | PASS |
+| Genesis Evidence Invariant [44836592621](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44836592621) | PASS |
+| PWA build [44836592821](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44836592821) | PASS |
+| Council Chamber [44836592618](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44836592618) | PASS |
+| Academy Study Shelf [44836592713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44836592713) | PASS |
+| Combat Yard [44836592653](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44836592653) | PASS |
+| Quest Board cross-actor mobile [44836592649](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44836592649) | IN PROGRESS |
+| Synthesis Clerk [44836592693](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44836592693) | IN PROGRESS |
+| Browser acceptance [44836592681](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44836592681) | IN PROGRESS |
+| Android emulator [44836592762](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44836592762) | IN PROGRESS |
+
+Full Verify's hosted preflight reported status `ready`, warnings `[]`, failures `[]`. Node tests, Python inspector, package build, and bounded institutional exercise exited 0. Android completed Java/SDK setup, Gradle setup, and debug APK assembly; the offline-world emulator journey was still running. No terminal Android instrumentation result is claimed.
+
+The preceding exact-head Browser run [44835953911](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44835953911) passed offline PWA private recovery (29 cached entries, 2 private publications, 1 notebook restore, 1 replay no-op, no world mutation), then reproduced the Worker A-owned Clerk locator mismatch at `scripts/verify-browser.py:472`. Handoff: [PR #472 comment 7053054525](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7053054525). Browser-owned paths and NPC placement were not changed.
+
+## Repository, donor, and governance audit
+- PR #718 remains draft/unmerged, 29 commits ahead of `main`, zero behind, 8 changed paths. Canonical `main` remains `0d950c501cf128d828ae4f263cc05a9013d7e8c1`.
+- PR #719 remains a documentation-only child of #718; it is 8 commits behind its moving base and still mergeable. This checkpoint records exact runtime head `184601ae`; the documentation branch itself has not been rebased or merged into the runtime branch.
+- Existing PRs #609/#610 contain separate player-avatar/mobile work; they were reviewed and left untouched. This run extends offline Evidence Archive snapshot continuity and record attribution rather than duplicating their avatar journey.
+- Re-inspected in-tree Mesh execution, Quest Engine, world projection, authority/decision verification, institutional decision replay, Chronicle append-order handling, bounded collaborator contracts, and Contradiction Clerk behavior. No donor code was copied.
+- Root `AGENTS.md`, the complete shared scheduler protocol, and Institutional Charter were read sequentially after an initial bundled inventory deviation; the baseline was restarted. Both authorized Desktop Commander devices were offline, so local preflight and local Node/Playwright/Gradle execution were unavailable. Exact-head hosted preflight passed. Procedural compliance remains PARTIAL.
+- No model assertion was used as evidence. A report remains self-reported activity; the actor role remains pseudonymous attribution. No Founder approval, authority transition, merge, release, or deployment occurred. G6/G7 remain IN PROGRESS; G9 remains NOT STARTED; Founder trust remains NOT_ENROLLED.
+
+## Next
+1. Obtain terminal results for exact-head Quest Board, Synthesis, Browser, and Android workflows.
+2. Preserve Worker A ownership of Browser/Android paths; hand off exact failures rather than changing their files.
+3. Reconcile PR #718 against `main` path-by-path before any integration proposal. Keep it draft and unmerged.
+
+
+---
+
 ## Run 276 — pin offline Chronicle navigation to the accepted Evidence Archive snapshot — 2026-11-20
 
 - **Runtime/test head:** `b1b340995cf474ccfea1fb10f9ddda9e92a65a1d` on [PR #718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. PR remains draft/unmerged; 23 commits ahead, zero behind, eight changed paths. Main is unchanged.
