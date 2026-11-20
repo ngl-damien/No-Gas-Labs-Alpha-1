@@ -1873,6 +1873,8 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   const beforeWorld = structuredClone(world);
   const container = element('div');
   const refresh = renderWorldChronicle(container, world, 'publish-observatory', { stale: true });
+  assert.equal(container.dataset.chronicleSnapshotRevision, String(world.revision),
+    'the rendered Chronicle must disclose the exact snapshot revision it projects');
 
   assert.equal(typeof refresh, 'function',
     'opening a World Chronicle must expose an in-place refresh for newly accepted shared snapshots');
@@ -1885,6 +1887,7 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   assert.equal(search.value, 'publish-observatory');
 
   const nextWorld = structuredClone(world);
+  nextWorld.revision = world.revision + 1;
   nextWorld.events.push({
     id: 'chronicle-reconnect-new-discovery',
     type: 'discover',
@@ -1895,6 +1898,8 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   const beforeNextWorld = structuredClone(nextWorld);
 
   assert.equal(refresh(nextWorld, false), true);
+  assert.equal(container.dataset.chronicleSnapshotRevision, String(nextWorld.revision),
+    'the Chronicle revision marker must advance only when a new snapshot is accepted');
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'current');
   assert.match(freshness().textContent, /current client snapshot/i);
   assert.doesNotMatch(freshness().textContent, /disconnected/i);
@@ -1909,6 +1914,8 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   ), 'the refreshed Chronicle must project events from the newly accepted world snapshot');
 
   assert.equal(refresh(nextWorld, true), true);
+  assert.equal(container.dataset.chronicleSnapshotRevision, String(nextWorld.revision),
+    'marking the accepted snapshot stale must not replace its revision');
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
   assert.match(freshness().textContent, /shared stream is disconnected/i);
   assert.deepEqual(world, beforeWorld, 'refreshing the Chronicle must not mutate the previous snapshot');

@@ -3936,70 +3936,9 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     expect(source_link).to_have_attribute('data-event-position', str(source_event['eventPosition']))
     expect(source_link).to_have_attribute('data-event-type', expected_event_type)
     expect(target_card).to_contain_text('does not verify the claim')
-    offline_api_requests = []
-    origin = page.evaluate("() => location.origin")
-
-    def capture_offline_api_request(request):
-        if request.url.startswith(origin + '/api/'):
-            offline_api_requests.append({
-                'method': request.method,
-                'path': request.url.split('?', 1)[0][len(origin):]
-            })
-
-    page.on('request', capture_offline_api_request)
-    page.context.set_offline(True)
-    page.wait_for_function(
-        "() => document.querySelector('#connection-dot')?.dataset.connectionState === 'offline'"
-    )
-    stale_notice = page.locator(
-        '#sheet-content [data-evidence-archive-snapshot-freshness="stale"]'
-    )
-    expect(stale_notice).to_have_count(1)
-    expect(stale_notice).to_have_attribute(
-        'data-snapshot-revision', str(inspection_before['revision'])
-    )
-    assert page.locator('#sheet-content').get_attribute(
-        'data-evidence-archive-snapshot-revision'
-    ) == str(inspection_before['revision'])
-    page.screenshot(
-        path=str(out / ('evidence-archive-offline-stale-' + str(width) + '.png')),
-        full_page=True
-    )
-
-    source_link.tap()
-    expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
-    chronicle_freshness = page.locator(
-        '#sheet-content [data-chronicle-snapshot-freshness]'
-    )
-    expect(chronicle_freshness).to_have_attribute(
-        'data-chronicle-snapshot-freshness', 'stale'
-    )
-    expect(page.locator(
-        '#sheet-content [data-event-id="world:' + source_event['eventId'] + '"]'
-    )).to_have_count(1)
-    chronicle_search = page.locator('#sheet-content [data-chronicle-search="true"]')
-    expect(chronicle_search).to_have_value(source_event['eventId'])
-    return_button = page.locator(
-        '#sheet-content [data-chronicle-return-evidence-archive="true"]'
-    )
-    expect(return_button).to_have_count(1)
-    page.screenshot(
-        path=str(out / ('evidence-archive-chronicle-offline-' + str(width) + '.png')),
-        full_page=True
-    )
-    return_button.tap()
-    expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
-    stale_notice = page.locator(
-        '#sheet-content [data-evidence-archive-snapshot-freshness="stale"]'
-    )
-    expect(stale_notice).to_have_count(1)
-    assert page.locator('#sheet-content').get_attribute(
-        'data-evidence-archive-snapshot-revision'
-    ) == str(inspection_before['revision'])
-
     # A second browser context uses the same authenticated Founder identity.
-    # It appends one report while this context is offline; this is a second
-    # session, not a claim of a second independent human player.
+    # It appends one report while the first session keeps its accepted Archive snapshot open.
+    # This is a second session, not a claim of a second independent human player.
     second_context = browser.new_context(
         viewport={'width': width, 'height': 844},
         is_mobile=True,
@@ -4029,7 +3968,7 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
             'type': 'report',
             'creationId': creation_id,
             'version': version,
-            'text': 'Second-session report while the first session is offline; retained activity, not verified truth.',
+            'text': 'Second-session report while the first session keeps an older Archive snapshot open; retained activity, not verified truth.',
             'requestId': 'quest-board-evidence-offline-refresh-' + str(width)
         })
         new_report_id = second_report.get('result', {}).get('id')
@@ -4048,6 +3987,111 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     assert not second_errors, (
         'Second-session page errors during offline snapshot recovery: ' + json.dumps(second_errors)
     )
+
+    new_report_events = [
+        event for event in second_after['retainedEvents']
+        if event.get('actionResult', {}).get('id') == new_report_id
+    ]
+    assert len(new_report_events) == 1, (
+        'The second-session report must identify exactly one retained source event.'
+    )
+    new_report_event_id = new_report_events[0]['id']
+    assert new_report_event_id not in inspection_before['eventIds'], (
+        'The second-session report event must be newer than the Archive snapshot already open.'
+    )
+    page.wait_for_function(
+        "expected => Number(document.querySelector('#world')?.dataset.worldRevision) >= expected",
+        arg=second_after['revision'],
+        timeout=30000
+    )
+    accepted_revision_while_connected = int(
+        page.locator('#world').get_attribute('data-world-revision')
+    )
+    assert accepted_revision_while_connected == second_after['revision'], (
+        'The first session must accept the second-session report before disconnecting.'
+    )
+    assert page.locator('#sheet-content').get_attribute(
+        'data-evidence-archive-snapshot-revision'
+    ) == str(inspection_before['revision']), (
+        'The open Evidence Archive must remain pinned after the live world accepts a newer revision.'
+    )
+    expect(page.locator(
+        '#sheet-content [data-activity-record-id="' + new_report_id + '"]'
+    )).to_have_count(0, 'The newer report must not leak into the older Archive snapshot.')
+
+    offline_api_requests = []
+    origin = page.evaluate("() => location.origin")
+
+    def capture_offline_api_request(request):
+        if request.url.startswith(origin + '/api/'):
+            offline_api_requests.append({
+                'method': request.method,
+                'path': request.url.split('?', 1)[0][len(origin):]
+            })
+
+    page.on('request', capture_offline_api_request)
+    page.context.set_offline(True)
+    page.wait_for_function(
+        "() => document.querySelector('#connection-dot')?.dataset.connectionState === 'offline'"
+    )
+    expect(page.locator('#sheet-content [data-evidence-archive-snapshot-freshness="stale"]')).to_have_attribute(
+        'data-current-revision', str(second_after['revision'])
+    )
+    stale_notice = page.locator(
+        '#sheet-content [data-evidence-archive-snapshot-freshness="stale"]'
+    )
+    expect(stale_notice).to_have_count(1)
+    expect(stale_notice).to_have_attribute(
+        'data-snapshot-revision', str(inspection_before['revision'])
+    )
+    assert page.locator('#sheet-content').get_attribute(
+        'data-evidence-archive-snapshot-revision'
+    ) == str(inspection_before['revision'])
+    page.screenshot(
+        path=str(out / ('evidence-archive-offline-stale-' + str(width) + '.png')),
+        full_page=True
+    )
+
+    source_link.tap()
+    expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
+    chronicle_freshness = page.locator(
+        '#sheet-content [data-chronicle-snapshot-freshness]'
+    )
+    expect(chronicle_freshness).to_have_attribute(
+        'data-chronicle-snapshot-freshness', 'stale'
+    )
+    expect(page.locator(
+        '#sheet-content [data-event-id="world:' + source_event['eventId'] + '"]'
+    )).to_have_count(1)
+    chronicle_search = page.locator('#sheet-content [data-chronicle-search="true"]')
+    expect(chronicle_search).to_have_value(source_event['eventId'])
+    assert page.locator('#sheet-content').get_attribute(
+        'data-chronicle-snapshot-revision'
+    ) == str(inspection_before['revision']), (
+        'Offline Chronicle navigation must use the exact snapshot from the Archive card, not a newer global world object.'
+    )
+    return_button = page.locator(
+        '#sheet-content [data-chronicle-return-evidence-archive="true"]'
+    )
+    expect(return_button).to_have_count(1)
+    page.screenshot(
+        path=str(out / ('evidence-archive-chronicle-offline-' + str(width) + '.png')),
+        full_page=True
+    )
+    return_button.tap()
+    expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    stale_notice = page.locator(
+        '#sheet-content [data-evidence-archive-snapshot-freshness="stale"]'
+    )
+    expect(stale_notice).to_have_count(1)
+    assert page.locator('#sheet-content').get_attribute(
+        'data-evidence-archive-snapshot-revision'
+    ) == str(inspection_before['revision'])
+
+    expect(page.locator(
+        '#sheet-content [data-activity-record-id="' + new_report_id + '"]'
+    )).to_have_count(0, 'Returning offline must preserve the Archive snapshot rather than adopt the newer global world.')
+
 
     offline_api_mutations = [
         request for request in offline_api_requests
@@ -4216,6 +4260,10 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'archivePinnedWhileOffline': True,
         'archiveSnapshotRevision': inspection_before['revision'],
         'acceptedRevisionWhileOffline': accepted_revision_while_offline,
+        'acceptedRevisionWhileConnected': accepted_revision_while_connected,
+        'offlineChronicleSnapshotRevision': inspection_before['revision'],
+        'offlineChronicleExcludedNewerReportEventId': new_report_event_id,
+        'returnToArchiveSnapshotRevision': inspection_before['revision'],
         'offlineSharedApiRequestCount': len(offline_api_requests),
         'offlineSharedApiMutationCount': len(offline_api_mutations),
         'secondSessionReportId': new_report_id,
