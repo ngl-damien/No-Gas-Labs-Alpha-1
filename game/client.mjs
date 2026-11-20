@@ -3516,7 +3516,8 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
   const stillCurrent=()=>generation===evidenceArchiveGeneration&&mode==='shared'&&viewer.id===principalId&&viewer.role===principalRole&&!$('sheet').hidden&&content===$('sheet-content')&&$('sheet-kicker').textContent===kicker;
   const renderHistory=(kernel,kernelUnavailable=false)=>renderEvidenceArchive(history,{
     world,kernel,kernelUnavailable,shared:mode==='shared',
-    onOpenArtifact:(id,version)=>openCreation(id,version)
+    onOpenArtifact:(id,version)=>openCreation(id,version),
+    onInspectEvent:eventId=>openWorldChronicle(eventId)
   });
   if(mode!=='shared'){
     renderHistory(null,false);
