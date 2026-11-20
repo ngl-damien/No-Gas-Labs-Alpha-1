@@ -100,6 +100,8 @@ test('service-worker installation rotates the offline shell and precaches curren
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/world-view.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/quests.mjs'));
+  assert.ok(precachedUrls.includes('https://ngl.test/field-items.mjs'),
+    'the event-derived field-item projection must remain available in the offline core shell');
   assert.ok(precachedUrls.includes('https://ngl.test/institution-view.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/chronicle.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/styles.css'));
