@@ -1,3 +1,15 @@
+## Run 274 — Exact Chronicle lineage for Evidence Archive activity — 2026-11-20
+
+- **Capability:** Report and contribution cards now link to the unique retained World Chronicle event whose `actionResult.id` equals the record ID. The link is gated by exact event ID uniqueness/normalization, expected event type, creation ID, version, and actor attribution. Event position uses retained array order.
+- **Failure handling:** Missing, duplicate, malformed, or mismatched lineage remains visible but unlinked with a reason. A text mention or model assertion cannot create a link. The UI says the link identifies retained activity only and does not verify the claim.
+- **Verification:** Latest head `81c68eddc3978482bbe037af327d54b0932d610a`: Full Verify [44819959124](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959124), Genesis [44819959150](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959150), PWA [44819959093](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959093), Combat [44819959444](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959444), Council [44819959837](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959837), and Academy [44819959312](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959312) PASS. Latest-head Quest Board, Synthesis, and Android remain in progress; Browser [44819959333](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819959333) reproduces the Worker A-owned Clerk locator failure after offline PWA recovery passes.
+- **Direct mobile proof:** On immediately preceding runtime head `46565b14`, Quest Board [44819133721](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819133721), artifact [14671292270](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44819133721/artifacts/14671292270), passed at 320px and 390px: report event position 99 and contribution event position 104 both opened the exact Chronicle event; artifact-version navigation also passed; inspection read-only, XP delta 0, no overflow/page errors. Latest head adds only the PWA cache namespace and its assertions.
+- **PWA:** Cache namespace is now `20261120-evidence-archive-chronicle-source-links-23`; shared APIs/authenticated state remain excluded.
+- **Safety:** No canonical world mutation, XP, evidence certification, approval, authority, release, or deployment was created. Runtime PR #718 remains draft/unmerged; main `0d950c501cf128d828ae4f263cc05a9013d7e8c1` unchanged.
+- **Next:** Add offline-in-session Chronicle navigation acceptance against the already accepted snapshot, then reconnect and verify selection continuity; keep Browser/Android work with Worker A.
+
+---
+
 ## Run 273 — Evidence Archive duplicate report/contribution presentation removed — 2026-11-20
 
 - **Capability advanced:** Evidence Archive now renders each retained report/contribution once. Removed the legacy timestamp-sorted duplicate from `game/client.mjs`; the separate append-position streams in `game/institution-view.mjs` remain the only player-facing presentation.
