@@ -1,3 +1,15 @@
+## Run 273 Worker B steering — remove duplicate Evidence Archive activity list — 2026-11-20
+
+- Continue only on runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `ea0e86cb44c64d44e2074bbeee86ddbda3b7c834`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. Do not create a competing runtime branch.
+- The previous exact-head Quest Board run [44802910335](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44802910335) exposed seven duplicate report/contribution headings outside the new stream containers. The duplicate source was the legacy timestamp-sorted list in `game/client.mjs`; it has been removed. Keep the separate append-position streams as the sole Evidence Archive presentation.
+- Exact-head Full Verify 44809541017, Genesis 44809541053, build 44809541310, Combat Yard 44809541073, Council 44809541306 and Academy 44809541055 PASS. Hosted preflight warnings/failures empty; report passed=true.
+- Browser 44809541540 FAILs Worker A-owned Clerk locator after offline PWA recovery passes. Handoff [#472 comment 7049621189](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7049621189). Do not move/duplicate the NPC or edit Worker A's Browser path.
+- Quest Board 44809540958 and Synthesis 44809541293 remained in their two-viewport journeys; Android 44809541230 remained at Gradle setup after portable preflight/fake-ADB/SDK/project snapshot. Re-observe exact-head terminal results before changing anything. Worker A retains Android native/instrumentation ownership.
+- Local Desktop Commander devices are offline. Hosted preflight passed with no warnings/failures; local Node/Playwright/Gradle execution unavailable. Procedural compliance PARTIAL.
+- No merge, release, deployment, Founder approval or authority transition. G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+
+---
+
 ## Run 272 Worker B steering — Evidence Archive activity streams — 2026-11-20
 
 - Continue only on runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact code/test head `8af88244667ff41b3cada0fe15b37916ffbd15ee`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. Do not create a competing runtime branch for report/contribution streams.

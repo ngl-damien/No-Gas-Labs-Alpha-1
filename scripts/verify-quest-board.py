@@ -3745,8 +3745,6 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
         assert not errors, 'Fresh Founder browser page errors: ' + json.dumps(errors)
         screenshot = out / 'source-archive-founder-fresh-client-390.png'
         page.screenshot(path=str(screenshot), full_page=True)
-        evidence_archive_activity_streams = assert_evidence_archive_activity_streams_mobile(page, out, 390, errors)
-        assert not errors, 'Fresh Founder browser page errors during Evidence Archive activity inspection: ' + json.dumps(errors)
         return {
             'viewerRole': 'founder',
             'actorId': before['viewerId'],
@@ -3758,8 +3756,7 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
             'pageErrors': errors,
             'screenshot': screenshot.name,
             'proposalEventId': details['proposalEventId'],
-            'reportEventId': details['reportEventId'],
-            'evidenceArchiveActivityStreams': evidence_archive_activity_streams
+            'reportEventId': details['reportEventId']
         }
     finally:
         context.close()
@@ -3887,6 +3884,14 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors):
     expect(report_cards.first).to_contain_text('Retained self-reported activity')
     expect(contribution_cards.first).to_contain_text('Retained self-reported activity')
 
+    legacy_activity_headings = page.locator('#sheet-content h3').evaluate_all(
+        "nodes => nodes.filter(node => /^(Report|Contribution) ·/.test((node.textContent || '').trim()) && !node.closest('[data-evidence-archive-activity-stream]')).map(node => (node.textContent || '').trim())"
+    )
+    assert not legacy_activity_headings, (
+        'Evidence Archive must not duplicate these records in the legacy timestamp-sorted list: ' +
+        json.dumps(legacy_activity_headings)
+    )
+
     open_button = report_cards.first.get_by_role('button', name='Open retained artifact version →', exact=True)
     expect(open_button).to_be_visible()
     open_button.tap()
@@ -3930,6 +3935,34 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors):
         'horizontalOverflow': False,
         'screenshot': screenshot.name
     }
+
+
+def run_evidence_archive_activity_streams_mobile(browser, url, out, width):
+    context = browser.new_context(
+        viewport={'width': width, 'height': 844},
+        is_mobile=True,
+        has_touch=True
+    )
+    page = context.new_page()
+    errors = []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    try:
+        page.goto(url, wait_until='networkidle')
+        page.locator('#start-shared').tap()
+        page.locator('#world').wait_for(state='visible')
+        page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
+        )
+        page.locator('#login-button').tap()
+        page.locator('#founder-name').fill('Damien')
+        page.locator('#founder-key').fill('fake-browser-fixture-key-not-a-secret')
+        page.locator('#verify-founder').tap()
+        page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+        )
+        return assert_evidence_archive_activity_streams_mobile(page, out, width, errors)
+    finally:
+        context.close()
 
 
 def run_viewport(browser, url, out, width, source_archive_fixture=None, source_archive_failure=None):
@@ -4035,7 +4068,6 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
         source_archive_founder_chain = None
         source_archive_witness_chain = None
         founder_fresh_client = None
-        evidence_archive_activity_streams = None
         if width == 320:
             page.locator('#sheet-close').tap()
             archive_before = authoritative_snapshot(page)
@@ -4060,9 +4092,6 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             )
             contradiction_clerk_result = run_contradiction_clerk_mobile_journey(
                 page, source_archive_fixture, out, width, 'founder'
-            )
-            evidence_archive_activity_streams = assert_evidence_archive_activity_streams_mobile(
-                page, out, width, errors
             )
         else:
             assert source_archive_fixture and source_archive_fixture.get('fixtureOnly') is True, (
@@ -4124,7 +4153,6 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             founder_fresh_client = verify_founder_source_archive_progress(
                 browser, url, out, before['viewerId'], source_archive_fixture
             )
-            evidence_archive_activity_streams = founder_fresh_client['evidenceArchiveActivityStreams']
             witness_result = {
                 'viewerRole': witness_before['viewerRole'],
                 'founderObjectivesHidden': True,
@@ -4170,8 +4198,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             'creationCount': len(before['creationVersions']),
             'witness': witness_result,
             'pageErrors': errors,
-            'screenshot': screenshot.name,
-            'evidenceArchiveActivityStreams': evidence_archive_activity_streams
+            'screenshot': screenshot.name
         }
     finally:
         context.close()
@@ -4896,6 +4923,13 @@ def main():
                     results.append(retry_result)
                     (out / 'results.json').write_text(json.dumps(results, indent=2))
                     print(json.dumps(retry_result), flush=True)
+                    for width in (320, 390):
+                        activity_stream_result = run_evidence_archive_activity_streams_mobile(
+                            browser, url, out, width
+                        )
+                        results.append(activity_stream_result)
+                        (out / 'results.json').write_text(json.dumps(results, indent=2))
+                        print(json.dumps(activity_stream_result), flush=True)
                 finally:
                     browser.close()
         finally:

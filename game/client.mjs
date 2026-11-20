@@ -3330,20 +3330,8 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
   };
   renderFailureLedger();
   content.append(failureLedger);
-  const entries=[
-    ...(Array.isArray(world.reports)?world.reports:[]).map(entry=>({...entry,kind:'Report'})),
-    ...(Array.isArray(world.contributions)?world.contributions:[]).map(entry=>({...entry,kind:'Contribution'}))
-  ].sort((a,b)=>String(b.at).localeCompare(String(a.at)));
-  if(!entries.length)content.append(paragraph('No artifact-bound reports or contributions have been retained yet. The empty section is an honest state, not a failed claim.','empty-note'));
-  for(const entry of entries){
-    const creation=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===entry.creationId);
-    content.append(node('article',{class:'field-card'},[
-      node('h3',{text:entry.kind+' · '+(creation?.title||entry.creationId)+' · v'+entry.version}),
-      paragraph(entry.text),
-      paragraph('By '+(entry.actor?.name||entry.actor?.id||'Unknown actor')+' · '+entry.at+' · retained record, not a verdict.','attribution'),
-      button('Inspect referenced version →',()=>openCreation(entry.creationId,entry.version),{class:'list-button'})
-    ]));
-  }
+  // Reports and contributions are rendered once below in Evidence Archive's
+  // append-position streams. Do not duplicate them in a timestamp-sorted list.
 
   const researchEvents=projectResearchRecords(events,creations);
   const sourceObservationRecords=projectSourceObservationRecords(events,creations);
