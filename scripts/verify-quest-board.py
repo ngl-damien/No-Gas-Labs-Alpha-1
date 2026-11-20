@@ -2079,6 +2079,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'screenshot': item_history_chronicle_screenshot.name
         }
         witness_page.locator('#sheet-close').tap()
+        witness_page.set_viewport_size({'width': 390, 'height': 844})
 
         # Keep the Founder sheet open: the next existing step equips the
         # previously accepted Contradiction Ward through its current owner card.
