@@ -2612,36 +2612,57 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
       }
       return row;
     });
-    historySection.append(paragraph(
+    const historyPageStatus=paragraph(
       'Showing entries '+historyPage.firstOrdinal+'–'+historyPage.lastOrdinal+' of '+
       historyPage.total+' validated handoff records involving this session. Page '+
       (historyPage.page+1)+' of '+historyPage.totalPages+
       '. Entries remain in retained append order. Paging is read-only; it changes no world state, ownership, XP, skill or authority.',
       'form-help'
-    ));
-    historySection.append(node('ol',{},rows));
+    );
+    historyPageStatus.id='field-item-history-page-status';
+    historyPageStatus.dataset.fieldItemHistoryPageStatus='true';
+    historyPageStatus.setAttribute('role','status');
+    historyPageStatus.setAttribute('aria-live','polite');
+    historyPageStatus.setAttribute('aria-atomic','true');
+    historySection.append(historyPageStatus);
+    historySection.append(node('ol',{id:'field-item-history-entries'},rows));
+    const changeHistoryPage=(nextPage,direction)=>{
+      fieldItemTransferHistoryPager.setPageIndex(
+        historyPageContext,'participant-handoff-history',nextPage,historyPage.totalPages
+      );
+      onChange();
+      // Rebuilding the Field Kit replaces the activated button. Restore focus
+      // to the same navigation direction when possible, or its only available
+      // opposite-direction control at the end of the history.
+      const currentSection=$('sheet-content')?.querySelector('[data-field-kit-root]');
+      const preferredSelector=direction==='older'
+        ?'[data-field-item-history-older]':'[data-field-item-history-newer]';
+      const fallbackSelector=direction==='older'
+        ?'[data-field-item-history-newer]':'[data-field-item-history-older]';
+      const nextControl=currentSection?.querySelector(preferredSelector)||
+        currentSection?.querySelector(fallbackSelector);
+      nextControl?.focus?.({preventScroll:true});
+    };
     if(historyPage.hasNewer){
       historySection.append(button('Newer handoffs',()=>{
-        fieldItemTransferHistoryPager.setPageIndex(
-          historyPageContext,'participant-handoff-history',historyPage.page-1,historyPage.totalPages
-        );
-        onChange();
+        changeHistoryPage(historyPage.page-1,'newer');
       },{
         class:'list-button',
         'data-field-item-history-newer':'true',
-        'aria-label':'Show newer retained handoff records'
+        'aria-label':'Show newer retained handoff records',
+        'aria-describedby':'field-item-history-page-status',
+        'aria-controls':'field-item-history-entries'
       }));
     }
     if(historyPage.hasOlder){
       historySection.append(button('Load older handoffs',()=>{
-        fieldItemTransferHistoryPager.setPageIndex(
-          historyPageContext,'participant-handoff-history',historyPage.page+1,historyPage.totalPages
-        );
-        onChange();
+        changeHistoryPage(historyPage.page+1,'older');
       },{
         class:'list-button',
         'data-field-item-history-older':'true',
-        'aria-label':'Load older retained handoff records'
+        'aria-label':'Load older retained handoff records',
+        'aria-describedby':'field-item-history-page-status',
+        'aria-controls':'field-item-history-entries'
       }));
     }
     section.append(historySection);
