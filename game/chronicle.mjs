@@ -563,7 +563,7 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     const actorId=text(event?.actor?.id),actorRole=text(event?.actor?.role);
     entry.title="Field-item transfer declined";
     entry.category="FORGE · TRANSFER";
-    entry.summary="The designated recipient declined the offer. Ownership remains with the current owner; the refusal is retained as consent history. No XP, combat statistics or authority.";
+    entry.summary="The designated recipient declined the offer. The refusal did not transfer ownership; the item remained with its owner at the time. The refusal is retained as consent history. No XP, combat statistics or authority.";
     entry.detail=[`Offer: ${offerId||"not identified"}`,
       offer?`Item: ${text(offer.itemId)||"not identified"}`:null,
       offer?`Designated recipient: ${recipientId||"not identified"} (${recipientRole||"unknown role"})`:null,
