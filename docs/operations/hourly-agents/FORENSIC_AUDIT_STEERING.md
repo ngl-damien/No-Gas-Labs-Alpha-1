@@ -1,3 +1,18 @@
+## Run 270 Worker B steering — in-place World Chronicle refresh after shared reconnect — 2026-11-20T16:34Z
+
+- Continue on existing runtime PR [#713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/713), branch `feat/offline-character-chronicle-run269-20261120`; no new PR was created. Exact code/test head: `bc1d668be81b1fdfdbe82b3bf96b3f21e5d3a638`, child of test-first head `2ae4f45699abcd5eaac13283d94452aa552f01c4`.
+- Run 270 closes Run 269's explicit gap: an already-open World Chronicle now re-projects the newly accepted shared snapshot on connection-state updates. It preserves exact event/source selection, query and bounded page; freshness is stale while disconnected/paused and current only after accepted state/position recovery. Projection remains read-only and failure leaves the view marked stale.
+- Test-first red evidence: Full Verify 44773481773 failed because the new Node test expected an updater function but received undefined; Combat Yard mobile 44773481674 failed because the stale marker was absent. Genesis 44773481502 PASS.
+- Final exact-head Full Verify 44774124644 PASS; Genesis 44774124094 PASS; Combat Yard mobile 44774125174 PASS at 320/390 (artifact 14648931576). Receipt proves offline API requests/mutations zero, stale Chronicle while offline, in-place current freshness after reconnect, unchanged accepted snapshot, zero inspection XP, no overflow/page errors/external requests. 30 actor Combat XP comes from the deterministic Scout victory; world XP is unchanged.
+- Browser 44774124191 FAILs Worker A-owned `scripts/verify-browser.py:472` because the inherited journey expects the single Contradiction Clerk in Guild Hall; offline PWA recovery passes first. Keep the Clerk in Evidence Archive and preserve Worker A ownership.
+- Quest Board 44774125097, Synthesis 44774123119 and Android 44774122856 were still in progress at this steering update. Android was at debug APK assembly; no emulator/JUnit or physical-device result. Previous #713 Android 44766380766 and test-only 44773480905 were cancelled by later branch commits, not terminal failures.
+- Main `6f1a4aef` and #429 `d08658d` unchanged. #713 is 907 ahead of main / 683 ahead of #429, zero behind, 116/58 paths; large draft stack, not merge-ready. #714 remains an existing docs-only PR and is two commits behind the moving #713 base; its checkpoint branch is advanced by fast-forward only, no rebase.
+- Re-inspected local Relay/RAE evidence bridge, Ed25519 authorization separation, offline-shell frame/origin guard, atomic service-store revision progression, Guild authorization projection and Decision Chamber host-authenticated Founder boundary. No donor code copied. RuneUX/AGP absent from Alpha-1 tree; external Mesh root AGENTS unavailable (404).
+- Both authorized Desktop Commander devices offline; no local pre-edit preflight or local Node/Playwright/Gradle. Hosted preflight passed; procedural compliance PARTIAL. G6/G7 IN PROGRESS, G9 NOT STARTED, Founder trust NOT_ENROLLED.
+- Next Worker B: capture terminal Quest Board/Synthesis/Android results; do not touch Worker A Browser/Android-owned paths; reconcile #713 against #429 path-by-path. Do not merge/rebase the large stack.
+
+---
+
 ## Run 269 Worker B steering — shared offline Character Sheet / Chronicle recovery — 2026-11-20T15:47Z
 
 - Runtime proposal [PR #713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/713), child of #712, exact code/test head `dff447df2278a48fff99ff077ab425448ad09992`.
