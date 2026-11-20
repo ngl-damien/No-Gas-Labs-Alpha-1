@@ -2474,7 +2474,6 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
 
         founder_before_board = authoritative_snapshot(founder_page)
         witness_before_board = authoritative_snapshot(witness_page)
-        silent_before_board = authoritative_snapshot(silent_page)
         open_quest_board(founder_page)
         assert_board(founder_page, 'founder')
         assert_contradiction_ward_objectives(founder_page, 'founder', '0/1')
@@ -2505,6 +2504,9 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert shared_world_snapshot(witness_after_board) == shared_world_snapshot(witness_before_board)
 
         open_quest_board(silent_page)
+        # Walking from Evidence Archive to Quest Board can append a legitimate discovery.
+        # Start the read-only inspection baseline after that route/entry, not before navigation.
+        silent_before_board = authoritative_snapshot(silent_page)
         assert_board(silent_page, 'witness')
         assert_contradiction_ward_objectives(silent_page, 'witness', '0/1')
         assert_carry_forward_objective(silent_page, 'witness', '0/1')
