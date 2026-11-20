@@ -619,7 +619,7 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
         "data-source-archive-failure-event-id", failure["eventId"]
     )
     expect(cards.nth(11)).to_have_attribute(
-        "data-source-archive-failure-event-id", failure["eventIds"][1]
+        "data-source-archive-failure-event-id", failure["eventIds"][2]
     )
     expect(section).to_contain_text("Showing failure records 3–14 of 14")
     after_reset = authoritative_snapshot(page)
