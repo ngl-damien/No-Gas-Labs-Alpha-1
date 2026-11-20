@@ -1264,7 +1264,7 @@ test("Forge Chronicle preserves designated-recipient refusals as consent history
   assert.equal(entry.category, "FORGE · TRANSFER");
   assert.equal(entry.warning, "");
   assert.match(entry.summary, /designated recipient declined/i);
-  assert.match(entry.summary, /ownership remains unchanged/i);
+  assert.match(entry.summary, /ownership remains with the current owner/i);
   assert.ok(entry.detail.includes(offerEvent.offerId));
   assert.ok(entry.detail.includes(forgeEvent.itemId));
   assert.ok(entry.detail.includes(founder.id));
