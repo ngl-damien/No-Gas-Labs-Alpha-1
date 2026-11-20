@@ -1853,3 +1853,26 @@ test("Chronicle distinguishes a rematch victory without another first-win reward
   assert.doesNotMatch(entry.summary, /game XP/);
   assert.equal(world.events.filter(event => event.type === "combat-encounter-started").length, 2);
 });
+
+
+test("Chronicle fails closed when a combat event ID collides with another world event", async () => {
+  const world = await buildChronicleCombatVictoryWorld();
+  const start = world.events.find(event => event.type === "combat-encounter-started");
+  world.events.push({
+    id: start.id,
+    type: "draft",
+    actor: { id: "other-actor", name: "Other Actor", role: "witness" },
+    at: new Date(Date.parse(world.updatedAt) + 1_000).toISOString(),
+    creationId: "unavailable-creation",
+    version: 1,
+  });
+  const before = structuredClone(world);
+
+  const entries = projectChronicle({ world }).entries.filter(entry =>
+    entry.eventType === "combat-encounter-started" || entry.eventType === "combat-move-resolved"
+  );
+  assert.equal(entries.length, 7);
+  assert.ok(entries.every(entry => entry.title === "Unvalidated Combat Yard event"));
+  assert.ok(entries.every(entry => /failed closed/i.test(entry.warning)));
+  assert.deepEqual(world, before, "ambiguous event identity must not mutate retained history");
+});
