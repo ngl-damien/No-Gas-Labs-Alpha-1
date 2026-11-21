@@ -3870,3 +3870,27 @@ test('shared Forge recipient decline is recipient-only, replay-safe, durable, an
   assert.equal(restoredFounderRecord.xp, 0);
   assert.equal(restoredWitness.world.xp, beforeXp);
 });
+
+
+test('stored report text cannot drift from its retained Chronicle event receipt', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const published = await publish(founder, 'Receipt-bound report target');
+  const creation = published.world.creations[0];
+  const action = {
+    type: 'report', creationId: creation.id, version: 1,
+    text: 'The retained report bytes must remain bound to the event.'
+  };
+  const result = await founder.request('/api/action', {
+    ...action, requestId: 'receipt-bound-report-tamper-001'
+  });
+  assert.equal(result.response.status, 200, JSON.stringify(result.body));
+
+  const tampered = structuredClone(result.body.world);
+  tampered.reports[0].text += ' altered after retention';
+  assert.throws(
+    () => validateStoredWorldHistory(tampered),
+    /receipt|text|contribution/i
+  );
+});
