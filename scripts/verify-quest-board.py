@@ -203,6 +203,23 @@ def authoritative_snapshot(page):
     }""")
 
 
+
+def authoritative_player_position(page):
+    return page.evaluate("""async () => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Shared position read failed: ' + response.status);
+      const dto = await response.json();
+      const position = dto?.viewer?.position;
+      if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+        throw new Error('Shared state did not contain an authoritative player position.');
+      }
+      return { x: position.x, y: position.y };
+    }""")
+
+
 def publish_fixture(page):
     return page.evaluate("""async () => {
       const post = async action => {
@@ -4346,6 +4363,109 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'Opening an exact retained report artifact version must remain read-only.'
     )
     assert after_inspection['xp'] == artifact_inspection_before['xp']
+
+
+    # Second disconnect: the last accepted shared snapshot remains walkable,
+    # but movement is local-only and is discarded when the server position is reconciled.
+    if page.locator('#portal').is_visible():
+        page.locator('#portal-close').tap()
+    if page.locator('#sheet').is_visible():
+        page.locator('#sheet-close').tap()
+    page.wait_for_timeout(1800)
+    server_position_before_offline = authoritative_player_position(page)
+    page.wait_for_function(
+        """expected => {
+          const world = document.querySelector('#world');
+          return Math.abs(Number(world?.dataset.playerX) - expected.x) < 1 &&
+              Math.abs(Number(world?.dataset.playerY) - expected.y) < 1;
+        }""",
+        arg=server_position_before_offline,
+        timeout=10000
+    )
+    offline_start_position = page.evaluate("""() => ({
+      x: Number(document.querySelector('#world')?.dataset.playerX),
+      y: Number(document.querySelector('#world')?.dataset.playerY)
+    })""")
+    offline_route_api_requests = []
+
+    def capture_offline_route_request(request):
+        if request.url.startswith(origin + '/api/'):
+            offline_route_api_requests.append({
+                'method': request.method,
+                'path': request.url.split('?', 1)[0][len(origin):]
+            })
+
+    page.on('request', capture_offline_route_request)
+    page.context.set_offline(True)
+    page.wait_for_function(
+        """() => document.querySelector('#connection-dot')?.dataset.connectionState === 'offline' &&
+            document.querySelector('#world')?.dataset.sharedOfflinePreview === 'true' &&
+            document.querySelector('#mode-label')?.textContent.includes('offline preview')""",
+        timeout=10000
+    )
+    page.locator('#places-button').tap()
+    page.get_by_role('button', name='Walk to Polymath Academy', exact=True).tap()
+    enter_nearby_institution(page, 'academy', 'Polymath Academy', 'Polymath Academy')
+    academy_snapshot = page.locator('#sheet-content')
+    expect(academy_snapshot).to_have_attribute(
+        'data-academy-snapshot-revision', str(refreshed_state['revision'])
+    )
+    expect(academy_snapshot).to_have_attribute(
+        'data-academy-snapshot-freshness', 'stale'
+    )
+    expect(academy_snapshot.locator(
+        '[data-study-card-collection="academy-study-shelf"]'
+    )).to_have_count(1)
+    offline_end_position = page.evaluate("""() => ({
+      x: Number(document.querySelector('#world')?.dataset.playerX),
+      y: Number(document.querySelector('#world')?.dataset.playerY)
+    })""")
+    assert math.hypot(
+        offline_end_position['x'] - offline_start_position['x'],
+        offline_end_position['y'] - offline_start_position['y']
+    ) > 100, (
+        'Offline preview must allow real local map travel to Polymath Academy.'
+    )
+    assert page.locator('#xp-count').inner_text() == str(refreshed_state['xp']), (
+        'Offline map travel and institution inspection must not award world XP.'
+    )
+    page.screenshot(
+        path=str(out / ('offline-academy-map-entry-' + str(width) + '.png')),
+        full_page=True
+    )
+    offline_route_mutations = [
+        request for request in offline_route_api_requests
+        if request['method'] != 'GET' or request['path'] in (
+            '/api/state', '/api/action', '/api/presence', '/api/position'
+        )
+    ]
+    assert not offline_route_mutations, (
+        'Offline map travel and Academy entry must not issue shared state, action, presence, position, or write requests: ' +
+        json.dumps(offline_route_mutations)
+    )
+    page.remove_listener('request', capture_offline_route_request)
+    page.locator('#sheet-close').tap()
+    page.context.set_offline(False)
+    page.wait_for_function(
+        """() => document.querySelector('#connection-dot')?.dataset.connectionState === 'online' &&
+            document.querySelector('#world')?.dataset.sharedOfflinePreview === 'false' &&
+            document.querySelector('#world')?.dataset.navigationTargetId === 'none' &&
+            document.querySelector('#world')?.dataset.navigationState === 'idle'""",
+        timeout=30000
+    )
+    server_position_after_offline = authoritative_player_position(page)
+    assert server_position_after_offline == server_position_before_offline, (
+        'The local offline route must not replace the server-accepted shared position.'
+    )
+    page.wait_for_function(
+        """expected => {
+          const world = document.querySelector('#world');
+          return Math.abs(Number(world?.dataset.playerX) - expected.x) < 1 &&
+              Math.abs(Number(world?.dataset.playerY) - expected.y) < 1;
+        }""",
+        arg=server_position_after_offline,
+        timeout=10000
+    )
 
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').tap()
