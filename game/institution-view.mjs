@@ -1439,7 +1439,7 @@ const MAX_SOURCE_OBSERVATION_RESPONSES_PER_CHALLENGE = 10;
  * uniquely linked history; the register preserves the note, dissent, response,
  * exact version and fixed assurance boundary without creating game state.
  */
-function renderSourceObservationResponseQueue(container, world, onOpenArtifact) {
+function renderSourceObservationResponseQueue(container, world, onOpenArtifact, onInspectEvent) {
  container.append(el('h3','SOURCE OBSERVATORY · AUTHOR RESPONSE QUEUE'));
  if (!Array.isArray(world?.events) || !Array.isArray(world?.creations)) {
   const warning=el('p','The Source Observation queue is unavailable because this snapshot lacks a complete event and creation list. It is not being treated as empty.');
@@ -1587,6 +1587,13 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   card.dataset.sourceObservationRegisterRecord=record.observationId;
   card.append(el('h3',record.claim));
   card.append(el('p','Retained source: '+(record.targetTitle||record.creationId)+' · '+record.creationId+' · v'+record.version+' · author '+(record.actor?.name||record.actor?.id||'unknown')));
+  const snapshotReference = Number.isSafeInteger(record.sourceSnapshotRevision) && record.sourceSnapshotRevision >= 0
+   ? 'Snapshot reference: world revision '+record.sourceSnapshotRevision+' (actor-declared; retained-history projection checks that the prefix includes the selected publication and precedes this note, but it does not prove the actor viewed that snapshot).'
+   : 'Snapshot reference: not recorded on this legacy note.';
+  card.dataset.sourceObservationSnapshotRevision = Number.isSafeInteger(record.sourceSnapshotRevision) && record.sourceSnapshotRevision >= 0
+   ? String(record.sourceSnapshotRevision)
+   : 'unrecorded';
+  card.append(el('p',snapshotReference,'form-help'));
   card.append(el('p','Author-selected source class: '+record.sourceKind));
   card.append(el('p','Source / attribution: '+record.source));
   card.append(el('p',record.falsifier?'Possible falsifier: '+record.falsifier:'Possible falsifier: not supplied in this note.'));
@@ -1594,6 +1601,14 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   card.append(el('p',record.nextTest?'Next discriminating test: '+record.nextTest:'Next discriminating test: not supplied in this note.'));
   card.append(el('p','Assurance: Source retrieval '+record.sourceRetrieval+' · Independent verification '+record.independentVerification+' · Model assertions '+record.modelAssertions+' · Execution '+record.execution,'form-help'));
   card.append(el('p',record.warning,'evidence-warning'));
+  if(typeof onInspectEvent==='function'&&typeof record.id==='string'&&record.id.trim()===record.id&&record.id) {
+   const inspect=el('button','Open retained observation in World Chronicle');
+   inspect.type='button';
+   inspect.dataset.sourceObservationChronicleEvent=record.id;
+   inspect.setAttribute('aria-label','Inspect retained source observation '+record.id+' in World Chronicle');
+   inspect.onclick=()=>onInspectEvent(record.id);
+   card.append(inspect);
+  }
   if(typeof onOpenArtifact==='function'&&typeof record.creationId==='string'&&Number.isSafeInteger(record.version)) {
    const inspect=el('button','Open exact source version · v'+record.version);
    inspect.type='button';
@@ -1650,7 +1665,7 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
   warning.className='evidence-warning';container.append(warning);
  }
  renderEvidenceArchiveActivityStreams(container,world,onOpenArtifact,onInspectEvent);
- renderSourceObservationResponseQueue(container,world,onOpenArtifact);
+ renderSourceObservationResponseQueue(container,world,onOpenArtifact,onInspectEvent);
  const chronicle=projectChronicle({world,kernel});
  const entries=chronicle.entries.filter(entry=>{
   if(entry.source==='kernel')return shared;
