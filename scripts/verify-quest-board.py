@@ -5389,6 +5389,80 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
     route.tap()
     enter_nearby_institution(page, 'publication_house', 'Publication House', 'Publication House')
 
+    receipt_target = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Receipt fixture oracle could not read the accepted world.');
+      const dto = await response.json();
+      const creations = dto.world?.creations ?? [];
+      const events = dto.world?.events ?? [];
+      const matches = creations.filter(item => item?.id === expected.creationId);
+      if (matches.length !== 1) throw new Error('The versioned receipt fixture is missing or ambiguous.');
+      const creation = matches[0];
+      const versions = [...(Array.isArray(creation.versions) ? creation.versions : []), creation]
+        .filter(item => item?.version === expected.version);
+      if (versions.length !== 1) throw new Error('The exact retained receipt fixture version is missing or ambiguous.');
+      const version = versions[0];
+      const publications = events.filter(event => event?.type === 'publish' &&
+        event.creationId === expected.creationId && event.version === expected.version);
+      if (publications.length !== 1 || publications[0].actor?.role !== 'founder' ||
+          typeof publications[0].id !== 'string' || !publications[0].id ||
+          publications[0].id.trim() !== publications[0].id ||
+          publications[0].at !== version.publishedAt) {
+        throw new Error('The exact receipt fixture version does not have one unambiguous Founder publication event.');
+      }
+      return {
+        title: creation.title,
+        kind: creation.kind,
+        version: version.version,
+        currentVersion: creation.version,
+        selectedReceipt: version.receipt,
+        currentReceipt: creation.receipt,
+        selectedHtml: version.html,
+        currentHtml: creation.html,
+        selectedIntent: version.intent,
+        currentIntent: creation.intent,
+        eventId: publications[0].id,
+        publishedAt: version.publishedAt
+      };
+    }""", versioned_publication)
+    artifact = page.get_by_role(
+        'button', name=f"{receipt_target['title']} · {receipt_target['kind']} · v{receipt_target['currentVersion']}", exact=True
+    )
+    expect(artifact).to_have_count(1)
+    artifact.tap()
+    expect(page.locator('#sheet-title')).to_have_text(receipt_target['title'])
+    expect(page.locator('#version-select')).to_have_value(str(receipt_target['currentVersion']))
+
+    current_receipt = page.locator('#sheet-content .receipt')
+    expect(current_receipt).to_have_count(1)
+    current_bytes = receipt_target['currentHtml'].encode('utf-8')
+    historical_bytes = receipt_target['selectedHtml'].encode('utf-8')
+    assert hashlib.sha256(current_bytes).hexdigest() == receipt_target['currentReceipt']['digest'], (
+        'The current edition receipt must match the exact current HTML bytes.'
+    )
+    assert len(current_bytes) == receipt_target['currentReceipt']['size'], (
+        'The current edition receipt size must match the exact current HTML bytes.'
+    )
+    assert hashlib.sha256(historical_bytes).hexdigest() == receipt_target['selectedReceipt']['digest'], (
+        'The historical edition receipt must match the exact retained HTML bytes.'
+    )
+    assert len(historical_bytes) == receipt_target['selectedReceipt']['size'], (
+        'The historical edition receipt size must match the exact retained HTML bytes.'
+    )
+    assert receipt_target['currentReceipt']['digest'] != receipt_target['selectedReceipt']['digest'], (
+        'The two-edition fixture must distinguish current and historical byte receipts.'
+    )
+    expect(current_receipt).to_contain_text(receipt_target['currentReceipt']['digest'])
+    expect(current_receipt).to_contain_text('v' + str(receipt_target['currentVersion']))
+    page.locator('#version-select').select_option(str(receipt_target['version']))
+    expect(page.locator('#version-select')).to_have_value(str(receipt_target['version']))
+    expect(current_receipt).to_contain_text(receipt_target['selectedReceipt']['digest'])
+    expect(current_receipt).to_contain_text('v' + str(receipt_target['version']))
+
+    page.locator('#sheet-close').tap()
+    expect(page.locator('#sheet')).to_be_hidden()
+    enter_nearby_institution(page, 'publication_house', 'Publication House', 'Publication House')
+
     target = page.evaluate("""async expected => {
       const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
       if (!response.ok) throw new Error('Publication snapshot oracle could not read the accepted world.');
@@ -5419,45 +5493,19 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
         currentReceipt: creation.receipt,
         selectedHtml: version.html,
         currentHtml: creation.html,
-        selectedIntent: version.intent,
-        currentIntent: creation.intent,
         eventId: publications[0].id,
         publishedAt: version.publishedAt
       };
-    }""", versioned_publication)
+    }""", publication)
     artifact = page.get_by_role(
         'button', name=f"{target['title']} · {target['kind']} · v{target['currentVersion']}", exact=True
     )
     expect(artifact).to_have_count(1)
     artifact.tap()
     expect(page.locator('#sheet-title')).to_have_text(target['title'])
-    expect(page.locator('#version-select')).to_have_value(str(target['currentVersion']))
-
-    current_receipt = page.locator('#sheet-content .receipt')
-    expect(current_receipt).to_have_count(1)
-    current_bytes = target['currentHtml'].encode('utf-8')
-    historical_bytes = target['selectedHtml'].encode('utf-8')
-    assert hashlib.sha256(current_bytes).hexdigest() == target['currentReceipt']['digest'], (
-        'The current edition receipt must match the exact current HTML bytes.'
-    )
-    assert len(current_bytes) == target['currentReceipt']['size'], (
-        'The current edition receipt size must match the exact current HTML bytes.'
-    )
-    assert hashlib.sha256(historical_bytes).hexdigest() == target['selectedReceipt']['digest'], (
-        'The historical edition receipt must match the exact retained HTML bytes.'
-    )
-    assert len(historical_bytes) == target['selectedReceipt']['size'], (
-        'The historical edition receipt size must match the exact retained HTML bytes.'
-    )
-    assert target['currentReceipt']['digest'] != target['selectedReceipt']['digest'], (
-        'The two-edition fixture must distinguish current and historical byte receipts.'
-    )
-    expect(current_receipt).to_contain_text(target['currentReceipt']['digest'])
-    expect(current_receipt).to_contain_text('v' + str(target['currentVersion']))
-    page.locator('#version-select').select_option(str(target['version']))
     expect(page.locator('#version-select')).to_have_value(str(target['version']))
-    expect(current_receipt).to_contain_text(target['selectedReceipt']['digest'])
-    expect(current_receipt).to_contain_text('v' + str(target['version']))
+    source_receipt = page.locator('#sheet-content .receipt')
+    expect(source_receipt).to_contain_text(target['selectedReceipt']['digest'])
     pinned = authoritative_snapshot(page)
 
     witness_context = browser.new_context(
@@ -5687,11 +5735,11 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
             'separateSessionActor': witness_after['viewerId'] != pinned['viewerId'],
             'exactPublicationEvent': target['eventId'],
             'editionReceipt': {
-                'selectedVersion': target['version'],
-                'selectedDigest': target['selectedReceipt']['digest'],
-                'currentVersion': target['currentVersion'],
-                'currentDigest': target['currentReceipt']['digest'],
-                'differentEditionBytes': target['selectedReceipt']['digest'] != target['currentReceipt']['digest'],
+                'selectedVersion': receipt_target['version'],
+                'selectedDigest': receipt_target['selectedReceipt']['digest'],
+                'currentVersion': receipt_target['currentVersion'],
+                'currentDigest': receipt_target['currentReceipt']['digest'],
+                'differentEditionBytes': receipt_target['selectedReceipt']['digest'] != receipt_target['currentReceipt']['digest'],
                 'bothDigestsRecomputedFromExactHtml': True
             },
             'screenshot': screenshot.name
