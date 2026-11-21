@@ -5254,6 +5254,11 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
         publication_snapshot_result = assert_publication_snapshot_pinning(
             browser, page, source_archive_fixture, out, width
         )
+        source_observation_stale_guard_result = None
+        if width == 390:
+            source_observation_stale_guard_result = assert_source_observation_form_stale_write_guard(
+                browser, page, url, observatory_fixture, out, width
+            )
 
         layout = page.evaluate("""() => ({
           viewportWidth: window.innerWidth,
@@ -5276,6 +5281,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             'observatoryPublication': observatory_fixture,
             'publicationChronicle': publication_chronicle_result,
             'publicationSnapshotPinning': publication_snapshot_result,
+            'sourceObservationStaleWriteGuard': source_observation_stale_guard_result,
             'guildDissentCircuit': guild_circuit_result,
             'recordedFounderObjective': bool(fixture),
             'sourceArchiveFixture': source_archive_fixture,
@@ -5746,6 +5752,159 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
         }
     finally:
         witness_context.close()
+
+def assert_source_observation_form_stale_write_guard(browser, page, url, fixture, out, width):
+    """A form opened from one accepted snapshot must not write after that snapshot advances."""
+    assert fixture and fixture.get('creationId') and fixture.get('version'), (
+        'Source Observation stale-form acceptance requires one exact retained Observatory version.'
+    )
+    if not page.locator('#sheet').is_hidden():
+        page.locator('#sheet-close').tap()
+        expect(page.locator('#sheet')).to_be_hidden()
+
+    target = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Source Observation stale-form fixture lookup failed.');
+      const dto = await response.json();
+      const matches = (dto.world?.creations ?? []).filter(item => item?.id === expected.creationId);
+      if (matches.length !== 1) throw new Error('The exact Source Observatory creation is missing or ambiguous.');
+      const creation = matches[0];
+      const versions = [...(creation.versions ?? []), creation]
+        .filter(item => item?.version === expected.version);
+      if (creation.kind !== 'observatory' || versions.length !== 1) {
+        throw new Error('The exact Source Observatory edition is not uniquely retained.');
+      }
+      return { title: creation.title, version: expected.version, currentVersion: creation.version };
+    }""", fixture)
+    page.bring_to_front()
+    page.locator('#places-button').tap()
+    page.get_by_role('button', name='Walk to Publication House', exact=True).tap()
+    enter_nearby_institution(page, 'publication_house', 'Publication House', 'Publication House')
+    artifact = page.get_by_role(
+        'button',
+        name=f"{target['title']} · observatory · v{target['currentVersion']}",
+        exact=True
+    )
+    expect(artifact).to_have_count(1)
+    artifact.tap()
+    expect(page.locator('#sheet-title')).to_have_text(target['title'])
+    page.locator('#source-observation-open').tap()
+    expect(page.locator('#sheet-title')).to_have_text('Record a source observation')
+    form = page.locator('#sheet-content [data-source-observation-form="true"]')
+    expect(form).to_have_count(1)
+    pinned = authoritative_snapshot(page)
+    assert pinned['viewerRole'] in ('founder', 'witness')
+
+    witness_context = browser.new_context(
+        viewport={'width': width, 'height': 844},
+        is_mobile=True,
+        has_touch=True
+    )
+    witness_page = witness_context.new_page()
+    witness_errors = []
+    witness_page.on('pageerror', lambda error: witness_errors.append(str(error)))
+    try:
+        witness_page.goto(url, wait_until='networkidle')
+        witness_page.locator('#start-shared').tap()
+        witness_page.locator('#world').wait_for(state='visible')
+        witness_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
+        )
+        witness_before = authoritative_snapshot(witness_page)
+        assert witness_before['viewerRole'] == 'witness'
+        assert witness_before['viewerId'] != pinned['viewerId'], (
+            'The snapshot advance must come from a separate pseudonymous session.'
+        )
+        post_action(witness_page, {
+            'type': 'report',
+            'creationId': fixture['creationId'],
+            'version': fixture['version'],
+            'text': 'A separate session advanced the world while the Source Observation form remained open. This is attributed activity, not verification.',
+            'requestId': 'source-observation-stale-form-report-' + str(width)
+        })
+        witness_after = authoritative_snapshot(witness_page)
+        assert witness_after['revision'] == witness_before['revision'] + 1, (
+            'The second session must append exactly one report event.'
+        )
+        assert witness_after['xp'] == witness_before['xp'], (
+            'The report that advances the snapshot must not award XP.'
+        )
+        page.wait_for_function(
+            """expected => Number(document.querySelector('#world')?.dataset.worldRevision) === expected""",
+            arg=witness_after['revision']
+        )
+
+        blocked_action_requests = []
+
+        def capture_blocked_source_observation_request(request):
+            if request.method == 'POST' and request.url.split('?', 1)[0].endswith('/api/action'):
+                blocked_action_requests.append({
+                    'method': request.method,
+                    'path': request.url.split('?', 1)[0]
+                })
+
+        page.on('request', capture_blocked_source_observation_request)
+        try:
+            page.locator('#source-observation-claim').fill(
+                'A stale form must not append a Source Observation after the accepted world advances.'
+            )
+            page.locator('#source-observation-source').fill(
+                'Synthetic mobile acceptance fixture; no primary source retrieved.'
+            )
+            page.locator('#source-observation-falsifier').fill(
+                'A current-snapshot submission after reopening the form.'
+            )
+            page.locator('#source-observation-uncertainty').fill(
+                'No independent source verification has occurred.'
+            )
+            page.locator('#source-observation-next-test').fill(
+                'Refresh the artifact detail and reopen the Source Observation form.'
+            )
+            page.locator('#source-observation-submit').tap()
+            expect(page.locator('#toast')).to_be_visible()
+            expect(page.locator('#toast')).to_contain_text(
+                'pinned to an older or unavailable shared snapshot'
+            )
+            status = page.locator('#sheet-content [data-source-observation-status="true"]')
+            expect(status).to_contain_text(
+                'pinned to an older or unavailable shared snapshot'
+            )
+            expect(status).to_contain_text('No action was sent')
+        finally:
+            page.remove_listener('request', capture_blocked_source_observation_request)
+
+        after_submit = authoritative_snapshot(witness_page)
+        assert not blocked_action_requests, (
+            'A stale Source Observation form must be rejected before POST /api/action: ' +
+            json.dumps(blocked_action_requests, sort_keys=True)
+        )
+        assert shared_world_snapshot(after_submit) == shared_world_snapshot(witness_after), (
+            'A stale Source Observation form must not append an event or mutate the accepted world.'
+        )
+        assert after_submit['revision'] == witness_after['revision'], (
+            'A stale Source Observation form must not advance the canonical revision.'
+        )
+        assert after_submit['xp'] == witness_after['xp'], (
+            'A stale Source Observation form must award no XP.'
+        )
+        screenshot = out / ('source-observation-stale-form-guard-' + str(width) + '.png')
+        page.screenshot(path=str(screenshot), full_page=True)
+        assert not witness_errors, 'Second-session page errors: ' + json.dumps(witness_errors)
+        return {
+            'journey': 'source-observation-form-stale-snapshot-guard-' + str(width),
+            'pinnedRevision': pinned['revision'],
+            'acceptedRevision': witness_after['revision'],
+            'formRemainedOpen': page.locator('#sheet-title').inner_text() == 'Record a source observation',
+            'separateSessionActor': witness_after['viewerId'] != pinned['viewerId'],
+            'blockedActionRequests': len(blocked_action_requests),
+            'worldMutationAfterRejectedSubmit': shared_world_snapshot(after_submit) != shared_world_snapshot(witness_after),
+            'xpDeltaAfterRejectedSubmit': after_submit['xp'] - witness_after['xp'],
+            'revisionAfterRejectedSubmit': after_submit['revision'],
+            'screenshot': screenshot.name
+        }
+    finally:
+        witness_context.close()
+
 
 def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, source_archive_fixture, retry_attempts_path):
     assert observatory_fixture and observatory_fixture.get('creationId'), (
