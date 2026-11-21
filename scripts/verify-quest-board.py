@@ -5423,6 +5423,79 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
         expect(detail).to_have_attribute('data-creation-snapshot-freshness', 'refresh-required')
         expect(detail.locator('[data-creation-snapshot-refresh]')).to_be_visible()
 
+        # The Witness has advanced the accepted shared world while this Founder
+        # detail remains pinned. Verify every ordinary write route is blocked
+        # before it reaches the shared action endpoint.
+        before_guard = authoritative_snapshot(page)
+        blocked_action_requests = []
+
+        def capture_blocked_action_request(request):
+            if request.method == 'POST' and request.url.split('?', 1)[0].endswith('/api/action'):
+                blocked_action_requests.append({
+                    'method': request.method,
+                    'path': request.url.split('?', 1)[0]
+                })
+
+        page.on('request', capture_blocked_action_request)
+        try:
+            page.locator('#contribution-text').fill(
+                'Stale-snapshot acceptance attempt. This must remain local and must not become a world event.'
+            )
+            page.locator('#contribute-button').tap()
+            expect(page.locator('#toast')).to_be_visible()
+            expect(page.locator('#toast')).to_contain_text(
+                'pinned to an older or unavailable shared snapshot'
+            )
+
+            report_disclosure = page.locator('#sheet-content details').filter(
+                has_text='Report a problem or unsupported claim'
+            )
+            expect(report_disclosure).to_have_count(1)
+            report_disclosure.locator('summary').tap()
+            page.locator('#report-text').fill(
+                'Stale-snapshot report attempt. No report should be submitted from this edition.'
+            )
+            page.locator('#report-button').tap()
+            expect(page.locator('#toast')).to_contain_text(
+                'pinned to an older or unavailable shared snapshot'
+            )
+
+            page.locator('#repair-button').tap()
+            expect(page.locator('#toast')).to_contain_text(
+                'pinned to an older or unavailable shared snapshot'
+            )
+            expect(page.locator('#sheet-title')).to_have_text(target['title'])
+        finally:
+            page.remove_listener('request', capture_blocked_action_request)
+
+        after_guard = authoritative_snapshot(page)
+        assert not blocked_action_requests, (
+            'Stale artifact actions must be rejected before POST /api/action: ' +
+            json.dumps(blocked_action_requests, sort_keys=True)
+        )
+        assert shared_world_snapshot(after_guard) == shared_world_snapshot(before_guard), (
+            'Blocked stale-detail actions must not append events or mutate the accepted world.'
+        )
+        assert after_guard['xp'] == before_guard['xp'], (
+            'Blocked stale-detail actions must award no XP.'
+        )
+        assert detail.get_attribute('data-creation-snapshot-revision') == str(pinned['revision'])
+        assert detail.get_attribute('data-creation-snapshot-freshness') == 'refresh-required'
+        assert detail.locator('[data-creation-snapshot-refresh]').is_visible()
+        stale_write_guard = {
+            'pinnedRevision': pinned['revision'],
+            'acceptedRevision': witness_after['revision'],
+            'blockedActions': ['contribute', 'report', 'repair'],
+            'actionRequests': len(blocked_action_requests),
+            'readOnly': shared_world_snapshot(after_guard) == shared_world_snapshot(before_guard),
+            'xpDelta': after_guard['xp'] - before_guard['xp'],
+            'snapshotRemainedPinned': detail.get_attribute('data-creation-snapshot-revision') == str(pinned['revision'])
+        }
+        page.screenshot(
+            path=str(out / ('publication-stale-write-guard-' + str(width) + '.png')),
+            full_page=True
+        )
+
         before_refresh = authoritative_snapshot(page)
         page.evaluate("""() => {
           window.__creationRefreshApiRequests = 0;
@@ -5479,6 +5552,7 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
             'acceptedRevision': witness_after['revision'],
             'chronicleRevision': pinned['revision'],
             'roundTripDetailRevision': pinned['revision'],
+            'staleWriteGuard': stale_write_guard,
             'refreshedRevision': after_refresh['revision'],
             'refreshApiRequests': refresh_api_requests,
             'worldMutationOnRefresh': shared_world_snapshot(after_refresh) != shared_world_snapshot(before_refresh),
