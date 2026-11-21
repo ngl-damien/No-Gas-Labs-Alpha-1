@@ -753,6 +753,17 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   if(hasStreamPosition)card.dataset.streamPosition=String(entry.streamPosition);
   card.append(el('h3',entry.title));
   card.append(el('p',entry.category+' · '+entry.eventType.toUpperCase()+' · '+entry.actor+' · '+(entry.at||'time unavailable')));
+  if(entry.source==='world'){
+   const recordedId=typeof entry.actorId==='string'&&entry.actorId?entry.actorId:'unavailable';
+   const recordedRole=['founder','witness'].includes(entry.actorRole)?entry.actorRole:'unavailable';
+   const complete=recordedId!=='unavailable'&&recordedRole!=='unavailable';
+   card.dataset.chronicleActorId=recordedId;
+   card.dataset.chronicleActorRole=recordedRole;
+   card.dataset.chronicleActorAttribution=complete?'complete':'incomplete';
+   card.append(el('small',complete
+    ?'Recorded actor ID: '+recordedId+' · Recorded actor role: '+recordedRole+' · pseudonymous session attribution; not proof of a distinct human, endorsement or authority.'
+    :'Recorded actor attribution incomplete: ID '+recordedId+' · role '+recordedRole+'. Missing identity or authority is not inferred.'));
+  }
   card.append(el('small',hasStreamPosition
    ? streamLabel+' · APPEND POSITION '+entry.streamPosition
    : 'UNSEQUENCED · STREAM POSITION UNAVAILABLE'));
@@ -933,7 +944,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   const terms=nextQuery.split(/\s+/).filter(Boolean);
   const entries=currentChronicle.entries.filter(entry=>{
    const streamName=entry.source==='kernel'?'institutional stream':entry.source==='world'?'world stream':'retained stream';
-   const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
+   const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.actorId,entry.actorRole,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
     .map(value=>typeof value==='string'||typeof value==='number'?String(value):'')
     .join(' ')
     .toLowerCase();
