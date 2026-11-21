@@ -491,7 +491,8 @@ test('Source Observation notes, challenges and responses retain server-projected
     actor: witnessActor,
     at: '2026-10-28T17:00:00.000Z',
     originSchema: 'ngl.source-observatory.v2',
-    bindingMode: 'USER_SELECTED',
+    bindingMode: 'SERVER_SESSION_RECEIPT',
+    sourceSnapshotReceiptDigest: 'b'.repeat(64),
     sourceRetrieval: 'NOT_PERFORMED',
     independentVerification: 'NOT_PERFORMED',
     modelAssertions: 'LEADS_ONLY',
@@ -532,6 +533,15 @@ test('Source Observation notes, challenges and responses retain server-projected
   assert.equal(records.length, 1);
   assert.equal(records[0].historyPosition, 3);
   assert.equal(records[0].sourceSnapshotRevision, 1);
+  assert.equal(records[0].bindingMode, 'SERVER_SESSION_RECEIPT');
+  assert.equal(records[0].sourceSnapshotReceiptDigest, 'b'.repeat(64));
+  const malformedReceiptEvents = events.map(event => event.id === observation.id
+    ? { ...event, sourceSnapshotReceiptDigest: 'not-a-sha256-receipt' }
+    : event);
+  const malformedReceipt = projectSourceObservationRecords(
+    malformedReceiptEvents, [retainedSource()], { revision: 6, revisionPresent: true }
+  );
+  assert.equal(malformedReceipt[0].projectionStatus, 'malformed');
   assert.equal(records[0].challenges[0].historyPosition, 5);
   assert.equal(records[0].challenges[0].responses[0].historyPosition, 6);
 
