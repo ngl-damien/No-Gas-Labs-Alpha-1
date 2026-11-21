@@ -24,13 +24,13 @@
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "Run 279 (2026-11-20/21): Chronicle institution routes now describe walk/explicit entry; runtime head 1a2b83032919fd23d6a431c9e4931061e37f8ff1.",
-      "repo_delta": "PR #718 head 1a2b83032919fd23d6a431c9e4931061e37f8ff1, 50 commits ahead/0 behind main, 11 paths; PR #719 documentation-only branch updated for Run 279, 25 ahead/14 behind current #718, not mergeable; canonical main unchanged.",
+      "repo_delta": "PR #718 head 1a2b83032919fd23d6a431c9e4931061e37f8ff1, 50 commits ahead/0 behind main, 11 paths; PR #719 documentation-only branch updated for Run 279, 25 ahead/14 behind current #718, mergeable=true but 14 behind current #718; canonical main unchanged.",
       "current_pr_focus": "PR #718: Chronicle institution routes now accurately describe map travel and explicit Interact entry. Full Verify, Genesis, PWA, live Source Archive, Combat, Council, Academy, Synthesis, and Quest Board PASS; Browser repeats Worker A-owned Contradiction Clerk locator mismatch; Android debug APK assembly PASS, offline-world emulator journey IN PROGRESS. PR #719: Run 279 checkpoint/ledger/steering; docs branch remains 14 behind #718."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
   "manus_constraint": "Manus 300 credits/day — one credit = one sealed block — avoid fan-out",
   "last_observed_run": "Run 279 (2026-11-20/21): Chronicle institution routes now describe walk/explicit entry; runtime head 1a2b83032919fd23d6a431c9e4931061e37f8ff1.",
-  "repo_delta": "PR #718 head 1a2b83032919fd23d6a431c9e4931061e37f8ff1, 50 commits ahead/0 behind main, 11 paths; PR #719 documentation-only branch updated for Run 279, 25 ahead/14 behind current #718, not mergeable; canonical main unchanged.",
+  "repo_delta": "PR #718 head 1a2b83032919fd23d6a431c9e4931061e37f8ff1, 50 commits ahead/0 behind main, 11 paths; PR #719 documentation-only branch updated for Run 279, 25 ahead/14 behind current #718, mergeable=true but 14 behind current #718; canonical main unchanged.",
   "current_pr_focus": "PR #718: Chronicle institution routes now accurately describe map travel and explicit Interact entry. Full Verify, Genesis, PWA, live Source Archive, Combat, Council, Academy, Synthesis, and Quest Board PASS; Browser repeats Worker A-owned Contradiction Clerk locator mismatch; Android debug APK assembly PASS, offline-world emulator journey IN PROGRESS. PR #719: Run 279 checkpoint/ledger/steering; docs branch remains 14 behind #718."
 }
