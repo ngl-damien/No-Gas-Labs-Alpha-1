@@ -4505,6 +4505,141 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         timeout=10000
     )
 
+    # Keep Polymath Academy pinned while a separate Witness appends a newer report.
+    # The open view must disclose refresh-required, then adopt the accepted revision
+    # only after an explicit player action. Refresh itself is a local read-only projection.
+    page.locator('#places-button').tap()
+    page.get_by_role('button', name='Walk to Polymath Academy', exact=True).tap()
+    enter_nearby_institution(page, 'academy', 'Polymath Academy', 'Polymath Academy')
+    expect(page.locator('#sheet-title')).to_have_text('Polymath Academy')
+    academy_before = authoritative_snapshot(page)
+    academy_panel = page.locator('#sheet-content')
+    expect(academy_panel).to_have_attribute(
+        'data-academy-snapshot-revision', str(academy_before['revision'])
+    )
+    expect(academy_panel).to_have_attribute('data-academy-snapshot-freshness', 'current')
+    expect(academy_panel.locator('[data-academy-snapshot-notice="true"]')).to_have_count(0)
+
+    academy_witness_context = browser.new_context(
+        viewport={'width': width, 'height': 844},
+        is_mobile=True,
+        has_touch=True
+    )
+    academy_witness_page = academy_witness_context.new_page()
+    academy_witness_errors = []
+    academy_witness_page.on('pageerror', lambda error: academy_witness_errors.append(str(error)))
+    try:
+        academy_witness_page.goto(url, wait_until='networkidle')
+        academy_witness_page.locator('#start-shared').tap()
+        academy_witness_page.locator('#world').wait_for(state='visible')
+        academy_witness_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
+        )
+        academy_witness_before = authoritative_snapshot(academy_witness_page)
+        assert academy_witness_before['viewerRole'] == 'witness'
+        assert academy_witness_before['viewerId'] != academy_before['viewerId']
+        assert academy_witness_before['revision'] == academy_before['revision'], (
+            'The second session must begin from the exact world revision pinned by Polymath Academy.'
+        )
+        academy_witness_report = post_action(academy_witness_page, {
+            'type': 'report',
+            'creationId': creation_id,
+            'version': version,
+            'text': 'Witness report appended while Polymath Academy remains open at an older accepted snapshot; retained activity, not verified truth.',
+            'requestId': 'quest-board-academy-refresh-required-' + str(width)
+        })
+        academy_witness_report_id = academy_witness_report.get('result', {}).get('id')
+        assert isinstance(academy_witness_report_id, str) and academy_witness_report_id, (
+            'The Witness report must return its exact retained record ID.'
+        )
+        academy_witness_after = authoritative_snapshot(academy_witness_page)
+        assert academy_witness_after['revision'] == academy_witness_before['revision'] + 1, (
+            'The Witness report must append exactly one accepted world event.'
+        )
+        assert academy_witness_after['xp'] == academy_witness_before['xp'], (
+            'A report must not award world XP.'
+        )
+        academy_new_event_ids = [
+            event_id for event_id in academy_witness_after['eventIds']
+            if event_id not in academy_witness_before['eventIds']
+        ]
+        assert len(academy_new_event_ids) == 1, (
+            'The report must create exactly one retained event: ' + json.dumps(academy_new_event_ids)
+        )
+        academy_new_event_id = academy_new_event_ids[0]
+        assert academy_new_event_id in academy_witness_after['mutuallyVisibleEventIds']
+    finally:
+        academy_witness_context.close()
+    assert not academy_witness_errors, (
+        'Witness page errors during Academy refresh acceptance: ' + json.dumps(academy_witness_errors)
+    )
+
+    page.wait_for_function(
+        "expected => Number(document.querySelector('#world')?.dataset.worldRevision) === expected",
+        arg=academy_witness_after['revision'],
+        timeout=30000
+    )
+    expect(academy_panel).to_have_attribute(
+        'data-academy-snapshot-revision', str(academy_before['revision'])
+    )
+    expect(academy_panel).to_have_attribute('data-academy-snapshot-freshness', 'refresh-required')
+    academy_refresh_notice = academy_panel.locator('[data-academy-snapshot-notice="true"]')
+    expect(academy_refresh_notice).to_have_count(1)
+    expect(academy_refresh_notice).to_contain_text('SHARED SNAPSHOT · REFRESH AVAILABLE')
+    expect(academy_refresh_notice).to_have_attribute(
+        'data-snapshot-revision', str(academy_before['revision'])
+    )
+    expect(academy_refresh_notice).to_have_attribute(
+        'data-current-revision', str(academy_witness_after['revision'])
+    )
+    expect(academy_refresh_notice).to_contain_text('remains pinned')
+    academy_refresh_button = academy_refresh_notice.locator('[data-academy-refresh="true"]')
+    expect(academy_refresh_button).to_have_count(1)
+    expect(academy_refresh_button).to_be_visible()
+    expect(academy_refresh_button).to_be_enabled()
+
+    founder_before_academy_refresh = authoritative_snapshot(page)
+    assert founder_before_academy_refresh['revision'] == academy_witness_after['revision']
+    assert academy_new_event_id in founder_before_academy_refresh['mutuallyVisibleEventIds']
+    assert founder_before_academy_refresh['xp'] == academy_before['xp'], (
+        'Accepting a newer report while Academy is open must not award Founder XP.'
+    )
+    assert academy_witness_after['xp'] == academy_witness_before['xp']
+
+    academy_refresh_api_requests = []
+    academy_origin = page.evaluate("() => location.origin")
+
+    def capture_academy_refresh_request(request):
+        if request.url.startswith(academy_origin + '/api/'):
+            academy_refresh_api_requests.append({
+                'method': request.method,
+                'path': request.url.split('?', 1)[0][len(academy_origin):]
+            })
+
+    page.on('request', capture_academy_refresh_request)
+    academy_refresh_button.tap()
+    page.remove_listener('request', capture_academy_refresh_request)
+    assert not academy_refresh_api_requests, (
+        'Refreshing the pinned Academy projection must not write to or request shared state: ' +
+        json.dumps(academy_refresh_api_requests)
+    )
+    expect(page.locator('#sheet-title')).to_have_text('Polymath Academy')
+    expect(academy_panel).to_have_attribute(
+        'data-academy-snapshot-revision', str(academy_witness_after['revision'])
+    )
+    expect(academy_panel).to_have_attribute('data-academy-snapshot-freshness', 'current')
+    expect(academy_panel.locator('[data-academy-snapshot-notice="true"]')).to_have_count(0)
+    academy_after_refresh = authoritative_snapshot(page)
+    assert academy_after_refresh == founder_before_academy_refresh, (
+        'Explicit Academy refresh must replace only the local projection, preserving the accepted world and viewer state.'
+    )
+    assert academy_new_event_id in academy_after_refresh['mutuallyVisibleEventIds']
+    assert academy_after_refresh['xp'] == academy_before['xp']
+    page.screenshot(
+        path=str(out / ('academy-refresh-current-' + str(width) + '.png')),
+        full_page=True
+    )
+
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').tap()
     layout = page.evaluate("""() => ({
