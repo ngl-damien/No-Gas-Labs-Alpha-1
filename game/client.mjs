@@ -1518,7 +1518,8 @@ function openCreation(id,requestedVersion=null,focusChallenge=false,{snapshot=wo
       'evidence-warning'
     ));
   };
-  try{prepareContradictionReview(creation, targetVersion);}catch{
+  let selectedReview;
+  try{selectedReview=prepareContradictionReview(creation, targetVersion);}catch{
     showUnavailableVersion();
     return;
   }
@@ -1639,7 +1640,34 @@ function openCreation(id,requestedVersion=null,focusChallenge=false,{snapshot=wo
       publicationLineage.append(paragraph('No unique retained publication event matches this exact version. The artifact remains inspectable; Chronicle navigation is withheld.','evidence-warning'));
     }
   }
-  const version=node('select',{id:'version-select'});for(const v of availableVersions)version.append(node('option',{value:v.version,text:`Version ${v.version}${v.version===creation.version?' · current':' · retained original bytes'}`}));version.value=String(selectedVersion);version.onchange=()=>{selectedVersion=Number(version.value);renderPublicationLineage();renderNotes();renderSourceObservations();syncChallengeTarget(true)};content.append(field('Version archive','version-select',version),publicationLineage,paragraph('Versions are flat retained documents. A SHA-256 receipt establishes exact bytes, not the truth of any claim inside.','form-help'),node('div',{class:'receipt',text:`SHA-256 ${creation.receipt.digest}\n${creation.receipt.size.toLocaleString()} bytes · v${creation.version}`}));renderPublicationLineage();if(creation.kind==='observatory'){content.append(paragraph('Record a falsifiable source note in this version’s Chronicle. The source class is author-selected; retrieval and independent verification remain NOT_PERFORMED.','form-help'),button('Record a source observation →',guarded(()=>{requireCurrentCreationSnapshot();openSourceObservation(id,selectedVersion)}),{id:'source-observation-open',class:'secondary-button'}),sourceObservationList=node('div',{id:'source-observations'}));renderSourceObservations();}
+  const versionReceipt=node('div',{class:'receipt','data-creation-version-receipt':'true'});
+  function renderVersionReceipt(){
+    let receipt;
+    try{
+      receipt=selectedVersion===targetVersion
+        ? selectedReview.target.receipt
+        : prepareContradictionReview(creation,selectedVersion).target.receipt;
+    }catch{
+      versionReceipt.dataset.creationVersionReceiptStatus='unavailable';
+      delete versionReceipt.dataset.creationVersion;
+      delete versionReceipt.dataset.creationVersionReceiptDigest;
+      delete versionReceipt.dataset.creationVersionReceiptSize;
+      versionReceipt.textContent='SHA-256 receipt unavailable for this retained edition. No other edition was substituted.';
+      return;
+    }
+    versionReceipt.dataset.creationVersionReceiptStatus='validated';
+    versionReceipt.dataset.creationVersion=String(selectedVersion);
+    versionReceipt.dataset.creationVersionReceiptDigest=receipt.digest;
+    versionReceipt.dataset.creationVersionReceiptSize=String(receipt.size);
+    versionReceipt.textContent='SHA-256 '+receipt.digest+'\n'+receipt.size.toLocaleString()+' bytes · v'+selectedVersion;
+  }
+  const version=node('select',{id:'version-select'});
+  for(const v of availableVersions)version.append(node('option',{value:v.version,text:'Version '+v.version+(v.version===creation.version?' · current':' · retained original bytes')}));
+  version.value=String(selectedVersion);
+  version.onchange=()=>{selectedVersion=Number(version.value);renderVersionReceipt();renderPublicationLineage();renderNotes();renderSourceObservations();syncChallengeTarget(true)};
+  renderVersionReceipt();
+  content.append(field('Version archive','version-select',version),publicationLineage,paragraph('Versions are flat retained documents. A SHA-256 receipt establishes exact bytes, not the truth of any claim inside.','form-help'),versionReceipt);
+  renderPublicationLineage();if(creation.kind==='observatory'){content.append(paragraph('Record a falsifiable source note in this version’s Chronicle. The source class is author-selected; retrieval and independent verification remain NOT_PERFORMED.','form-help'),button('Record a source observation →',guarded(()=>{requireCurrentCreationSnapshot();openSourceObservation(id,selectedVersion)}),{id:'source-observation-open',class:'secondary-button'}),sourceObservationList=node('div',{id:'source-observations'}));renderSourceObservations();}
   const notes=node('div',{id:'creation-notes'}),contribution=node('textarea',{id:'contribution-text',maxlength:'500',rows:'3',placeholder:'A useful response, question or counterexample…'});content.append(node('h3',{class:'section-title',text:'Leave a useful trace'}),field('Contribution · 500 characters','contribution-text',contribution),node('div',{class:'button-row'},[button('Add your contribution',guarded(async()=>{requireCurrentCreationSnapshot();await act({type:'contribute',creationId:id,version:selectedVersion,text:contribution.value});contribution.value='';openCreation(id,selectedVersion);toast('Contribution preserved with your attribution. No XP awarded.')}),{id:'contribute-button',class:'secondary-button'})]),notes);
   const report=node('textarea',{id:'report-text',maxlength:'1000',rows:'2',placeholder:'What failed, what is unsupported, or what needs care?'});const reportDetails=node('details',{},[node('summary',{text:'Report a problem or unsupported claim'}),field('Report · 1000 characters','report-text',report),node('div',{class:'button-row'},[button('Preserve this report',guarded(async()=>{requireCurrentCreationSnapshot();await act({type:'report',creationId:id,version:selectedVersion,text:report.value});report.value='';openCreation(id,selectedVersion);toast('Report preserved against that exact version.')}),{id:'report-button',class:'secondary-button'})])]);content.append(reportDetails);
   const challengeDetails=node('details',{id:'contradiction-clerk'},[node('summary',{text:'Ask the Contradiction Clerk to challenge this version'})]);
