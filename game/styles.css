@@ -111,3 +111,19 @@
 .github-source-reader input{width:100%;min-width:0;max-width:100%}
 
 .sheet label.predicate-acknowledgement{display:flex;align-items:flex-start;gap:10px;margin:10px 0 4px;padding:8px 0;min-height:44px;font:10px/1.6 system-ui;text-transform:none;letter-spacing:0;color:#6f7c5e}.sheet label.predicate-acknowledgement input[type=checkbox]{width:20px;min-width:20px;height:20px;flex:0 0 20px;margin:1px 0 0;padding:0;accent-color:#315e52}.sheet label.predicate-acknowledgement span{flex:1;overflow-wrap:anywhere}
+
+
+/* Keep the playable world visible while an institution sheet is open. */
+.sheet-backdrop{
+  background:#293d3108;
+  backdrop-filter:none;
+}
+@media(max-width:600px){
+  .sheet{
+    top:auto;
+    bottom:max(9px,env(safe-area-inset-bottom));
+    height:min(76dvh,640px);
+    max-height:calc(100dvh - 120px);
+    border-radius:14px 14px 7px 7px;
+  }
+}

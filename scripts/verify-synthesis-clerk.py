@@ -986,6 +986,37 @@ def return_to_founder(page, founder_id):
     return authoritative_snapshot(page)
 
 
+def assert_world_visible_behind_sheet(page, label):
+    metrics = page.evaluate("""() => {
+        const world = document.querySelector('#world')
+        const sheet = document.querySelector('#sheet')
+        const backdrop = document.querySelector('#sheet-backdrop')
+        if (!world || !sheet || !backdrop) return null
+        const worldRect = world.getBoundingClientRect()
+        const sheetRect = sheet.getBoundingClientRect()
+        const worldStyle = getComputedStyle(world)
+        const backdropStyle = getComputedStyle(backdrop)
+        return {
+            sheetHidden: sheet.hidden,
+            worldVisible: worldRect.width > 0 && worldRect.height > 0 &&
+                worldStyle.display !== 'none' && worldStyle.visibility !== 'hidden',
+            sheetTop: sheetRect.top,
+            sheetHeight: sheetRect.height,
+            viewportHeight: window.innerHeight,
+            backdropFilter: backdropStyle.backdropFilter,
+            worldFilter: worldStyle.filter
+        }
+    }""")
+    assert metrics is not None, f"{label}: world/sheet/backdrop elements must exist"
+    assert metrics["sheetHidden"] is False, f"{label}: institution sheet must be open"
+    assert metrics["worldVisible"], f"{label}: world canvas must remain visible behind the sheet"
+    assert metrics["sheetTop"] >= 100, f"{label}: sheet must leave a visible world strip above it: {metrics}"
+    assert metrics["sheetHeight"] <= metrics["viewportHeight"] - 100, f"{label}: sheet must not consume the full viewport: {metrics}"
+    assert metrics["backdropFilter"] == "none", f"{label}: backdrop must not blur the world: {metrics}"
+    assert metrics["worldFilter"] == "none", f"{label}: world canvas itself must not be blurred: {metrics}"
+    return metrics
+
+
 def open_synthesis_clerk(page, packet):
     before = authoritative_snapshot(page)
     control = page.locator('[data-guild-npc-control="synthesizer"]')
@@ -1048,6 +1079,7 @@ def open_synthesis_clerk(page, packet):
     route_discoveries = assert_route_travel_records_only_discoveries(
         before, arrival, "Walking to the Synthesis Clerk"
     )
+    world_surface = assert_world_visible_behind_sheet(page, "Synthesis Clerk")
 
     card = page.locator('#sheet-content [data-collaborator-role="synthesizer"]')
     expect(card).to_have_count(1)
@@ -1073,6 +1105,7 @@ def open_synthesis_clerk(page, packet):
         arrival, after, "Reading the Synthesis Clerk after navigation"
     )
     after["npcRouteDiscoveries"] = route_discoveries
+    after["worldSurface"] = world_surface
     return card, after
 
 def record_project_state_lead(page, founder_id, observatory):
@@ -2119,6 +2152,7 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
         "witnessNpcRetainedAttemptCount": 0,
         "moonshotFailureHistory": moonshot_failure_history,
         "npcRouteDiscoveries": after_npc["npcRouteDiscoveries"],
+        "worldSurface": after_npc["worldSurface"],
         "routeDiscoveries": travel_discoveries
     }
 
