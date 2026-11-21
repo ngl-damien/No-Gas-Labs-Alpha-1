@@ -2469,7 +2469,7 @@ test('Chronicle routes retained events to related institutions and only explicit
     const reportRoutes = walk(reportCard).filter(item => item.dataset?.chronicleInstitutionRoute);
     assert.deepEqual(reportRoutes.map(item => item.dataset.chronicleInstitutionRoute),
       ['evidence_archive', 'town-square']);
-    assert.match(textOf(reportCard), /not claims about the event's physical location/i);
+    assert.match(textOf(root), /not claims about the event's physical location/i);
     const archiveButton = reportRoutes.find(item => item.dataset.chronicleInstitutionRoute === 'evidence_archive');
     assert.ok(archiveButton);
     archiveButton.onclick();
