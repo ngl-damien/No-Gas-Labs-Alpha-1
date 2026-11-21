@@ -10,7 +10,7 @@ import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench
 import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS,projectSourceArchiveFailureObjects} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderCharterCodex,renderEvidenceArchive,renderInstitution,renderWorldChronicle} from './institution-view.mjs';
-import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
+import {prepareContradictionReview,formatContradictionReport,resolveRetainedCreationTarget} from './contradiction-clerk.mjs';
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,retainedWorldEventHistoryPositions} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {renderGitHubDecisionGate,renderGitHubSourceReader,shouldRenderGitHubDecisionGate,parseGitHubSourceCitation} from './github-decision-gate.mjs';
@@ -1528,26 +1528,41 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
 }
 function openCreation(id,requestedVersion=null,focusChallenge=false,{snapshot=world}={}){
   const creationWorldSnapshot=snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)?snapshot:world;
-  const creation=Array.isArray(creationWorldSnapshot?.creations)?creationWorldSnapshot.creations.find(c=>c.id===id):null;
-  if(!creation)return;
-  const targetVersion=requestedVersion===null?creation.version:requestedVersion;
+  const targetResolution=resolveRetainedCreationTarget(creationWorldSnapshot,id,requestedVersion);
+  const creation=targetResolution.status==='available'?targetResolution.creation:null;
+  const targetVersion=targetResolution.version;
   const showUnavailableVersion=()=>{
-    const unavailable=showSheet(creation.title,'ARTIFACT VERSION UNAVAILABLE');
+    selectedCreation=null;
+    selectedVersion=null;
+    activeNoteRenderer=null;
+    closePortal();
+    const unavailable=showSheet(targetResolution.title,'ARTIFACT VERSION UNAVAILABLE');
     unavailable.dataset.creationDetail='true';
     unavailable.dataset.creationVersionStatus='unavailable';
     unavailable.dataset.creationSnapshotRevision=Number.isSafeInteger(creationWorldSnapshot?.revision)&&creationWorldSnapshot.revision>=0?String(creationWorldSnapshot.revision):'unavailable';
-    unavailable.dataset.creationRequestedVersion=Number.isSafeInteger(targetVersion)&&targetVersion>0?String(targetVersion):'invalid';
+    unavailable.dataset.creationRequestedId=targetResolution.creationId;
+    unavailable.dataset.creationRequestedVersion=Number.isSafeInteger(targetVersion)&&targetVersion>0?String(targetVersion):targetVersion===null?'unavailable':'invalid';
+    unavailable.dataset.creationResolutionReason=targetResolution.reason||'selected-edition-not-retained';
+    const unavailableReason=targetResolution.reason==='creation-not-retained'
+      ?'cannot be resolved because the artifact is not retained'
+      :targetResolution.reason==='creation-identity-ambiguous'
+        ?'cannot be resolved because its identity is ambiguous'
+        :targetResolution.reason==='creation-collection-unavailable'
+          ?'cannot be resolved because the accepted artifact collection is unavailable'
+          :targetResolution.reason==='invalid-creation-id'
+            ?'cannot be resolved because the requested identity is invalid'
+            :'is not uniquely retained';
     unavailable.append(paragraph(
-      'Requested artifact version '+(Number.isSafeInteger(targetVersion)&&targetVersion>0?'v'+targetVersion:'(invalid)')+
-      ' is not uniquely retained in this accepted snapshot. The current version was not substituted. Return to the source event or refresh the accepted snapshot; no different edition was opened.',
+      'Requested artifact version '+(Number.isSafeInteger(targetVersion)&&targetVersion>0?'v'+targetVersion:targetVersion===null?'(unavailable)':'(invalid)')+
+      ' '+unavailableReason+' in this accepted snapshot. The current version was not substituted. Return to the source event or refresh the accepted snapshot; no different edition was opened.',
       'evidence-warning'
     ));
   };
-  let selectedReview;
-  try{selectedReview=prepareContradictionReview(creation, targetVersion);}catch{
+  if(targetResolution.status!=='available'){
     showUnavailableVersion();
     return;
   }
+  const selectedReview=targetResolution.review;
   const availableVersions=[creation,...[...(Array.isArray(creation.versions)?creation.versions:[])].reverse()];
   const selectedArtifact=availableVersions.find(version=>version.version===targetVersion);
   if(!selectedArtifact){
