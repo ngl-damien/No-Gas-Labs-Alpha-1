@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { projectChronicle } from "../game/chronicle.mjs";
 import { institutionActivityCount, institutionDestinationsForEvent } from "../game/world-view.mjs";
-import { projectCharacter } from "../game/character-sheet.mjs";
+import { projectCharacter, findRetainedPublicationEventId } from "../game/character-sheet.mjs";
 import { createWorld, applyAction } from "../game/model.mjs";
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from "../game/artifacts.mjs";
 import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from "../game/research-records.mjs";
@@ -1985,4 +1985,63 @@ test("Chronicle entries carry institutional destinations and explicit discovery 
   assert.equal(discovery.locationName, "The Long View");
   assert.deepEqual(discovery.institutionDestinations || [], [],
     "a discovery event uses its explicitly retained map location, not an inferred institution route");
+});
+
+test("Publication House links one exact retained version to its unique publication event without awarding XP", () => {
+  const publishedAtV1 = "2026-11-20T10:00:00.000Z";
+  const publishedAtV2 = "2026-11-20T11:00:00.000Z";
+  const receipt = { algorithm: "sha256", digest: "a".repeat(64), size: 12 };
+  const creation = {
+    id: "publication-object", title: "Publication fixture", version: 2,
+    publishedAt: publishedAtV2, receipt,
+    versions: [{ version: 1, publishedAt: publishedAtV1, receipt }]
+  };
+  const events = [
+    { id: "publication-v1", type: "publish", creationId: creation.id, version: 1,
+      actor: { id: "damien", name: "Damien", role: "founder" }, at: publishedAtV1 },
+    { id: "publication-v2", type: "publish", creationId: creation.id, version: 2,
+      actor: { id: "damien", name: "Damien", role: "founder" }, at: publishedAtV2 }
+  ];
+  const world = { creations: [creation], events, reports: [], contributions: [], discoveries: [], methods: [], xp: 0 };
+  const before = structuredClone(world);
+
+  assert.equal(findRetainedPublicationEventId(world, creation.id, 1), "publication-v1",
+    "a historical version links to its own retained publication event");
+  assert.equal(findRetainedPublicationEventId(world, creation.id, 2), "publication-v2",
+    "the current version links to its own retained publication event");
+  assert.equal(findRetainedPublicationEventId(world, creation.id, 3), null,
+    "a version with no retained bytes cannot acquire a Chronicle link");
+  assert.equal(projectCharacter(world, { id: "damien", role: "founder" }).xp, 0,
+    "a publication link does not manufacture a publication reward");
+  assert.deepEqual(world, before, "resolving publication lineage is read-only");
+});
+
+test("Publication House withholds Chronicle links for missing, duplicate, malformed, or mismatched publication lineage", () => {
+  const publishedAt = "2026-11-20T10:00:00.000Z";
+  const receipt = { algorithm: "sha256", digest: "b".repeat(64), size: 8 };
+  const creation = {
+    id: "publication-object", title: "Publication fixture", version: 1,
+    publishedAt, receipt, versions: []
+  };
+  const publication = {
+    id: "publication-event", type: "publish", creationId: creation.id, version: 1,
+    actor: { id: "damien", name: "Damien", role: "founder" }, at: publishedAt
+  };
+  const worldWith = events => ({ creations: [creation], events });
+
+  assert.equal(findRetainedPublicationEventId(worldWith([]), creation.id, 1), null,
+    "missing publication history stays unlinked");
+  assert.equal(findRetainedPublicationEventId(worldWith([publication, { ...publication, id: "publication-duplicate" }]), creation.id, 1), null,
+    "two publication events for one version remain ambiguous");
+  assert.equal(findRetainedPublicationEventId(worldWith([publication, { id: publication.id, type: "report" }]), creation.id, 1), null,
+    "a publication event ID collision across event types remains ambiguous");
+  assert.equal(findRetainedPublicationEventId(worldWith([{ ...publication, id: " padded-event-id " }]), creation.id, 1), null,
+    "an unnormalized event ID cannot be used as a Chronicle destination");
+  assert.equal(findRetainedPublicationEventId(worldWith([{ ...publication, actor: { id: "damien", name: "Damien", role: "witness" } }]), creation.id, 1), null,
+    "a non-Founder publication actor cannot supply canonical publication lineage");
+  assert.equal(findRetainedPublicationEventId(worldWith([{ ...publication, at: "2026-11-20T10:00:01.000Z" }]), creation.id, 1), null,
+    "a publication timestamp that disagrees with the retained version stays unlinked");
+  const duplicateVersion = { ...creation, versions: [{ version: 1, publishedAt, receipt }] };
+  assert.equal(findRetainedPublicationEventId({ creations: [duplicateVersion], events: [publication] }, creation.id, 1), null,
+    "duplicate retained version identities remain ambiguous");
 });
