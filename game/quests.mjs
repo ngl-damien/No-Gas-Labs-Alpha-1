@@ -2,7 +2,7 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, isSafeFieldItemReferenceId, projectArmorBearerChains, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
-import { isValidMoonshotProposal, projectResearchRecords, projectSourceArchivePredicateContrasts, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords, projectSourceArchivePredicateContrasts, projectSourceObservationRecords, sameResearchActor, retainedWorldEventHistoryOptions } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
@@ -1062,7 +1062,7 @@ export function getQuestTrail(world, viewer, options = {}) {
   );
   const hasPublishedObservatory = publishedObservatoryVersions.length > 0;
   const nextSourceObservationTarget = publishedObservatoryVersions.at(-1) || null;
-  const allSourceObservationRecords = projectSourceObservationRecords(events, world?.creations);
+  const allSourceObservationRecords = projectSourceObservationRecords(events, world?.creations, retainedWorldEventHistoryOptions(world, events));
   const linkedSourceObservationRecords = allSourceObservationRecords
     .filter(record => record.projectionStatus === 'linked');
   const sourceObservationRecords = linkedSourceObservationRecords
@@ -1359,7 +1359,7 @@ export function getQuestTrail(world, viewer, options = {}) {
   // Reuse the full-history research linker before crediting a synthesis attempt.
   // A later duplicate Moonshot ID or an unlinked report/challenge makes the
   // original packet ambiguous, even if its copied response labels look valid.
-  const projectedResearchByEventId = new Map(projectResearchRecords(events, rows(world?.creations))
+  const projectedResearchByEventId = new Map(projectResearchRecords(events, rows(world?.creations), retainedWorldEventHistoryOptions(world, events))
     .filter(record => record?._projection?.recordSafe && record._projection.eventIdUnique)
     .map(record => [record.id, record]));
   // Source Archives become usable research objects only through an exact,
@@ -1652,7 +1652,7 @@ export function getQuestTrail(world, viewer, options = {}) {
     guildChallengeEventIds.has(event.id) && guildExperimentReportIds.has(event.reportId)
   );
 
-  const projectedExperimentRecords = projectResearchRecords(events, rows(world?.creations));
+  const projectedExperimentRecords = projectResearchRecords(events, rows(world?.creations), retainedWorldEventHistoryOptions(world, events));
   const sourceArchiveChallenges = projectedExperimentRecords
     .filter(record => record?.type === 'experiment-challenged' &&
       record?._projection?.recordSafe === true &&

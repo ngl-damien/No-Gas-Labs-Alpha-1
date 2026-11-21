@@ -1,7 +1,7 @@
 import {createArtifact,readSatireIssueArtifact,findSatireIssuePublication,indexSatireIssuePublications,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX,evaluateGitHubSourceArchivePredicate,GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR} from './artifacts.mjs';
 import {COMBAT_EVENT_TYPES, projectCombatHistory, resolveCombatMove} from './combat.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
-import {SOURCE_OBSERVATION_SOURCE_KINDS,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor,hasSourcePredicatePublicRetentionAcknowledgement} from './research-records.mjs';
+import {SOURCE_OBSERVATION_SOURCE_KINDS,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor,hasSourcePredicatePublicRetentionAcknowledgement,stripCompleteResponseHistoryPositions} from './research-records.mjs';
 import {projectCollaboratorPackets,isExactCollaboratorSourceRecord} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateCollaboratorResponseSnapshot} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS,MAX_FIELD_INVENTORY_ITEMS} from './character-sheet.mjs';
@@ -726,6 +726,10 @@ export async function validateWorld(raw) {
   try{if(encoder.encode(JSON.stringify(raw)).length>32*1024*1024)invalid('World import exceeds 32 MiB.');}catch(error){if(error.code)throw error;invalid('World must be serializable JSON.');}
   if(!raw||raw.schema!=='ngl.world.v2'||typeof raw.id!=='string'||typeof raw.founderName!=='string'||!Number.isInteger(raw.revision)||raw.revision<0)invalid('Unsupported or malformed world.');
   for(const key of ['creations','drafts','events','contributions','reports','discoveries','methods'])if(!Array.isArray(raw[key]))invalid(`Missing ${key}.`);
+  const responseHistory=stripCompleteResponseHistoryPositions(raw);
+  if(responseHistory.status==='invalid')invalid('Response history positions must describe a complete canonical event stream.');
+  raw=responseHistory.world;
+  if(raw.revision!==raw.events.length)invalid('World revision must match the complete retained event history.');
   const createdAt=Date.parse(raw.createdAt),updatedAt=Date.parse(raw.updatedAt);const maximumEventAt=raw.events.reduce((maximum,item)=>{const eventAt=Date.parse(item?.at);return Number.isFinite(eventAt)?Math.max(maximum,eventAt):maximum;},createdAt);if(raw.creations.length>12||raw.drafts.length>24||!isStrictTimestamp(raw.createdAt)||!isStrictTimestamp(raw.updatedAt)||!Number.isFinite(createdAt)||!Number.isFinite(updatedAt)||createdAt>updatedAt||updatedAt!==maximumEventAt)invalid('Invalid world bounds or timestamp high-water mark.');
   const ids=new Set(),requestIds=new Set();const unique=id=>{if(typeof id!=='string'||!id||ids.has(id))invalid('Duplicate or missing identity.');ids.add(id)};
   const checkArtifact=async a=>{

@@ -223,6 +223,89 @@ export function retainedWorldEventHistoryPositions(world, eventsInput) {
   return retainedEventHistoryPositions(events, { allowLocalPositions, revision, revisionPresent });
 }
 
+export function retainedWorldEventHistoryOptions(world, eventsInput) {
+  let revisionPresent = false;
+  let revision;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(world ?? {}, 'revision');
+    if (descriptor) {
+      revisionPresent = true;
+      if (Object.hasOwn(descriptor, 'value')) revision = descriptor.value;
+    }
+  } catch {
+    revisionPresent = true;
+  }
+  const positions = retainedWorldEventHistoryPositions(world, eventsInput);
+  return Object.freeze({
+    allowLocalPositions: positions.length === (Array.isArray(eventsInput) ? eventsInput.length : 0) &&
+      positions.every((position, index) => position === index + 1),
+    revision,
+    revisionPresent
+  });
+}
+
+/**
+ * Response-only global positions may be imported as canonical history only
+ * when they describe the complete stream exactly (1..revision). Actor-filtered
+ * snapshots retain gaps and must never be promoted to canonical world state.
+ */
+export function stripCompleteResponseHistoryPositions(world) {
+  let events;
+  let revision;
+  try {
+    const source = world ?? {};
+    const eventsDescriptor = Object.getOwnPropertyDescriptor(source, 'events');
+    if (!eventsDescriptor) return { status: 'absent', world };
+    if (!Object.hasOwn(eventsDescriptor, 'value') || !Array.isArray(eventsDescriptor.value)) {
+      return { status: 'invalid', world };
+    }
+    events = eventsDescriptor.value;
+    const revisionDescriptor = Object.getOwnPropertyDescriptor(source, 'revision');
+    if (revisionDescriptor && Object.hasOwn(revisionDescriptor, 'value')) revision = revisionDescriptor.value;
+  } catch {
+    return { status: 'invalid', world };
+  }
+
+  let hasMetadata = false;
+  for (let index = 0; index < events.length; index += 1) {
+    let slot;
+    try { slot = Object.getOwnPropertyDescriptor(events, String(index)); }
+    catch { return { status: 'invalid', world }; }
+    if (!slot || !Object.hasOwn(slot, 'value')) continue;
+    const event = slot.value;
+    if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
+    let descriptor;
+    try { descriptor = Object.getOwnPropertyDescriptor(event, 'historyPosition'); }
+    catch { return { status: 'invalid', world }; }
+    if (descriptor) hasMetadata = true;
+  }
+  if (!hasMetadata) return { status: 'absent', world };
+
+  const positions = retainedWorldEventHistoryPositions(world, events);
+  if (!Number.isSafeInteger(revision) || revision !== events.length ||
+      positions.length !== events.length ||
+      positions.some((position, index) => position !== index + 1)) return { status: 'invalid', world };
+
+  const canonicalEvents = [];
+  for (let index = 0; index < events.length; index += 1) {
+    let slot;
+    try { slot = Object.getOwnPropertyDescriptor(events, String(index)); }
+    catch { return { status: 'invalid', world }; }
+    if (!slot || !Object.hasOwn(slot, 'value')) return { status: 'invalid', world };
+    const event = slot.value;
+    if (!event || typeof event !== 'object' || Array.isArray(event)) return { status: 'invalid', world };
+    let copy;
+    try { copy = { ...event }; }
+    catch { return { status: 'invalid', world }; }
+    delete copy.historyPosition;
+    canonicalEvents.push(copy);
+  }
+  let canonicalWorld;
+  try { canonicalWorld = { ...world, events: canonicalEvents }; }
+  catch { return { status: 'invalid', world }; }
+  return { status: 'stripped', world: canonicalWorld };
+}
+
 function countBy(events, field, predicate = () => true) {
   const counts = new Map();
   for (const event of events) {
@@ -271,9 +354,14 @@ function validReport(event) {
  * logic, not adjudication: invalid or ambiguous records remain visible, but
  * their context is not guessed.
  */
-export function projectResearchRecords(input, retainedCreations = []) {
+export function projectResearchRecords(input, retainedCreations = [], {
+  allowLocalPositions = true,
+  revision,
+  revisionPresent = false
+} = {}) {
   const eventEntries = snapshotArrayEntries(input, MAX_EVENT_COUNT);
   const events = eventEntries.map(entry => entry.value);
+  const historyPositions = retainedEventHistoryPositions(events, { allowLocalPositions, revision, revisionPresent });
   const unsafeEvents = new WeakSet();
   eventEntries.forEach(entry => {
     if (!entry.safe && entry.value && typeof entry.value === 'object') unsafeEvents.add(entry.value);
@@ -488,8 +576,10 @@ export function projectResearchRecords(input, retainedCreations = []) {
 
       return Object.freeze({
         ...event,
+        historyPosition: historyPositions[index],
         _projection: Object.freeze({
           index,
+          historyPosition: historyPositions[index],
           eventIdUnique,
           recordSafe,
           reportIdUnique: event.type === 'experiment-reported'
@@ -800,12 +890,16 @@ export function sourceObservationRequestMaterial({
   });
 }
 
-export function projectSourceObservationRecords(eventsInput, creationsInput, { allowLocalPositions = true } = {}) {
+export function projectSourceObservationRecords(eventsInput, creationsInput, {
+  allowLocalPositions = true,
+  revision,
+  revisionPresent = false
+} = {}) {
   const eventEntries = snapshotArrayEntries(eventsInput, MAX_EVENT_COUNT);
   const creationEntries = snapshotArrayEntries(creationsInput, MAX_RETAINED_CREATIONS);
   const events = eventEntries.map(entry => entry.value);
   const creations = creationEntries.map(entry => entry.value);
-  const historyPositions = retainedEventHistoryPositions(events, { allowLocalPositions });
+  const historyPositions = retainedEventHistoryPositions(events, { allowLocalPositions, revision, revisionPresent });
   const unsafeEvents = new WeakSet();
   const unsafeCreations = new WeakSet();
   eventEntries.forEach(entry => {

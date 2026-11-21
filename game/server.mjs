@@ -22,7 +22,7 @@ import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
 import { COMBAT_EVENT_TYPES } from './combat.mjs';
-import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, hasSourcePredicatePublicRetentionAcknowledgement } from './research-records.mjs';
+import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, hasSourcePredicatePublicRetentionAcknowledgement, stripCompleteResponseHistoryPositions } from './research-records.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
 import { PLACES, PLAYER_MOVE_SPEED, findRoute, isWalkable , COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
@@ -1020,7 +1020,11 @@ function validateHistory(world) {
 
 /** Expose the independent durable-history validator for focused integrity tests. */
 export function validateStoredWorldHistory(world) {
-  validateHistory(world);
+  const responseHistory = stripCompleteResponseHistoryPositions(world);
+  if (responseHistory.status === 'invalid') {
+    throw new Error('Stored response history positions must describe a complete canonical event stream.');
+  }
+  validateHistory(responseHistory.world);
 }
 
 async function validatePayload(raw) {

@@ -1,6 +1,6 @@
 import { FIELD_EQUIPMENT_SLOTS, projectCharacter } from './character-sheet.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
-import { projectResearchRecords, projectSourceArchivePredicateContrasts, sameResearchActor, retainedWorldEventHistoryPositions } from './research-records.mjs';
+import { projectResearchRecords, projectSourceArchivePredicateContrasts, sameResearchActor, retainedWorldEventHistoryPositions, retainedWorldEventHistoryOptions } from './research-records.mjs';
 
 import { isStrictTimestamp } from "./timestamps.mjs";
 import { PLACES, institutionDestinationsForEvent } from "./world-view.mjs";
@@ -264,8 +264,8 @@ function findVersion(creations, creationId, version) {
   return matchingVersions.length === 1 ? matchingVersions[0] : null;
 }
 
-function sourceContrastEntriesByPosition(events, creations, eventPositionsById, streamPositions = []) {
-  const records = projectResearchRecords(events, creations);
+function sourceContrastEntriesByPosition(events, creations, eventPositionsById, streamPositions = [], historyOptions = {}) {
+  const records = projectResearchRecords(events, creations, historyOptions);
   const groups = projectSourceArchivePredicateContrasts(records);
   const byPosition = new Map();
 
@@ -1105,6 +1105,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   const worldStreamPositions = worldCollection.valid
     ? retainedWorldEventHistoryPositions(world, worldEventSnapshots)
     : worldEventSnapshots.map(() => null);
+  const worldHistoryOptions = retainedWorldEventHistoryOptions(world, worldEventSnapshots);
   const worldEventPositionsById = new Map();
   for (let index = 0; index < worldEventSnapshots.length; index += 1) {
     const event = worldEventSnapshots[index];
@@ -1130,7 +1131,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     schema:"ngl.world.v2",
     id:"chronicle-world",
     founderName:"Chronicle projection",
-    revision:worldEventSnapshots.length,
+    revision:worldHistoryOptions.revisionPresent ? worldHistoryOptions.revision : worldEventSnapshots.length,
     xp:0,
     createdAt:worldEventSnapshots.find(event=>timestamp(event?.at))?.at||"2026-01-01T00:00:00.000Z",
     updatedAt:lastValidWorldTimestamp,
@@ -1147,7 +1148,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   // Complete contrast dossiers are derived from already validated, linked records.
   // Anchor each immediately after its later predicate event; never append a new world event.
   const sourceContrastEntries = worldCollection.valid && creationsCollection.valid
-    ? sourceContrastEntriesByPosition(worldEventSnapshots, creations, worldEventPositionsById, worldStreamPositions)
+    ? sourceContrastEntriesByPosition(worldEventSnapshots, creations, worldEventPositionsById, worldStreamPositions, worldHistoryOptions)
     : new Map();
 
   for (let index = 0; index < worldEventSnapshots.length; index += 1) {

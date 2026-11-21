@@ -132,6 +132,7 @@ async function sourceArchiveDossierWorld({ kind = 'conflict' } = {}) {
 function sourceObservationWorld({ claim = 'A model says the bridge is open.' } = {}) {
   const founder = { id: 'damien', name: 'Damien', role: 'founder' };
   const witness = { id: 'witness-1', name: 'Witness', role: 'witness' };
+  const actor = founder;
   const creationId = 'creation-observatory';
   const publishedAt = '2026-10-27T09:00:00.000Z';
   const note = {

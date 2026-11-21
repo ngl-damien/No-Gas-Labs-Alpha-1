@@ -1,15 +1,10 @@
 import { projectChronicle } from "./chronicle.mjs";
 import { projectCharacter } from "./character-sheet.mjs";
 import { getActiveQuest, getQuestTrail } from "./quests.mjs";
-import { projectResearchRecords, projectSourceObservationRecords, sameResearchActor, retainedWorldEventHistoryPositions } from "./research-records.mjs";
+import { projectResearchRecords, projectSourceObservationRecords, sameResearchActor, retainedWorldEventHistoryPositions, retainedWorldEventHistoryOptions } from "./research-records.mjs";
 import { isStrictTimestamp } from "./timestamps.mjs";
 
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;};
-function sourceObservationPositionOptions(world) {
- const positions=retainedWorldEventHistoryPositions(world,world?.events);
- return {allowLocalPositions:positions.every((position,index)=>position===index+1)};
-}
-
 const CHARTER_IDENTITY_EQUATION = 'The-NEOPHYTE_FOUNDER + idea + multiple AI collaborators + adversarial_contempt + hardening + human-gate + synthesis + possibilities + abilities + provenance + agents + polymathy-training/fundamental-knowledge';
 const MAX_CODEX_EVIDENCE_ID_PREVIEW = 20;
 const MAX_CODEX_DISSENT_THREAD_PREVIEW = 10;
@@ -66,9 +61,9 @@ export function projectCharterCodex(world, viewer) {
   let nextObjective;
   try {
     trail = getQuestTrail(world, viewer);
-    sourceRecords = projectSourceObservationRecords(world.events, world.creations, sourceObservationPositionOptions(world))
+    sourceRecords = projectSourceObservationRecords(world.events, world.creations, retainedWorldEventHistoryOptions(world, world.events))
       .filter(record => record?.projectionStatus === 'linked' && sameResearchActor(record.actor, viewer));
-    researchRecords = projectResearchRecords(world.events, world.creations);
+    researchRecords = projectResearchRecords(world.events, world.creations, retainedWorldEventHistoryOptions(world, world.events));
     nextObjective = getActiveQuest(world, viewer, trail);
   } catch {
     return unavailable('The retained quest or research history could not be projected safely. No lifecycle status is inferred.');
@@ -159,7 +154,8 @@ export function projectCharterCodex(world, viewer) {
     if (typeof proposal.id !== 'string' || !proposal.id ||
         typeof proposal.moonshotId !== 'string' || !proposal.moonshotId ||
         typeof proposal.sourceCreationId !== 'string' ||
-        !Number.isSafeInteger(proposal.sourceVersion)) continue;
+        !Number.isSafeInteger(proposal.sourceVersion) ||
+        !Number.isSafeInteger(proposal.historyPosition)) continue;
     const key = artifactVersionKey(proposal.sourceCreationId, proposal.sourceVersion);
     if (!proposalsBySourceVersion.has(key)) proposalsBySourceVersion.set(key, []);
     proposalsBySourceVersion.get(key).push(proposal);
@@ -170,7 +166,8 @@ export function projectCharterCodex(world, viewer) {
         typeof report.id !== 'string' || !report.id ||
         typeof report.moonshotId !== 'string' || !report.moonshotId ||
         typeof report.evidenceCreationId !== 'string' ||
-        !Number.isSafeInteger(report.evidenceVersion)) continue;
+        !Number.isSafeInteger(report.evidenceVersion) ||
+        !Number.isSafeInteger(report.historyPosition)) continue;
     const key = JSON.stringify([report.moonshotId, report.evidenceCreationId, report.evidenceVersion]);
     if (!reportsByMoonshotVersion.has(key)) reportsByMoonshotVersion.set(key, []);
     reportsByMoonshotVersion.get(key).push(report);
@@ -182,7 +179,8 @@ export function projectCharterCodex(world, viewer) {
         typeof report.id !== 'string' || !report.id ||
         typeof report.moonshotId !== 'string' || !report.moonshotId ||
         typeof report.evidenceCreationId !== 'string' ||
-        !Number.isSafeInteger(report.evidenceVersion)) continue;
+        !Number.isSafeInteger(report.evidenceVersion) ||
+        !Number.isSafeInteger(report.historyPosition)) continue;
     const key = JSON.stringify([report.moonshotId, report.evidenceCreationId, report.evidenceVersion]);
     if (!ambiguousReportsByMoonshotVersion.has(key)) ambiguousReportsByMoonshotVersion.set(key, []);
     ambiguousReportsByMoonshotVersion.get(key).push(report);
@@ -194,15 +192,18 @@ export function projectCharterCodex(world, viewer) {
   // This keeps the Codex crosswalk linear in retained notes/proposals/reports.
   for (const [versionKey, earliestNotePosition] of sourceFollowupPositionByVersion) {
     for (const proposal of proposalsBySourceVersion.get(versionKey) || []) {
-      // note.historyPosition is one-based; research-record index is zero-based.
-      if (!Number.isSafeInteger(proposal?._projection?.index) ||
-          proposal._projection.index < earliestNotePosition) continue;
+      if (!Number.isSafeInteger(proposal?.historyPosition) ||
+          proposal.historyPosition <= earliestNotePosition) continue;
       versionLinkedMoonshotProposals.set(proposal.id, proposal);
       const reportKey = JSON.stringify([proposal.moonshotId, proposal.sourceCreationId, proposal.sourceVersion]);
       for (const report of reportsByMoonshotVersion.get(reportKey) || []) {
+        if (!Number.isSafeInteger(report?.historyPosition) ||
+            report.historyPosition <= proposal.historyPosition) continue;
         versionLinkedExperimentReports.set(report.id, report);
       }
       for (const report of ambiguousReportsByMoonshotVersion.get(reportKey) || []) {
+        if (!Number.isSafeInteger(report?.historyPosition) ||
+            report.historyPosition <= proposal.historyPosition) continue;
         versionLinkedAmbiguousExperimentReports.set(report.id, report);
       }
     }
@@ -1453,7 +1454,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   return;
  }
  let records;
- try { records=projectSourceObservationRecords(world.events,world.creations,sourceObservationPositionOptions(world)); }
+ try { records=projectSourceObservationRecords(world.events,world.creations,retainedWorldEventHistoryOptions(world,world.events)); }
  catch {
   const warning=el('p','The Source Observation projection could not be read safely. No response action is offered; inspect the retained Chronicle.');
   warning.className='evidence-warning';
