@@ -5966,7 +5966,7 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
         assert retained['filteredHistoryGapObserved'] is True, (
             'The Witness snapshot must exercise hidden Founder-only events without compressing global positions.'
         )
-        assert retained['worldRevision'] == witness_after['revision'], (
+        assert retained['worldRevision'] == after_submit['revision'], (
             'The projected world revision must remain the canonical append high-water mark.'
         )
         assert retained['reportRecordId'] == report_id, (
