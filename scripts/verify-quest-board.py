@@ -436,6 +436,12 @@ def inspect_quest_evidence_event(page, objective_id, event_id, expected_type, sc
         'aria-label', 'Inspect retained ' + expected_type + ' event in World Chronicle'
     )
 
+    board_snapshot_revision = page.locator('#sheet-content').get_attribute(
+        'data-quest-board-snapshot-revision'
+    )
+    assert isinstance(board_snapshot_revision, str) and board_snapshot_revision.isdigit(), (
+        'The Quest Board must expose the accepted client snapshot revision it projects.'
+    )
     before = authoritative_snapshot(page)
     event_link.tap()
     expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
@@ -443,7 +449,7 @@ def inspect_quest_evidence_event(page, objective_id, event_id, expected_type, sc
     expect(exact_event).to_have_count(1)
     expect(exact_event).to_have_attribute('data-event-source', 'world')
     expect(page.locator('#sheet-content')).to_have_attribute(
-        'data-chronicle-snapshot-revision', str(before['revision'])
+        'data-chronicle-snapshot-revision', board_snapshot_revision
     )
     after = authoritative_snapshot(page)
     assert shared_world_snapshot(after) == shared_world_snapshot(before), (
@@ -458,7 +464,8 @@ def inspect_quest_evidence_event(page, objective_id, event_id, expected_type, sc
         'eventId': event_id,
         'eventType': expected_type,
         'exactWorldEventOpened': True,
-        'snapshotRevision': before['revision'],
+        'snapshotRevision': int(board_snapshot_revision),
+        'serverRevisionAtInspection': before['revision'],
         'readOnly': shared_world_snapshot(after) == shared_world_snapshot(before),
         'xpDelta': after['xp'] - before['xp'],
         'screenshot': screenshot.name
