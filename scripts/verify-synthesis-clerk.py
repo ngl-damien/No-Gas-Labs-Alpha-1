@@ -1044,6 +1044,11 @@ def open_synthesis_clerk(page, packet):
             timeout=30000
         )
     
+    arrival = authoritative_snapshot(page)
+    route_discoveries = assert_route_travel_records_only_discoveries(
+        before, arrival, "Walking to the Synthesis Clerk"
+    )
+
     card = page.locator('#sheet-content [data-collaborator-role="synthesizer"]')
     expect(card).to_have_count(1)
     expect(card).to_contain_text("Synthesis Clerk")
@@ -1064,7 +1069,10 @@ def open_synthesis_clerk(page, packet):
         assert event_id in packet_prompt
 
     after = authoritative_snapshot(page)
-    assert_canonical_state_unchanged(before, after, "Walking to and directly tapping the Synthesis Clerk")
+    assert_canonical_state_unchanged(
+        arrival, after, "Reading the Synthesis Clerk after navigation"
+    )
+    after["npcRouteDiscoveries"] = route_discoveries
     return card, after
 
 def record_project_state_lead(page, founder_id, observatory):
