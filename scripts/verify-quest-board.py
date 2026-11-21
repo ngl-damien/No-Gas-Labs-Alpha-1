@@ -5865,6 +5865,7 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
             'staleWriteGuard': stale_write_guard,
             'refreshedRevision': after_refresh['revision'],
             'refreshApiRequests': refresh_api_requests,
+            'chronicleRefresh': chronicle_refresh,
             'worldMutationOnRefresh': shared_world_snapshot(after_refresh) != shared_world_snapshot(before_refresh),
             'xpDeltaOnRefresh': after_refresh['xp'] - before_refresh['xp'],
             'separateSessionActor': witness_after['viewerId'] != pinned['viewerId'],
