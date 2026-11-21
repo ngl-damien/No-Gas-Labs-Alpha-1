@@ -1,3 +1,21 @@
+## Run 283 Worker B steering — Guild Dissent Circuit uses retained Source Observatory order — 2026-11-21
+
+**Runtime:** Continue only PR #718, branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `eea8c04ea362f17025c7aa99f89126c1f9d442aa`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. Do not create a competing runtime branch. #718 remains draft/unmerged, 77 ahead / 0 behind main, 16 changed paths.
+
+**Completed:** Guild Dissent Circuit stage order now uses retained event-array positions for Source Observatory observation → challenge → author response. Strict normalized timestamps remain validated metadata. The new regression proves valid clock-regressed actions appended after membership complete the shared 4/4 participation objective for both current members, with exact evidence IDs, no XP and no world mutation. Existing negative tests still reject work appended before membership and challenge appended before the second observation.
+
+**Test-first / exact-head:** Test-only head `e4e17ba3fc901c3b7b6ca9616f7af6b69e8d85be` failed Full Verify as expected (1,456/1,457; new case expected 4, observed 1). Final head `eea8c04ea362f17025c7aa99f89126c1f9d442aa` passes Full Verify [44870142777](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142777), Genesis, PWA, live Source Archive, Council, Academy and Combat. Quest Board [44870142852](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142852) and Synthesis [44870142826](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142826) remain in progress at checkpoint.
+
+**Worker A ownership:** Browser [44870142798](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142798) fails the existing Clerk-location assertion after offline PWA recovery passes. #718 keeps the single Clerk in Evidence Archive; Worker A #472 head `c178bfc2` passes Browser with the Clerk in Guild Hall. This is a product/institution placement divergence; do not move or duplicate the NPC or edit Worker A's Browser path without human-gate adjudication. Android [44870142947](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142947) is still in the emulator journey after APK assembly; no terminal JUnit or device acceptance. Worker A #533 head `d4c6cc9c` Android run [43668263362](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43668263362) is terminal FAIL with root cause unknown. Do not edit Worker A Android-owned paths.
+
+**Process:** Root AGENTS, shared protocol, Charter, World Projection Contract, Completion Contract, universal contract, current checkpoint/ledger, registry, PRs, tests and donor references reviewed. No nested AGENTS in target directories. Both authorized Desktop Commander devices are offline; local pre-edit preflight and local Node/Playwright/Gradle unavailable. Hosted post-edit preflight ready, warnings/failures empty; procedural compliance PARTIAL.
+
+**Documentation:** Update this existing #719 branch only; do not rebase/force-sync. It is 59 ahead / 41 behind current #718. Preserve Worker A's registry entry unchanged.
+
+**Next:** collect terminal Quest Board/Synthesis/Android results; preserve the unresolved Clerk institution decision for human gate; then path-by-path reconcile the 77-commit #718 stack against main. No merge/release/deployment/Founder approval/authority transition.
+
+---
+
 ## Run 282 — Worker B steering: explicit Academy refresh from the accepted world projection — 2026-11-20/21
 
 **Runtime:** Continue only PR #718, branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `b7b993b60fa8b4aba6263cf8e9772d2669e2a419`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. Do not create a competing runtime branch. #718 remains draft/unmerged, 75 ahead / 0 behind main, 14 changed paths.
