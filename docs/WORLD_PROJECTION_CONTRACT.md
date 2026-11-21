@@ -29,6 +29,17 @@ Replay is idempotent by `event_id`.
 
 Verified revocations are replayed in event order. They block later executions using the revoked grant, and the quest projector applies the same boundary as the world reducer. A revocation does not silently erase earlier verified outcomes; the original event and its consequence remain auditable in history.
 
+## Source Observation snapshot binding
+
+A retained Source Observation distinguishes an author-declared snapshot reference from a server-validated session receipt:
+
+- `USER_SELECTED` is a participant-entered reference. It carries no server receipt digest and is not proof that the participant viewed, retrieved, or independently checked the referenced bytes.
+- `SERVER_SESSION_RECEIPT` is admitted only after the shared server validates the opaque receipt against the authenticated session, expiry, and exact snapshot revision. Canonical history stores the nonnegative `sourceSnapshotRevision` and a lowercase SHA-256 `sourceSnapshotReceiptDigest`; it never stores the bearer token.
+- The server's stored-history validator, model import validator, and read-only research projection use the same binding predicate. A server-session binding without its revision and 64-hex digest is malformed; an author-selected binding carrying a server receipt digest is also malformed.
+- The digest establishes byte identity of the ephemeral token, not authorship, a distinct human, reading or understanding, source retrieval, independent verification, claim truth, approval, authority, or XP.
+
+The event's research limits remain explicit: `sourceRetrieval: NOT_PERFORMED`, `independentVerification: NOT_PERFORMED`, `modelAssertions: LEADS_ONLY`, and `execution: NOT_EXECUTED`. A receipt changes provenance of the selected snapshot only; it does not upgrade the epistemic status of the note.
+
 ## Donor alignment
 
 This seam is intentionally compatible with the recovered NGL direction, with provenance boundaries:
