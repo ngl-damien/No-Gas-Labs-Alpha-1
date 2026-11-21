@@ -1977,7 +1977,7 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   const mismatchFreshness = walk(mismatchContainer).find(item => item.dataset?.chronicleSnapshotFreshness);
   assert.ok(mismatchFreshness);
   assert.match(mismatchFreshness.textContent,
-    /accepted world revision has advanced or regressed/i);
+    /accepted revision differs from the snapshot captured/i);
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
   assert.match(freshness().textContent, /shared stream is disconnected/i);
   assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'disconnected');
@@ -2735,6 +2735,10 @@ test('World Chronicle keeps an explicitly pinned snapshot until the player refre
   assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'current');
   assert.equal(refreshButton().hidden, true);
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'current');
+  const search = walk(container).find(item => item.dataset?.chronicleSearch === 'true');
+  assert.ok(search, 'the Chronicle search control must remain available after refresh');
+  search.value = '';
+  search.oninput();
   assert.ok(walk(container).some(item =>
     item.dataset?.eventId === 'world:chronicle-pinned-later-discovery'
   ), 'the refreshed Chronicle must reveal the newly accepted event');
