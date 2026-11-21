@@ -1376,6 +1376,12 @@ test('private report text is bound to its exact retained Chronicle event', async
   }, witness, { now });
 
   await validateWorld(reported.world);
+  const reportEvent = reported.world.events.find(event => event.type === 'report');
+  assert.equal(reportEvent.recordId, reported.world.reports[0].id);
+  assert.deepEqual(reportEvent.recordTextReceipt, textReceipt(reported.world.reports[0].text));
+  const tamperedReceipt = structuredClone(reported.world);
+  tamperedReceipt.events.find(event => event.type === 'report').recordTextReceipt.digest = '0'.repeat(64);
+  await assert.rejects(validateWorld(tamperedReceipt), error => error.code === 'INVALID_WORLD');
   const tampered = structuredClone(reported.world);
   tampered.reports[0].text += ' altered after retention';
   await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
@@ -1390,6 +1396,9 @@ test('private contribution text is bound to its exact retained Chronicle event',
   }, witness, { now });
 
   await validateWorld(contributed.world);
+  const contributionEvent = contributed.world.events.find(event => event.type === 'contribute');
+  assert.equal(contributionEvent.recordId, contributed.world.contributions[0].id);
+  assert.deepEqual(contributionEvent.recordTextReceipt, textReceipt(contributed.world.contributions[0].text));
   const tampered = structuredClone(contributed.world);
   tampered.contributions[0].text += ' altered after retention';
   await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
