@@ -827,7 +827,7 @@ function validateHistory(world) {
           publicationsForVersion[0].at !== versions[0].publishedAt || eventPositions.get(publicationsForVersion[0]) >= index ||
           !snapshotRevisionValid ||
           !SOURCE_OBSERVATION_SOURCE_KINDS.includes(event.sourceKind) ||
-          event.originSchema !== 'ngl.source-observatory.v2' || event.bindingMode !== 'USER_SELECTED' ||
+          event.originSchema !== 'ngl.source-observatory.v2' || !isValidSourceObservationBinding(event) ||
           event.sourceRetrieval !== 'NOT_PERFORMED' || event.independentVerification !== 'NOT_PERFORMED' ||
           event.modelAssertions !== 'LEADS_ONLY' || event.execution !== 'NOT_EXECUTED' ||
           typeof event.claim !== 'string' || !event.claim.trim() || Array.from(event.claim).length > 500 ||
