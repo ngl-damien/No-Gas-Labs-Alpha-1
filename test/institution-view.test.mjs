@@ -2679,16 +2679,25 @@ test('Evidence Archive withholds invented positions for partial legacy event sna
 
 test('World Chronicle keeps an explicitly pinned snapshot until the player refreshes it', () => withDocument(() => {
   const { world, founder } = sourceObservationWorld();
+  world.events.push({
+    id: 'chronicle-pinned-existing-discovery',
+    type: 'discover',
+    locationId: 'academy',
+    actor: founder,
+    at: '2026-10-27T10:00:00.000Z'
+  });
   const pinnedRevision = world.events.length;
   world.revision = pinnedRevision;
   assert.ok(Number.isSafeInteger(pinnedRevision) && pinnedRevision >= 0);
   const beforeWorld = structuredClone(world);
   const refreshed = [];
+  const routed = [];
   const container = element('main');
   const update = renderWorldChronicle(container, world, 'publish-observatory', {
     stale: true,
     staleReason: 'revision-mismatch',
     onRefresh: () => refreshed.push('requested'),
+    onOpenLocation: locationId => routed.push(locationId),
     refreshAvailable: true
   });
   const refreshButton = () => walk(container).find(item =>
@@ -2702,6 +2711,20 @@ test('World Chronicle keeps an explicitly pinned snapshot until the player refre
   assert.equal(refreshButton().textContent, 'Refresh World Chronicle →');
   assert.equal(refreshButton().disabled, false);
   assert.equal(container.dataset.chronicleSnapshotRevision, String(pinnedRevision));
+  const search = walk(container).find(item => item.dataset?.chronicleSearch === 'true');
+  assert.ok(search);
+  search.value = '';
+  search.oninput();
+  const pinnedDiscovery = walk(container).find(item =>
+    item.dataset?.eventId === 'world:chronicle-pinned-existing-discovery'
+  );
+  assert.ok(pinnedDiscovery, 'the pinned discovery event must remain inspectable');
+  const recordedPlace = walk(pinnedDiscovery).find(item =>
+    item.dataset?.chronicleRecordedLocation === 'academy'
+  );
+  assert.ok(recordedPlace, 'a retained discovery must expose its recorded map location');
+  assert.equal(recordedPlace.disabled, true,
+    'route navigation must remain disabled while the Chronicle snapshot is stale');
   refreshButton().onclick();
   assert.deepEqual(refreshed, ['requested'], 'the refresh control must invoke only its bounded callback');
 
@@ -2735,10 +2758,17 @@ test('World Chronicle keeps an explicitly pinned snapshot until the player refre
   assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'current');
   assert.equal(refreshButton().hidden, true);
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'current');
-  const search = walk(container).find(item => item.dataset?.chronicleSearch === 'true');
-  assert.ok(search, 'the Chronicle search control must remain available after refresh');
-  search.value = '';
-  search.oninput();
+  const refreshedPlace = walk(container).find(item =>
+    item.dataset?.eventId === 'world:chronicle-pinned-existing-discovery'
+  );
+  const refreshedRoute = walk(refreshedPlace).find(item =>
+    item.dataset?.chronicleRecordedLocation === 'academy'
+  );
+  assert.ok(refreshedRoute);
+  assert.equal(refreshedRoute.disabled, false,
+    'explicit refresh must re-enable deterministic route navigation');
+  refreshedRoute.onclick();
+  assert.deepEqual(routed, ['academy']);
   assert.ok(walk(container).some(item =>
     item.dataset?.eventId === 'world:chronicle-pinned-later-discovery'
   ), 'the refreshed Chronicle must reveal the newly accepted event');
