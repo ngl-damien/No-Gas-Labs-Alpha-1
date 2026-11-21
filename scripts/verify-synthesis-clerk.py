@@ -1048,7 +1048,7 @@ def open_synthesis_clerk(page, packet):
         interact_button = page.locator("#interact-button")
         expect(interact_button).to_be_visible()
         interact_label = interact_button.get_attribute("aria-label") or ""
-        assert "Talk to Synthesis Clerk" in interact_label, (
+        assert "Synthesis Clerk" in interact_label and "nearby collaborator" in interact_label, (
             "Nearby Interact must expose the exact bounded Synthesis action: " + interact_label
         )
         interact_button.tap()
