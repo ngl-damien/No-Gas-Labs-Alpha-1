@@ -4302,8 +4302,11 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         '#sheet-content [data-chronicle-institution-route="town-square"]'
     )
     expect(town_square_route).to_have_count(1)
+    expect(town_square_route).to_have_text('Go to TownSquare →')
     town_square_route.tap()
-    expect(page.locator('#sheet-title')).to_have_text('The Commons at TownSquare')
+    enter_nearby_institution(
+        page, 'town-square', 'TownSquare · Institution Records', 'The Commons at TownSquare'
+    )
     institution_records = page.locator(
         '#sheet-content [data-commons-institution-records="true"]'
     )
@@ -4322,8 +4325,9 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         '[data-chronicle-institution-route="evidence_archive"]'
     )
     expect(archive_route).to_have_count(1)
+    expect(archive_route).to_have_text('Go to Evidence Archive →')
     archive_route.tap()
-    expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    enter_nearby_institution(page, 'evidence_archive', 'Evidence Archive', 'Evidence Archive')
     after_institution_navigation = authoritative_snapshot(page)
     assert after_institution_navigation == chronicle_route_before, (
         'Chronicle-to-institution routes must change player location only; they cannot create world events, XP or approval.'
