@@ -129,7 +129,7 @@ async function sourceArchiveDossierWorld({ kind = 'conflict' } = {}) {
 }
 
 
-function sourceObservationWorld({ claim = 'A model says the bridge is open.' } = {}) {
+function sourceObservationWorld({ claim = 'A model says the bridge is open.', sourceSnapshotRevision } = {}) {
   const founder = { id: 'damien', name: 'Damien', role: 'founder' };
   const witness = { id: 'witness-1', name: 'Witness', role: 'witness' };
   const actor = founder;
@@ -143,9 +143,11 @@ function sourceObservationWorld({ claim = 'A model says the bridge is open.' } =
     uncertainty: 'No independent observation.',
     nextTest: 'Inspect the bridge.'
   };
-  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-    actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
-  })).digest('hex');
+  const identityMaterial = {
+    actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note,
+    ...(sourceSnapshotRevision === undefined ? {} : { sourceSnapshotRevision })
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial(identityMaterial)).digest('hex');
   const observationId = 'source-observation-' + digest;
   const challengeId = 'source-challenge-1';
   const world = {
@@ -158,7 +160,9 @@ function sourceObservationWorld({ claim = 'A model says the bridge is open.' } =
       {
         id: 'source-observation-event', type: 'source-observation-recorded',
         observationId, creationId, version: 1, actor: founder, at: '2026-10-27T09:01:00.000Z',
-        ...note, originSchema: 'ngl.source-observatory.v2', bindingMode: 'USER_SELECTED',
+        ...note,
+        ...(sourceSnapshotRevision === undefined ? {} : { sourceSnapshotRevision }),
+        originSchema: 'ngl.source-observatory.v2', bindingMode: 'USER_SELECTED',
         sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED',
         modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED', normalizedRecordDigest: digest
       },
@@ -256,13 +260,15 @@ test('TownSquare warns about ungrouped events and accepted work without history 
 
 test('Evidence Archive queues only uniquely linked unanswered Source Observation challenges and opens the exact version', () => withDocument(() => {
   const claim = '<img src=x onerror=alert(1)> A model says the bridge is open.';
-  const { world, creationId } = sourceObservationWorld({ claim });
+  const { world, creationId } = sourceObservationWorld({ claim, sourceSnapshotRevision: 1 });
   const before = structuredClone(world);
   const opened = [];
+  const inspected = [];
   const root = element('div');
   renderEvidenceArchive(root, {
     world, shared: true,
-    onOpenArtifact: (id, version) => opened.push([id, version])
+    onOpenArtifact: (id, version) => opened.push([id, version]),
+    onInspectEvent: eventId => inspected.push(eventId)
   });
   const output = textOf(root);
   assert.match(output, /SOURCE OBSERVATORY · AUTHOR RESPONSE QUEUE/);
@@ -287,6 +293,14 @@ test('Evidence Archive queues only uniquely linked unanswered Source Observation
   const registerCards = walk(root).filter(item => item.dataset?.sourceObservationRegisterRecord);
   assert.equal(registerCards.length, 1);
   assert.equal(registerCards[0].dataset.sourceObservationRegisterRecord.startsWith('source-observation-'), true);
+  assert.equal(registerCards[0].dataset.sourceObservationSnapshotRevision, '1');
+  assert.match(textOf(registerCards[0]), /Snapshot reference: world revision 1/);
+  assert.match(textOf(registerCards[0]), /does not prove the actor viewed that snapshot/i);
+  const chronicleButton = walk(root).find(item => item.dataset?.sourceObservationChronicleEvent);
+  assert.ok(chronicleButton, 'the retained observation must navigate to its exact Chronicle event');
+  assert.equal(chronicleButton.dataset.sourceObservationChronicleEvent, 'source-observation-event');
+  chronicleButton.onclick();
+  assert.deepEqual(inspected, ['source-observation-event']);
   const registerButton = walk(root).find(item => item.dataset?.sourceObservationRegisterOpen);
   assert.ok(registerButton);
   assert.equal(registerButton.dataset.creationId, creationId);
