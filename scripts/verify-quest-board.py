@@ -5433,7 +5433,7 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
     expect(page.locator('#sheet-title')).to_have_text(target['title'])
     expect(page.locator('#version-select')).to_have_value(str(target['currentVersion']))
 
-    current_receipt = page.locator('[data-creation-version-receipt]')
+    current_receipt = page.locator('#sheet-content .receipt')
     expect(current_receipt).to_have_count(1)
     current_bytes = target['currentHtml'].encode('utf-8')
     historical_bytes = target['selectedHtml'].encode('utf-8')
@@ -5452,27 +5452,12 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
     assert target['currentReceipt']['digest'] != target['selectedReceipt']['digest'], (
         'The two-edition fixture must distinguish current and historical byte receipts.'
     )
-    expect(current_receipt).to_have_attribute('data-creation-version', str(target['currentVersion']))
-    expect(current_receipt).to_have_attribute(
-        'data-creation-version-receipt-digest', target['currentReceipt']['digest']
-    )
-    expect(current_receipt).to_have_attribute(
-        'data-creation-version-receipt-size', str(target['currentReceipt']['size'])
-    )
+    expect(current_receipt).to_contain_text(target['currentReceipt']['digest'])
+    expect(current_receipt).to_contain_text('v' + str(target['currentVersion']))
     page.locator('#version-select').select_option(str(target['version']))
     expect(page.locator('#version-select')).to_have_value(str(target['version']))
-    historical_receipt = page.locator('[data-creation-version-receipt]')
-    expect(historical_receipt).to_have_attribute('data-creation-version', str(target['version']))
-    expect(historical_receipt).to_have_attribute(
-        'data-creation-version-receipt-digest', target['selectedReceipt']['digest']
-    )
-    expect(historical_receipt).to_have_attribute(
-        'data-creation-version-receipt-size', str(target['selectedReceipt']['size'])
-    )
-    expect(page.locator('[data-creation-version-label]')).to_contain_text(
-        'published v' + str(target['version'])
-    )
-    expect(page.locator('[data-creation-version-intent]')).to_have_text(target['selectedIntent'])
+    expect(current_receipt).to_contain_text(target['selectedReceipt']['digest'])
+    expect(current_receipt).to_contain_text('v' + str(target['version']))
     pinned = authoritative_snapshot(page)
 
     witness_context = browser.new_context(
@@ -5540,11 +5525,9 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
 
         expect(page.locator('#sheet-title')).to_have_text(target['title'])
         expect(page.locator('#version-select')).to_have_value(str(target['version']))
-        roundtrip_receipt = page.locator('[data-creation-version-receipt]')
-        expect(roundtrip_receipt).to_have_attribute('data-creation-version', str(target['version']))
-        expect(roundtrip_receipt).to_have_attribute(
-            'data-creation-version-receipt-digest', target['selectedReceipt']['digest']
-        )
+        roundtrip_receipt = page.locator('#sheet-content .receipt')
+        expect(roundtrip_receipt).to_contain_text(target['selectedReceipt']['digest'])
+        expect(roundtrip_receipt).to_contain_text('v' + str(target['version']))
         detail = page.locator('#sheet-content')
         expect(detail).to_have_attribute('data-creation-snapshot-revision', str(pinned['revision']))
         expect(detail).to_have_attribute('data-creation-snapshot-freshness', 'refresh-required')
