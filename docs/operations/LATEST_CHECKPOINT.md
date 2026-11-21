@@ -1,3 +1,43 @@
+# Run 283 — Guild Dissent Circuit follows append-only Source Observatory chronology (2026-11-20/21)
+
+## Objective
+Correct a deterministic quest-projection defect: valid Source Observatory actions appended after guild membership could be omitted from the shared Guild Dissent Circuit when offline/cross-device wall clocks regressed. The World Projection Contract already declares Source Observatory observations, challenges and responses append-ordered; event-array position, not wall-clock order, is the causal sequence.
+
+## Runtime and regression
+Runtime/test head: `eea8c04ea362f17025c7aa99f89126c1f9d442aa` on [PR #718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`.
+
+- `game/quests.mjs`: Guild Dissent Circuit now uses retained event positions for current membership-at-event, one linked observation per current actor, challenge after both observations, and original-author response after the challenge. Strict normalized UTC timestamps remain mandatory metadata; timestamp comparisons no longer reorder the explicitly append-ordered Source Observatory actions. The projection remains read-only.
+- `test/game-quests.test.mjs`: new positive regression appends a current member's observation, a later challenge, and the original author's response with valid timestamps earlier than the membership/previous-observation wall clock. Both current members see progress 4/4 and the same exact four evidence IDs. The test asserts no world mutation and no XP change. Existing negative cases still reject activity appended before membership and a challenge appended before the second observation even when its timestamp is later.
+- Epistemic boundary is unchanged: the quest records participation, not truth, consensus, verification, approval, mastery, or authority. Actor IDs do not prove distinct humans; no XP is awarded.
+
+Test-first sequence:
+- Test-only head `e4e17ba3fc901c3b7b6ca9616f7af6b69e8d85be`; Full Verify [44870048432](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870048432) failed as intended: 1,456/1,457 tests passed; the new regression expected progress 4 and observed 1.
+- Runtime correction commit/head `eea8c04ea362f17025c7aa99f89126c1f9d442aa`.
+
+## Exact-head verification
+- Full Verify [44870142777](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142777) PASS. Hosted preflight `ready`, warnings/failures empty; Node test stage, Python inspector, package build and bounded institutional exercise exit 0. Preflight artifact [14693107470](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142777/artifacts/14693107470); diagnostics [14693277075](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142777/artifacts/14693277075).
+- Genesis [44870142810](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142810), PWA build [44870142818](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142818), live Source Archive [44870142814](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142814), Council Chamber [44870142806](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142806), Academy Study Shelf [44870142781](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142781), and Combat Yard [44870142837](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142837) PASS.
+- At checkpoint, Quest Board [44870142852](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142852) and Synthesis Clerk [44870142826](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142826) remain IN_PROGRESS.
+- Browser [44870142798](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142798) FAILs at `scripts/verify-browser.py:472` after offline PWA private recovery passes (29 cached entries, two private publications, one notebook restore, one replay no-op, zero world mutation). It expects the single Contradiction Clerk in Guild Hall; #718 places the single Clerk in Evidence Archive. Worker A's separate #472 head `c178bfc2ea9fcb6d558543de2f65c3082d0ac3eb` passes Browser [43111638816](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43111638816) with the opposite placement. This remains a real institutional-placement disagreement; no NPC move, duplicate, or locator edit was made.
+- Android [44870142947](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44870142947) remains IN_PROGRESS in the offline-world emulator journey after portable preflight, SDK/Gradle setup, project snapshot and debug APK assembly. No terminal JUnit or physical-device result is claimed. Worker A's separate #533 head `d4c6cc9c434b402039175179988954e391c06cf3` Android run [43668263362](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43668263362) is terminal FAIL; its root cause remains unknown.
+
+## Process, donor review and governance
+Root `AGENTS.md`, shared protocol, Institutional Charter, World Projection Contract, MMORPG Completion Contract, universal agent contract, latest checkpoint/ledger, Worker B steering, registry, current PRs, relevant source/tests, prior #515 append-order patch, and Worker A's current #472/#533 state were reviewed. Nested `AGENTS.md` files are absent under `game/`, `test/`, `scripts/`, `docs/`, `docs/operations/`, and `docs/operations/hourly-agents/`.
+
+Both authorized Desktop Commander devices were offline. Local pre-edit portable preflight and local Node/Playwright/Gradle execution were unavailable. Hosted exact-head preflight passed after the edits; procedural compliance remains PARTIAL for the missing local pre-edit receipt.
+
+Donor review rechecked the current Guild Dissent Circuit mechanism (#375/#398), the append-order pattern in prior draft #515 (Synthesis, a different event family), RAE/Relay provenance and failure retention, Decision Chamber authority/replay boundaries, and the World Projection Contract. No donor branch or subsystem was merged/copied wholesale.
+
+PR #718 is draft/unmerged at `eea8c04ea362f17025c7aa99f89126c1f9d442aa`, 77 commits ahead / 0 behind main, 16 changed paths. Canonical main remains `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. PR #719 remains on its existing diverged documentation branch: 59 commits ahead / 41 behind current #718; no rebase or force-sync. G6/G7 remain IN_PROGRESS; G9 NOT_STARTED; Founder trust NOT_ENROLLED. No canonical event, XP, truth verdict, approval, authority, merge, release, deployment, or external publication occurred.
+
+## Next
+1. Collect terminal Quest Board and Synthesis acceptance on exact head `eea8c04ea362f17025c7aa99f89126c1f9d442aa`.
+2. Collect the Android emulator result; preserve Worker A ownership of Android repair and do not infer device acceptance from APK assembly.
+3. Preserve the Contradiction Clerk placement disagreement for explicit human-gate adjudication.
+4. Path-by-path reconcile the 77-commit #718 stack against main before any integration decision.
+
+---
+
 # Run 282 — Polymath Academy explicit refresh adopts only an accepted snapshot (2026-11-20/21)
 
 ## Objective
