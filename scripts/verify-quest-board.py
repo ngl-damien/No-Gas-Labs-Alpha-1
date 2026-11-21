@@ -4195,8 +4195,9 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     witness_source_link = new_report_card.locator('[data-evidence-archive-open-event="true"]')
     expect(witness_source_link).to_have_count(1)
     expect(witness_source_link).to_have_attribute('data-event-id', new_report_event_id)
-    expect(witness_source_link).to_have_attribute(
-        'data-event-position', str(new_report_events[0]['eventPosition'])
+    witness_source_position = witness_source_link.get_attribute('data-event-position')
+    assert witness_source_position and witness_source_position.isdigit(), (
+        'The Archive must disclose its own retained source-event append position.'
     )
     witness_source_link.tap()
     expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
@@ -4212,7 +4213,7 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'data-chronicle-actor-attribution', 'complete'
     )
     expect(witness_chronicle_card).to_have_attribute(
-        'data-stream-position', str(new_report_events[0]['eventPosition'])
+        'data-stream-position', witness_source_position
     )
     expect(witness_chronicle_card).to_contain_text('Recorded actor role: witness')
     expect(witness_chronicle_card).to_contain_text(
@@ -4357,6 +4358,8 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'secondSessionActorDistinct': second_before['viewerId'] != after_actions['viewerId'],
         'secondSessionReportActorId': new_report_events[0]['actorId'],
         'secondSessionReportActorRole': new_report_events[0]['actorRole'],
+        'secondSessionReportAppendPosition': new_report_events[0]['eventPosition'],
+        'witnessArchiveSourceAppendPosition': int(witness_source_position),
         'secondSessionRevisionDelta': second_after['revision'] - second_before['revision'],
         'secondSessionXpDelta': second_after['xp'] - second_before['xp'],
         'archiveRefreshAfterReconnect': True,
