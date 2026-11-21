@@ -861,7 +861,7 @@ export function parseSourceObservatoryExport(input) {
 // does not prove that its contents originated from the selected artifact.
 export function sourceObservationRequestMaterial({
   actorId, actorRole, creationId, version, claim, sourceKind, source,
-  falsifier = null, uncertainty = null, nextTest = null
+  falsifier = null, uncertainty = null, nextTest = null, sourceSnapshotRevision
 }) {
   const required = (value, label) => {
     if (typeof value !== 'string' || !value.trim()) throw new TypeError(label + ' is required.');
@@ -875,8 +875,12 @@ export function sourceObservationRequestMaterial({
   if (!['founder', 'witness'].includes(actorRole)) throw new TypeError('Actor role must be Founder or Witness.');
   if (!Number.isSafeInteger(version) || version < 1) throw new TypeError('Version must be a positive integer.');
   if (!sourceObservationSourceKinds.has(sourceKind)) throw new TypeError('Unknown source class.');
-  return JSON.stringify({
-    protocol: 'ngl.source-observation-id.v1',
+  const snapshotBound = sourceSnapshotRevision !== undefined;
+  if (snapshotBound && (!Number.isSafeInteger(sourceSnapshotRevision) || sourceSnapshotRevision < 0)) {
+    throw new TypeError('Source snapshot revision must be a nonnegative safe integer.');
+  }
+  const material = {
+    protocol: snapshotBound ? 'ngl.source-observation-id.v2' : 'ngl.source-observation-id.v1',
     actorId: required(actorId, 'Actor ID'),
     actorRole: required(actorRole, 'Actor role'),
     creationId: required(creationId, 'Creation ID'),
@@ -887,7 +891,9 @@ export function sourceObservationRequestMaterial({
     falsifier: optional(falsifier, 'Falsifier'),
     uncertainty: optional(uncertainty, 'Uncertainty'),
     nextTest: optional(nextTest, 'Next test')
-  });
+  };
+  if (snapshotBound) material.sourceSnapshotRevision = sourceSnapshotRevision;
+  return JSON.stringify(material);
 }
 
 export function projectSourceObservationRecords(eventsInput, creationsInput, {
@@ -964,6 +970,9 @@ export function projectSourceObservationRecords(eventsInput, creationsInput, {
       isStrictTimestamp(event.at) &&
       typeof event.creationId === 'string' && event.creationId &&
       Number.isSafeInteger(event.version) && event.version > 0 &&
+      (event.sourceSnapshotRevision === undefined ||
+        (Number.isSafeInteger(event.sourceSnapshotRevision) && event.sourceSnapshotRevision >= 0 &&
+         Number.isSafeInteger(historyPositions[index]) && event.sourceSnapshotRevision < historyPositions[index])) &&
       typeof event.claim === 'string' && event.claim.trim() && Array.from(event.claim).length <= 500 &&
       sourceObservationSourceKinds.has(event.sourceKind) &&
       typeof event.source === 'string' && event.source.trim() && Array.from(event.source).length <= 500 &&
@@ -1001,6 +1010,10 @@ export function projectSourceObservationRecords(eventsInput, creationsInput, {
     } else if (projectionStatus === 'linked' && publicationRows.length !== 1) {
       projectionStatus = publicationRows.length ? 'ambiguous' : 'unavailable';
       projectionReason = 'The selected version does not have one unique retained publication event.';
+    } else if (projectionStatus === 'linked' && event.sourceSnapshotRevision !== undefined &&
+      event.sourceSnapshotRevision < historyPositions[publicationRows[0].index]) {
+      projectionStatus = 'unavailable';
+      projectionReason = 'The declared snapshot prefix predates the selected publication.';
     } else if (projectionStatus === 'linked' &&
       (publicationRows[0].index >= index || unsafeEvents.has(publicationRows[0].event) || publicationRows[0].event.actor?.role !== 'founder' ||
        !isStrictTimestamp(target.version.publishedAt) ||
@@ -1055,6 +1068,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput, {
       observationId: event.observationId,
       creationId: event.creationId,
       version: event.version,
+      sourceSnapshotRevision: event.sourceSnapshotRevision ?? null,
       claim: event.claim,
       sourceKind: event.sourceKind,
       source: event.source,

@@ -1359,8 +1359,14 @@ function sourceObservationAttributionCopy(){
     ? 'PRIVATE SAVE · LOCAL ATTRIBUTION ONLY. This save stores a device-local actor label, not an authenticated identity. Anyone able to edit the private save can change its actor fields and recompute SHA-256; the digest checks consistency only. It does not prove authorship, an independent witness, or NGL authority.'
     : 'SHARED SESSION · SERVER-BOUND ATTRIBUTION. The shared service binds this note to the authenticated session and role. A session does not prove a distinct human, independent witness, or the truth of the note.';
 }
-function openSourceObservation(creationId,versionNumber,prefillNote=null,prefillOrigin=null){
-  const creation=world.creations.find(item=>item.id===creationId);
+function openSourceObservation(creationId,versionNumber,prefillNote=null,prefillOrigin=null,sourceSnapshot=world){
+  const observationWorldSnapshot=sourceSnapshot&&typeof sourceSnapshot==='object'&&!Array.isArray(sourceSnapshot)?sourceSnapshot:world;
+  const sourceSnapshotRevision=Number.isSafeInteger(observationWorldSnapshot?.revision)&&observationWorldSnapshot.revision>=0?observationWorldSnapshot.revision:null;
+  const creation=(Array.isArray(observationWorldSnapshot?.creations)?observationWorldSnapshot.creations:[]).find(item=>item.id===creationId);
+  if(sourceSnapshotRevision===null){
+    toast('The accepted world snapshot revision is unavailable; no Source Observation form was opened.',true);
+    return;
+  }
   const retained=creation?[creation,...(Array.isArray(creation.versions)?creation.versions:[])]:[];
   const version=retained.find(item=>item.version===versionNumber);
   if(!creation||creation.kind!=='observatory'||!version){
@@ -1383,6 +1389,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
       : 'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. The optional GitHub reader can inspect a public commit-pinned file and save a copy in this browser origin/profile. Saving or previewing that copy does not send its bytes to the shared service. A Founder may explicitly submit a saved capture as a private Source Archive draft. In shared mode the service receives only the pinned permalink and expected Git blob SHA-1, SHA-256 and byte length, then re-fetches the file before creating the draft; offline pending actions store metadata, not source bytes. Private mode keeps a client-reported local archive. Explicit publication exposes the retained text, but retrieval does not verify authorship, claim accuracy, independent verification or truth. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No XP is awarded.';
   content.append(
     paragraph('Target: '+creation.title+' · retained v'+versionNumber+' · '+version.receipt.size+' bytes.'),
+    paragraph('Snapshot reference: accepted world revision '+sourceSnapshotRevision+'. This identifies the retained event-history prefix used to prepare this note. If another actor appends while the form is open, the note keeps this reference; it does not prove source origin or truth.','form-help'),
     paragraph('This is an attributed research note, not a truth verdict. The source class is your selection. The optional GitHub reader below can inspect a public file from this repository pinned to a full commit SHA (UTF-8 text, at most 64 KiB). It checks the returned bytes against GitHub’s reported blob SHA-1 and computes SHA-256. The reader can optionally save exact bytes in this browser origin/profile. Saving or previewing does not send them to the shared service. A Founder may explicitly submit a rechecked capture as a private Source Archive draft; shared mode stores the unpublished draft on the service, while private mode keeps it in the local save. Only later explicit publication makes it a world object. The publication receipt binds artifact bytes only, not the original GitHub source or truth. Local storage can be edited, and the reader does not verify the claim. A model assertion is a lead only; tool output is attributed output only. No test executes, XP is not awarded, and authority is not granted.','form-help'),
     attributionDisclosure,
     ...(importedNote?[node('p',{
@@ -1398,7 +1405,8 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
     'data-source-observation-form':'true',
     'data-source-observation-prefill-origin':prefillOrigin||'none',
     'data-source-observation-creation-id':creationId,
-    'data-source-observation-version':String(versionNumber)
+    'data-source-observation-version':String(versionNumber),
+    'data-source-snapshot-revision':String(sourceSnapshotRevision)
   },[]);
   const claim=node('textarea',{id:'source-observation-claim',maxlength:'500',rows:'3',placeholder:'State one specific, falsifiable claim.',required:'required'});
   const sourceKind=node('select',{id:'source-observation-kind'},[
@@ -1482,7 +1490,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
         nextTest:nextTest.value.trim()||null
       };
       const material=sourceObservationRequestMaterial({
-        actorId:viewer.id,actorRole:viewer.role,creationId,version:versionNumber,...note
+        actorId:viewer.id,actorRole:viewer.role,creationId,version:versionNumber,...note,sourceSnapshotRevision
       });
       if(!globalThis.crypto?.subtle)throw new Error('Web Crypto SHA-256 is unavailable in this browser context.');
       const bytes=await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(material));
@@ -1490,7 +1498,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
       const observationId='source-observation-'+digest;
       const result=await act({
         type:'record-source-observation',requestId:observationId,observationId,
-        creationId,version:versionNumber,...note
+        creationId,version:versionNumber,...note,sourceSnapshotRevision
       });
       const destination=mode==='shared'?'the shared world · authenticated-session attribution':'this private save · local attribution only';
       toast(result?.duplicate===true||result?.idempotentReplay===true
@@ -1550,7 +1558,7 @@ function openCreation(id,requestedVersion=null,focusChallenge=false,{snapshot=wo
         node('a',{href:githubCitation.permalink,target:'_blank',rel:'noopener noreferrer','data-github-source-citation':'true','aria-label':'Open the exact commit-pinned GitHub source file',text:'Open commit-pinned source file'}),
         citationDisclosure]
       : [paragraph('Source / attribution: '+(record.source||'NOT PROVIDED'))];
-    const children=[node('h3',{text:record.claim||'Untitled source observation'}),paragraph('Source class: '+(record.sourceKind||'unspecified')+' · author-selected'),...sourceAttribution,paragraph('Possible falsifier: '+(record.falsifier||'Not recorded')),paragraph('Unknowns / uncertainty: '+(record.uncertainty||'Not recorded')),paragraph('Next discriminating test: '+(record.nextTest||'Not recorded')),paragraph('By '+(record.actor?.name||record.actor?.id||'Unknown actor')+' · '+(record.at||'time unavailable')+' · attributed note, not independent verification.','attribution'),paragraph(record.warning||'This is an author-entered note, not an independently verified claim.','evidence-warning')];if(record.projectionStatus==='linked')children.push(paragraph('Reference: linked to one earlier retained Observatory publication. The selected binding does not prove source origin or truth.','form-help'));else children.push(paragraph('Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));children.push(paragraph('Assurance: world-side source archive/re-fetch '+(record.sourceRetrieval||'UNKNOWN')+'; independent verification '+(record.independentVerification||'UNKNOWN')+'; model assertions '+(record.modelAssertions||'UNKNOWN')+'; execution '+(record.execution||'UNKNOWN')+'.','form-help'));
+    const children=[node('h3',{text:record.claim||'Untitled source observation'}),paragraph('Source class: '+(record.sourceKind||'unspecified')+' · author-selected'),paragraph('Snapshot reference: '+(Number.isSafeInteger(record.sourceSnapshotRevision)?'world revision '+record.sourceSnapshotRevision:'not recorded on this legacy note')+'. This is a retained event-history prefix reference, not a truth verdict.','form-help'),...sourceAttribution,paragraph('Possible falsifier: '+(record.falsifier||'Not recorded')),paragraph('Unknowns / uncertainty: '+(record.uncertainty||'Not recorded')),paragraph('Next discriminating test: '+(record.nextTest||'Not recorded')),paragraph('By '+(record.actor?.name||record.actor?.id||'Unknown actor')+' · '+(record.at||'time unavailable')+' · attributed note, not independent verification.','attribution'),paragraph(record.warning||'This is an author-entered note, not an independently verified claim.','evidence-warning')];if(record.projectionStatus==='linked')children.push(paragraph('Reference: linked to one earlier retained Observatory publication. The selected binding does not prove source origin or truth.','form-help'));else children.push(paragraph('Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));children.push(paragraph('Assurance: world-side source archive/re-fetch '+(record.sourceRetrieval||'UNKNOWN')+'; independent verification '+(record.independentVerification||'UNKNOWN')+'; model assertions '+(record.modelAssertions||'UNKNOWN')+'; execution '+(record.execution||'UNKNOWN')+'.','form-help'));
     for(const challenge of record.challenges||[]){
       const challengeChildren=[
         node('h4',{text:'Challenge · '+challenge.challengeType}),
@@ -1671,7 +1679,7 @@ function openCreation(id,requestedVersion=null,focusChallenge=false,{snapshot=wo
   version.onchange=()=>{selectedVersion=Number(version.value);renderVersionReceipt();renderPublicationLineage();renderNotes();renderSourceObservations();syncChallengeTarget(true)};
   renderVersionReceipt();
   content.append(field('Version archive','version-select',version),publicationLineage,paragraph('Versions are flat retained documents. A SHA-256 receipt establishes exact bytes, not the truth of any claim inside.','form-help'),versionReceipt);
-  renderPublicationLineage();if(creation.kind==='observatory'){content.append(paragraph('Record a falsifiable source note in this version’s Chronicle. The source class is author-selected; retrieval and independent verification remain NOT_PERFORMED.','form-help'),button('Record a source observation →',guarded(()=>{requireCurrentCreationSnapshot();openSourceObservation(id,selectedVersion)}),{id:'source-observation-open',class:'secondary-button'}),sourceObservationList=node('div',{id:'source-observations'}));renderSourceObservations();}
+  renderPublicationLineage();if(creation.kind==='observatory'){content.append(paragraph('Record a falsifiable source note in this version’s Chronicle. The source class is author-selected; retrieval and independent verification remain NOT_PERFORMED.','form-help'),button('Record a source observation →',guarded(()=>{requireCurrentCreationSnapshot();openSourceObservation(id,selectedVersion,null,null,creationWorldSnapshot)}),{id:'source-observation-open',class:'secondary-button'}),sourceObservationList=node('div',{id:'source-observations'}));renderSourceObservations();}
   const notes=node('div',{id:'creation-notes'}),contribution=node('textarea',{id:'contribution-text',maxlength:'500',rows:'3',placeholder:'A useful response, question or counterexample…'});content.append(node('h3',{class:'section-title',text:'Leave a useful trace'}),field('Contribution · 500 characters','contribution-text',contribution),node('div',{class:'button-row'},[button('Add your contribution',guarded(async()=>{requireCurrentCreationSnapshot();await act({type:'contribute',creationId:id,version:selectedVersion,text:contribution.value});contribution.value='';openCreation(id,selectedVersion);toast('Contribution preserved with your attribution. No XP awarded.')}),{id:'contribute-button',class:'secondary-button'})]),notes);
   const report=node('textarea',{id:'report-text',maxlength:'1000',rows:'2',placeholder:'What failed, what is unsupported, or what needs care?'});const reportDetails=node('details',{},[node('summary',{text:'Report a problem or unsupported claim'}),field('Report · 1000 characters','report-text',report),node('div',{class:'button-row'},[button('Preserve this report',guarded(async()=>{requireCurrentCreationSnapshot();await act({type:'report',creationId:id,version:selectedVersion,text:report.value});report.value='';openCreation(id,selectedVersion);toast('Report preserved against that exact version.')}),{id:'report-button',class:'secondary-button'})])]);content.append(reportDetails);
   const challengeDetails=node('details',{id:'contradiction-clerk'},[node('summary',{text:'Ask the Contradiction Clerk to challenge this version'})]);
@@ -3586,7 +3594,7 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null,{snapsho
   const preview=node('div',{class:'evidence-import-preview'});
   preview.dataset.sourceObservationImportPreview='true';
   importer.append(preview);
-  const status=paragraph('Imports become append-only, actor-attributed notes. Re-importing the same note for the same actor and selected version is idempotent.','form-help');
+  const status=paragraph('Imports become append-only, actor-attributed notes. Re-importing the same note for the same actor, selected version and captured snapshot revision is idempotent.','form-help');
   status.dataset.sourceObservationImportStatus='true';
   importer.append(status);
   let parsedExport=null,previewTarget='';
@@ -3600,14 +3608,14 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null,{snapsho
       for(const note of parsedExport.observations){
         if(!globalThis.crypto?.subtle)throw new Error('Web Crypto is unavailable in this browser context.');
         const material=sourceObservationRequestMaterial({
-          actorId:viewer.id,actorRole:viewer.role,creationId:target.creationId,version:target.version,...note
+          actorId:viewer.id,actorRole:viewer.role,creationId:target.creationId,version:target.version,...note,sourceSnapshotRevision:archiveSnapshotRevision
         });
         const bytes=await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(material));
         const digest=Array.from(new Uint8Array(bytes),value=>value.toString(16).padStart(2,'0')).join('');
         const observationId='source-observation-'+digest;
         await act({
           type:'record-source-observation',requestId:observationId,observationId,
-          creationId:target.creationId,version:target.version,...note
+          creationId:target.creationId,version:target.version,...note,sourceSnapshotRevision:archiveSnapshotRevision
         });
         processed++;
       }

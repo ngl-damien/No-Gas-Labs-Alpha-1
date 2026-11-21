@@ -109,7 +109,7 @@ const actionFields = {
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'respond-experiment-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
-  'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId'],
+  'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'sourceSnapshotRevision', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId'],
   'challenge-source-observation': ['type', 'observationId', 'challengeType', 'challengeText', 'requestId'],
   'respond-source-observation-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'post-message': ['type', 'text', 'requestId'],
@@ -566,7 +566,8 @@ function validateHistory(world) {
       'requestId', 'actionFingerprint', 'actionResult',
       ...(event.type === 'contribute' || event.type === 'report' ? ['recordId', 'recordTextReceipt'] : []),
       ...(event.type === 'discover' ? ['repeat'] : []),
-      ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion'] : [])
+      ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion'] : []),
+      ...(event.type === 'source-observation-recorded' ? ['sourceSnapshotRevision'] : [])
     ];
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
@@ -803,18 +804,25 @@ function validateHistory(world) {
       const digest = artifactReceipt(sourceObservationRequestMaterial({
         actorId: event.actor?.id, actorRole: event.actor?.role, creationId: event.creationId, version: event.version,
         claim: event.claim, sourceKind: event.sourceKind, source: event.source,
-        falsifier: event.falsifier, uncertainty: event.uncertainty, nextTest: event.nextTest
+        falsifier: event.falsifier, uncertainty: event.uncertainty, nextTest: event.nextTest,
+        sourceSnapshotRevision: event.sourceSnapshotRevision
       })).digest;
       const key = historyKey(event.creationId, event.version);
       const source = world.creations.find(creation => creation.id === event.creationId);
       const versions = source ? [...(source.versions || []), source].filter(version => version.version === event.version) : [];
       const publicationsForVersion = publicationEventsByVersion.get(key) || [];
+      const publicationPosition = publicationsForVersion.length === 1 ? eventPositions.get(publicationsForVersion[0]) + 1 : null;
+      const eventPosition = index + 1;
+      const snapshotRevisionValid = event.sourceSnapshotRevision === undefined ||
+        (Number.isSafeInteger(event.sourceSnapshotRevision) && Number.isSafeInteger(publicationPosition) &&
+          event.sourceSnapshotRevision >= publicationPosition && event.sourceSnapshotRevision < eventPosition);
       if (typeof event.observationId !== 'string' || event.observationId !== 'source-observation-' + digest ||
           event.normalizedRecordDigest !== digest || sourceObservationIds.has(event.observationId) ||
           event.requestId !== undefined && event.requestId !== event.observationId ||
           !source || source.kind !== 'observatory' || versions.length !== 1 || (versions[0].kind ?? source.kind) !== 'observatory' ||
           !isStrictTimestamp(versions[0].publishedAt) || publicationsForVersion.length !== 1 ||
           publicationsForVersion[0].at !== versions[0].publishedAt || eventPositions.get(publicationsForVersion[0]) >= index ||
+          !snapshotRevisionValid ||
           !SOURCE_OBSERVATION_SOURCE_KINDS.includes(event.sourceKind) ||
           event.originSchema !== 'ngl.source-observatory.v2' || event.bindingMode !== 'USER_SELECTED' ||
           event.sourceRetrieval !== 'NOT_PERFORMED' || event.independentVerification !== 'NOT_PERFORMED' ||
