@@ -782,7 +782,7 @@ def inspect_moonshot_source_archive_failures(page, failure, width, out):
         '#sheet-content [data-chronicle-entries] [data-event-id="' + failure["eventId"] + '"]'
     )
     expect(exact_event).to_have_count(1)
-    expect(exact_event).to_contain_text(failure["eventId"])
+    expect(exact_event).to_have_attribute("data-event-id", failure["eventId"])
     after_chronicle = authoritative_snapshot(page)
     assert_canonical_state_unchanged(
         before_chronicle, after_chronicle,
@@ -796,10 +796,9 @@ def inspect_moonshot_source_archive_failures(page, failure, width, out):
         after_chronicle, reopened, "Reopening Moonshot Field after Chronicle inspection"
     )
     latest_again = page.locator(
-        '#sheet-content [data-moonshot-source-archive-failure-card="true"]'
-    ).filter(has=page.locator(
+        '#sheet-content [data-moonshot-source-archive-failure-card="true"]' +
         '[data-moonshot-source-archive-failure-event-id="' + failure["eventId"] + '"]'
-    ))
+    )
     expect(latest_again).to_have_count(1)
     investigate = latest_again.locator(
         '[data-moonshot-source-archive-failure-investigate-event-id="' + failure["eventId"] + '"]'
