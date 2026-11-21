@@ -1567,6 +1567,7 @@ def record_source_observation(page, fixture, claim):
     actor = authoritative_snapshot(page)
     actor_id = actor['viewerId']
     actor_role = actor['viewerRole']
+    source_snapshot_revision = actor['revision']
     version = fixture.get('version', 1)
     note = {
         'claim': claim.strip(),
@@ -1579,7 +1580,7 @@ def record_source_observation(page, fixture, claim):
     # Mirror the public sourceObservationRequestMaterial canonical field order.
     # This creates an actor-bound note ID, not a source receipt or verification.
     material = json.dumps({
-        'protocol': 'ngl.source-observation-id.v1',
+        'protocol': 'ngl.source-observation-id.v2',
         'actorId': actor_id,
         'actorRole': actor_role,
         'creationId': fixture['creationId'],
@@ -1589,7 +1590,8 @@ def record_source_observation(page, fixture, claim):
         'source': note['source'],
         'falsifier': note['falsifier'],
         'uncertainty': note['uncertainty'],
-        'nextTest': note['nextTest']
+        'nextTest': note['nextTest'],
+        'sourceSnapshotRevision': source_snapshot_revision
     }, ensure_ascii=False, separators=(',', ':'))
     observation_id = 'source-observation-' + hashlib.sha256(material.encode('utf-8')).hexdigest()
     action = {
@@ -1597,12 +1599,13 @@ def record_source_observation(page, fixture, claim):
         'creationId': fixture['creationId'],
         'version': version,
         'observationId': observation_id,
+        'sourceSnapshotRevision': source_snapshot_revision,
         **note,
         'requestId': observation_id
     }
     payload = post_action(page, action)
     assert payload.get('result', {}).get('observationId') == observation_id
-    return {'observationId': observation_id, 'actorId': actor_id, 'actorRole': actor_role}
+    return {'observationId': observation_id, 'actorId': actor_id, 'actorRole': actor_role, 'sourceSnapshotRevision': source_snapshot_revision}
 
 
 def shared_world_snapshot(snapshot):
