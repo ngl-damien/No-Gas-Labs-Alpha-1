@@ -801,11 +801,11 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
     for(const destination of validDestinations){
      const routeItem=el('div');
      routeItem.className='chronicle-institution-destination';
-     const route=el('button','Open '+destination.name+' →');
+     const route=el('button','Go to '+destination.name+' →');
      route.type='button';
      route.className='secondary-button';
      route.dataset.chronicleInstitutionRoute=destination.id;
-     route.setAttribute('aria-label','Open related institution '+destination.name+
+     route.setAttribute('aria-label','Go to related institution '+destination.name+
       (typeof destination.purpose==='string'&&destination.purpose?' · '+destination.purpose:''));
      route.onclick=()=>options.onOpenLocation(destination.id);
      routeItem.append(route);
