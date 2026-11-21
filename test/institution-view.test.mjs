@@ -2679,7 +2679,8 @@ test('Evidence Archive withholds invented positions for partial legacy event sna
 
 test('World Chronicle keeps an explicitly pinned snapshot until the player refreshes it', () => withDocument(() => {
   const { world, founder } = sourceObservationWorld();
-  const pinnedRevision = world.revision;
+  const pinnedRevision = world.events.length;
+  world.revision = pinnedRevision;
   assert.ok(Number.isSafeInteger(pinnedRevision) && pinnedRevision >= 0);
   const beforeWorld = structuredClone(world);
   const refreshed = [];
