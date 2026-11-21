@@ -2335,6 +2335,12 @@ export class PixelWorldView extends WorldView {
     this.refreshMapOverlayRectsIfNeeded();
     this.mapAvoidRects = Array.isArray(this.mapOverlayRects) ? [...this.mapOverlayRects] : [];
     if (this.canvas.dataset) {
+      // These coordinates describe the local renderer only. They support
+      // deterministic diagnostics and offline-map acceptance; they are not
+      // server-authoritative position receipts or evidence of shared activity.
+      this.canvas.dataset.playerX = Number.isFinite(this.player?.x) ? String(this.player.x) : 'unavailable';
+      this.canvas.dataset.playerY = Number.isFinite(this.player?.y) ? String(this.player.y) : 'unavailable';
+      this.canvas.dataset.playerPositionSource = 'local-renderer';
       this.canvas.dataset.mapOverlayCount = String(this.mapAvoidRects.length);
       this.canvas.dataset.mapOverlayVisibility = this.mapOverlayVisibility ? 'visible' : 'hidden';
     }
