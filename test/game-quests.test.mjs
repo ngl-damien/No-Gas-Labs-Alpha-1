@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestObjectiveActionable, FIELD_ITEM_SOURCE_TYPES } from '../game/quests.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestObjectiveActionable, FIELD_ITEM_SOURCE_TYPES, createQuestEvidenceEventLinkResolver } from '../game/quests.mjs';
 import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
@@ -4446,4 +4446,37 @@ test('Armor Bearer quest prioritizes an actionable owned item over a pending rec
   getQuestTrail(secondForge.world, founder);
   assert.deepEqual(secondForge.world, beforeProjection,
     'selecting the next actionable chain is a read-only projection');
+});
+
+
+test('Quest evidence Chronicle links require one exact retained world-event identity', () => {
+  const event = {
+    id: 'quest-evidence-source-event',
+    type: 'source-observation-recorded',
+    at: '2026-11-21'
+  };
+  const world = { events: [event] };
+  const before = structuredClone(world);
+  const resolve = createQuestEvidenceEventLinkResolver(world);
+
+  assert.deepEqual(resolve({ id: event.id, type: event.type }), {
+    status: 'linked', event, reason: null
+  }, 'an exact unique event remains inspectable even when its timestamp needs Chronicle warning');
+  assert.equal(resolve({ id: ' ' + event.id, type: event.type }).status, 'invalid');
+  assert.equal(resolve({ id: 'missing-quest-evidence-event', type: event.type }).status, 'unlinked');
+  assert.equal(resolve({ id: event.id, type: 'source-observation-challenged' }).status, 'mismatched');
+  assert.equal(resolve({ id: 'x'.repeat(129), type: event.type }).status, 'invalid');
+  assert.equal(
+    createQuestEvidenceEventLinkResolver({ events: [event, { ...event, type: 'source-observation-challenged' }] })(
+      { id: event.id, type: event.type }
+    ).status,
+    'ambiguous',
+    'a duplicate event identity must not choose one matching Chronicle record'
+  );
+  assert.equal(
+    createQuestEvidenceEventLinkResolver({})({ id: event.id, type: event.type }).status,
+    'unavailable',
+    'missing retained world history must not be treated as an empty or linkable stream'
+  );
+  assert.deepEqual(world, before, 'resolving a quest evidence link must not mutate retained world history');
 });
