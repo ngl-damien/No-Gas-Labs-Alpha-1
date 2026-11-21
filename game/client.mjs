@@ -4563,6 +4563,119 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
     }
   });
   content.append(predicateForm);
+  // Failed server-observed retrievals are research blockers, not claim verdicts.
+  // Reuse the Evidence Archive's strict projection; this panel is read-only and
+  // deliberately shows only the newest six while linking to the full ledger.
+  const sourceArchiveFailureLedger=node('section',{
+    class:'field-card',
+    'data-moonshot-source-archive-failure-ledger':'true'
+  },[]);
+  sourceArchiveFailureLedger.append(
+    node('h3',{class:'section-title',text:'RETRIEVAL FAILURES · RESEARCH BLOCKERS'}),
+    paragraph('Server-observed Source Archive retrieval/build failures remain part of the research history. A later successful retry does not erase an earlier failure. These records describe operational attempts, not source truth, claim verdicts, approval, or authority.','form-help')
+  );
+  const sourceArchiveFailureSnapshotStale=mode==='shared'&&isSharedSnapshotStale();
+  const sourceArchiveFailureProjection=mode==='shared'
+    ?projectSourceArchiveFailureObjects(world,{limit:6,page:0})
+    :null;
+  if(mode!=='shared'){
+    sourceArchiveFailureLedger.append(paragraph(
+      'Source Archive failures are shared-service events. This private save does not manufacture or infer them.',
+      'form-help'
+    ));
+  }else if(!sourceArchiveFailureProjection){
+    sourceArchiveFailureLedger.append(paragraph(
+      'Failure history is incomplete or unavailable; no failure objects are projected. Absence is not interpreted as no failures.',
+      'evidence-warning'
+    ));
+  }else{
+    const failureProjection=sourceArchiveFailureProjection;
+    sourceArchiveFailureLedger.setAttribute('data-moonshot-source-archive-failure-page','0');
+    sourceArchiveFailureLedger.setAttribute('data-moonshot-source-archive-failure-snapshot-revision',
+      Number.isSafeInteger(world?.revision)&&world.revision>=0?String(world.revision):'unavailable');
+    sourceArchiveFailureLedger.setAttribute('data-moonshot-source-archive-failure-page-size',String(failureProjection.pageSize));
+    sourceArchiveFailureLedger.setAttribute('data-moonshot-source-archive-failure-total',String(failureProjection.total));
+    sourceArchiveFailureLedger.setAttribute('data-moonshot-source-archive-failure-total-pages',String(failureProjection.totalPages));
+    sourceArchiveFailureLedger.setAttribute('data-moonshot-source-archive-failure-visible-count',String(failureProjection.records.length));
+    sourceArchiveFailureLedger.setAttribute('data-moonshot-source-archive-failure-has-older',String(failureProjection.hasOlder));
+    sourceArchiveFailureLedger.setAttribute('data-moonshot-source-archive-failure-complete',String(failureProjection.complete));
+    sourceArchiveFailureLedger.setAttribute('data-moonshot-source-archive-failure-freshness',sourceArchiveFailureSnapshotStale?'stale':'current');
+    if(sourceArchiveFailureSnapshotStale)sourceArchiveFailureLedger.append(paragraph(
+      'LAST ACCEPTED SNAPSHOT · STALE. Reconnect and refresh before treating the absence of newer failure objects as meaningful. Known retained records remain inspectable.',
+      'evidence-warning'
+    ));
+    if(failureProjection.invalidCount>0)sourceArchiveFailureLedger.append(paragraph(
+      failureProjection.invalidCount+' retained failure event(s) could not be safely projected. They remain in Chronicle; no substitute record is inferred.',
+      'evidence-warning'
+    ));
+    if(!failureProjection.complete)sourceArchiveFailureLedger.append(paragraph(
+      'This player snapshot omits '+failureProjection.unseenEventCount+' retained world event(s). The visible failure objects are partial; absence is not proof that no other failures exist.',
+      'evidence-warning'
+    ));
+    if(!failureProjection.total){
+      sourceArchiveFailureLedger.append(paragraph(
+        failureProjection.complete&&!sourceArchiveFailureSnapshotStale&&failureProjection.invalidCount===0
+          ?'No valid service-observed Source Archive failures are retained in this current snapshot.'
+          :'No valid Source Archive failures are visible in this snapshot. Missing, invalid, or newer history is not treated as none.',
+        'empty-note'
+      ));
+    }else{
+      sourceArchiveFailureLedger.append(paragraph(
+        'Showing latest '+failureProjection.records.length+' of '+failureProjection.total+
+        ' valid service-observed failures. Cards are newest-first within this bounded view; older pages remain in Evidence Archive.',
+        'form-help'
+      ));
+      for(const record of [...failureProjection.records].reverse()){
+        const card=node('article',{
+          class:'field-card',
+          'data-moonshot-source-archive-failure-card':'true',
+          'data-moonshot-source-archive-failure-event-id':record.eventId,
+          'data-moonshot-source-archive-failure-status':record.status
+        },[]);
+        card.append(
+          node('h4',{text:'Source Archive · '+record.failureLabel}),
+          node('span',{class:'pill',text:record.statusLabel}),
+          paragraph('Repository: '+record.repository),
+          paragraph('Commit: '+record.commitSha),
+          paragraph('Path: '+record.path),
+          paragraph('Failure code: '+record.failureCode+' · attempt '+record.attemptId),
+          paragraph('By '+record.actorName+' · '+(
+            record.historyPosition===null
+              ?'visible position #'+record.visiblePosition+'; canonical history position unavailable in this partial projection'
+              :'world history position #'+record.historyPosition
+          )),
+          paragraph('Service-observed retrieval/build failure only. It does not establish source truth, invalidate a claim, award XP, or create a publication.','form-help'),
+          node('code',{text:record.eventId}),
+          button('Inspect exact failure in World Chronicle →',()=>openWorldChronicle(record.eventId,{snapshot:world}),{
+            class:'list-button',
+            'data-moonshot-source-archive-failure-chronicle-event-id':record.eventId,
+            'aria-label':'Inspect exact Source Archive failure '+record.eventId+' in World Chronicle'
+          }),
+          button('Investigate failure in Source Observatory →',()=>openSourceObservatory({
+            claim:'A prior Source Archive capture for '+record.repository+'@'+record.commitSha+':'+record.path+' ended with '+record.failureCode+'.',
+            sourceKind:'tool-output',
+            source:'Retained service event '+record.eventId+' · attempt '+record.attemptId+' · '+record.repository+'@'+record.commitSha+':'+record.path,
+            falsifier:'A new explicit capture retrieves bytes matching the pinned Git blob SHA-1, SHA-256 and byte length.',
+            uncertainty:'This operational failure does not establish source availability, receipt correctness, authorship, claim accuracy, independent verification, or truth.',
+            nextTest:record.retryable
+              ?'Start a new explicit capture of the same repository, commit and path with a new request ID; retain the new attempt separately.'
+              :'Inspect the pinned target and expected Git blob SHA-1, SHA-256 and byte length; correct the receipt mismatch before a new explicit capture.'
+          },'source-archive-failure'),{
+            class:'list-button',
+            'data-moonshot-source-archive-failure-investigate-event-id':record.eventId,
+            'aria-label':'Prepare a research lead from Source Archive failure '+record.eventId
+          })
+        );
+        sourceArchiveFailureLedger.append(card);
+      }
+      sourceArchiveFailureLedger.append(button(
+        'Open full failure ledger in Evidence Archive →',
+        ()=>openEvidenceArchive(),
+        {class:'secondary-button','data-moonshot-source-archive-failure-open-ledger':'true'}
+      ));
+    }
+  }
+  content.append(sourceArchiveFailureLedger);
   const allPredicateEvents=(Array.isArray(world.events)?world.events:[])
     .filter(item=>item?.type==='source-archive-predicate-evaluated');
   const recentPredicateStart=Math.max(0,allPredicateEvents.length-12);
