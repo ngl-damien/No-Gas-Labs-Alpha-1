@@ -3,7 +3,7 @@ import {registerOfflineShell} from './offline-shell.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
 import {buildSatireIssueBody,readSatireIssueArtifact,findSatireIssuePublication,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX,buildGitHubSourceArchiveBody,GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX,GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL,readGitHubSourceArchiveMetadata} from './artifacts.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
-import {getActiveQuest,getQuestTrail,getLocationAction,isQuestObjectiveActionable,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
+import {getActiveQuest,getQuestTrail,getLocationAction,isQuestObjectiveActionable,findStudyReview,hasStudyReviewRecord,createQuestEvidenceEventLinkResolver} from './quests.mjs';
 import {projectCharacter,createFieldItemSourcePager,FIELD_EQUIPMENT_SLOTS,FIELD_ITEM_SOURCE_PAGE_SIZE} from './character-sheet.mjs';
 import {PixelWorldView, GUILD_NPCS, LOCAL_NPCS} from './pixel-world-view.mjs';
 import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench} from './guild-npc-workbench.mjs';
@@ -294,20 +294,24 @@ function openQuestBoard() {
   const content = showSheet('Quest Board', 'COMMON GROUND · RETAINED OBJECTIVES');
   content.setAttribute('data-quest-board', 'true');
   content.setAttribute('data-actor-role', viewer.role);
-  const milestones = getQuestTrail(world, viewer);
+  const questSnapshot = world;
+  const milestones = getQuestTrail(questSnapshot, viewer);
   const recorded = milestones.filter(item => item.complete).length;
   const blocked = milestones.filter(item => !item.complete && item.blockedReason).length;
   const unresolved = milestones.length - recorded;
   content.append(
     paragraph(`${viewer.role === 'founder' ? 'Founder' : 'Witness'} objectives are scoped to this character. ${recorded} recorded · ${unresolved} unresolved (${blocked} blocked).`, 'status-line'),
-    paragraph('RECORDED means the current objective rule found matching retained events. It does not certify truth, mastery, independent execution, approval, or authority. Opening this board is read-only; use each objective action to visit the institution where the work belongs.', 'form-help')
+    paragraph('RECORDED means the current objective rule found matching retained events. It does not certify truth, mastery, independent execution, approval, or authority. Opening this board is read-only; use each objective action to visit the institution where the work belongs. Open an evidence detail to inspect its exact World Chronicle event when the retained identity is unique.', 'form-help')
   );
   const list = node('ol', {
     class: 'quest-trail',
     'data-quest-board-list': 'true',
     'aria-label': 'Actor-scoped objective trail'
   });
-  renderQuestTrail(milestones, list);
+  renderQuestTrail(milestones, list, {
+    worldSnapshot: questSnapshot,
+    onInspectEvent: eventId => openWorldChronicle(eventId, { snapshot: questSnapshot })
+  });
   content.append(list);
 }
 
@@ -922,7 +926,7 @@ function followQuestAction(action){
 }
 const QUEST_EVIDENCE_PAGE_SIZE = 20;
 
-function renderQuestEvidenceEntry(evidence) {
+function renderQuestEvidenceEntry(evidence, options = {}) {
   const facts = [
     evidence.type ? evidence.type.toUpperCase() : null,
     evidence.actorId ? 'actor ' + evidence.actorId : null,
@@ -944,7 +948,31 @@ function renderQuestEvidenceEntry(evidence) {
   const entry = node('li');
   entry.append(node('span', { text: facts.join(' · ') }));
   entry.append(node('code', { text: evidence.id }));
-  const retained = world.creations.find(creation => creation.id === evidence.creationId);
+  if (typeof options.onInspectEvent === 'function' &&
+      typeof options.resolveEvidenceEvent === 'function') {
+    const resolution = options.resolveEvidenceEvent(evidence);
+    if (resolution.status === 'linked') {
+      const eventId = resolution.event.id;
+      entry.append(button('Inspect event in World Chronicle →',
+        () => options.onInspectEvent(eventId), {
+          class: 'text-button quest-evidence-open quest-evidence-chronicle',
+          'data-quest-evidence-event-link': eventId,
+          'data-chronicle-event-id': eventId,
+          'data-chronicle-source': 'world',
+          'aria-label': 'Inspect retained ' + resolution.event.type + ' event in World Chronicle'
+        }));
+    } else {
+      entry.append(node('small', {
+        class: 'form-help quest-evidence-link-warning',
+        'data-quest-evidence-link-status': resolution.status,
+        text: 'Chronicle navigation withheld: ' + resolution.reason
+      }));
+    }
+  }
+  const snapshot = options.worldSnapshot && typeof options.worldSnapshot === 'object' &&
+    !Array.isArray(options.worldSnapshot) ? options.worldSnapshot : world;
+  const retained = (Array.isArray(snapshot?.creations) ? snapshot.creations : [])
+    .find(creation => creation.id === evidence.creationId);
   if (retained && Number.isInteger(evidence.version) &&
       [retained, ...(Array.isArray(retained.versions) ? retained.versions : [])]
         .some(version => version.version === evidence.version)) {
@@ -976,9 +1004,20 @@ function renderQuestEvidenceEntry(evidence) {
   return entry;
 }
 
-function renderQuestTrail(milestones, list = $('quest-trail')) {
+function renderQuestTrail(milestones, list = $('quest-trail'), options = {}) {
   if (!list) return;
   list.replaceChildren();
+  const settings = options && typeof options === 'object' ? options : {};
+  const questSnapshot = settings.worldSnapshot && typeof settings.worldSnapshot === 'object' &&
+    !Array.isArray(settings.worldSnapshot) ? settings.worldSnapshot : world;
+  const evidenceOptions = typeof settings.onInspectEvent === 'function'
+    ? {
+        ...settings,
+        worldSnapshot: questSnapshot,
+        resolveEvidenceEvent: typeof settings.resolveEvidenceEvent === 'function'
+          ? settings.resolveEvidenceEvent : createQuestEvidenceEventLinkResolver(questSnapshot)
+      }
+    : settings;
   for (const item of milestones) {
     const count = item.evidenceIds.length;
     // Prefer the bounded page API. Reading the compatibility `evidence` getter
@@ -1013,7 +1052,7 @@ function renderQuestTrail(milestones, list = $('quest-trail')) {
       const entries = node('ul', { class: 'quest-evidence-list' });
       let loadedFrom = Math.max(0, detailCount - QUEST_EVIDENCE_PAGE_SIZE);
       for (const detail of page(loadedFrom, QUEST_EVIDENCE_PAGE_SIZE)) {
-        entries.append(renderQuestEvidenceEntry(detail));
+        entries.append(renderQuestEvidenceEntry(detail, evidenceOptions));
       }
       disclosure.append(entries);
 
