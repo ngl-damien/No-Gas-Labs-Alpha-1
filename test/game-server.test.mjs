@@ -3556,7 +3556,12 @@ test('large shared state and export snapshots negotiate fast gzip without changi
 
   const exported = await rawGet('/api/export', 'gzip');
   assert.equal(exported.headers['content-encoding'], 'gzip');
-  assert.deepEqual(JSON.parse(gunzipSync(exported.bytes).toString('utf8')), decoded);
+  const exportedDto = JSON.parse(gunzipSync(exported.bytes).toString('utf8'));
+  assert.equal(exportedDto.sourceSnapshotReceipt, undefined,
+    'A session-bound delivery token must never enter a portable world export.');
+  const { sourceSnapshotReceipt, ...stateWithoutEphemeralReceipt } = decoded;
+  assert.ok(sourceSnapshotReceipt && sourceSnapshotReceipt.revision === decoded.world.revision);
+  assert.deepEqual(exportedDto, stateWithoutEphemeralReceipt);
 });
 
 
