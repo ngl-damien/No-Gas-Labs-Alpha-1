@@ -528,6 +528,76 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
   return Object.freeze(milestone);
 }
 
+/**
+ * Resolve one Quest Board evidence detail to its exact retained world event.
+ * The index is built from the pinned snapshot once; duplicate, malformed,
+ * missing, or type-mismatched identities fail closed. A link establishes only
+ * event identity, never the truth or authority of the event's contents.
+ */
+export function createQuestEvidenceEventLinkResolver(world) {
+  const events = Array.isArray(world?.events) ? world.events : null;
+  if (!events) {
+    return () => ({
+      status: 'unavailable',
+      event: null,
+      reason: 'Retained world event history is unavailable.'
+    });
+  }
+
+  const eventsById = new Map();
+  for (const event of events) {
+    if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
+    const id = event.id;
+    if (typeof id !== 'string' || !id || id.length > 128 || id.trim() !== id) continue;
+    const matches = eventsById.get(id) || [];
+    matches.push(event);
+    eventsById.set(id, matches);
+  }
+
+  return evidence => {
+    const id = evidence?.id;
+    if (typeof id !== 'string' || !id || id.length > 128 || id.trim() !== id) {
+      return {
+        status: 'invalid',
+        event: null,
+        reason: 'The evidence identity is missing or not normalized.'
+      };
+    }
+    const type = evidence?.type;
+    if (typeof type !== 'string' || !type || type.trim() !== type) {
+      return {
+        status: 'invalid',
+        event: null,
+        reason: 'The evidence event type is missing or not normalized.'
+      };
+    }
+    const matches = eventsById.get(id) || [];
+    if (matches.length === 0) {
+      return {
+        status: 'unlinked',
+        event: null,
+        reason: 'No retained world event matches this evidence identity.'
+      };
+    }
+    if (matches.length !== 1) {
+      return {
+        status: 'ambiguous',
+        event: null,
+        reason: 'Multiple retained world events share this evidence identity.'
+      };
+    }
+    const event = matches[0];
+    if (event.type !== type) {
+      return {
+        status: 'mismatched',
+        event: null,
+        reason: 'The retained event type does not match this evidence detail.'
+      };
+    }
+    return { status: 'linked', event, reason: null };
+  };
+}
+
 const PLAYER_GUILD_MEMBERSHIP_EVENT_TYPES = new Set([
   'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
 ]);
