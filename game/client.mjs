@@ -1501,7 +1501,36 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
     }
   });
 }
-function openCreation(id,requestedVersion=null,focusChallenge=false,{snapshot=world}={}){const creationWorldSnapshot=snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)?snapshot:world;const creation=Array.isArray(creationWorldSnapshot?.creations)?creationWorldSnapshot.creations.find(c=>c.id===id):null;if(!creation)return;const availableVersions=[creation,...[...(Array.isArray(creation.versions)?creation.versions:[])].reverse()];selectedCreation=id;selectedVersion=availableVersions.some(version=>version.version===requestedVersion)?requestedVersion:creation.version;const selectedArtifact=availableVersions.find(version=>version.version===selectedVersion);const satireIssue=readSatireIssueArtifact({
+function openCreation(id,requestedVersion=null,focusChallenge=false,{snapshot=world}={}){
+  const creationWorldSnapshot=snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)?snapshot:world;
+  const creation=Array.isArray(creationWorldSnapshot?.creations)?creationWorldSnapshot.creations.find(c=>c.id===id):null;
+  if(!creation)return;
+  const targetVersion=requestedVersion===null?creation.version:requestedVersion;
+  const showUnavailableVersion=()=>{
+    const unavailable=showSheet(creation.title,'ARTIFACT VERSION UNAVAILABLE');
+    unavailable.dataset.creationDetail='true';
+    unavailable.dataset.creationVersionStatus='unavailable';
+    unavailable.dataset.creationSnapshotRevision=Number.isSafeInteger(creationWorldSnapshot?.revision)&&creationWorldSnapshot.revision>=0?String(creationWorldSnapshot.revision):'unavailable';
+    unavailable.dataset.creationRequestedVersion=Number.isSafeInteger(targetVersion)&&targetVersion>0?String(targetVersion):'invalid';
+    unavailable.append(paragraph(
+      'Requested artifact version '+(Number.isSafeInteger(targetVersion)&&targetVersion>0?'v'+targetVersion:'(invalid)')+
+      ' is not uniquely retained in this accepted snapshot. The current version was not substituted. Return to the source event or refresh the accepted snapshot; no different edition was opened.',
+      'evidence-warning'
+    ));
+  };
+  try{prepareContradictionReview(creation, targetVersion);}catch{
+    showUnavailableVersion();
+    return;
+  }
+  const availableVersions=[creation,...[...(Array.isArray(creation.versions)?creation.versions:[])].reverse()];
+  const selectedArtifact=availableVersions.find(version=>version.version===targetVersion);
+  if(!selectedArtifact){
+    showUnavailableVersion();
+    return;
+  }
+  selectedCreation=id;
+  selectedVersion=targetVersion;
+  const satireIssue=readSatireIssueArtifact({
   kind:creation.kind,
   title:selectedArtifact?.title??creation.title,
   intent:selectedArtifact?.intent??creation.intent,
@@ -1653,9 +1682,9 @@ function openCreation(id,requestedVersion=null,focusChallenge=false,{snapshot=wo
       content.append(
         node('h3',{class:'section-title',text:'Preserve the issue. Publish the correction.'}),
         paragraph('A published satire issue is an immutable in-world edition. Preserve its dissent and correction trigger; the follow-up must bind this exact creation, edition and publication event.','form-help'),
-        node('div',{class:'button-row'},[button('Draft a linked follow-up issue →',()=>{requireCurrentCreationSnapshot();openSatireWorkbench({
+        node('div',{class:'button-row'},[button('Draft a linked follow-up issue →',guarded(()=>{requireCurrentCreationSnapshot();openSatireWorkbench({
           creationId:id,version:selectedVersion,publicationEventId:satirePublication.event.id
-        })},{id:'follow-up-satire-issue',class:'secondary-button'})])
+        })}),{id:'follow-up-satire-issue',class:'secondary-button'})])
       );
     }else if(satireIssue){
       content.append(paragraph('This issue version does not have one unambiguous retained publication event; a correction link cannot be created.','evidence-warning'));
@@ -1665,7 +1694,24 @@ function openCreation(id,requestedVersion=null,focusChallenge=false,{snapshot=wo
   }
   function renderNotes(){notes.replaceChildren(node('h3',{class:'section-title',text:`Notes on v${selectedVersion}`}));const entries=[...creationWorldSnapshot.contributions.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Contribution'})),...creationWorldSnapshot.reports.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Report'}))];if(!entries.length)notes.append(paragraph('A place for the first real response.','empty-note'));for(const n of entries)notes.append(node('article',{class:'note-entry'},[paragraph(n.text),paragraph(`${n.type} · ${n.actor.name} · ${new Date(n.at).toLocaleDateString()}`,'attribution')]));}activeNoteRenderer=()=>{renderNotes();renderSourceObservations();refreshCreationSnapshotFreshnessNotice()};renderNotes();renderSourceObservations();refreshCreationSnapshotFreshnessNotice();
 }
-function enterCreation(creationId=selectedCreation,versionNumber=selectedVersion,snapshot=world){const sourceWorld=snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)?snapshot:world;const c=Array.isArray(sourceWorld?.creations)?sourceWorld.creations.find(c=>c.id===creationId):null;if(!c)return;const version=versionNumber===c.version?c:c.versions.find(v=>v.version===versionNumber);if(!version)return;const nativeFileSurface=c.kind==='observatory'&&version.html.includes('data-ngl-native-file-surface="source-observatory-v2"');const sourceObservationTarget=mode==='shared'&&nativeFileSurface?{creationId:c.id,version:version.version}:null;openPortal({title:`${c.title} · v${version.version}`,html:version.html,nativeFileSurface,sourceObservationTarget,footer:[paragraph(`Published v${version.version} · ${version.receipt.size.toLocaleString()} checked bytes · interactions inside the frame are local to this open artifact.`),button('↓ Save artifact',()=>download(`${c.kind}-v${version.version}.html`,version.html),{id:'download-artifact',class:'secondary-button'})]})}
+function enterCreation(creationId=selectedCreation,versionNumber=selectedVersion,snapshot=world){
+  const sourceWorld=snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)?snapshot:world;
+  const c=Array.isArray(sourceWorld?.creations)?sourceWorld.creations.find(c=>c.id===creationId):null;
+  if(!c)return;
+  let validatedVersion;
+  try{validatedVersion=prepareContradictionReview(c,versionNumber).target.version;}catch{
+    toast('The exact requested artifact version is missing, ambiguous, or invalid in this snapshot. No different edition was opened.');
+    return;
+  }
+  const version=validatedVersion===c.version?c:c.versions[validatedVersion-1];
+  if(!version){
+    toast('The exact requested artifact version is unavailable in this snapshot. No different edition was opened.');
+    return;
+  }
+  const nativeFileSurface=c.kind==='observatory'&&version.html.includes('data-ngl-native-file-surface="source-observatory-v2"');
+  const sourceObservationTarget=mode==='shared'&&nativeFileSurface?{creationId:c.id,version:version.version}:null;
+  openPortal({title:c.title+' · v'+version.version,html:version.html,nativeFileSurface,sourceObservationTarget,footer:[paragraph('Published v'+version.version+' · '+version.receipt.size.toLocaleString()+' checked bytes · interactions inside this open artifact.'),button('↓ Save artifact',()=>download(c.kind+'-v'+version.version+'.html',version.html),{id:'download-artifact',class:'secondary-button'})]})
+}
 function pendingPredicateNeedsRetentionAcknowledgement(pending){
   return pending?.action?.type==='evaluate-source-archive-predicate'&&
     pending.action.publicRetentionAcknowledgementVersion!==SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION;
