@@ -101,7 +101,7 @@ def assert_council_room(page):
     )
 
 
-def assert_populated_council_room(page, fixture):
+def assert_populated_council_room(page, fixture, out):
     content = page.locator('#sheet-content')
     expect(page.locator('#sheet-title')).to_have_text('Council Chamber')
     expect(content).to_have_attribute('data-council-chamber', 'true')
@@ -124,6 +124,35 @@ def assert_populated_council_room(page, fixture):
         expect(details).to_have_count(1)
         expect(details).to_have_attribute('data-council-review-status', 'valid-for-human-review')
         summary = details.locator('summary')
+        diagnostics = summary.evaluate("""el => {
+          const sheet = document.querySelector('#sheet');
+          const details = el.parentElement;
+          const rect = value => {
+            const r = value.getBoundingClientRect();
+            return {x:r.x,y:r.y,width:r.width,height:r.height,top:r.top,bottom:r.bottom};
+          };
+          const chain = [];
+          for (let current = el; current && chain.length < 8; current = current.parentElement) {
+            const style = getComputedStyle(current);
+            chain.push({
+              tag: current.tagName, id: current.id || '',
+              className: typeof current.className === 'string' ? current.className : '',
+              hidden: Boolean(current.hidden), display: style.display,
+              visibility: style.visibility, opacity: style.opacity,
+              rect: rect(current)
+            });
+          }
+          return {
+            sheet: sheet ? {hidden:sheet.hidden,scrollTop:sheet.scrollTop,
+              scrollHeight:sheet.scrollHeight,clientHeight:sheet.clientHeight,rect:rect(sheet)} : null,
+            detailsOpen: Boolean(details?.open),
+            summary: {text:el.textContent,display:getComputedStyle(el).display,
+              visibility:getComputedStyle(el).visibility,rect:rect(el)},
+            chain
+          };
+        }""")
+        print("COUNCIL_SUMMARY_DIAGNOSTICS " + json.dumps(diagnostics))
+        page.screenshot(path=str(out / "council-populated-summary-diagnostic.png"), full_page=True)
         summary.scroll_into_view_if_needed()
         expect(summary).to_be_visible()
         expect(page.locator('#sheet-close')).to_be_visible()
@@ -495,7 +524,7 @@ def run_viewport(browser, url, out, width):
             expect(populated_route).to_be_visible()
             populated_route.tap()
             enter_nearby_institution(page, 'council_chamber', 'Council Chamber', 'Council Chamber')
-            assert_populated_council_room(page, fixture)
+            assert_populated_council_room(page, fixture, out)
             page.locator('#sheet-close').tap()
             expect(page.locator('#sheet')).to_be_hidden()
             page.wait_for_timeout(750)
