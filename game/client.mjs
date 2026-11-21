@@ -101,6 +101,7 @@ async function openInstitution(locationId = null) {
     kernel: institutionResult.data?.kernel,
     kernelUnavailable: !institutionResult.data?.kernel,
     onOpenArtifact: (id, version) => openCreation(id, version),
+    onOpenLocation: isSharedSnapshotStale() ? undefined : walkToChroniclePlace,
     onChoice: guarded(async (decision, action) => {
       await request('/api/decisions/choose', {
         decisionId: decision.id,
@@ -2534,6 +2535,25 @@ function refreshWorldChronicleSnapshot(){
   try{activeWorldChronicleRefresh(snapshot,stale,staleReason)}
   catch(error){handleError(error)}
 }
+function walkToChroniclePlace(placeId){
+  if(mode==='shared'&&isSharedSnapshotStale()){
+    toast('The shared snapshot is stale. Reconnect before following this Chronicle route.',true);
+    return;
+  }
+  const place=PLACES.find(candidate=>candidate.id===placeId);
+  if(!place){
+    toast('That Chronicle destination is not present on the current world map. No route was created.',true);
+    return;
+  }
+  const player=view.getPlayer();
+  if(!player||!Number.isFinite(player.x)||!Number.isFinite(player.y)){
+    toast('The current player position is unavailable. No Chronicle route was started.',true);
+    return;
+  }
+  closeSheet();
+  if(Math.hypot(place.x-player.x,place.y-player.y)<160)view.interact(place.id,place.type);
+  else view.goTo(place.id);
+}
 function openWorldChronicle(eventId,{returnToEvidenceArchive=false,snapshot=world,onReturnToEvidenceArchive}={}){
   const chronicleSnapshot=snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)?snapshot:world;
   activeWorldChronicleSnapshot=chronicleSnapshot;
@@ -2556,6 +2576,7 @@ function openWorldChronicle(eventId,{returnToEvidenceArchive=false,snapshot=worl
     stale,
     staleReason,
     onOpenArtifact:(id,version)=>openCreation(id,version),
+    onOpenLocation:stale?undefined:walkToChroniclePlace,
     onReturnToEvidenceArchive:returnAction
   });
 }
