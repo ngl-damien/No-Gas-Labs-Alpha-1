@@ -1182,6 +1182,7 @@ test('Contradiction Ward quest requires the actor-scoped Source Observatory chal
     type: 'publish', draftId: drafted.result.draftId, expectedVersion: 0
   }, founder, { now: times.publish });
   const creationId = published.result.creationId;
+  const sourceSnapshotRevision = published.world.revision;
   const note = {
     claim: 'The model says the source exists.',
     sourceKind: 'model-assertion',
@@ -1191,11 +1192,11 @@ test('Contradiction Ward quest requires the actor-scoped Source Observatory chal
     nextTest: 'Retrieve and inspect the exact source.'
   };
   const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, sourceSnapshotRevision, ...note
   })).digest('hex');
   const observationId = 'source-observation-' + digest;
   const recorded = await applyAction(published.world, {
-    type: 'record-source-observation', creationId, version: 1, observationId, ...note
+    type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision, observationId, ...note
   }, founder, { now: times.note });
   // Append order is causal for this chain; the valid challenge may carry a regressing wall clock.
   const challenged = await applyAction(recorded.world, {
