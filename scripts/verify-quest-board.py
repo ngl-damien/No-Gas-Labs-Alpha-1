@@ -472,6 +472,93 @@ def inspect_quest_evidence_event(page, objective_id, event_id, expected_type, sc
     }
 
 
+def assert_publication_chronicle_navigation(page, publication, out, width):
+    # Publication House is a world location. Navigate there through the map,
+    # then require the selected artifact version to resolve to one exact event.
+    if not page.locator('#sheet').is_hidden():
+        page.locator('#sheet-close').tap()
+        expect(page.locator('#sheet')).to_be_hidden()
+    page.bring_to_front()
+    page.locator('#places-button').tap()
+    route = page.get_by_role('button', name='Walk to Publication House', exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    enter_nearby_institution(page, 'publication_house', 'Publication House', 'Publication House')
+
+    target = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Publication House oracle could not read the accepted world.');
+      const dto = await response.json();
+      const creations = dto.world?.creations ?? [];
+      const events = dto.world?.events ?? [];
+      const matches = creations.filter(item => item?.id === expected.creationId);
+      if (matches.length !== 1) throw new Error('The publication target is missing or ambiguous.');
+      const creation = matches[0];
+      const versions = [...(Array.isArray(creation.versions) ? creation.versions : []), creation]
+        .filter(item => item?.version === expected.version);
+      if (versions.length !== 1) throw new Error('The exact retained publication version is missing or ambiguous.');
+      const version = versions[0];
+      const publications = events.filter(event => event?.type === 'publish' &&
+        event.creationId === expected.creationId && event.version === expected.version);
+      if (publications.length !== 1 || publications[0].actor?.role !== 'founder' ||
+          typeof publications[0].id !== 'string' || !publications[0].id ||
+          publications[0].id.trim() !== publications[0].id ||
+          publications[0].at !== version.publishedAt) {
+        throw new Error('The exact artifact version does not have one unambiguous Founder publication event.');
+      }
+      return {
+        title: creation.title,
+        kind: creation.kind,
+        version: version.version,
+        eventId: publications[0].id,
+        publishedAt: version.publishedAt
+      };
+    }""", publication)
+    button_name = f"{target['title']} · {target['kind']} · v{target['version']}"
+    artifact = page.get_by_role('button', name=button_name, exact=True)
+    expect(artifact).to_have_count(1)
+    artifact.tap()
+    expect(page.locator('#sheet-title')).to_have_text(target['title'])
+    expect(page.locator('#version-select')).to_have_value(str(target['version']))
+
+    link = page.locator('#publication-chronicle-link')
+    expect(link).to_have_count(1)
+    expect(link).to_be_visible()
+    expect(link).to_have_attribute('data-publication-chronicle-event-id', target['eventId'])
+    expect(link).to_have_attribute('data-chronicle-event-id', target['eventId'])
+    expect(link).to_have_attribute('data-chronicle-source', 'world')
+    before = authoritative_snapshot(page)
+    link.tap()
+    expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
+    exact_event = page.locator('#sheet-content [data-event-id="world:' + target['eventId'] + '"]')
+    expect(exact_event).to_have_count(1)
+    expect(exact_event).to_have_attribute('data-event-source', 'world')
+    expect(exact_event).to_contain_text('Publication recorded')
+    expect(page.locator('#sheet-content')).to_have_attribute(
+        'data-chronicle-snapshot-revision', str(before['revision'])
+    )
+    after = authoritative_snapshot(page)
+    assert shared_world_snapshot(after) == shared_world_snapshot(before), (
+        'Publication-to-Chronicle navigation must not mutate the shared world.'
+    )
+    assert after['xp'] == before['xp'], 'Publication inspection must award no XP.'
+    screenshot = out / ('publication-chronicle-' + str(width) + '.png')
+    page.screenshot(path=str(screenshot), full_page=True)
+    page.locator('#sheet-close').tap()
+    expect(page.locator('#sheet')).to_be_hidden()
+    return {
+        'journey': 'publication-house-to-world-chronicle-' + str(width),
+        'creationId': publication['creationId'],
+        'version': target['version'],
+        'publicationEventId': target['eventId'],
+        'exactWorldEventOpened': True,
+        'readOnly': shared_world_snapshot(after) == shared_world_snapshot(before),
+        'xpDelta': after['xp'] - before['xp'],
+        'snapshotRevision': before['revision'],
+        'screenshot': screenshot.name
+    }
+
+
 def assert_circuit_round_progress(page, role, round_number, progress, complete=False):
     suffix = '' if round_number == 1 else f'-{round_number}'
     row = page.locator(
@@ -4963,6 +5050,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
     errors = []
     failure_chronicle_result = None
     contradiction_clerk_result = None
+    publication_chronicle_result = None
     page.on('pageerror', lambda error: errors.append(str(error)))
     try:
         page.goto(url, wait_until='networkidle')
@@ -5008,6 +5096,9 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             )
             guild_circuit_result = run_guild_dissent_circuit(
                 browser, page, url, observatory_fixture, out
+            )
+            publication_chronicle_result = assert_publication_chronicle_navigation(
+                page, fixture, out, width
             )
         else:
             fixture = None
@@ -5070,6 +5161,9 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             )
             assert archive_after['xp'] == archive_before['xp'] + 100, (
                 'Only the existing explicit publication reward may change XP in this fixture setup.'
+            )
+            publication_chronicle_result = assert_publication_chronicle_navigation(
+                page, source_archive_fixture, out, width
             )
             source_archive_failure = record_source_archive_failure(page)
             failure_chronicle_result = assert_source_archive_failure_chronicle(
@@ -5170,6 +5264,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             'objectiveCount': rows.count(),
             'fixturePublication': fixture,
             'observatoryPublication': observatory_fixture,
+            'publicationChronicle': publication_chronicle_result,
             'guildDissentCircuit': guild_circuit_result,
             'recordedFounderObjective': bool(fixture),
             'sourceArchiveFixture': source_archive_fixture,
