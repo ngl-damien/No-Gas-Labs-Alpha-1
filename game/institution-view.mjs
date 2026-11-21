@@ -1597,7 +1597,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact, 
   const receiptDigest=typeof record.sourceSnapshotReceiptDigest==='string'&&/^[a-f0-9]{64}$/.test(record.sourceSnapshotReceiptDigest)
    ?record.sourceSnapshotReceiptDigest:null;
   const snapshotBinding=record.bindingMode==='SERVER_SESSION_RECEIPT'&&receiptDigest
-   ?'Snapshot binding: SERVER-DELIVERED TO THIS SESSION · receipt SHA-256 '+receiptDigest.slice(0,12)+'… . This establishes server delivery to the authenticated session only; it does not prove a person viewed, read or understood the snapshot.'
+   ?'Snapshot binding: SERVER_SESSION_RECEIPT · retained SHA-256 digest '+receiptDigest.slice(0,12)+'… . In the shared service this records server validation of delivery to the authenticated session; in private/imported history it is an unverified claim, not a signature. It does not prove a person viewed, read or understood the snapshot.'
    :'Snapshot binding: AUTHOR-DECLARED ONLY · no server-session delivery receipt is retained; it does not prove the actor viewed that snapshot.';
   card.dataset.sourceObservationSnapshotBinding=record.bindingMode||'unavailable';
   card.append(el('p',snapshotBinding,'form-help'));
