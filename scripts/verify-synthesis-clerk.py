@@ -788,6 +788,44 @@ def inspect_moonshot_source_archive_failures(page, failure, width, out):
         before_chronicle, after_chronicle,
         "Inspecting a Moonshot Field failure's exact Chronicle event"
     )
+    page.locator("#sheet-close").tap()
+
+    enter_nearby_institution(page, "moonshot_field", "Moonshot Field", "Moonshot Field")
+    reopened = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        after_chronicle, reopened, "Reopening Moonshot Field after Chronicle inspection"
+    )
+    latest_again = page.locator(
+        '#sheet-content [data-moonshot-source-archive-failure-card="true"]'
+    ).filter(has=page.locator(
+        '[data-moonshot-source-archive-failure-event-id="' + failure["eventId"] + '"]'
+    ))
+    expect(latest_again).to_have_count(1)
+    investigate = latest_again.locator(
+        '[data-moonshot-source-archive-failure-investigate-event-id="' + failure["eventId"] + '"]'
+    )
+    expect(investigate).to_be_visible()
+    before_investigation = authoritative_snapshot(page)
+    investigate.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Source Observatory' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    prefill = page.locator(
+        '#sheet-content [data-source-observatory-prefill-lead="true"]'
+    )
+    expect(prefill).to_be_visible()
+    expect(prefill).to_have_attribute(
+        "data-source-observatory-prefill-origin", "source-archive-failure"
+    )
+    expect(prefill).to_contain_text(failure["eventId"])
+    expect(prefill).to_contain_text("not a source capture or truth verdict")
+    after_investigation = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        before_investigation, after_investigation,
+        "Opening a failure-derived research lead without submitting it"
+    )
     layout = assert_mobile_layout(page, width)
     page.screenshot(
         path=str(out / ("moonshot-source-archive-failures-" + str(width) + ".png")),
@@ -802,6 +840,8 @@ def inspect_moonshot_source_archive_failures(page, failure, width, out):
         "latestEventId": failure["eventId"],
         "oldestVisibleEventId": failure["eventIds"][-6],
         "exactChronicleEventInspected": failure["eventId"],
+        "investigationPrefillOrigin": "source-archive-failure",
+        "investigationLeadNotSubmitted": True,
         "navigationReadOnly": True,
         "routeDiscoveries": route_events,
         "layout": layout
