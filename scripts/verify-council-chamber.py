@@ -124,8 +124,15 @@ def assert_populated_council_room(page, fixture):
         expect(details).to_have_count(1)
         expect(details).to_have_attribute('data-council-review-status', 'valid-for-human-review')
         summary = details.locator('summary')
-        summary.scroll_into_view_if_needed()
-        expect(summary).to_be_visible()
+        summary.evaluate("(el) => el.scrollIntoView({block: 'center', inline: 'nearest', behavior: 'instant'})")
+        page.wait_for_timeout(50)
+        summary_in_view = summary.evaluate("""el => {
+          const item = el.getBoundingClientRect();
+          const panel = document.querySelector('#sheet').getBoundingClientRect();
+          return item.width > 0 && item.height > 0 &&
+            item.top >= panel.top && item.bottom <= panel.bottom;
+        }""")
+        assert summary_in_view, 'Each bounded Council review summary must be reachable inside the mobile sheet scrollport.'
         close_in_view = page.locator('#sheet-close').evaluate("""el => {
           const button = el.getBoundingClientRect();
           const panel = document.querySelector('#sheet').getBoundingClientRect();
