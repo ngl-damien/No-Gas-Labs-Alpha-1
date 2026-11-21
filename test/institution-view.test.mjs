@@ -2329,9 +2329,19 @@ test('Evidence Archive withholds source-event links for missing, duplicate, or m
       mutate: world => { world.events[0].actionResult.id = ' report-1 '; }
     },
     {
+      name: 'unnormalized artifact identity',
+      status: 'mismatched',
+      recordStatus: 'unvalidated',
+      mutate: world => {
+        world.reports[0].creationId = ' creation-1 ';
+        world.events[0].creationId = ' creation-1 ';
+      }
+    },
+    {
       name: 'unnormalized matching actor identity',
       status: 'mismatched',
       recordStatus: 'unvalidated',
+      actorId: 'unavailable',
       mutate: world => {
         world.reports[0].actor = { ...actor, id: ' damien ' };
         world.events[0].actor = { ...actor, id: ' damien ' };
@@ -2341,6 +2351,7 @@ test('Evidence Archive withholds source-event links for missing, duplicate, or m
       name: 'unnormalized matching actor name',
       status: 'mismatched',
       recordStatus: 'unvalidated',
+      actorName: 'unknown actor',
       mutate: world => {
         world.reports[0].actor = { ...actor, name: ' Damien ' };
         world.events[0].actor = { ...actor, name: ' Damien ' };
@@ -2372,9 +2383,12 @@ test('Evidence Archive withholds source-event links for missing, duplicate, or m
         node.dataset?.recordStatus === (fixture.recordStatus || 'linked')
       );
       assert.ok(card, fixture.name + ' must preserve the visible activity record');
+      if (fixture.actorId) assert.equal(card.dataset.activityActorId, fixture.actorId, fixture.name);
+      if (fixture.actorName) assert.match(textOf(card), new RegExp(fixture.actorName, 'i'), fixture.name);
       assert.equal(walk(card).some(node => node.dataset?.evidenceArchiveOpenEvent === 'true'), false,
         fixture.name + ' must not offer a guessed or ambiguous source link');
-      assert.match(textOf(card), /source chronicle link withheld/i);
+      if (fixture.recordStatus === 'unvalidated') assert.match(textOf(card), /unvalidated retained activity/i);
+      else assert.match(textOf(card), /source chronicle link withheld/i);
     });
     assert.deepEqual(world, before, fixture.name + ' projection must not mutate history');
   }
