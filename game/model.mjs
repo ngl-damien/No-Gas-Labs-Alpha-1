@@ -63,7 +63,7 @@ const SOURCE_ARCHIVE_FAILURE_RETRYABILITY = Object.freeze({
   SOURCE_ARCHIVE_BUILD_FAILED: true
 });
 
-export async function applyAction(original,action,actor,{now,requestId,actionFingerprint,allowTransfers=false,allowGuildLeadershipTransfers=false,allowSourceArchivePredicate=false}={}) {
+export async function applyAction(original,action,actor,{now,requestId,actionFingerprint,allowTransfers=false,allowGuildLeadershipTransfers=false,allowSourceArchivePredicate=false,sourceSnapshotReceiptDigest:validatedSourceSnapshotReceiptDigest=null}={}) {
   const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
   if(['draft','publish','repair','moderate-message'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair, publish or moderate Commons messages.',403);
   if(requestId!==undefined&&(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)||typeof actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(actionFingerprint)))fail('INVALID_REQUEST_RECEIPT','A bounded request ID and SHA-256 action fingerprint are required.');if(requestId===undefined&&actionFingerprint!==undefined)fail('INVALID_REQUEST_RECEIPT','An action fingerprint requires a request ID.');
@@ -178,15 +178,15 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
         return {world:original,result:{observationId,duplicate:true}};
       }
       result={observationId,duplicate:false};
-      const sourceSnapshotReceiptDigest = typeof requestMeta?.sourceSnapshotReceiptDigest === 'string' &&
-        /^[a-f0-9]{64}$/.test(requestMeta.sourceSnapshotReceiptDigest)
-        ? requestMeta.sourceSnapshotReceiptDigest
+      const receiptDigest = typeof validatedSourceSnapshotReceiptDigest === 'string' &&
+        /^[a-f0-9]{64}$/.test(validatedSourceSnapshotReceiptDigest)
+        ? validatedSourceSnapshotReceiptDigest
         : null;
       recordEvent('source-observation-recorded',{
         observationId,creationId,version:action.version,sourceSnapshotRevision,claim,sourceKind,source,falsifier,uncertainty,nextTest,
         originSchema:'ngl.source-observatory.v2',
-        bindingMode:sourceSnapshotReceiptDigest?'SERVER_SESSION_RECEIPT':'USER_SELECTED',
-        ...(sourceSnapshotReceiptDigest?{sourceSnapshotReceiptDigest}:{}),
+        bindingMode:receiptDigest?'SERVER_SESSION_RECEIPT':'USER_SELECTED',
+        ...(receiptDigest?{sourceSnapshotReceiptDigest:receiptDigest}:{}),
         sourceRetrieval:'NOT_PERFORMED',independentVerification:'NOT_PERFORMED',
         modelAssertions:'LEADS_ONLY',execution:'NOT_EXECUTED',normalizedRecordDigest
       });
