@@ -1041,13 +1041,12 @@ def open_synthesis_clerk(page, packet):
             "The restored session may open the Guild Hall as soon as the accessible NPC route reaches interaction range."
         )
     else:
-        # The NPC route ends beside Guild Hall. Entering the institution is a
-        # separate, explicit player action; do not synthesize a second map tap
-        # through the NPC's own accessible control.
-        enter_button = page.locator("#enter-institution-button")
-        expect(enter_button).to_be_visible()
-        expect(enter_button).to_have_attribute("aria-label", "Enter Guild Hall")
-        enter_button.tap()
+        # The NPC route has reached interaction range. Activate the same bounded
+        # NPC control again; this opens its owning workbench with the Synthesis role
+        # focused. Generic Guild Hall entry is a different, unfocused action.
+        expect(control).to_have_attribute("data-guild-npc-action", "talk")
+        expect(control).to_be_visible()
+        control.tap()
         page.wait_for_function(
             "() => document.querySelector('#sheet-title')?.textContent === 'Guild Hall' && " +
             "!document.querySelector('#sheet').hidden",
