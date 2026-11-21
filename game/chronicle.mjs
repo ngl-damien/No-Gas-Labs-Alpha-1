@@ -923,7 +923,7 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
       ? event.sourceSnapshotReceiptDigest
       : null;
     const snapshotBinding = event?.bindingMode === "SERVER_SESSION_RECEIPT" && receiptDigest
-      ? `Server-delivery receipt: validated for this session (retained SHA-256 digest ${receiptDigest}). This establishes delivery to the authenticated session only; it does not prove a person viewed, read or understood the snapshot.`
+      ? `Recorded snapshot binding: SERVER_SESSION_RECEIPT (retained SHA-256 digest ${receiptDigest}). The shared service validates session delivery when appending the event; in private/imported history this field is an unverified claim, not a signature. It does not prove a person viewed, read or understood the snapshot.`
       : event?.bindingMode === "USER_SELECTED"
         ? "Snapshot binding: author-declared only; no server-delivery receipt is retained."
         : "Snapshot binding: malformed or unavailable; no delivery is inferred.";
