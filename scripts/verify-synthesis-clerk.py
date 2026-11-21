@@ -692,6 +692,122 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
         "nextLayout": layout
     }
 
+
+def inspect_moonshot_source_archive_failures(page, failure, width, out):
+    before_route = authoritative_snapshot(page)
+    page.locator("#places-button").tap()
+    route = page.get_by_role("button", name="Walk to Moonshot Field", exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    page.wait_for_function(
+        """expected => {
+            const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
+            const enterButton = document.querySelector('#enter-institution-button');
+            const primaryButton = document.querySelector('#interact-button');
+            const separateEntry = enterButton && !enterButton.hidden &&
+                enterButton.getAttribute('aria-label') === expected.ariaLabel;
+            return world?.dataset.nearbyInstitutionId === expected.placeId &&
+                sheet?.hidden === true &&
+                (separateEntry || primaryButton?.getAttribute('aria-label') === expected.ariaLabel);
+        }""",
+        arg={"placeId": "moonshot_field", "ariaLabel": "Enter Moonshot Field"},
+        timeout=30000
+    )
+    arrival = authoritative_snapshot(page)
+    route_events = assert_route_travel_records_only_discoveries(
+        before_route, arrival, "Walking from Evidence Archive to Moonshot Field"
+    )
+    enter_button = page.locator("#enter-institution-button")
+    if enter_button.is_visible():
+        enter_button.tap()
+    else:
+        page.locator("#interact-button").tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    opened = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        arrival, opened, "Opening Moonshot Field's retained failure objects"
+    )
+
+    section = page.locator(
+        '#sheet-content [data-moonshot-source-archive-failure-ledger="true"]'
+    )
+    expect(section).to_be_visible()
+    expect(section).to_have_attribute(
+        "data-moonshot-source-archive-failure-snapshot-revision", str(opened["revision"])
+    )
+    expect(section).to_have_attribute("data-moonshot-source-archive-failure-total", "14")
+    expect(section).to_have_attribute("data-moonshot-source-archive-failure-page-size", "6")
+    expect(section).to_have_attribute("data-moonshot-source-archive-failure-total-pages", "3")
+    expect(section).to_have_attribute("data-moonshot-source-archive-failure-has-older", "true")
+    expect(section).to_have_attribute("data-moonshot-source-archive-failure-freshness", "current")
+    expect(section).to_have_attribute("data-moonshot-source-archive-failure-complete", "true")
+    cards = section.locator('[data-moonshot-source-archive-failure-card="true"]')
+    expect(cards).to_have_count(6)
+    expect(cards.nth(0)).to_have_attribute(
+        "data-moonshot-source-archive-failure-event-id", failure["eventId"]
+    )
+    expect(cards.nth(5)).to_have_attribute(
+        "data-moonshot-source-archive-failure-event-id", failure["eventIds"][-6]
+    )
+    latest = cards.nth(0)
+    expect(latest).to_have_attribute("data-moonshot-source-archive-failure-status", "retryable")
+    expect(latest).to_contain_text("GitHub source unavailable")
+    expect(latest).to_contain_text("GITHUB_SOURCE_UNAVAILABLE")
+    expect(latest).to_contain_text("ngl-damien/No-Gas-Labs-Alpha-1")
+    expect(latest).to_contain_text("failure-ledger.mjs")
+    expect(latest).to_contain_text("Service-observed retrieval/build failure only")
+    expect(section).to_contain_text("latest 6 of 14")
+    full_ledger = section.locator(
+        '[data-moonshot-source-archive-failure-open-ledger="true"]'
+    )
+    expect(full_ledger).to_be_visible()
+
+    before_chronicle = authoritative_snapshot(page)
+    inspect = latest.locator(
+        '[data-moonshot-source-archive-failure-chronicle-event-id="' + failure["eventId"] + '"]'
+    )
+    expect(inspect).to_be_visible()
+    inspect.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'World Chronicle' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    exact_event = page.locator(
+        '#sheet-content [data-chronicle-entries] [data-event-id="' + failure["eventId"] + '"]'
+    )
+    expect(exact_event).to_have_count(1)
+    expect(exact_event).to_contain_text(failure["eventId"])
+    after_chronicle = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        before_chronicle, after_chronicle,
+        "Inspecting a Moonshot Field failure's exact Chronicle event"
+    )
+    layout = assert_mobile_layout(page, width)
+    page.screenshot(
+        path=str(out / ("moonshot-source-archive-failures-" + str(width) + ".png")),
+        full_page=True
+    )
+    page.locator("#sheet-close").tap()
+    return {
+        "snapshotRevision": opened["revision"],
+        "failureTotal": 14,
+        "visibleLatestCount": 6,
+        "totalPagesAtSixPerPage": 3,
+        "latestEventId": failure["eventId"],
+        "oldestVisibleEventId": failure["eventIds"][-6],
+        "exactChronicleEventInspected": failure["eventId"],
+        "navigationReadOnly": True,
+        "routeDiscoveries": route_events,
+        "layout": layout
+    }
+
+
 def seed_proposal_and_report(page, width):
     before = authoritative_snapshot(page)
     assert before["viewer"]["role"] == "founder"
@@ -1705,6 +1821,9 @@ def run_viewport(browser, width, out):
                 failure_ledger = inspect_source_archive_failure_ledger(
                     page, source_archive_failure, width, out
                 )
+                moonshot_failure_history = inspect_moonshot_source_archive_failures(
+                    page, source_archive_failure, width, out
+                )
 
                 fixture = seed_proposal_and_report(page, width)
                 witness = add_witness_challenge(page, width, fixture)
@@ -1826,6 +1945,7 @@ def run_viewport(browser, width, out):
                     "sourceObservatory": observatory,
                     "sourceArchiveFailure": source_archive_failure,
                     "sourceArchiveFailureLedger": failure_ledger,
+                    "moonshotSourceArchiveFailures": moonshot_failure_history,
                     "sourceObservation": source_observation,
                     "response": response,
                     "founderProgress": founder_progress,
