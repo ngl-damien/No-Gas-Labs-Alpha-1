@@ -589,6 +589,7 @@ async function sourceObservationWorld({ respond = false } = {}) {
     type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
   }, founder, { now: observationTimes.published });
   const creationId = published.result.creationId;
+  const sourceSnapshotRevision = published.world.revision;
   const note = {
     claim: 'The bridge is open.',
     sourceKind: 'model-assertion',
@@ -598,11 +599,11 @@ async function sourceObservationWorld({ respond = false } = {}) {
     nextTest: 'Inspect the primary source.'
   };
   const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, sourceSnapshotRevision, ...note
   })).digest('hex');
   const observationId = 'source-observation-' + digest;
   const recorded = await applyAction(published.world, {
-    type: 'record-source-observation', creationId, version: 1, observationId, ...note
+    type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision, observationId, ...note
   }, founder, {
     now: observationTimes.observed, requestId: observationId, actionFingerprint: 'c'.repeat(64)
   });
