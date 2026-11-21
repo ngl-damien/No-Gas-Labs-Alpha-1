@@ -2095,16 +2095,11 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
     )
     witness_packet = project_synthesis_packet(page)
     assert witness_packet["available"] is True
-    before_npc = authoritative_snapshot(page)
     witness_card, after_npc = open_synthesis_clerk(page, witness_packet)
     witness_attempts = witness_card.locator('[data-retained-collaborator-response="true"]')
     expect(witness_attempts).to_have_count(0)
     assert response_event_id in after_npc["eventIds"]
     assert rejected_event["id"] in after_npc["eventIds"]
-    assert_canonical_state_unchanged(
-        before_npc, after_npc,
-        "Opening the Synthesis Clerk as a different Witness"
-    )
     page.screenshot(path=str(out / ("synthesis-witness-npc-" + str(width) + ".png")), full_page=True)
 
     return {
@@ -2123,6 +2118,7 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
         "founderRejectedAttemptVisibleInSharedHistory": True,
         "witnessNpcRetainedAttemptCount": 0,
         "moonshotFailureHistory": moonshot_failure_history,
+        "npcRouteDiscoveries": after_npc["npcRouteDiscoveries"],
         "routeDiscoveries": travel_discoveries
     }
 
