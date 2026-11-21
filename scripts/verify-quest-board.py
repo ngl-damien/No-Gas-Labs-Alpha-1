@@ -5808,6 +5808,10 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
         'The Source Observation form must expose the exact accepted snapshot revision it captured.'
     )
     assert pinned['viewerRole'] in ('founder', 'witness')
+    pinned_receipt = pinned.get('sourceSnapshotReceipt')
+    assert isinstance(pinned_receipt, dict) and pinned_receipt.get('revision') == pinned['revision']
+    assert isinstance(pinned_receipt.get('token'), str) and len(pinned_receipt['token']) == 43
+    assert all(character in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-' for character in pinned_receipt['token'])
 
     witness_context = browser.new_context(
         viewport={'width': width, 'height': 844},
@@ -6025,6 +6029,8 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
         expect(register).to_contain_text(
             'does not prove the actor viewed that snapshot'
         )
+        expect(register).to_contain_text('Snapshot binding: SERVER-DELIVERED TO THIS SESSION')
+        expect(register).to_contain_text('does not prove a person viewed, read or understood the snapshot')
         chronicle_link = register.locator(
             '[data-source-observation-chronicle-event="' + observation_event_id + '"]'
         )
@@ -6042,6 +6048,8 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
         expect(chronicle_event).to_contain_text(
             'does not prove the actor viewed that snapshot'
         )
+        expect(chronicle_event).to_contain_text('Server-delivery receipt: validated for this session')
+        expect(chronicle_event).to_contain_text('does not prove a person viewed, read or understood the snapshot')
         archive_after = authoritative_snapshot(page)
         assert shared_world_snapshot(archive_after) == shared_world_snapshot(archive_before), (
             'Opening the retained Source Observation in Chronicle must not mutate the shared world.'
