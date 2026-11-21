@@ -11,7 +11,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { gunzipSync } from 'node:zlib';
 import { createGameServer, validateStoredWorldHistory } from '../game/server.mjs';
-import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
+import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
 import { GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR, buildGitHubSourceArchiveBody } from '../game/artifacts.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
@@ -1238,6 +1238,14 @@ test('shared action request IDs replay the original result across lost responses
   assert.equal(first.body.idempotentReplay, false);
   const revision = first.body.world.revision;
   const reportId = first.body.result.id;
+  const expectedRecordTextReceipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(Buffer.from(action.text, 'utf8')).digest('hex'),
+    size: Buffer.byteLength(action.text, 'utf8')
+  };
+  const retainedReportEvent = first.body.world.events.find(event => event.requestId === requestId);
+  assert.equal(retainedReportEvent.recordId, reportId);
+  assert.deepEqual(retainedReportEvent.recordTextReceipt, expectedRecordTextReceipt);
   assert.equal(first.body.world.reports.filter(report => report.text === action.text).length, 1);
 
   const replay = await founder.request('/api/action', { ...action, requestId });
@@ -1270,6 +1278,9 @@ test('shared action request IDs replay the original result across lost responses
     assert.equal(afterRestart.response.status, 200, JSON.stringify(afterRestart.body));
     assert.equal(afterRestart.body.idempotentReplay, true);
     assert.equal(afterRestart.body.result.id, reportId);
+    const replayedReportEvent = afterRestart.body.world.events.find(event => event.requestId === requestId);
+    assert.equal(replayedReportEvent.recordId, reportId);
+    assert.deepEqual(replayedReportEvent.recordTextReceipt, expectedRecordTextReceipt);
     assert.equal(afterRestart.body.world.reports.filter(report => report.text === action.text).length, 1);
   } finally {
     await reopened.closeGame();
@@ -3612,7 +3623,7 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   tamperedEvent.outcome = 'MATCH';
   await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
   assert.throws(() => validateStoredWorldHistory(tampered), /Stored Source Archive predicate outcome mismatch/);
-  const tamperedReceipt = structuredClone(afterNoMatch.body.world);
+  const tamperedReceipt = structuredClone(founderHistory.body.world);
   const receiptEvent = tamperedReceipt.events.find(item => item.predicateId === noMatch.body.result.predicateId);
   receiptEvent.sourceSha256 = '0'.repeat(64);
   assert.throws(() => validateStoredWorldHistory(tamperedReceipt), /World history integrity mismatch|Stored Source Archive predicate metadata mismatch/);
@@ -3858,4 +3869,76 @@ test('shared Forge recipient decline is recipient-only, replay-safe, durable, an
   assert.equal(restoredWitnessRecord.xp, 0);
   assert.equal(restoredFounderRecord.xp, 0);
   assert.equal(restoredWitness.world.xp, beforeXp);
+});
+
+
+test('stored report text cannot drift from its retained Chronicle event receipt', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const published = await publish(founder, 'Receipt-bound report target');
+  const creation = published.world.creations[0];
+  const action = {
+    type: 'report', creationId: creation.id, version: 1,
+    text: 'The retained report bytes must remain bound to the event.'
+  };
+  const result = await founder.request('/api/action', {
+    ...action, requestId: 'receipt-bound-report-tamper-001'
+  });
+  assert.equal(result.response.status, 200, JSON.stringify(result.body));
+
+  const tampered = structuredClone(result.body.world);
+  tampered.reports[0].text += ' altered after retention';
+  assert.throws(
+    () => validateStoredWorldHistory(tampered),
+    /receipt|text|contribution/i
+  );
+});
+
+test('stored-history validation accepts only complete response-position metadata', async () => {
+  const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const witness = { id: 'history-witness', name: 'History Witness', role: 'witness' };
+  const start = createWorld({
+    id: 'stored-response-history-position',
+    now: '2026-10-17T12:00:00.000Z'
+  });
+  const draft = await applyAction(start, {
+    type: 'draft', kind: 'loom', title: 'Private lead',
+    intent: 'A hidden event precedes public research.'
+  }, founder, { now: '2026-10-17T12:00:01.000Z' });
+  const proposal = await applyAction(draft.world, {
+    type: 'propose-moonshot',
+    title: 'Bound stored positions',
+    hypothesis: 'The retained event order is stable.',
+    falsifier: 'A public snapshot changes the event sequence.',
+    evidenceNeeded: 'A complete retained event sequence.'
+  }, founder, { now: '2026-10-17T12:00:02.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Inspect the retained event sequence.',
+    observation: 'The response exposes a derived position for each event.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, founder, { now: '2026-10-17T12:00:03.000Z' });
+
+  const full = publicWorld(report.world, founder);
+  assert.deepEqual(full.events.map(event => event.historyPosition), [1, 2, 3]);
+  assert.doesNotThrow(() => validateStoredWorldHistory(full));
+  assert.ok(report.world.events.every(event => !Object.hasOwn(event, 'historyPosition')));
+
+  const forged = structuredClone(full);
+  forged.events[1].historyPosition = 99;
+  assert.throws(
+    () => validateStoredWorldHistory(forged),
+    /history position/i
+  );
+
+  const filtered = publicWorld(report.world, witness);
+  assert.deepEqual(filtered.events.map(event => event.historyPosition), [2, 3]);
+  assert.throws(
+    () => validateStoredWorldHistory(filtered),
+    /filtered|history position/i
+  );
 });

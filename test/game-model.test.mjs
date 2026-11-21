@@ -1365,3 +1365,131 @@ test('Combat Yard clock regressions preserve retained append order and the world
   }, founderActor, { now: at(39) }), error => error.code === 'INVALID_CHRONOLOGY',
   'the clock-regression exception is limited to Source Observatory and Combat Yard actions');
 });
+
+
+test('private report text is bound to its exact retained Chronicle event', async () => {
+  const published = await publish(createWorld({ id: 'report-text-binding-world', now }));
+  const creation = published.world.creations[0];
+  const reported = await applyAction(published.world, {
+    type: 'report', creationId: creation.id, version: 1,
+    text: 'The retained observation remains uncertain.'
+  }, witness, { now });
+
+  await validateWorld(reported.world);
+  const reportEvent = reported.world.events.find(event => event.type === 'report');
+  assert.equal(reportEvent.recordId, reported.world.reports[0].id);
+  assert.deepEqual(reportEvent.recordTextReceipt, textReceipt(reported.world.reports[0].text));
+  const tamperedReceipt = structuredClone(reported.world);
+  tamperedReceipt.events.find(event => event.type === 'report').recordTextReceipt.digest = '0'.repeat(64);
+  await assert.rejects(validateWorld(tamperedReceipt), error => error.code === 'INVALID_WORLD');
+  const tampered = structuredClone(reported.world);
+  tampered.reports[0].text += ' altered after retention';
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+});
+
+test('private contribution text is bound to its exact retained Chronicle event', async () => {
+  const published = await publish(createWorld({ id: 'contribution-text-binding-world', now }));
+  const creation = published.world.creations[0];
+  const contributed = await applyAction(published.world, {
+    type: 'contribute', creationId: creation.id, version: 1,
+    text: 'A retained contribution with exact bytes.'
+  }, witness, { now });
+
+  await validateWorld(contributed.world);
+  const contributionEvent = contributed.world.events.find(event => event.type === 'contribute');
+  assert.equal(contributionEvent.recordId, contributed.world.contributions[0].id);
+  assert.deepEqual(contributionEvent.recordTextReceipt, textReceipt(contributed.world.contributions[0].text));
+  const tampered = structuredClone(contributed.world);
+  tampered.contributions[0].text += ' altered after retention';
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+});
+
+test('private activity records cannot survive without their retained Chronicle event', async () => {
+  const published = await publish(createWorld({ id: 'orphan-activity-binding-world', now }));
+  const creation = published.world.creations[0];
+  const contributed = await applyAction(published.world, {
+    type: 'contribute', creationId: creation.id, version: 1,
+    text: 'This contribution requires a retained event.'
+  }, witness, { now });
+
+  const orphaned = structuredClone(contributed.world);
+  orphaned.events = orphaned.events.filter(event => event.type !== 'contribute');
+  orphaned.revision = orphaned.events.length;
+  orphaned.updatedAt = orphaned.events.reduce(
+    (latest, event) => Date.parse(event.at) > Date.parse(latest) ? event.at : latest,
+    orphaned.createdAt
+  );
+  await assert.rejects(validateWorld(orphaned), error => error.code === 'INVALID_WORLD');
+});
+
+
+test('publicWorld assigns global append positions before actor-specific event filtering', () => {
+  const world = createWorld({ id: 'public-world-history-positions', now });
+  world.events = [
+    { id: 'event-visible-first', type: 'publish', at: now, historyPosition: 999 },
+    { id: 'event-founder-draft', type: 'draft', at: now },
+    { id: 'event-visible-report', type: 'report', at: now },
+    { id: 'event-founder-repair', type: 'repair', at: now },
+    { id: 'event-visible-observation', type: 'source-observation-recorded', at: now }
+  ];
+  world.revision = 5;
+  const before = structuredClone(world);
+
+  const witnessView = publicWorld(world, witness);
+  assert.deepEqual(witnessView.events.map(event => event.id), [
+    'event-visible-first', 'event-visible-report', 'event-visible-observation'
+  ]);
+  assert.deepEqual(witnessView.events.map(event => event.historyPosition), [1, 3, 5]);
+  assert.deepEqual(
+    publicWorld(world, founder).events.map(event => event.historyPosition),
+    [1, 2, 3, 4, 5]
+  );
+  assert.deepEqual(world, before, 'server projection must not mutate canonical event history');
+});
+
+test('public response history positions are accepted only for complete canonical streams', async () => {
+  const start = createWorld({ id: 'response-history-position-contract', now });
+  const privateDraft = await applyAction(start, {
+    type: 'draft', kind: 'loom', title: 'Private lead',
+    intent: 'A hidden event precedes public research.'
+  }, founder, { now: '2026-10-17T12:00:01.000Z' });
+  const proposal = await applyAction(privateDraft.world, {
+    type: 'propose-moonshot',
+    title: 'Bound append position',
+    hypothesis: 'The retained event order is stable.',
+    falsifier: 'A public snapshot changes the event sequence.',
+    evidenceNeeded: 'A complete retained event sequence.'
+  }, founder, { now: '2026-10-17T12:00:02.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Inspect the retained event sequence.',
+    observation: 'The response exposes a derived position for each event.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, founder, { now: '2026-10-17T12:00:03.000Z' });
+
+  const full = publicWorld(report.world, founder);
+  assert.deepEqual(full.events.map(event => event.historyPosition), [1, 2, 3]);
+  assert.ok(report.world.events.every(event => !Object.hasOwn(event, 'historyPosition')),
+    'response metadata must not mutate canonical event objects');
+
+  const validated = await validateWorld(full);
+  assert.ok(validated.events.every(event => !Object.hasOwn(event, 'historyPosition')),
+    'validation must return canonical events without response-only metadata');
+
+  const forged = structuredClone(full);
+  forged.events[1].historyPosition = 99;
+  await assert.rejects(
+    validateWorld(forged),
+    error => error.code === 'INVALID_WORLD' && /history position/i.test(error.message)
+  );
+
+  const filtered = publicWorld(report.world, witness);
+  assert.deepEqual(filtered.events.map(event => event.historyPosition), [2, 3]);
+  await assert.rejects(
+    validateWorld(filtered),
+    error => error.code === 'INVALID_WORLD' && /filtered|history position/i.test(error.message)
+  );
+});

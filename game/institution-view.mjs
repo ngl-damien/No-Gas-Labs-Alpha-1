@@ -1,10 +1,10 @@
 import { projectChronicle } from "./chronicle.mjs";
 import { projectCharacter } from "./character-sheet.mjs";
 import { getActiveQuest, getQuestTrail } from "./quests.mjs";
-import { projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from "./research-records.mjs";
+import { projectResearchRecords, projectSourceObservationRecords, sameResearchActor, retainedWorldEventHistoryPositions, retainedWorldEventHistoryOptions } from "./research-records.mjs";
+import { isStrictTimestamp } from "./timestamps.mjs";
 
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;};
-
 const CHARTER_IDENTITY_EQUATION = 'The-NEOPHYTE_FOUNDER + idea + multiple AI collaborators + adversarial_contempt + hardening + human-gate + synthesis + possibilities + abilities + provenance + agents + polymathy-training/fundamental-knowledge';
 const MAX_CODEX_EVIDENCE_ID_PREVIEW = 20;
 const MAX_CODEX_DISSENT_THREAD_PREVIEW = 10;
@@ -61,9 +61,9 @@ export function projectCharterCodex(world, viewer) {
   let nextObjective;
   try {
     trail = getQuestTrail(world, viewer);
-    sourceRecords = projectSourceObservationRecords(world.events, world.creations)
+    sourceRecords = projectSourceObservationRecords(world.events, world.creations, retainedWorldEventHistoryOptions(world, world.events))
       .filter(record => record?.projectionStatus === 'linked' && sameResearchActor(record.actor, viewer));
-    researchRecords = projectResearchRecords(world.events, world.creations);
+    researchRecords = projectResearchRecords(world.events, world.creations, retainedWorldEventHistoryOptions(world, world.events));
     nextObjective = getActiveQuest(world, viewer, trail);
   } catch {
     return unavailable('The retained quest or research history could not be projected safely. No lifecycle status is inferred.');
@@ -154,7 +154,8 @@ export function projectCharterCodex(world, viewer) {
     if (typeof proposal.id !== 'string' || !proposal.id ||
         typeof proposal.moonshotId !== 'string' || !proposal.moonshotId ||
         typeof proposal.sourceCreationId !== 'string' ||
-        !Number.isSafeInteger(proposal.sourceVersion)) continue;
+        !Number.isSafeInteger(proposal.sourceVersion) ||
+        !Number.isSafeInteger(proposal.historyPosition)) continue;
     const key = artifactVersionKey(proposal.sourceCreationId, proposal.sourceVersion);
     if (!proposalsBySourceVersion.has(key)) proposalsBySourceVersion.set(key, []);
     proposalsBySourceVersion.get(key).push(proposal);
@@ -165,7 +166,8 @@ export function projectCharterCodex(world, viewer) {
         typeof report.id !== 'string' || !report.id ||
         typeof report.moonshotId !== 'string' || !report.moonshotId ||
         typeof report.evidenceCreationId !== 'string' ||
-        !Number.isSafeInteger(report.evidenceVersion)) continue;
+        !Number.isSafeInteger(report.evidenceVersion) ||
+        !Number.isSafeInteger(report.historyPosition)) continue;
     const key = JSON.stringify([report.moonshotId, report.evidenceCreationId, report.evidenceVersion]);
     if (!reportsByMoonshotVersion.has(key)) reportsByMoonshotVersion.set(key, []);
     reportsByMoonshotVersion.get(key).push(report);
@@ -177,7 +179,8 @@ export function projectCharterCodex(world, viewer) {
         typeof report.id !== 'string' || !report.id ||
         typeof report.moonshotId !== 'string' || !report.moonshotId ||
         typeof report.evidenceCreationId !== 'string' ||
-        !Number.isSafeInteger(report.evidenceVersion)) continue;
+        !Number.isSafeInteger(report.evidenceVersion) ||
+        !Number.isSafeInteger(report.historyPosition)) continue;
     const key = JSON.stringify([report.moonshotId, report.evidenceCreationId, report.evidenceVersion]);
     if (!ambiguousReportsByMoonshotVersion.has(key)) ambiguousReportsByMoonshotVersion.set(key, []);
     ambiguousReportsByMoonshotVersion.get(key).push(report);
@@ -189,15 +192,18 @@ export function projectCharterCodex(world, viewer) {
   // This keeps the Codex crosswalk linear in retained notes/proposals/reports.
   for (const [versionKey, earliestNotePosition] of sourceFollowupPositionByVersion) {
     for (const proposal of proposalsBySourceVersion.get(versionKey) || []) {
-      // note.historyPosition is one-based; research-record index is zero-based.
-      if (!Number.isSafeInteger(proposal?._projection?.index) ||
-          proposal._projection.index < earliestNotePosition) continue;
+      if (!Number.isSafeInteger(proposal?.historyPosition) ||
+          proposal.historyPosition <= earliestNotePosition) continue;
       versionLinkedMoonshotProposals.set(proposal.id, proposal);
       const reportKey = JSON.stringify([proposal.moonshotId, proposal.sourceCreationId, proposal.sourceVersion]);
       for (const report of reportsByMoonshotVersion.get(reportKey) || []) {
+        if (!Number.isSafeInteger(report?.historyPosition) ||
+            report.historyPosition <= proposal.historyPosition) continue;
         versionLinkedExperimentReports.set(report.id, report);
       }
       for (const report of ambiguousReportsByMoonshotVersion.get(reportKey) || []) {
+        if (!Number.isSafeInteger(report?.historyPosition) ||
+            report.historyPosition <= proposal.historyPosition) continue;
         versionLinkedAmbiguousExperimentReports.set(report.id, report);
       }
     }
@@ -714,6 +720,12 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  }
  container.append(el('h3', heading));
  container.append(introElement);
+ if(typeof options.onOpenLocation==='function'){
+  const routeDisclosure=el('p',"Institution routes are deterministic navigation associations based on retained event types and the same rules used for world activity counts. They are not claims about the event's physical location or the truth of its contents. Only a retained discovery event can supply a recorded map location.");
+  routeDisclosure.className='form-help';
+  routeDisclosure.dataset.chronicleRouteDisclosure='true';
+  container.append(routeDisclosure);
+ }
  container.append(el('p','Each source stream has its own append positions. Positions preserve order within that stream; timestamps only interleave the current stream heads and may regress. The combined list is not a single global sequence. Unsequenced corruption warnings have no invented position.'));
  const malformedWarning = el('p');
  malformedWarning.className = 'evidence-warning';
@@ -752,12 +764,63 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   if(hasStreamPosition)card.dataset.streamPosition=String(entry.streamPosition);
   card.append(el('h3',entry.title));
   card.append(el('p',entry.category+' · '+entry.eventType.toUpperCase()+' · '+entry.actor+' · '+(entry.at||'time unavailable')));
+  if(entry.source==='world'){
+   const recordedId=typeof entry.actorId==='string'&&entry.actorId?entry.actorId:'unavailable';
+   const recordedRole=['founder','witness'].includes(entry.actorRole)?entry.actorRole:'unavailable';
+   const complete=recordedId!=='unavailable'&&recordedRole!=='unavailable';
+   card.dataset.chronicleActorId=recordedId;
+   card.dataset.chronicleActorRole=recordedRole;
+   card.dataset.chronicleActorAttribution=complete?'complete':'incomplete';
+   card.append(el('small',complete
+    ?'Recorded actor ID: '+recordedId+' · Recorded actor role: '+recordedRole+' · pseudonymous session attribution; not proof of a distinct human, endorsement or authority.'
+    :'Recorded actor attribution incomplete: ID '+recordedId+' · role '+recordedRole+'. Missing identity or authority is not inferred.'));
+  }
   card.append(el('small',hasStreamPosition
    ? streamLabel+' · APPEND POSITION '+entry.streamPosition
    : 'UNSEQUENCED · STREAM POSITION UNAVAILABLE'));
   card.append(el('p',entry.summary));
   if(entry.detail)card.append(el('p',entry.detail));
   if(entry.warning){const warning=el('p',entry.warning);warning.className='evidence-warning';card.append(warning);}
+  if(typeof options.onOpenLocation==='function'){
+   if(entry.source==='world'&&typeof entry.locationId==='string'&&entry.locationId.trim()===entry.locationId&&
+      typeof entry.locationName==='string'&&entry.locationName.trim()===entry.locationName){
+    const recordedPlace=el('button','Walk to recorded place: '+entry.locationName+' →');
+    recordedPlace.type='button';
+    recordedPlace.className='secondary-button';
+    recordedPlace.dataset.chronicleRecordedLocation=entry.locationId;
+    recordedPlace.setAttribute('aria-label','Walk to recorded map location '+entry.locationName);
+    recordedPlace.onclick=()=>options.onOpenLocation(entry.locationId);
+    card.append(recordedPlace);
+   }
+   const destinations=Array.isArray(entry.institutionDestinations)?entry.institutionDestinations:[];
+   const validDestinations=destinations.filter(destination=>
+    destination&&typeof destination.id==='string'&&destination.id.length>0&&destination.id.trim()===destination.id&&
+    typeof destination.name==='string'&&destination.name.length>0&&destination.name.trim()===destination.name
+   ).slice(0,6);
+   if(validDestinations.length){
+    const routeSection=el('section');
+    routeSection.dataset.chronicleInstitutionRoutes='true';
+    routeSection.append(el('small','RELATED INSTITUTIONS · DETERMINISTIC EVENT-TYPE ROUTES'));
+    const routeList=el('div');
+    routeList.className='chronicle-institution-routes';
+    for(const destination of validDestinations){
+     const routeItem=el('div');
+     routeItem.className='chronicle-institution-destination';
+     const route=el('button','Go to '+destination.name+' →');
+     route.type='button';
+     route.className='secondary-button';
+     route.dataset.chronicleInstitutionRoute=destination.id;
+     route.setAttribute('aria-label','Go to related institution '+destination.name+
+      (typeof destination.purpose==='string'&&destination.purpose?' · '+destination.purpose:''));
+     route.onclick=()=>options.onOpenLocation(destination.id);
+     routeItem.append(route);
+     if(typeof destination.purpose==='string'&&destination.purpose)routeItem.append(el('small',destination.purpose));
+     routeList.append(routeItem);
+    }
+    routeSection.append(routeList);
+    card.append(routeSection);
+   }
+  }
   if(entry.projectionKind==='DERIVED_READ_ONLY'&&Array.isArray(entry.derivedFromEventIds)){
    const allSourceEventIds=[...new Set(entry.derivedFromEventIds.filter(eventId=>
     typeof eventId==='string'&&eventId.length>0&&eventId.trim()===eventId
@@ -932,7 +995,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   const terms=nextQuery.split(/\s+/).filter(Boolean);
   const entries=currentChronicle.entries.filter(entry=>{
    const streamName=entry.source==='kernel'?'institutional stream':entry.source==='world'?'world stream':'retained stream';
-   const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
+   const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.actorId,entry.actorRole,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
     .map(value=>typeof value==='string'||typeof value==='number'?String(value):'')
     .join(' ')
     .toLowerCase();
@@ -1008,29 +1071,363 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
 }
 
 const WORLD_CHRONICLE_STALE_INTRO = 'Read-only retained world history. The shared stream is disconnected; this is the last accepted snapshot and may be stale. Reconnect before relying on it as current.';
+const WORLD_CHRONICLE_REVISION_STALE_INTRO = 'Read-only retained world history. The accepted world revision has advanced or regressed since this snapshot was captured; this view remains pinned and may be stale. Refresh before relying on it as current.';
+const WORLD_CHRONICLE_REVISION_UNAVAILABLE_INTRO = 'Read-only retained world history. The accepted world revision is unavailable; this view remains pinned and may be stale. Reconnect or refresh before relying on it as current.';
 const WORLD_CHRONICLE_CURRENT_INTRO = 'Read-only retained world history from the current client snapshot. Event identity and append position are preserved; inspection creates no activity or reward.';
 
-export function renderWorldChronicle(container,world,eventId,{stale=false,onOpenArtifact}={}){
+export function renderWorldChronicle(container,world,eventId,{stale=false,staleReason='disconnected',onOpenArtifact,onOpenLocation,onReturnToEvidenceArchive}={}){
  if(typeof eventId!=='string'||!eventId||eventId.trim()!==eventId)
   throw new TypeError('A retained world event ID is required for Chronicle navigation.');
  if(typeof stale!=='boolean')throw new TypeError('Chronicle snapshot freshness must be explicit.');
- const renderSnapshot=(snapshot,isStale)=>renderChronicle(container,projectChronicle({world:snapshot}),onOpenArtifact,{
-  heading:'WORLD CHRONICLE',
-  intro:isStale?WORLD_CHRONICLE_STALE_INTRO:WORLD_CHRONICLE_CURRENT_INTRO,
-  staleIntro:WORLD_CHRONICLE_STALE_INTRO,
-  freshnessState:isStale?'stale':'current',
-  exactEventLookup:{eventId,source:'world'}
- });
- const refresh=renderSnapshot(world,stale);
- return (nextWorld,nextStale)=>{
+ const allowedStaleReasons=new Set(['disconnected','revision-mismatch','revision-unavailable','revision-regression']);
+ if(stale&&!allowedStaleReasons.has(staleReason))
+  throw new TypeError('Chronicle stale state requires an explicit supported reason.');
+ if(onReturnToEvidenceArchive!==undefined&&typeof onReturnToEvidenceArchive!=='function')
+  throw new TypeError('Chronicle return navigation must be a bounded callback.');
+ if(onOpenLocation!==undefined&&typeof onOpenLocation!=='function')
+  throw new TypeError('Chronicle location navigation must be a bounded callback.');
+ if(typeof onReturnToEvidenceArchive==='function'){
+  const returnButton=el('button','Return to Evidence Archive →');
+  returnButton.type='button';
+  returnButton.className='secondary-button';
+  returnButton.dataset.chronicleReturnEvidenceArchive='true';
+  returnButton.setAttribute('aria-label','Return to Evidence Archive');
+  returnButton.onclick=onReturnToEvidenceArchive;
+  container.append(returnButton);
+ }
+ const snapshotRevision=snapshot=>Number.isSafeInteger(snapshot?.revision)&&snapshot.revision>=0
+  ?String(snapshot.revision):'unavailable';
+ const staleIntroFor=reason=>reason==='revision-unavailable'
+  ?WORLD_CHRONICLE_REVISION_UNAVAILABLE_INTRO
+  :['revision-mismatch','revision-regression'].includes(reason)
+   ?WORLD_CHRONICLE_REVISION_STALE_INTRO
+   :WORLD_CHRONICLE_STALE_INTRO;
+ const renderSnapshot=(snapshot,isStale,reason)=>{
+  const freshnessReason=isStale?reason:'current';
+  const staleIntro=staleIntroFor(freshnessReason);
+  const update=renderChronicle(container,projectChronicle({world:snapshot}),onOpenArtifact,{
+   heading:'WORLD CHRONICLE',
+   intro:isStale?staleIntro:WORLD_CHRONICLE_CURRENT_INTRO,
+   staleIntro,
+   freshnessState:isStale?'stale':'current',
+   exactEventLookup:{eventId,source:'world'},
+   onOpenLocation:isStale?undefined:onOpenLocation
+  });
+  container.dataset.chronicleSnapshotRevision=snapshotRevision(snapshot);
+  container.dataset.chronicleSnapshotFreshnessReason=freshnessReason;
+  return update;
+ };
+ const refresh=renderSnapshot(world,stale,stale?staleReason:'current');
+ return (nextWorld,nextStale,nextStaleReason='disconnected')=>{
   if(!nextWorld||typeof nextWorld!=='object'||Array.isArray(nextWorld))
    throw new TypeError('Chronicle refresh requires a world snapshot.');
   if(typeof nextStale!=='boolean')
    throw new TypeError('Chronicle refresh requires explicit snapshot freshness.');
-  return refresh(()=>projectChronicle({world:nextWorld}),
-   nextStale?WORLD_CHRONICLE_STALE_INTRO:WORLD_CHRONICLE_CURRENT_INTRO,
+  const reason=nextStale?nextStaleReason:'current';
+  if(nextStale&&!allowedStaleReasons.has(reason))
+   throw new TypeError('Chronicle refresh requires an explicit supported stale reason.');
+  const refreshed=refresh(()=>projectChronicle({world:nextWorld}),
+   nextStale?staleIntroFor(reason):WORLD_CHRONICLE_CURRENT_INTRO,
    nextStale?'stale':'current');
+  if(refreshed){
+   container.dataset.chronicleSnapshotRevision=snapshotRevision(nextWorld);
+   container.dataset.chronicleSnapshotFreshnessReason=reason;
+  }
+  return refreshed;
  };
+}
+
+const MAX_EVIDENCE_ARCHIVE_ACTIVITY_RECORDS = 100_000;
+const MAX_EVIDENCE_ARCHIVE_ACTIVITY_CARDS = 50;
+const normalizedEvidenceArchiveId = value =>
+ typeof value==='string'&&value.length>0&&value.length<=128&&value.trim()===value;
+const normalizedEvidenceArchiveActor = actor =>
+ !!actor&&typeof actor==='object'&&!Array.isArray(actor)&&
+ normalizedEvidenceArchiveId(actor.id)&&
+ ['founder','witness'].includes(actor.role)&&
+ typeof actor.name==='string'&&actor.name.length>0&&actor.name.trim()===actor.name&&
+ Array.from(actor.name).length<=80;
+
+function retainedActivityArtifactVersion(world, record) {
+ if(!Array.isArray(world?.creations)||!normalizedEvidenceArchiveId(record?.creationId)||
+    !Number.isSafeInteger(record?.version)||record.version<1)return null;
+ const matches=world.creations.filter(creation=>
+  normalizedEvidenceArchiveId(creation?.id)&&creation.id===record.creationId
+ );
+ if(matches.length!==1)return null;
+ const creation=matches[0];
+ const versions=[creation,...(Array.isArray(creation.versions)?creation.versions:[])];
+ const retained=versions.filter(version=>version?.version===record.version);
+ return retained.length===1?{creation,version:retained[0]}:null;
+}
+
+function validEvidenceArchiveTextReceipt(value) {
+ try {
+  if(!value||typeof value!=='object'||Array.isArray(value))return false;
+  const prototype=Object.getPrototypeOf(value);
+  if(prototype!==Object.prototype&&prototype!==null)return false;
+  const descriptors=Object.getOwnPropertyDescriptors(value);
+  const keys=Reflect.ownKeys(descriptors);
+  const fields=['algorithm','digest','size'];
+  if(keys.length!==fields.length||keys.some(key=>!fields.includes(key)))return false;
+  for(const field of fields){
+   const descriptor=descriptors[field];
+   if(!descriptor||descriptor.enumerable!==true||!Object.hasOwn(descriptor,'value'))return false;
+  }
+  return descriptors.algorithm.value==='sha256'&&
+   typeof descriptors.digest.value==='string'&&/^[a-f0-9]{64}$/.test(descriptors.digest.value)&&
+   Number.isSafeInteger(descriptors.size.value)&&descriptors.size.value>0;
+ }catch{return false;}
+}
+
+function indexEvidenceArchiveSourceEvents(world) {
+ const events=world?.events;
+ if(!Array.isArray(events))return {
+  available:false,
+  reason:'Retained world event history is unavailable; Chronicle source links are withheld.'
+ };
+ if(events.length>MAX_EVIDENCE_ARCHIVE_ACTIVITY_RECORDS)return {
+  available:false,
+  reason:'Retained world event history exceeds the bounded source-link projection limit; Chronicle links are withheld.'
+ };
+ const byRecordId=new Map();
+ const eventIdCounts=new Map();
+ const eventPositions=retainedWorldEventHistoryPositions(world,events);
+ for(let index=0;index<events.length;index++){
+  const event=events[index];
+  if(normalizedEvidenceArchiveId(event?.id))
+   eventIdCounts.set(event.id,(eventIdCounts.get(event.id)||0)+1);
+  const hasRecordId=!!event&&typeof event==='object'&&Object.hasOwn(event,'recordId');
+  const recordId=hasRecordId?event.recordId:event?.actionResult?.id;
+  if(!normalizedEvidenceArchiveId(recordId))continue;
+  const matches=byRecordId.get(recordId)||[];
+  matches.push({event,index,eventPosition:eventPositions[index]});
+  byRecordId.set(recordId,matches);
+ }
+ return {available:true,byRecordId,eventIdCounts};
+}
+
+function projectEvidenceArchiveSourceEvent(index,record,expectedType) {
+ if(!index.available)return {status:'unavailable',reason:index.reason};
+ if(!normalizedEvidenceArchiveId(record?.id))
+  return {status:'unlinked',reason:'The activity record identity is missing or unnormalized; source link is withheld.'};
+ const matches=index.byRecordId.get(record.id)||[];
+ if(matches.length===0)
+  return {status:'unlinked',reason:'No retained Chronicle event identity identifies this record; source link is withheld.'};
+ if(matches.length!==1)
+  return {status:'ambiguous',reason:'Multiple retained Chronicle events identify this record; source link is withheld.'};
+ const {event,eventPosition}=matches[0];
+ if(!normalizedEvidenceArchiveId(event?.id)||index.eventIdCounts.get(event.id)!==1)
+  return {status:'ambiguous',reason:'The matching Chronicle event identity is missing, unnormalized or duplicated; source link is withheld.'};
+ const mismatches=[];
+ if(event.type!==expectedType)mismatches.push('event type does not match');
+ if(Object.hasOwn(event,'recordId')){
+  if(!normalizedEvidenceArchiveId(event.recordId)||event.recordId!==record.id)
+   mismatches.push('retained record identity does not match');
+  if(!validEvidenceArchiveTextReceipt(event.recordTextReceipt))
+   mismatches.push('retained record text receipt is missing or malformed');
+  if(event.actionResult!==undefined&&event.actionResult?.id!==event.recordId)
+   mismatches.push('idempotency result does not match the retained record identity');
+ }else if(event.actionResult?.id!==record.id){
+  mismatches.push('legacy action result does not match the retained record identity');
+ }
+ if(!normalizedEvidenceArchiveId(record.creationId)||
+    !normalizedEvidenceArchiveId(event.creationId)||event.creationId!==record.creationId)
+  mismatches.push('artifact identity is missing, unnormalized or does not match');
+ if(event.version!==record.version)mismatches.push('artifact version does not match');
+ const expectedActor=record.actor,actualActor=event.actor;
+ if(!normalizedEvidenceArchiveActor(expectedActor)||
+    !normalizedEvidenceArchiveActor(actualActor)||
+    expectedActor.id!==actualActor.id||
+    expectedActor.role!==actualActor.role||expectedActor.name!==actualActor.name)
+  mismatches.push('actor attribution is missing, unnormalized or does not match');
+ if(mismatches.length)
+  return {status:'mismatched',reason:mismatches.join('; ')+'; source link is withheld.'};
+ return {
+  status:'linked',eventId:event.id,eventPosition:Number.isSafeInteger(eventPosition)&&eventPosition>0?eventPosition:null,eventType:event.type,reason:null
+ };
+}
+
+/**
+ * Reports and contributions are separate actor-visible retained collections.
+ * Their array positions define order within each collection; timestamps never
+ * merge or reorder the streams. A linked record proves only retained activity.
+ */
+export function projectEvidenceArchiveActivityStreams(world={}) {
+ const snapshot=world&&typeof world==='object'&&!Array.isArray(world)?world:{};
+ const collections=[
+  {id:'report',title:'RETAINED REPORTS',label:'report',maxTextLength:1000},
+  {id:'contribution',title:'RETAINED CONTRIBUTIONS',label:'contribution',maxTextLength:500}
+ ];
+ const idCounts=new Map();
+ for(const key of ['reports','contributions']){
+  if(!Array.isArray(snapshot[key]))continue;
+  for(const record of snapshot[key]){
+   if(normalizedEvidenceArchiveId(record?.id)){
+    idCounts.set(record.id,(idCounts.get(record.id)||0)+1);
+   }
+  }
+ }
+ const sourceEventIndex=indexEvidenceArchiveSourceEvents(snapshot);
+ const streams=collections.map(definition=>{
+  const collection=snapshot[definition.id==='report'?'reports':'contributions'];
+  if(!Array.isArray(collection)){
+   return {
+    ...definition,available:false,reason:'The '+definition.label+' collection is missing; missing history is not treated as empty.',
+    orderingBasis:'retained-append-position',scope:'actor-visible-collection',
+    totalCount:null,omittedCount:0,records:[]
+   };
+  }
+  if(collection.length>MAX_EVIDENCE_ARCHIVE_ACTIVITY_RECORDS){
+   return {
+    ...definition,available:false,reason:'The '+definition.label+' collection exceeds the bounded projection limit; it is not treated as empty.',
+    orderingBasis:'retained-append-position',scope:'actor-visible-collection',
+    totalCount:collection.length,omittedCount:collection.length,records:[]
+   };
+  }
+  const projected=collection.map((record,index)=>{
+   const issues=[];
+   if(!record||typeof record!=='object'||Array.isArray(record)){
+    issues.push('record shape is invalid');
+   }else{
+    if(!normalizedEvidenceArchiveId(record.id))
+     issues.push('record identity is invalid or unnormalized');
+    else if(idCounts.get(record.id)!==1)
+     issues.push('record identity is duplicated across retained collections');
+    if(!normalizedEvidenceArchiveId(record.creationId))
+     issues.push('artifact identity is invalid or unnormalized');
+    if(!Number.isSafeInteger(record.version)||record.version<1)
+     issues.push('artifact version is invalid');
+    if(typeof record.text!=='string'||!record.text.trim()||Array.from(record.text).length>definition.maxTextLength)
+     issues.push('self-reported text is invalid');
+    if(!isStrictTimestamp(record.at))
+     issues.push('timestamp is malformed; retained append position still defines order');
+    const actor=record.actor;
+    if(!normalizedEvidenceArchiveActor(actor))
+     issues.push('actor attribution is invalid or unnormalized');
+   }
+   const retained=retainedActivityArtifactVersion(snapshot,record);
+   if(!retained)issues.push('exact retained artifact version is unavailable; navigation is withheld');
+   const sourceEvent=projectEvidenceArchiveSourceEvent(
+    sourceEventIndex,record,definition.id==='report'?'report':'contribute'
+   );
+   return {
+    record,streamPosition:index+1,
+    status:issues.length?'unvalidated':'linked',
+    reason:issues.join('; '),
+    targetTitle:retained?.version?.title||retained?.creation?.title||record?.creationId||'Unknown artifact',
+    targetAvailable:issues.length===0&&!!retained,
+    sourceEvent
+   };
+  });
+  const newestFirst=projected.reverse();
+  return {
+   ...definition,available:true,reason:null,
+   orderingBasis:'retained-append-position',scope:'actor-visible-collection',
+   totalCount:collection.length,
+   omittedCount:Math.max(0,newestFirst.length-MAX_EVIDENCE_ARCHIVE_ACTIVITY_CARDS),
+   records:newestFirst.slice(0,MAX_EVIDENCE_ARCHIVE_ACTIVITY_CARDS)
+  };
+ });
+ return {streams};
+}
+
+export function renderEvidenceArchiveActivityStreams(container,world={},onOpenArtifact,onInspectEvent) {
+ const projection=projectEvidenceArchiveActivityStreams(world);
+ container.append(el('h3','RETAINED REPORTS & CONTRIBUTIONS'));
+ container.append(el('p','Reports and contributions remain separate streams in actor-visible collections. Each collection is newest-first by its retained append position; timestamps are descriptive metadata and do not establish a global order. These entries preserve self-reported activity, not evidence certification, truth, approval or authority.'));
+ for(const stream of projection.streams){
+  const section=el('section');
+  section.dataset.evidenceArchiveActivityStream=stream.id;
+  section.dataset.streamStatus=stream.available?'available':'unavailable';
+  section.dataset.orderingBasis=stream.orderingBasis;
+  section.dataset.streamScope=stream.scope;
+  section.dataset.streamCount=stream.totalCount===null?'unavailable':String(stream.totalCount);
+  section.append(el('h3',stream.title));
+  if(!stream.available){
+   const warning=el('p',stream.reason);
+   warning.className='evidence-warning';
+   section.append(warning);
+   container.append(section);
+   continue;
+  }
+  if(stream.totalCount===0){
+   section.append(el('p','No '+stream.label+'s are retained in this actor-visible collection.'));
+  }
+  for(const item of stream.records){
+   const record=item.record;
+   const card=el('article');
+   card.className='field-card';
+   card.dataset.evidenceArchiveActivityRecord=stream.id;
+   card.dataset.activityRecordId=typeof record?.id==='string'?record.id:'unidentified';
+   card.dataset.streamPosition=String(item.streamPosition);
+   card.dataset.recordStatus=item.status;
+   card.dataset.orderingBasis=stream.orderingBasis;
+   const actorName=typeof record?.actor?.name==='string'&&record.actor.name.trim()===record.actor.name&&Array.from(record.actor.name).length<=80
+    ?record.actor.name:'unknown actor';
+   const actorId=normalizedEvidenceArchiveId(record?.actor?.id)?record.actor.id:'unavailable';
+   const actorRole=['founder','witness'].includes(record?.actor?.role)?record.actor.role:'unavailable';
+   const timestamp=isStrictTimestamp(record?.at)?record.at:'time unavailable';
+   card.dataset.activityActorId=actorId;
+   card.dataset.activityActorRole=actorRole;
+   card.append(el('h3',(stream.id==='report'?'Report':'Contribution')+' · '+actorName));
+   card.append(el('small',actorRole==='unavailable'
+    ?'Recorded actor role unavailable; attribution is incomplete.'
+    :'Recorded actor role: '+actorRole+' · pseudonymous session attribution; not proof of a distinct human, endorsement or authority.'));
+   card.append(el('p','Artifact: '+item.targetTitle+' · v'+(Number.isSafeInteger(record?.version)?record.version:'?')));
+   card.append(el('p',typeof record?.text==='string'?record.text:'[Self-reported text unavailable.]'));
+   card.append(el('small',stream.title+' · APPEND POSITION '+item.streamPosition+' · '+timestamp));
+   card.append(el('small','Retained self-reported activity · not independent evidence, truth, approval or authority.'));
+   if(item.status==='unvalidated'){
+    const warning=el('p','Unvalidated retained activity. '+item.reason+'. No artifact navigation is offered.');
+    warning.className='evidence-warning';
+    card.append(warning);
+   }else{
+    if(item.targetAvailable&&typeof onOpenArtifact==='function'){
+     const open=el('button','Open retained artifact version →');
+     open.type='button';
+     open.className='secondary-button';
+     open.dataset.evidenceArchiveOpen='true';
+     open.dataset.creationId=record.creationId;
+     open.dataset.version=String(record.version);
+     open.onclick=()=>onOpenArtifact(record.creationId,record.version);
+     card.append(open);
+    }
+    if(item.sourceEvent?.status==='linked'&&typeof onInspectEvent==='function'){
+     card.append(el('small','A source event link identifies retained activity only; it does not verify the claim.'));
+     const inspect=el('button','Inspect source event in World Chronicle →');
+     inspect.type='button';
+     inspect.className='secondary-button';
+     inspect.dataset.evidenceArchiveOpenEvent='true';
+     inspect.dataset.eventId=item.sourceEvent.eventId;
+     if(Number.isSafeInteger(item.sourceEvent.eventPosition)&&item.sourceEvent.eventPosition>0){
+       inspect.dataset.eventPosition=String(item.sourceEvent.eventPosition);
+       inspect.dataset.eventPositionStatus='available';
+      }else{
+       inspect.dataset.eventPositionStatus='unavailable';
+       card.append(el('small','Global append position unavailable in this partial snapshot; the unique retained event identity still permits Chronicle navigation.'));
+      }
+     inspect.dataset.eventType=item.sourceEvent.eventType;
+     inspect.onclick=()=>onInspectEvent(item.sourceEvent.eventId);
+     card.append(inspect);
+    }else{
+     const reason=item.sourceEvent?.reason||'Chronicle navigation is unavailable; source link is withheld.';
+     const notice=el('small','Source Chronicle link withheld: '+reason+
+      ' A source event link identifies retained activity only; it does not verify the claim.');
+     notice.dataset.evidenceArchiveSourceLinkStatus=item.sourceEvent?.status||'unavailable';
+     card.append(notice);
+    }
+   }
+   section.append(card);
+  }
+  if(stream.omittedCount>0){
+   const more=el('p',stream.omittedCount+' additional '+stream.label.toLowerCase()+' record(s) remain in the retained collection.');
+   more.className='form-help';
+   section.append(more);
+  }
+  container.append(section);
+ }
+ return projection;
 }
 
 const MAX_SOURCE_OBSERVATION_QUEUE_ITEMS = 50;
@@ -1057,7 +1454,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   return;
  }
  let records;
- try { records=projectSourceObservationRecords(world.events,world.creations); }
+ try { records=projectSourceObservationRecords(world.events,world.creations,retainedWorldEventHistoryOptions(world,world.events)); }
  catch {
   const warning=el('p','The Source Observation projection could not be read safely. No response action is offered; inspect the retained Chronicle.');
   warning.className='evidence-warning';
@@ -1243,7 +1640,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   container.append(more);
  }
 }
-export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact}={}){
+export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact,onOpenLocation,onInspectEvent}={}){
  if(shared&&kernelUnavailable){
   const warning=el('p','Canonical institutional history could not be loaded. The missing history is not being treated as empty; retry when the shared service is reachable.');
   warning.className='evidence-warning';container.append(warning);
@@ -1252,6 +1649,7 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
   const warning=el('p','Institutional history count mismatch: the service reports '+kernel.eventCount+' events but delivered '+kernel.events.length+'. Treat this snapshot as incomplete until reconciled.');
   warning.className='evidence-warning';container.append(warning);
  }
+ renderEvidenceArchiveActivityStreams(container,world,onOpenArtifact,onInspectEvent);
  renderSourceObservationResponseQueue(container,world,onOpenArtifact);
  const chronicle=projectChronicle({world,kernel});
  const entries=chronicle.entries.filter(entry=>{
@@ -1265,13 +1663,14 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
    :'Retained local world events are shown separately from the reports and contributions above. A saved event records activity, not external truth or authority.',
   emptyMessage:shared
    ?'No retained institutional or world events are recorded in this snapshot.'
-   :'No retained world events are recorded in this local snapshot.'
+   :'No retained world events are recorded in this local snapshot.',
+  onOpenLocation
  });
 }
 
-export function renderInstitution(container,projects,gate,{founder=false,onChoice,kernel,kernelUnavailable=false,world,onOpenArtifact,exactEventLookup}={}){
+export function renderInstitution(container,projects,gate,{founder=false,onChoice,kernel,kernelUnavailable=false,world,onOpenArtifact,onOpenLocation,exactEventLookup}={}){
  container.append(el('p','Real project records, archived contradictions and scoped decisions. These records do not award game XP.'));
- renderChronicle(container,projectChronicle({world,kernel}),onOpenArtifact,{exactEventLookup});
+ renderChronicle(container,projectChronicle({world,kernel}),onOpenArtifact,{exactEventLookup,onOpenLocation});
  if(kernelUnavailable){container.append(el('h3','CANONICAL WORK RECEIPTS'));const warning=el('p','Canonical work receipts could not be loaded from the shared service. Project and decision records remain available; the missing kernel history is not being treated as empty.');warning.className='evidence-warning';container.append(warning);}else renderKernelHistory(container,kernel);
  for(const [name,rows]of [['PROJECTS',projects.projects],['ACCOMPLISHMENTS',projects.accomplishments],['DISPUTES',projects.disputes],['DECISION STATUS',projects.decisions]]){container.append(el('h3',name));if(!rows.length)container.append(el('p','No retained record is installed.'));for(const row of rows){const card=el('article');card.className='field-card';card.dataset.recordType=name;card.append(el('h3',row.title||row.statement),el('p',row.status||row.disposition),el('small',row.evidenceDigest?`Evidence SHA-256 · ${row.evidenceDigest}`:''));if(row.limitation)card.append(el('p',row.limitation));container.append(card);}}
  const dispositionAuthorization = gate?.dispositionAuthorization;

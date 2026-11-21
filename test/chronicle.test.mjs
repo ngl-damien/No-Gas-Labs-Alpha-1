@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { projectChronicle } from "../game/chronicle.mjs";
-import { projectCharacter } from "../game/character-sheet.mjs";
+import { institutionActivityCount, institutionDestinationsForEvent } from "../game/world-view.mjs";
+import { projectCharacter, findRetainedPublicationEventId } from "../game/character-sheet.mjs";
 import { createWorld, applyAction } from "../game/model.mjs";
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from "../game/artifacts.mjs";
 import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from "../game/research-records.mjs";
@@ -1913,4 +1914,203 @@ test("Chronicle does not let Date.parse leniency promote malformed retained time
     "invalid timestamps must not reorder the retained institutional stream"
   );
   assert.deepEqual({ world, kernel }, before, "invalid-time Chronicle inspection must remain read-only");
+});
+
+
+test("institution activity counters include retained Commons, guild, and field-item transfer events", () => {
+  const types = [
+    "message-posted", "message-reported", "message-moderated",
+    "guild-created", "guild-joined", "guild-left", "guild-disbanded",
+    "guild-leadership-transfer-offered", "guild-leadership-transfer-cancelled",
+    "guild-leadership-transfer-declined", "guild-leadership-transferred",
+    "field-item-transfer-offered", "field-item-transfer-cancelled",
+    "field-item-transfer-declined", "field-item-transferred",
+  ];
+  const events = types.map((type, index) => ({
+    id: "institution-route-fixture-" + index,
+    type,
+  }));
+  const world = { revision: events.length, events };
+
+  assert.equal(institutionActivityCount("town-square", world), 3,
+    "all three retained Commons message lifecycle events belong to TownSquare");
+  assert.equal(institutionActivityCount("guild_hall", world), 8,
+    "guild founding, membership, closure and leadership handoffs belong to Guild Hall");
+  assert.equal(institutionActivityCount("forge", world), 4,
+    "field-item transfer offers, refusals and acceptance belong to the Forge");
+  assert.deepEqual(institutionDestinationsForEvent({ type: "message-posted" }).map(place => place.id),
+    ["town-square"]);
+  assert.deepEqual(institutionDestinationsForEvent({ type: "guild-created" }).map(place => place.id),
+    ["guild_hall"]);
+  assert.deepEqual(institutionDestinationsForEvent({ type: "field-item-transferred" }).map(place => place.id),
+    ["forge"]);
+  assert.deepEqual(institutionDestinationsForEvent({ type: "execute" }, "kernel").map(place => place.id),
+    ["forge", "evidence_archive", "town-square"]);
+  const accessorEvent = Object.defineProperty({}, "type", {
+    get() { throw new Error("retained event accessors must not execute during route projection"); }
+  });
+  assert.deepEqual(institutionDestinationsForEvent(accessorEvent), [],
+    "route projection reads only own data properties and never invokes retained accessors");
+});
+
+test("Chronicle entries carry institutional destinations and explicit discovery locations without conflating them", () => {
+  const { world, kernel } = fixture();
+  const chronicle = projectChronicle({ world, kernel });
+  const report = chronicle.entries.find(entry => entry.id === "world:report-v1");
+  const publication = chronicle.entries.find(entry => entry.id === "world:publish-v1");
+  const adjudication = chronicle.entries.find(entry => entry.id === "kernel:adjudicate-1");
+
+  assert.deepEqual(report.institutionDestinations?.map(place => place.id),
+    ["evidence_archive", "town-square"]);
+  assert.equal(report.locationId, null,
+    "related institutions are not a claim about the report's physical location");
+  assert.deepEqual(publication.institutionDestinations?.map(place => place.id),
+    ["forge", "evidence_archive", "publication_house"]);
+  assert.deepEqual(adjudication.institutionDestinations?.map(place => place.id),
+    ["guild_hall", "evidence_archive", "town-square", "decision_chamber"]);
+
+  const discoveryWorld = {
+    events: [{
+      id: "visit-overlook",
+      type: "discover",
+      locationId: "overlook",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-10-26T10:08:00.000Z",
+    }],
+    discoveries: [],
+  };
+  const discovery = projectChronicle({ world: discoveryWorld }).entries
+    .find(entry => entry.id === "world:visit-overlook");
+  assert.equal(discovery.locationId, "overlook");
+  assert.equal(discovery.locationName, "The Long View");
+  assert.deepEqual(discovery.institutionDestinations || [], [],
+    "a discovery event uses its explicitly retained map location, not an inferred institution route");
+});
+
+test("Publication House links one exact retained version to its unique publication event without awarding XP", () => {
+  const publishedAtV1 = "2026-11-20T10:00:00.000Z";
+  const publishedAtV2 = "2026-11-20T11:00:00.000Z";
+  const receipt = { algorithm: "sha256", digest: "a".repeat(64), size: 12 };
+  const creation = {
+    id: "publication-object", title: "Publication fixture", version: 2,
+    publishedAt: publishedAtV2, receipt,
+    versions: [{ version: 1, publishedAt: publishedAtV1, receipt }]
+  };
+  const events = [
+    { id: "publication-v1", type: "publish", creationId: creation.id, version: 1,
+      actor: { id: "damien", name: "Damien", role: "founder" }, at: publishedAtV1 },
+    { id: "publication-v2", type: "publish", creationId: creation.id, version: 2,
+      actor: { id: "damien", name: "Damien", role: "founder" }, at: publishedAtV2 }
+  ];
+  const world = { creations: [creation], events, reports: [], contributions: [], discoveries: [], methods: [], xp: 0 };
+  const before = structuredClone(world);
+
+  assert.equal(findRetainedPublicationEventId(world, creation.id, 1), "publication-v1",
+    "a historical version links to its own retained publication event");
+  assert.equal(findRetainedPublicationEventId(world, creation.id, 2), "publication-v2",
+    "the current version links to its own retained publication event");
+  assert.equal(findRetainedPublicationEventId(world, creation.id, 3), null,
+    "a version with no retained bytes cannot acquire a Chronicle link");
+  assert.equal(projectCharacter(world, { id: "damien", role: "founder" }).xp, 0,
+    "a publication link does not manufacture a publication reward");
+  assert.deepEqual(world, before, "resolving publication lineage is read-only");
+});
+
+test("Publication House withholds Chronicle links for missing, duplicate, malformed, or mismatched publication lineage", () => {
+  const publishedAt = "2026-11-20T10:00:00.000Z";
+  const receipt = { algorithm: "sha256", digest: "b".repeat(64), size: 8 };
+  const creation = {
+    id: "publication-object", title: "Publication fixture", version: 1,
+    publishedAt, receipt, versions: []
+  };
+  const publication = {
+    id: "publication-event", type: "publish", creationId: creation.id, version: 1,
+    actor: { id: "damien", name: "Damien", role: "founder" }, at: publishedAt
+  };
+  const worldWith = events => ({ creations: [creation], events });
+
+  assert.equal(findRetainedPublicationEventId(worldWith([]), creation.id, 1), null,
+    "missing publication history stays unlinked");
+  assert.equal(findRetainedPublicationEventId(worldWith([publication, { ...publication, id: "publication-duplicate" }]), creation.id, 1), null,
+    "two publication events for one version remain ambiguous");
+  assert.equal(findRetainedPublicationEventId(worldWith([publication, { id: publication.id, type: "report" }]), creation.id, 1), null,
+    "a publication event ID collision across event types remains ambiguous");
+  assert.equal(findRetainedPublicationEventId(worldWith([{ ...publication, id: " padded-event-id " }]), creation.id, 1), null,
+    "an unnormalized event ID cannot be used as a Chronicle destination");
+  assert.equal(findRetainedPublicationEventId(worldWith([{ ...publication, actor: { id: "damien", name: "Damien", role: "witness" } }]), creation.id, 1), null,
+    "a non-Founder publication actor cannot supply canonical publication lineage");
+  assert.equal(findRetainedPublicationEventId(worldWith([{ ...publication, at: "2026-11-20T10:00:01.000Z" }]), creation.id, 1), null,
+    "a publication timestamp that disagrees with the retained version stays unlinked");
+  const duplicateVersion = { ...creation, versions: [{ version: 1, publishedAt, receipt }] };
+  assert.equal(findRetainedPublicationEventId({ creations: [duplicateVersion], events: [publication] }, creation.id, 1), null,
+    "duplicate retained version identities remain ambiguous");
+});
+
+
+test("Chronicle preserves server-projected global positions after actor filtering", () => {
+  const visibleEvents = [
+    { id: "event-public-1", type: "discover", at: "2026-11-20T12:00:00.000Z", historyPosition: 1 },
+    { id: "event-public-3", type: "report", at: "2026-11-20T12:01:00.000Z", historyPosition: 3 },
+    { id: "event-public-6", type: "discover", at: "2026-11-20T12:02:00.000Z", historyPosition: 6 },
+  ];
+  const world = {
+    revision: 6,
+    events: visibleEvents,
+    creations: [],
+    reports: [],
+    contributions: [],
+    discoveries: [],
+    methods: [],
+  };
+  const entries = projectChronicle({ world }).entries.filter(entry => entry.source === "world");
+  assert.deepEqual(entries.map(entry => entry.streamPosition), [6, 3, 1]);
+
+  const partialLegacyWorld = {
+    ...world,
+    events: visibleEvents.map(({ historyPosition, ...event }) => event),
+  };
+  const partialEntries = projectChronicle({ world: partialLegacyWorld }).entries
+    .filter(entry => entry.source === "world");
+  assert.ok(partialEntries.every(entry => !Number.isSafeInteger(entry.streamPosition)),
+    "a filtered legacy snapshot without global position metadata must not invent positions");
+
+  const completeLocalWorld = { ...partialLegacyWorld, revision: 3 };
+  const localEntries = projectChronicle({ world: completeLocalWorld }).entries
+    .filter(entry => entry.source === "world");
+  assert.deepEqual(localEntries.map(entry => entry.streamPosition), [3, 2, 1],
+    "a complete local history may retain the array-index fallback");
+
+  const malformedPositionsWorld = {
+    ...world,
+    events: [
+      { ...visibleEvents[0], historyPosition: 3 },
+      { ...visibleEvents[1], historyPosition: 2 },
+      visibleEvents[2],
+    ],
+  };
+  const malformedEntries = projectChronicle({ world: malformedPositionsWorld }).entries
+    .filter(entry => entry.source === "world");
+  assert.ok(malformedEntries.every(entry => !Number.isSafeInteger(entry.streamPosition)),
+    "duplicate or regressing projection positions must fail closed");
+});
+
+test('Chronicle preserves global append positions when a public snapshot omits earlier events', () => {
+  const { world } = fixture();
+  const filtered = structuredClone(world);
+  filtered.revision = 5;
+  filtered.methods = [];
+  filtered.events = [
+    { ...world.events[0], historyPosition: 2 },
+    { ...world.events[2], historyPosition: 5 }
+  ];
+  const before = structuredClone(filtered);
+
+  const chronicle = projectChronicle({ world: filtered, kernel: null });
+  const byId = new Map(chronicle.entries
+    .filter(entry => entry.source === 'world')
+    .map(entry => [entry.id, entry]));
+
+  assert.equal(byId.get('world:publish-v1')?.streamPosition, 2);
+  assert.equal(byId.get('world:orphan-report')?.streamPosition, 5);
+  assert.deepEqual(filtered, before, 'Chronicle projection must not mutate the filtered snapshot');
 });

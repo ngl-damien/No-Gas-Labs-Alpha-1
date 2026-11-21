@@ -22,7 +22,7 @@ import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
 import { COMBAT_EVENT_TYPES } from './combat.mjs';
-import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, hasSourcePredicatePublicRetentionAcknowledgement } from './research-records.mjs';
+import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, hasSourcePredicatePublicRetentionAcknowledgement, stripCompleteResponseHistoryPositions } from './research-records.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
 import { PLACES, PLAYER_MOVE_SPEED, findRoute, isWalkable , COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
@@ -562,7 +562,12 @@ function validateHistory(world) {
   let previousAt = Date.parse(world.createdAt);
   for (const event of world.events) {
     if (!Object.hasOwn(details, event.type)) throw new Error('Unknown stored world history event');
-    const optional = ['requestId', 'actionFingerprint', 'actionResult', ...(event.type === 'discover' ? ['repeat'] : []), ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion'] : [])];
+    const optional = [
+      'requestId', 'actionFingerprint', 'actionResult',
+      ...(event.type === 'contribute' || event.type === 'report' ? ['recordId', 'recordTextReceipt'] : []),
+      ...(event.type === 'discover' ? ['repeat'] : []),
+      ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion'] : [])
+    ];
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
     const validTransferActorId = value => typeof value === 'string' && value.length > 0 &&
@@ -963,8 +968,37 @@ function validateHistory(world) {
     if (event.type === 'publish' && !(publishedByVersion.get(historyKey(event.creationId, event.version)) || []).some(p => p.publishedAt === event.at)) throw new Error('Stored publication history mismatch');
     if (Object.hasOwn(notes, event.type)) {
       if (event.type === 'discover' && event.repeat === true) continue;
-      const index = notes[event.type].findIndex(note => note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor) && (event.type === 'discover' ? note.locationId === event.locationId : note.creationId === event.creationId && note.version === event.version));
+      const hasRecordId = event.type === 'contribute' || event.type === 'report'
+        ? Object.hasOwn(event, 'recordId') : false;
+      const hasRecordTextReceipt = event.type === 'contribute' || event.type === 'report'
+        ? Object.hasOwn(event, 'recordTextReceipt') : false;
+      if (hasRecordId !== hasRecordTextReceipt) {
+        throw new Error('Stored activity event has an incomplete text receipt binding');
+      }
+      const index = notes[event.type].findIndex(note =>
+        (event.type === 'discover'
+          ? note.locationId === event.locationId
+          : (hasRecordId
+              ? note.id === event.recordId
+              : typeof event.actionResult?.id === 'string'
+                ? note.id === event.actionResult.id : true) &&
+            note.creationId === event.creationId && note.version === event.version) &&
+        note.at === event.at &&
+        canonicalStringify(note.actor) === canonicalStringify(event.actor));
       if (index < 0) throw new Error('Stored contribution / discovery history mismatch');
+      const note = notes[event.type][index];
+      if (hasRecordId) {
+        exact(event.recordTextReceipt, ['algorithm', 'digest', 'size']);
+        const expectedReceipt = artifactReceipt(Buffer.from(note.text, 'utf8'));
+        if (event.recordTextReceipt.algorithm !== expectedReceipt.algorithm ||
+            event.recordTextReceipt.digest !== expectedReceipt.digest ||
+            event.recordTextReceipt.size !== expectedReceipt.size) {
+          throw new Error('Stored activity text does not match its Chronicle receipt');
+        }
+        if (event.actionResult !== undefined && event.actionResult?.id !== event.recordId) {
+          throw new Error('Stored activity result ID does not match its Chronicle record ID');
+        }
+      }
       notes[event.type].splice(index, 1);
     }
   }
@@ -986,7 +1020,11 @@ function validateHistory(world) {
 
 /** Expose the independent durable-history validator for focused integrity tests. */
 export function validateStoredWorldHistory(world) {
-  validateHistory(world);
+  const responseHistory = stripCompleteResponseHistoryPositions(world);
+  if (responseHistory.status === 'invalid') {
+    throw new Error('Stored response history positions must describe a complete canonical event stream.');
+  }
+  validateHistory(responseHistory.world);
 }
 
 async function validatePayload(raw) {

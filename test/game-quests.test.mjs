@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestObjectiveActionable, FIELD_ITEM_SOURCE_TYPES } from '../game/quests.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestObjectiveActionable, FIELD_ITEM_SOURCE_TYPES, createQuestEvidenceEventLinkResolver } from '../game/quests.mjs';
 import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
@@ -2599,6 +2599,44 @@ test('Guild Dissent Circuit requires membership at event time and a challenge af
   assert.match(blocked.blockedReason, /guild history is ambiguous or invalid/i);
 });
 
+test('Guild Dissent Circuit follows append order when source-action timestamps regress', () => {
+  const fixture = guildDissentCircuitFixture();
+  const {
+    world, publication, guildCreated, guildJoined,
+    founderObservation, witnessObservation, challenge, response
+  } = fixture;
+
+  // Membership events remain in their required chronological order. The
+  // Source Observatory actions are explicitly append-ordered and may carry
+  // valid timestamps below the world clock high-water mark.
+  witnessObservation.at = '2026-10-28T19:01:30.000Z';
+  challenge.at = '2026-10-28T19:01:40.000Z';
+  response.at = '2026-10-28T19:01:50.000Z';
+  world.events = [
+    publication, guildCreated, guildJoined,
+    founderObservation, witnessObservation, challenge, response
+  ];
+
+  const beforeProjection = structuredClone(world);
+  const objective = actor => getQuestTrail(world, actor)
+    .find(item => item.id === actor.role + '-guild-dissent-circuit');
+
+  const founderQuest = objective(founder);
+  const witnessQuest = objective(witness);
+  assert.equal(founderQuest.progress, 4,
+    'later-appended observation, challenge and response remain causally ordered despite clock regression');
+  assert.equal(founderQuest.complete, true);
+  assert.deepEqual(founderQuest.evidenceIds, [
+    founderObservation.id, witnessObservation.id, challenge.id, response.id
+  ]);
+  assert.equal(witnessQuest.progress, 4,
+    'the same append-ordered group objective is visible to the other current member');
+  assert.deepEqual(witnessQuest.evidenceIds, founderQuest.evidenceIds);
+  assert.match(founderQuest.interpretation, /timestamps are metadata, not causal order/i);
+  assert.equal(world.xp, 100, 'the participation objective awards no XP');
+  assert.deepEqual(world, beforeProjection, 'the projection is read-only and preserves all original timestamps and events');
+});
+
 test('Guild Dissent Circuit excludes observations appended before the prior author response from the next round', () => {
   const fixture = guildDissentCircuitFixture();
   const actor = fixture.founderObservation.actor;
@@ -4408,4 +4446,37 @@ test('Armor Bearer quest prioritizes an actionable owned item over a pending rec
   getQuestTrail(secondForge.world, founder);
   assert.deepEqual(secondForge.world, beforeProjection,
     'selecting the next actionable chain is a read-only projection');
+});
+
+
+test('Quest evidence Chronicle links require one exact retained world-event identity', () => {
+  const event = {
+    id: 'quest-evidence-source-event',
+    type: 'source-observation-recorded',
+    at: '2026-11-21'
+  };
+  const world = { events: [event] };
+  const before = structuredClone(world);
+  const resolve = createQuestEvidenceEventLinkResolver(world);
+
+  assert.deepEqual(resolve({ id: event.id, type: event.type }), {
+    status: 'linked', event, reason: null
+  }, 'an exact unique event remains inspectable even when its timestamp needs Chronicle warning');
+  assert.equal(resolve({ id: ' ' + event.id, type: event.type }).status, 'invalid');
+  assert.equal(resolve({ id: 'missing-quest-evidence-event', type: event.type }).status, 'unlinked');
+  assert.equal(resolve({ id: event.id, type: 'source-observation-challenged' }).status, 'mismatched');
+  assert.equal(resolve({ id: 'x'.repeat(129), type: event.type }).status, 'invalid');
+  assert.equal(
+    createQuestEvidenceEventLinkResolver({ events: [event, { ...event, type: 'source-observation-challenged' }] })(
+      { id: event.id, type: event.type }
+    ).status,
+    'ambiguous',
+    'a duplicate event identity must not choose one matching Chronicle record'
+  );
+  assert.equal(
+    createQuestEvidenceEventLinkResolver({})({ id: event.id, type: event.type }).status,
+    'unavailable',
+    'missing retained world history must not be treated as an empty or linkable stream'
+  );
+  assert.deepEqual(world, before, 'resolving a quest evidence link must not mutate retained world history');
 });

@@ -1,7 +1,7 @@
 import {createArtifact,readSatireIssueArtifact,findSatireIssuePublication,indexSatireIssuePublications,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX,evaluateGitHubSourceArchivePredicate,GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR} from './artifacts.mjs';
 import {COMBAT_EVENT_TYPES, projectCombatHistory, resolveCombatMove} from './combat.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
-import {SOURCE_OBSERVATION_SOURCE_KINDS,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor,hasSourcePredicatePublicRetentionAcknowledgement} from './research-records.mjs';
+import {SOURCE_OBSERVATION_SOURCE_KINDS,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor,hasSourcePredicatePublicRetentionAcknowledgement,stripCompleteResponseHistoryPositions} from './research-records.mjs';
 import {projectCollaboratorPackets,isExactCollaboratorSourceRecord} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateCollaboratorResponseSnapshot} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS,MAX_FIELD_INVENTORY_ITEMS} from './character-sheet.mjs';
@@ -32,7 +32,29 @@ function validateSatireIssueArtifact(world,artifact,eventPosition,at){
   }
   return issue;
 }
-async function receipt(html){const bytes=encoder.encode(html);const hash=await globalThis.crypto.subtle.digest('SHA-256',bytes);return {algorithm:'sha256',digest:Array.from(new Uint8Array(hash),n=>n.toString(16).padStart(2,'0')).join(''),size:bytes.length};}
+async function receipt(html){
+  const bytes=encoder.encode(html);
+  const hash=await globalThis.crypto.subtle.digest('SHA-256',bytes);
+  return {algorithm:'sha256',digest:Array.from(new Uint8Array(hash),n=>n.toString(16).padStart(2,'0')).join(''),size:bytes.length};
+}
+function sameReceipt(value,expected){
+  try{
+    if(!value||typeof value!=='object'||Array.isArray(value))return false;
+    const prototype=Object.getPrototypeOf(value);
+    if(prototype!==Object.prototype&&prototype!==null)return false;
+    const descriptors=Object.getOwnPropertyDescriptors(value);
+    const keys=Reflect.ownKeys(descriptors);
+    const fields=['algorithm','digest','size'];
+    if(keys.length!==fields.length||keys.some(key=>!fields.includes(key)))return false;
+    for(const field of fields){
+      const descriptor=descriptors[field];
+      if(!descriptor||descriptor.enumerable!==true||!Object.hasOwn(descriptor,'value'))return false;
+    }
+    return descriptors.algorithm.value===expected.algorithm&&
+      descriptors.digest.value===expected.digest&&
+      descriptors.size.value===expected.size;
+  }catch{return false;}
+}
 function event(world,type,actor,at,detail={},requestMeta){const meta=requestMeta?{requestId:requestMeta.requestId,actionFingerprint:requestMeta.actionFingerprint,actionResult:clone(requestMeta.actionResult)}:{};world.events.push({id:uid('event'),type,actor:clone(actor),at,...detail,...meta,semantics:'Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.'});}
 export function createWorld({id=uid('world'),founderName='Damien Featherstone',now}={}) {const at=date(now);return {schema:'ngl.world.v2',id,founderName,revision:0,xp:0,createdAt:at,updatedAt:at,creations:[],drafts:[],events:[],contributions:[],reports:[],discoveries:[],methods:[]};}
 const SOURCE_ARCHIVE_FAILURE_RETRYABILITY = Object.freeze({
@@ -90,7 +112,15 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
     }
     case 'contribute':case 'report':{
       const c=creation();if(!Number.isInteger(action.version)||action.version<1)fail('INVALID_VERSION','Select a published version.');
-      const isReport=action.type==='report';const entry={id:uid(isReport?'report':'note'),creationId:c.id,version:action.version,text:text(action.text,isReport?1000:500,isReport?'Report':'Contribution'),actor:who,at};world[isReport?'reports':'contributions'].push(entry);result={id:entry.id};recordEvent(action.type,{creationId:c.id,version:action.version});break;
+      const isReport=action.type==='report';
+      const entry={id:uid(isReport?'report':'note'),creationId:c.id,version:action.version,text:text(action.text,isReport?1000:500,isReport?'Report':'Contribution'),actor:who,at};
+      world[isReport?'reports':'contributions'].push(entry);
+      result={id:entry.id};
+      recordEvent(action.type,{
+        creationId:c.id,version:action.version,recordId:entry.id,
+        recordTextReceipt:await receipt(entry.text)
+      });
+      break;
     }
     case 'study':{
       if(!Number.isSafeInteger(action.version)||action.version<1)fail('INVALID_VERSION','Select a retained published version.');
@@ -669,6 +699,14 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
 }
 export function publicWorld(world,actor){
   const copy=clone(world);
+  // Response-only metadata: derive global positions before role filtering and
+  // overwrite any caller-supplied field. Canonical world events are not mutated.
+  if(Array.isArray(copy.events)){
+    copy.events=copy.events.map((event,index)=>{
+      if(!event||typeof event!=='object'||Array.isArray(event))return event;
+      return {...event,historyPosition:index+1};
+    });
+  }
   if(actor?.role!=='founder'){
     copy.drafts=[];
     const hidden=hiddenCommonsMessageIds(copy);
@@ -688,6 +726,10 @@ export async function validateWorld(raw) {
   try{if(encoder.encode(JSON.stringify(raw)).length>32*1024*1024)invalid('World import exceeds 32 MiB.');}catch(error){if(error.code)throw error;invalid('World must be serializable JSON.');}
   if(!raw||raw.schema!=='ngl.world.v2'||typeof raw.id!=='string'||typeof raw.founderName!=='string'||!Number.isInteger(raw.revision)||raw.revision<0)invalid('Unsupported or malformed world.');
   for(const key of ['creations','drafts','events','contributions','reports','discoveries','methods'])if(!Array.isArray(raw[key]))invalid(`Missing ${key}.`);
+  const responseHistory=stripCompleteResponseHistoryPositions(raw);
+  if(responseHistory.status==='invalid')invalid('Response history positions must describe a complete canonical event stream.');
+  raw=responseHistory.world;
+  if(raw.revision!==raw.events.length)invalid('World revision must match the complete retained event history.');
   const createdAt=Date.parse(raw.createdAt),updatedAt=Date.parse(raw.updatedAt);const maximumEventAt=raw.events.reduce((maximum,item)=>{const eventAt=Date.parse(item?.at);return Number.isFinite(eventAt)?Math.max(maximum,eventAt):maximum;},createdAt);if(raw.creations.length>12||raw.drafts.length>24||!isStrictTimestamp(raw.createdAt)||!isStrictTimestamp(raw.updatedAt)||!Number.isFinite(createdAt)||!Number.isFinite(updatedAt)||createdAt>updatedAt||updatedAt!==maximumEventAt)invalid('Invalid world bounds or timestamp high-water mark.');
   const ids=new Set(),requestIds=new Set();const unique=id=>{if(typeof id!=='string'||!id||ids.has(id))invalid('Duplicate or missing identity.');ids.add(id)};
   const checkArtifact=async a=>{
@@ -1119,7 +1161,65 @@ export async function validateWorld(raw) {
     if(checked.status!==e.validationStatus||checked.reason!==e.validationReason)
       invalid('Collaborator archive validation status does not match retained response bytes.');
   }
-  for(const key of ['contributions','reports'])for(const n of raw[key]){unique(n.id);actorFor(n.actor);const c=raw.creations.find(c=>c.id===n.creationId);if(!c||!Number.isInteger(n.version)||n.version<1||n.version>c.version||typeof n.text!=='string'||!n.text.trim()||Array.from(n.text).length>(key==='reports'?1000:500)||!isStrictTimestamp(n.at))invalid('Malformed attributed note.');}
+  const activityRecordsById=new Map(),legacyActivityQueues=new Map();
+  const boundActivityRecordIds=new Set(raw.events
+    .filter(event=>event&&typeof event==='object'&&
+      (event.type==='contribute'||event.type==='report')&&Object.hasOwn(event,'recordId'))
+    .map(event=>event.recordId));
+  const activityRecordKey=(type,value)=>JSON.stringify([
+    type,value.creationId,value.version,value.at,
+    value.actor?.id,value.actor?.role,value.actor?.name
+  ]);
+  for(const key of ['contributions','reports']){
+    const type=key==='reports'?'report':'contribute';
+    for(const n of raw[key]){
+      unique(n.id);actorFor(n.actor);
+      const c=raw.creations.find(c=>c.id===n.creationId);
+      if(!c||!Number.isInteger(n.version)||n.version<1||n.version>c.version||
+         typeof n.text!=='string'||!n.text.trim()||
+         Array.from(n.text).length>(key==='reports'?1000:500)||!isStrictTimestamp(n.at))
+        invalid('Malformed attributed note.');
+      activityRecordsById.set(n.id,{type,record:n});
+      if(!boundActivityRecordIds.has(n.id)){
+        const key=activityRecordKey(type,n),queue=legacyActivityQueues.get(key)||[];
+        queue.push(n.id);legacyActivityQueues.set(key,queue);
+      }
+    }
+  }
+  for(const e of raw.events){
+    if(e.type!=='contribute'&&e.type!=='report')continue;
+    const hasRecordId=Object.hasOwn(e,'recordId');
+    const hasReceipt=Object.hasOwn(e,'recordTextReceipt');
+    if(hasRecordId!==hasReceipt)invalid('Incomplete retained activity text receipt.');
+    let recordId,entry;
+    if(hasRecordId){
+      recordId=e.recordId;
+      entry=activityRecordsById.get(recordId);
+    }else if(typeof e.actionResult?.id==='string'){
+      recordId=e.actionResult.id;
+      entry=activityRecordsById.get(recordId);
+    }else{
+      const queue=legacyActivityQueues.get(activityRecordKey(e.type,e));
+      while(queue?.length&&!activityRecordsById.has(queue[0]))queue.shift();
+      recordId=queue?.shift();
+      entry=recordId?activityRecordsById.get(recordId):null;
+    }
+    if(!entry||entry.type!==e.type)invalid('Retained activity event does not identify exactly one activity record.');
+    const n=entry.record;
+    if(n.creationId!==e.creationId||n.version!==e.version||n.at!==e.at||
+       n.actor.id!==e.actor.id||n.actor.role!==e.actor.role||n.actor.name!==e.actor.name)
+      invalid('Retained activity event attribution does not match its record.');
+    if(hasRecordId){
+      const expected=await receipt(n.text);
+      if(!sameReceipt(e.recordTextReceipt,expected))
+        invalid('Retained activity text does not match its Chronicle receipt.');
+      if(e.actionResult!==undefined&&e.actionResult?.id!==recordId)
+        invalid('Retained activity idempotency result does not match its record ID.');
+    }
+    if(!activityRecordsById.delete(recordId))
+      invalid('An activity record is linked by multiple Chronicle events.');
+  }
+  if(activityRecordsById.size)invalid('Orphaned attributed activity record without a retained Chronicle event.');
   const discoveries=new Set();for(const d of raw.discoveries){unique(d.id);actorFor(d.actor);const key=JSON.stringify([d.actor.id,d.actor.role,d.locationId]);if(!knownPlaces.has(d.locationId)||discoveries.has(key))invalid('Invalid discovery.');discoveries.add(key);}
   for(const method of raw.methods){unique(method.id);actorFor(method.actor);const c=raw.creations.find(c=>c.id===method.creationId);if(!c||method.version<2||method.version>c.version||typeof method.title!=='string'||typeof method.description!=='string'||!isStrictTimestamp(method.at))invalid('Invalid earned game method.');}
   try{projectPlayerGuilds(raw);}catch{invalid('Malformed player-guild history.');}

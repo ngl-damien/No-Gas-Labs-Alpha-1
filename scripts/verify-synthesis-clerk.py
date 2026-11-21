@@ -525,8 +525,15 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
         "Paging to older Source Archive failures"
     )
 
-    # A new server-observed failure arrives while the player is on the older page.
-    # The local page cursor must rebind to the new world revision before navigation.
+    # Evidence Archive is a coherent accepted snapshot. A newer event must not
+    # silently replace the older page while the player is still inspecting it.
+    previous_archive_revision = section.get_attribute("data-source-archive-failure-page-revision")
+    previous_archive_page = section.get_attribute("data-source-archive-failure-page")
+    previous_archive_total = section.get_attribute("data-source-archive-failure-total")
+    assert previous_archive_revision == str(after_older["revision"])
+    assert previous_archive_page == "1"
+    assert previous_archive_total == "13"
+
     revision_request_id = "source-archive-failure-ledger-revision-" + str(width)
     revision_action = {
         "type": "draft-github-source-archive",
@@ -570,24 +577,55 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
         "() => document.getElementById('world')?.dataset.worldRevision === '" + str(after_new_failure["revision"]) + "'",
         timeout=30000
     )
-    if section.get_attribute("data-source-archive-failure-page") != "0" or section.get_attribute("data-source-archive-failure-total") != "14":
-        newer = section.locator('[data-source-archive-failure-newer="true"]')
-        expect(newer).to_have_count(1)
-        newer.tap()
+    refresh_notice = page.locator(
+        '#sheet-content [data-evidence-archive-snapshot-freshness="refresh-required"]'
+    )
+    expect(refresh_notice).to_have_count(1)
+    expect(refresh_notice).to_have_attribute("data-snapshot-revision", previous_archive_revision)
+    expect(refresh_notice).to_have_attribute("data-current-revision", str(after_new_failure["revision"]))
+    expect(section).to_have_attribute("data-source-archive-failure-page", previous_archive_page)
+    expect(section).to_have_attribute("data-source-archive-failure-page-revision", previous_archive_revision)
+    expect(section).to_have_attribute("data-source-archive-failure-total", previous_archive_total)
+    expect(section).to_have_attribute("data-source-archive-failure-has-older", "false")
+    expect(section).to_have_attribute("data-source-archive-failure-has-newer", "true")
+    expect(cards).to_have_count(1)
+    expect(cards.nth(0)).to_have_attribute(
+        "data-source-archive-failure-event-id", failure["oldestEventId"]
+    )
+    expect(section).to_contain_text("Showing failure records 1–1 of 13")
+
+    refresh_button = refresh_notice.locator('[data-evidence-archive-refresh="true"]')
+    expect(refresh_button).to_have_count(1)
+    refresh_button.tap()
+    page.wait_for_function(
+        "expected => document.querySelector('#sheet-title')?.textContent === 'Evidence Archive' && " +
+        "document.querySelector('#sheet-content [data-source-archive-failure-ledger]')?.getAttribute('data-source-archive-failure-page-revision') === String(expected)",
+        arg=after_new_failure["revision"],
+        timeout=30000
+    )
+    expect(page.locator(
+        '#sheet-content [data-evidence-archive-snapshot-freshness]'
+    )).to_have_count(0)
     expect(section).to_have_attribute("data-source-archive-failure-page", "0")
-    expect(section).to_have_attribute("data-source-archive-failure-page-revision", str(after_new_failure["revision"]))
+    expect(section).to_have_attribute(
+        "data-source-archive-failure-page-revision", str(after_new_failure["revision"])
+    )
     expect(section).to_have_attribute("data-source-archive-failure-total", "14")
-    expect(section).to_contain_text("New shared-world activity arrived; this ledger is showing the newest page.")
     expect(section).to_have_attribute("data-source-archive-failure-total-pages", "2")
     expect(section).to_have_attribute("data-source-archive-failure-has-older", "true")
     expect(section).to_have_attribute("data-source-archive-failure-has-newer", "false")
     expect(cards).to_have_count(12)
-    expect(cards.nth(0)).to_have_attribute("data-source-archive-failure-event-id", failure["eventId"])
+    expect(cards.nth(0)).to_have_attribute(
+        "data-source-archive-failure-event-id", failure["eventId"]
+    )
+    expect(cards.nth(11)).to_have_attribute(
+        "data-source-archive-failure-event-id", failure["eventIds"][2]
+    )
     expect(section).to_contain_text("Showing failure records 3–14 of 14")
     after_reset = authoritative_snapshot(page)
     assert_canonical_state_unchanged(
         after_new_failure, after_reset,
-        "Rebinding the local failure cursor after a new world revision"
+        "Refreshing Evidence Archive to the newly accepted failure snapshot"
     )
 
     open_observatory = card.locator('[data-source-archive-failure-open-observatory="true"]')
@@ -641,7 +679,7 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
         "eventIds": failure["eventIds"],
         "initialVisibleCount": 12,
         "olderPageVisibleCount": 1,
-        "revisionResetVisibleCount": 12,
+        "refreshedSnapshotVisibleCount": 12,
         "eventCountAfterRevisionChange": failure["count"],
         "latestEventId": failure["eventId"],
         "oldestEventId": failure["oldestEventId"],

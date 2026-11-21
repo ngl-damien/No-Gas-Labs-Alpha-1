@@ -568,3 +568,31 @@ test('Commons shows only the reporter a private status and labels later human mo
   await validateWorld(restored.world);
 });
 
+
+test('player-guild projection validates global response positions in filtered snapshots', async () => {
+  const initial = createWorld({ id: 'guild-global-history-position', now: at(0) });
+  const created = await applyAction(initial, {
+    type: 'create-guild',
+    name: 'Position Keepers',
+    charter: 'Keep append order visible without granting authority.'
+  }, founder, { now: at(1000) });
+  const snapshot = publicWorld(created.world, founder);
+  assert.equal(snapshot.events[0].historyPosition, 1);
+
+  const before = structuredClone(snapshot);
+  assert.doesNotThrow(() => projectPlayerGuilds(snapshot, founder));
+
+  const filtered = structuredClone(snapshot);
+  filtered.revision = 2;
+  filtered.events = [{ ...filtered.events[0], historyPosition: 2 }];
+  assert.doesNotThrow(() => projectPlayerGuilds(filtered, founder),
+    'a valid global position may have a gap in an actor-filtered view');
+
+  const malformed = structuredClone(filtered);
+  malformed.events[0].historyPosition = 3;
+  assert.throws(
+    () => projectPlayerGuilds(malformed, founder),
+    /history position/i
+  );
+  assert.deepEqual(snapshot, before);
+});

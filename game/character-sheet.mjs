@@ -1,6 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { projectCommonsMessages } from './social.mjs';
-import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor, retainedWorldEventHistoryOptions } from './research-records.mjs';
 import { projectCombatHistory } from './combat.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
 import { isSafeFieldItemReferenceId, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
@@ -175,6 +175,22 @@ function retainedPublicationEvents(world) {
     for (const candidate of selected) retained.push(candidate.event);
   }
   return retained;
+}
+
+/**
+ * Resolve the exact retained publication event for one artifact version.
+ * This reuses the character projection's unique-version and publication
+ * lineage rules; a receipt identifies retained bytes, not truth or XP.
+ */
+export function findRetainedPublicationEventId(world, creationId, version) {
+  if (typeof creationId !== 'string' || !creationId || creationId.trim() !== creationId ||
+      !Number.isSafeInteger(version) || version < 1) return null;
+  const matches = retainedPublicationEvents(world).filter(event =>
+    event.creationId === creationId && event.version === version &&
+    typeof event.id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.id) &&
+    !['constructor', 'prototype', '__proto__'].includes(event.id)
+  );
+  return matches.length === 1 ? matches[0].id : null;
 }
 
 // A publication is an XP receipt only when the exact fixed reward is present.
@@ -529,7 +545,7 @@ export function projectCharacter(world, viewer, options = {}) {
   const worldXp = Number.isSafeInteger(earnedWorld) ? earnedWorld : 0;
   const level = 1 + Math.floor(xp / LEVEL_SPAN);
 
-  const allSourceObservationRecords = projectSourceObservationRecords(world?.events, world?.creations)
+  const allSourceObservationRecords = projectSourceObservationRecords(world?.events, world?.creations, retainedWorldEventHistoryOptions(world, world?.events))
     .filter(record => record.projectionStatus === 'linked');
   const sourceObservationRecords = allSourceObservationRecords
     .filter(record => record.actor?.id === viewer?.id && record.actor?.role === viewer?.role);
@@ -557,7 +573,7 @@ export function projectCharacter(world, viewer, options = {}) {
   ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
   // Reuse the defensive experiment-research projection so a response counts
   // only when its unique event, challenge, report, actor and chronology link.
-  const experimentResearchRecords = projectResearchRecords(world?.events, world?.creations);
+  const experimentResearchRecords = projectResearchRecords(world?.events, world?.creations, retainedWorldEventHistoryOptions(world, world?.events));
   const experimentChallengeResponses = experimentResearchRecords.filter(record =>
     record?.type === 'experiment-challenge-responded' &&
     record?._projection?.targetChallengeStatus === 'linked' &&

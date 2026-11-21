@@ -30,11 +30,11 @@ export const PLACES=[
 ];
 const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  // Guild Hall: research proposals, reported attempts, and explicit dissent.
- guild_hall:event=>['proposal','claim','moonshot-proposed','experiment-reported','experiment-challenged','experiment-challenge-responded','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='PROPOSAL'||event?.event_type==='CLAIM',
+ guild_hall:event=>['proposal','claim','moonshot-proposed','experiment-reported','experiment-challenged','experiment-challenge-responded','collaborator-response-recorded','guild-created','guild-joined','guild-left','guild-disbanded','guild-leadership-transfer-offered','guild-leadership-transfer-cancelled','guild-leadership-transfer-declined','guild-leadership-transferred'].includes(event?.type)||event?.event_type==='PROPOSAL'||event?.event_type==='CLAIM',
  // Council Chamber: retained, uniquely identified role attempts; never votes or consensus.
  council_chamber:event=>event?.type==='collaborator-response-recorded',
  // Forge: the artifact lifecycle, including its explicit publication step.
- forge:event=>['draft','repair','publish','field-item-forged','field-item-equipped','field-item-unequipped'].includes(event?.type)||event?.execution==='EXECUTED',
+ forge:event=>['draft','repair','publish','field-item-forged','field-item-equipped','field-item-unequipped','field-item-transfer-offered','field-item-transfer-cancelled','field-item-transfer-declined','field-item-transferred'].includes(event?.type)||event?.execution==='EXECUTED',
  // Evidence Archive: Source Observatory notes, linked challenges/responses, reports, failed retrieval attempts, dissent and retained publications.
  evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged','experiment-challenge-responded','source-observation-recorded','source-observation-challenged','source-observation-challenge-responded','source-archive-attempt-failed','source-archive-predicate-evaluated','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
  // Source Observatory: authored observations and adversarial follow-up, never a truth ledger.
@@ -42,7 +42,7 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  // Decision Chamber: decision-service records and the recovered authorization/revocation vocabulary.
  decision_chamber:event=>['decision','revocation','policy-set','proposal-created','decision-attempted','expiry-observed'].includes(event?.type)||event?.event_type==='REVOCATION'||(event?.authority==='AUTHORIZED'&&event?.execution!=='EXECUTED'),
  // TownSquare: public contributions, reports, disputes, and scoped decision activity.
- 'town-square':event=>['contribute','report','experiment-challenged','experiment-challenge-responded','decision-attempted','revocation'].includes(event?.type)||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
+ 'town-square':event=>['contribute','report','experiment-challenged','experiment-challenge-responded','decision-attempted','revocation','message-posted','message-reported','message-moderated'].includes(event?.type)||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
  academy:event=>['study','study-reviewed','learning','skill-evidence'].includes(event?.type)||event?.event_type==='LEARNING'||event?.event_type==='SKILL_EVIDENCE',
  moonshot_field:event=>['experiment','moonshot','moonshot-proposed','experiment-reported','experiment-challenged','experiment-challenge-responded','source-archive-predicate-evaluated'].includes(event?.type)||event?.event_type==='MOONSHOT',
  publication_house:event=>event?.type==='publish'||event?.event_type==='PUBLICATION'||event?.event_type==='SATIRE',
@@ -73,6 +73,30 @@ function ownDataValue(object,key){
  }catch{return undefined;}
 }
 function isArraySafely(value){try{return Array.isArray(value)}catch{return false}}
+const INSTITUTION_EVENT_ROUTE_FIELDS=Object.freeze(['type','event_type','execution','evidence','admission','outcome']);
+export function institutionDestinationsForEvent(event,stream='world'){
+ const matchers=stream==='kernel'?INSTITUTION_KERNEL_EVENT_MATCHERS:stream==='world'?INSTITUTION_EVENT_MATCHERS:null;
+ if(!matchers)return Object.freeze([]);
+ const snapshot=Object.create(null);
+ for(const key of INSTITUTION_EVENT_ROUTE_FIELDS){
+  const value=ownDataValue(event,key);
+  if(value!==undefined)snapshot[key]=value;
+ }
+ const destinations=[];
+ for(const [id,matcher] of Object.entries(matchers)){
+  let matches=false;
+  try{matches=matcher(snapshot)===true}catch{}
+  if(!matches)continue;
+  const place=PLACES.find(candidate=>candidate.id===id&&candidate.type==='institution');
+  if(!place)continue;
+  destinations.push(Object.freeze({
+   id:place.id,
+   name:place.id==='town-square'?'TownSquare':place.name,
+   purpose:typeof place.purpose==='string'?place.purpose:''
+  }));
+ }
+ return Object.freeze(destinations);
+}
 const DECISION_SUMMARY_SCHEMA='ngl.decisions.summary.v1';
 const DECISION_STATUSES=Object.freeze(['PENDING','APPROVED','REJECTED','DEFERRED','EXPIRED']);
 function decisionSummaryState(summary){

@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { projectResearchRecords, projectSourceObservationRecords } from './research-records.mjs';
+import { projectResearchRecords, projectSourceObservationRecords, retainedWorldEventHistoryOptions } from './research-records.mjs';
 import { validateRetainedCollaboratorResponse } from './collaborator-response.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
@@ -226,7 +226,7 @@ export function projectValidFieldItemSourceEventIds(world) {
         hasEarlierPublication(event, index);
     });
 
-    const researchRecords = projectResearchRecords(history, rows(world?.creations));
+    const researchRecords = projectResearchRecords(history, rows(world?.creations), retainedWorldEventHistoryOptions(world, history));
     const proposals = [];
     const experimentReports = [];
     const experimentChallenges = [];
@@ -248,7 +248,7 @@ export function projectValidFieldItemSourceEventIds(world) {
 
     // Source Observatory validates this chain by retained append position, not wall-clock order.
     // Only linked, cross-actor, uniquely retained challenges become Forge sources.
-    const sourceObservationChallenges = projectSourceObservationRecords(history, rows(world?.creations))
+    const sourceObservationChallenges = projectSourceObservationRecords(history, rows(world?.creations), retainedWorldEventHistoryOptions(world, history))
       .filter(record => record?.projectionStatus === 'linked')
       .flatMap(record => rows(record.challenges))
       .filter(challenge => safeId(challenge?.id));

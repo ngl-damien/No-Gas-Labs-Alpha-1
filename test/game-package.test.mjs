@@ -82,7 +82,7 @@ async function serviceWorkerHarness({
   return handlers;
 }
 
-test('service-worker installation rotates the offline shell and precaches Character Sheet and Chronicle navigation modules', async () => {
+test('service-worker installation rotates the offline shell and precaches Character Sheet, Quest Board and Chronicle modules', async () => {
   let openedCacheName = null;
   let precachedUrls = [];
   const handlers = await serviceWorkerHarness({
@@ -98,7 +98,7 @@ test('service-worker installation rotates the offline shell and precaches Charac
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261120-chronicle-in-place-reconnect-refresh-22');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261121-global-event-position-projections-44');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'),
     'Character Sheet to exact World Chronicle navigation must remain available in the offline shell');
   assert.ok(precachedUrls.includes('https://ngl.test/character-sheet.mjs'),
@@ -109,6 +109,8 @@ test('service-worker installation rotates the offline shell and precaches Charac
     'the event-derived field-item projection must remain available in the offline core shell');
   assert.ok(precachedUrls.includes('https://ngl.test/institution-view.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/chronicle.mjs'));
+  assert.ok(precachedUrls.includes('https://ngl.test/research-records.mjs'),
+    'global event positions and Source Observation projections must remain available in the offline core shell');
   assert.ok(precachedUrls.includes('https://ngl.test/timestamps.mjs'),
     'the strict timestamp validator imported by Chronicle must remain available in the offline core shell');
   assert.ok(precachedUrls.includes('https://ngl.test/styles.css'));
@@ -163,7 +165,7 @@ test('installation remains bounded when Cache Storage open or shell precache sta
 });
 
 test('activation deletes only stale NGL shell caches and claims clients', async () => {
-  const current='ngl-common-ground-shell-20261120-chronicle-in-place-reconnect-refresh-22';
+  const current='ngl-common-ground-shell-20261121-global-event-position-projections-44';
   const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
   const deleted=[];
   let claimed=false;
@@ -183,7 +185,7 @@ test('activation deletes only stale NGL shell caches and claims clients', async 
 });
 
 test('activation preserves allowlisted optional artwork before deleting prior NGL shell caches', async () => {
-  const current='ngl-common-ground-shell-20261120-chronicle-in-place-reconnect-refresh-22';
+  const current='ngl-common-ground-shell-20261121-global-event-position-projections-44';
   const previous='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-20';
   const older='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-16';
   const coverUrl='https://ngl.test/assets/comic/cover_a.jpg';
@@ -228,7 +230,7 @@ test('activation preserves allowlisted optional artwork before deleting prior NG
 });
 
 test('activation remains bounded and claims clients when optional-asset migration stalls', async () => {
-  const current='ngl-common-ground-shell-20261120-chronicle-in-place-reconnect-refresh-22';
+  const current='ngl-common-ground-shell-20261121-global-event-position-projections-44';
   const previous='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-20';
   const fastTimeout=(callback,milliseconds,...args)=>setTimeout(callback,Math.min(milliseconds,20),...args);
   let claimed=false;
@@ -651,7 +653,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261120-chronicle-in-place-reconnect-refresh-22/);
+  assert.match(source, /20261121-global-event-position-projections-44/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
@@ -666,13 +668,17 @@ test('Source Archive failure cards expose their retained failure-class sequence 
   assert.match(client, /sourceArchiveFailurePager=createFieldItemSourcePager/);
   assert.match(client, /sourceArchiveFailurePager\.currentPage/);
   assert.match(client, /sourceArchiveFailurePager\.setPageIndex/);
-  assert.match(client, /worldId:world\.id/);
+  assert.match(client, /worldId:archiveWorld\.id/);
   assert.match(client, /actorId:viewer\.id/);
   assert.match(client, /actorRole:viewer\.role/);
-  assert.match(client, /revision:world\.revision/);
+  assert.match(client, /revision:archiveWorld\.revision/);
+  assert.match(client, /projectSourceArchiveFailureObjects\(archiveWorld/);
   assert.match(client, /data-source-archive-failure-page-revision/);
-  assert.match(client, /data-source-archive-failure-cursor-reset/);
-  assert.match(client, /New shared-world activity arrived; this ledger is showing the newest page/);
+  assert.match(client, /data-evidence-archive-snapshot-freshness/);
+  assert.match(client, /data-evidence-archive-refresh/);
+  assert.match(client, /This archive remains pinned to the snapshot it opened at revision/);
+  assert.match(client, /Canonical institutional history was withheld to avoid mixing snapshots/);
+  assert.doesNotMatch(client, /data-source-archive-failure-cursor-reset/);
   assert.match(client, /data-source-archive-failure-older/);
   assert.match(client, /data-source-archive-failure-newer/);
   assert.match(client, /failureProjection\.hasOlder/);
@@ -781,4 +787,30 @@ test('secure origin registers the offline shell once and consumes an asynchronou
   assert.equal(registerOfflineShell(scope), true);
   assert.deepEqual(calls, [['./sw.js', { scope: './' }]]);
   await Promise.resolve();
+});
+
+test('artifact detail fails closed for unavailable exact versions and guards stale satire follow-ups', async () => {
+  const client = await readFile(join(process.cwd(), 'game/client.mjs'), 'utf8');
+  const openStart = client.indexOf('function openCreation(');
+  const enterStart = client.indexOf('function enterCreation(', openStart);
+  assert.ok(openStart >= 0 && enterStart > openStart, 'artifact detail and entry functions must be present');
+  const detail = client.slice(openStart, enterStart);
+  const exactVersionValidation = detail.indexOf('prepareContradictionReview(creation, targetVersion)');
+  const availableVersions = detail.indexOf('const availableVersions=');
+  assert.ok(exactVersionValidation >= 0,
+    'the requested version must pass the strict retained-version validator');
+  assert.ok(availableVersions > exactVersionValidation,
+    'the selector must not be built before exact-version validation');
+  assert.match(detail, /ARTIFACT VERSION UNAVAILABLE/);
+  assert.match(detail, /creationVersionStatus/);
+  assert.match(detail, /current version was not substituted/i);
+  assert.doesNotMatch(detail,
+    /availableVersions\.some\(version=>version\.version===requestedVersion\)\?requestedVersion:creation\.version/);
+  assert.match(detail, /Draft a linked follow-up issue →',\s*guarded\(/,
+    'the stale satire follow-up guard must use the normal guarded error surface');
+
+  const enterEnd = client.indexOf('function pendingPredicateNeedsRetentionAcknowledgement', enterStart);
+  const entry = client.slice(enterStart, enterEnd);
+  assert.match(entry, /prepareContradictionReview\(c,versionNumber\)/,
+    'entering an artifact must revalidate the exact requested version');
 });

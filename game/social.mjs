@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { projectResearchRecords, projectSourceObservationRecords } from './research-records.mjs';
+import { projectResearchRecords, projectSourceObservationRecords, retainedWorldEventHistoryPositions, retainedWorldEventHistoryOptions } from './research-records.mjs';
 
 export const COMMONS_CHANNEL = 'commons';
 export const COMMONS_MESSAGE_LIMIT = 280;
@@ -245,7 +245,7 @@ const PLAYER_GUILD_EVENT_TYPES = new Set([
   'guild-leadership-transfer-offered', 'guild-leadership-transfer-cancelled',
   'guild-leadership-transfer-declined', 'guild-leadership-transferred'
 ]);
-const PLAYER_GUILD_COMMON_FIELDS = ['id', 'type', 'actor', 'at', 'semantics'];
+const PLAYER_GUILD_COMMON_FIELDS = ['id', 'type', 'actor', 'at', 'semantics', 'historyPosition'];
 const PLAYER_GUILD_RECEIPT_FIELDS = ['requestId', 'actionFingerprint', 'actionResult'];
 const PLAYER_GUILD_EVENT_FIELDS = Object.freeze({
   'guild-created': new Set([
@@ -307,8 +307,28 @@ export function projectPlayerGuilds(world, viewer = null) {
   const activeNames = new Map();
   const memberships = new Map();
   const leadershipOfferIds = new Set();
+  const events = eventsOf(world);
+  let hasHistoryPosition = false;
+  for (let index = 0; index < events.length; index += 1) {
+    let slot;
+    try { slot = Object.getOwnPropertyDescriptor(events, String(index)); }
+    catch { throw new Error('Player-guild history position is malformed.'); }
+    if (!slot || !Object.hasOwn(slot, 'value')) continue;
+    const event = slot.value;
+    if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
+    let descriptor;
+    try { descriptor = Object.getOwnPropertyDescriptor(event, 'historyPosition'); }
+    catch { throw new Error('Player-guild history position is malformed.'); }
+    if (descriptor) { hasHistoryPosition = true; break; }
+  }
+  if (hasHistoryPosition) {
+    const positions = retainedWorldEventHistoryPositions(world, events);
+    if (positions.length !== events.length || positions.some(position => !Number.isSafeInteger(position))) {
+      throw new Error('Player-guild history position is malformed.');
+    }
+  }
 
-  for (const event of eventsOf(world)) {
+  for (const event of events) {
     if (!PLAYER_GUILD_EVENT_TYPES.has(event?.type)) continue;
     const allowed = PLAYER_GUILD_EVENT_FIELDS[event.type];
     if (!event || typeof event !== 'object' || Array.isArray(event) ||
@@ -647,7 +667,7 @@ export function projectGuildFieldSatchel(world, viewer) {
 
   // Research links are structural only; attempts and challenges are never promoted
   // to execution, independent observation, adjudication, or successful results.
-  for (const record of projectResearchRecords(source, world?.creations)) {
+  for (const record of projectResearchRecords(source, world?.creations, retainedWorldEventHistoryOptions(world, source))) {
     const status = record._projection || {};
     if (record.type === 'moonshot-proposed' && status.recordSafe === true &&
         status.eventIdUnique === true && status.proposalStatus === 'unique') {
@@ -669,7 +689,7 @@ export function projectGuildFieldSatchel(world, viewer) {
   }
 
   // Linked source notes, challenges, and author replies remain distinct history items.
-  for (const record of projectSourceObservationRecords(source, world?.creations)) {
+  for (const record of projectSourceObservationRecords(source, world?.creations, retainedWorldEventHistoryOptions(world, source))) {
     if (record.projectionStatus !== 'linked') continue;
     const action = { type: 'creation', creationId: record.creationId, version: record.version };
     add(record, 'source-observation', 'Source observation · ' + record.claim,

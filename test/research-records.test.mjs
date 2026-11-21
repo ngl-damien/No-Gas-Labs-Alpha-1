@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectResearchRecords, hasSourcePredicatePublicRetentionAcknowledgement, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER } from '../game/research-records.mjs';
+import { projectResearchRecords, projectSourceObservationRecords, hasSourcePredicatePublicRetentionAcknowledgement, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER } from '../game/research-records.mjs';
 
 const proposal = (overrides = {}) => ({
   id: 'proposal-event-1',
@@ -447,4 +447,81 @@ test('Source Analyst retention acknowledgement is versioned while pre-enforcemen
     ...beforeEnforcement,
     publicRetentionAcknowledgementVersion: 'unknown-version'
   }), false);
+});
+
+
+test('Source Observation notes, challenges and responses retain server-projected global positions', () => {
+  const digest = 'a'.repeat(64);
+  const observationId = 'source-observation-' + digest;
+  const witnessActor = { id: 'witness-1', role: 'witness', name: 'Witness' };
+  const founderActor = { id: 'founder-1', role: 'founder', name: 'Founder' };
+  const observation = {
+    id: 'source-observation-event-1',
+    type: 'source-observation-recorded',
+    observationId,
+    normalizedRecordDigest: digest,
+    creationId: 'source-1',
+    version: 1,
+    claim: 'A bounded author-entered observation.',
+    sourceKind: 'user-report',
+    source: 'A participant report.',
+    falsifier: null,
+    uncertainty: null,
+    nextTest: null,
+    actor: witnessActor,
+    at: '2026-10-28T17:00:00.000Z',
+    originSchema: 'ngl.source-observatory.v2',
+    bindingMode: 'USER_SELECTED',
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED',
+    historyPosition: 3
+  };
+  const events = [
+    publication({ historyPosition: 1 }),
+    observation,
+    {
+      id: 'source-challenge-event-1',
+      type: 'source-observation-challenged',
+      challengeId: 'source-challenge-1',
+      observationId,
+      creationId: 'source-1',
+      version: 1,
+      challengeType: 'missing-evidence',
+      challengeText: 'The report has no independently observed evidence.',
+      actor: founderActor,
+      at: '2026-10-28T17:01:00.000Z',
+      historyPosition: 5
+    },
+    {
+      id: 'source-response-event-1',
+      type: 'source-observation-challenge-responded',
+      responseId: 'source-response-1',
+      challengeId: 'source-challenge-1',
+      observationId,
+      creationId: 'source-1',
+      version: 1,
+      responseText: 'The author preserves the limitation and requests another test.',
+      actor: witnessActor,
+      at: '2026-10-28T17:02:00.000Z',
+      historyPosition: 6
+    }
+  ];
+  const records = projectSourceObservationRecords(events, [retainedSource()]);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].historyPosition, 3);
+  assert.equal(records[0].challenges[0].historyPosition, 5);
+  assert.equal(records[0].challenges[0].responses[0].historyPosition, 6);
+
+  const legacyPartial = events.map(event => {
+    const { historyPosition, ...withoutPosition } = event;
+    return withoutPosition;
+  });
+  const unsequenced = projectSourceObservationRecords(
+    legacyPartial, [retainedSource()], { allowLocalPositions: false }
+  );
+  assert.equal(unsequenced[0].historyPosition, null);
+  assert.equal(unsequenced[0].challenges[0].historyPosition, null);
+  assert.equal(unsequenced[0].challenges[0].responses[0].historyPosition, null);
 });
