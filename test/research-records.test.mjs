@@ -1,6 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sourceObservationRequestMaterial, projectResearchRecords, projectSourceObservationRecords, hasSourcePredicatePublicRetentionAcknowledgement, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER } from '../game/research-records.mjs';
+import { sourceObservationRequestMaterial, projectResearchRecords, projectSourceObservationRecords, hasSourcePredicatePublicRetentionAcknowledgement, isValidSourceObservationBinding, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER } from '../game/research-records.mjs';
+
+test('Source Observation binding mode requires a revision-bound digest only for server receipts', () => {
+  const digest = 'a'.repeat(64);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'USER_SELECTED' }), true);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'USER_SELECTED', sourceSnapshotRevision: 4 }), true);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'USER_SELECTED', sourceSnapshotReceiptDigest: null }), true);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'USER_SELECTED', sourceSnapshotReceiptDigest: digest }), false);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'SERVER_SESSION_RECEIPT', sourceSnapshotRevision: 4, sourceSnapshotReceiptDigest: digest }), true);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'SERVER_SESSION_RECEIPT', sourceSnapshotReceiptDigest: digest }), false);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'SERVER_SESSION_RECEIPT', sourceSnapshotRevision: 4 }), false);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'SERVER_SESSION_RECEIPT', sourceSnapshotRevision: 4, sourceSnapshotReceiptDigest: 'not-a-digest' }), false);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'UNKNOWN', sourceSnapshotRevision: 4, sourceSnapshotReceiptDigest: digest }), false);
+});
 
 const proposal = (overrides = {}) => ({
   id: 'proposal-event-1',
