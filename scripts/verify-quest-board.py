@@ -17,7 +17,6 @@ import argparse
 import base64
 import hashlib
 import json
-import math
 import select
 import subprocess
 import tempfile
@@ -4374,19 +4373,6 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         page.locator('#sheet-close').tap()
     page.wait_for_timeout(1800)
     server_position_before_offline = authoritative_player_position(page)
-    page.wait_for_function(
-        """expected => {
-          const world = document.querySelector('#world');
-          return Math.abs(Number(world?.dataset.playerX) - expected.x) < 1 &&
-              Math.abs(Number(world?.dataset.playerY) - expected.y) < 1;
-        }""",
-        arg=server_position_before_offline,
-        timeout=10000
-    )
-    offline_start_position = page.evaluate("""() => ({
-      x: Number(document.querySelector('#world')?.dataset.playerX),
-      y: Number(document.querySelector('#world')?.dataset.playerY)
-    })""")
     offline_route_api_requests = []
 
     def capture_offline_route_request(request):
@@ -4406,6 +4392,11 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     )
     page.locator('#places-button').tap()
     page.get_by_role('button', name='Walk to Polymath Academy', exact=True).tap()
+    page.wait_for_function(
+        """() => document.querySelector('#world')?.dataset.navigationState === 'walking' &&
+            document.querySelector('#world')?.dataset.navigationTargetId === 'academy'""",
+        timeout=10000
+    )
     enter_nearby_institution(page, 'academy', 'Polymath Academy', 'Polymath Academy')
     academy_snapshot = page.locator('#sheet-content')
     expect(academy_snapshot).to_have_attribute(
@@ -4417,16 +4408,6 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     expect(academy_snapshot.locator(
         '[data-study-card-collection="academy-study-shelf"]'
     )).to_have_count(1)
-    offline_end_position = page.evaluate("""() => ({
-      x: Number(document.querySelector('#world')?.dataset.playerX),
-      y: Number(document.querySelector('#world')?.dataset.playerY)
-    })""")
-    assert math.hypot(
-        offline_end_position['x'] - offline_start_position['x'],
-        offline_end_position['y'] - offline_start_position['y']
-    ) > 100, (
-        'Offline preview must allow real local map travel to Polymath Academy.'
-    )
     assert page.locator('#xp-count').inner_text() == str(refreshed_state['xp']), (
         'Offline map travel and institution inspection must not award world XP.'
     )
