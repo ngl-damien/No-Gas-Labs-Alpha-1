@@ -33,6 +33,7 @@ Replay is idempotent by `event_id`.
 - Disconnected, unavailable, or regressed snapshot state remains stale and fails closed; refresh is not offered until a newer accepted snapshot is available.
 - Bounded projections such as Moonshot Field must disclose partial scope and unseen-event count. A visible subset is not a global total and does not establish newest-order completeness. Evidence Archive remains the complete paginated owner.
 - Route arrival may append legitimate `discover` events. Preserve those events in history. After the post-arrival snapshot is captured, opening or reading an NPC card and inspecting its linked Chronicle event is read-only. Acceptance tests must separate route-discovery effects from the subsequent read-only NPC interaction rather than comparing against a pre-route snapshot.
+- Selecting/tapping a map landmark is navigation, not institution entry. The explicit nearby Interact action opens the institutional sheet. Acceptance tests must assert that the sheet is visible before inspecting its contents; a retained title in hidden DOM is not proof of entry.
 
 ## Chronology and replay
 
