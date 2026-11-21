@@ -914,8 +914,13 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     entry.title = `Source observation · ${text(event?.claim) || "untitled claim"}`;
     entry.category = "RESEARCH NOTE";
     entry.summary = `${text(event?.actor?.name) || text(event?.actor?.id) || "An actor"} recorded a self-classified ${sourceKind} note against a user-selected Source Observatory version.`;
-    entry.detail = `Source/attribution: ${text(event?.source) || "NOT PROVIDED"}. Falsifier: ${text(event?.falsifier) || "NOT PROVIDED"}. Uncertainty: ${text(event?.uncertainty) || "NOT PROVIDED"}. Next test: ${text(event?.nextTest) || "NOT PROVIDED"}.`;
-    entry.warning = `${sourceWarning} The selected version is a user-supplied binding; export origin is not cryptographically established. Source retrieval NOT_PERFORMED; independent verification NOT_PERFORMED; execution NOT_EXECUTED.`;
+    const snapshotReference = Number.isSafeInteger(event?.sourceSnapshotRevision) && event.sourceSnapshotRevision >= 0
+      ? `Declared snapshot reference: world revision ${event.sourceSnapshotRevision} (actor-declared history-prefix reference; it does not prove the actor viewed that snapshot).`
+      : event?.sourceSnapshotRevision === undefined
+        ? "Snapshot reference: not recorded on this legacy note."
+        : "Snapshot reference: malformed or unavailable; no revision is inferred.";
+    entry.detail = `Source/attribution: ${text(event?.source) || "NOT PROVIDED"}. Falsifier: ${text(event?.falsifier) || "NOT PROVIDED"}. Uncertainty: ${text(event?.uncertainty) || "NOT PROVIDED"}. Next test: ${text(event?.nextTest) || "NOT PROVIDED"}. ${snapshotReference}`;
+    entry.warning = `${sourceWarning} The selected version is a user-supplied binding; export origin is not cryptographically established. The declared snapshot reference does not prove the actor viewed that prefix. Source retrieval NOT_PERFORMED; independent verification NOT_PERFORMED; execution NOT_EXECUTED.`;
   } else if (type === "source-observation-challenged") {
     const challengeType = text(event?.challengeType) || "unclassified";
     entry.title = `Source observation challenged · ${challengeType.toUpperCase()}`;
