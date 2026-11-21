@@ -3,6 +3,7 @@ import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { projectResearchRecords, projectSourceArchivePredicateContrasts, sameResearchActor } from './research-records.mjs';
 
 import { isStrictTimestamp } from "./timestamps.mjs";
+import { PLACES, institutionDestinationsForEvent } from "./world-view.mjs";
 
 const INVALID_EVENT_TIMESTAMP_WARNING = "The retained event has no valid strict RFC 3339 timestamp; its append position is preserved, but cross-stream placement is approximate.";
 
@@ -520,10 +521,16 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     : Number.isInteger(event?.sourceVersion) ? event.sourceVersion
     : Number.isInteger(event?.evidenceVersion) ? event.evidenceVersion : null;
   const target = findVersion(creations, creationId, version);
-  const location = PLACE_NAMES[event?.locationId];
+  const recordedLocation = type === "discover" && typeof event?.locationId === "string"
+    ? PLACES.find(place => place.type === "discovery" && place.id === event.locationId)
+    : null;
+  const location = recordedLocation?.name || "";
   const entry = {
     id: `world:${id}`,
     source: "world",
+    locationId: recordedLocation?.id || null,
+    locationName: recordedLocation?.name || null,
+    institutionDestinations: institutionDestinationsForEvent(event),
     streamPosition: index + 1,
     eventType: type,
     at: timestamp(event?.at),
@@ -1028,6 +1035,7 @@ function kernelEntry(event, index, creations, derivedWork = null, priorGrantCoun
   return {
     id: `kernel:${id}`,
     source: "kernel",
+    institutionDestinations: institutionDestinationsForEvent(event, "kernel"),
     streamPosition: index + 1,
     eventType: type,
     at: timestamp(event?.at),
