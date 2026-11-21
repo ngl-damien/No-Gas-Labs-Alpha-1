@@ -10,6 +10,7 @@ import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench
 import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS,projectSourceArchiveFailureObjects} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderCharterCodex,renderEvidenceArchive,renderInstitution,renderWorldChronicle} from './institution-view.mjs';
+import {resolveWorldChronicleSnapshotState} from './chronicle.mjs';
 import {prepareContradictionReview,formatContradictionReport,resolveRetainedCreationTarget} from './contradiction-clerk.mjs';
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,retainedWorldEventHistoryPositions} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
@@ -20,7 +21,7 @@ import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from 
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
 registerOfflineShell();
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0,positionConflictNoticeKey=null,sharedMovementPaused=false,sharedOfflinePreview=false,sharedStreamOpen=false,sharedConnectionRecovery=null,activeWorldChronicleRefresh=null,activeWorldChronicleSnapshot=null;let commonsDraftText='';
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0,positionConflictNoticeKey=null,sharedMovementPaused=false,sharedOfflinePreview=false,sharedStreamOpen=false,sharedConnectionRecovery=null,activeWorldChronicleRefresh=null,activeWorldChronicleSnapshot=null,activeWorldChroniclePinned=false;let commonsDraftText='';
 const sourceSnapshotReceiptsByRevision = new Map();
 const timedSharedPositionWrite=createPositionWriteDeadline((position,{signal})=>{
   const expectedEpoch=positionEpoch;
@@ -1134,6 +1135,8 @@ function showSheet(title,kicker='FIELD NOTES'){
   institutionRequestGeneration++;
   activeNoteRenderer=null;
   activeWorldChronicleRefresh=null;
+  activeWorldChronicleSnapshot=null;
+  activeWorldChroniclePinned=false;
   if($('sheet').hidden)lastFocus=document.activeElement;
   const content=$('sheet-content');
   // A sheet is a new institutional surface. Never leak the prior panel's root metadata.
@@ -1150,7 +1153,7 @@ function showSheet(title,kicker='FIELD NOTES'){
   $('sheet-close').focus({preventScroll:true});
   return content;
 }
-function closeSheet(){institutionRequestGeneration++;activeNoteRenderer=null;activeWorldChronicleRefresh=null;$('sheet').hidden=true;$('sheet-backdrop').hidden=true;if($('portal').hidden){document.body.classList.remove('modal-open');(lastFocus?.isConnected?lastFocus:$('world')).focus({preventScroll:true})}}
+function closeSheet(){institutionRequestGeneration++;activeNoteRenderer=null;activeWorldChronicleRefresh=null;activeWorldChronicleSnapshot=null;activeWorldChroniclePinned=false;$('sheet').hidden=true;$('sheet-backdrop').hidden=true;if($('portal').hidden){document.body.classList.remove('modal-open');(lastFocus?.isConnected?lastFocus:$('world')).focus({preventScroll:true})}}
 function sandboxDocument(html,bootstrap=''){for(const page of globalThis.NGL_ASSETS?.pages||[])if(page.path&&/^\/assets\/comic\/(cover_a|p3|p4|p5|p10|p13)\.jpg$/.test(page.path)&&typeof page.src==='string'&&page.src.startsWith('data:image/jpeg;base64,'))html=html.split(page.path).join(page.src);const localImages=location.protocol==='http:'||location.protocol==='https:'?['cover_a','p3','p4','p5','p10','p13'].map(p=>`${location.origin}/assets/comic/${p}.jpg`).join(' '):'';const policy=`default-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: ${localImages}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;const trustedHead=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${bootstrap}`;const opening=html.match(/^\s*<!doctype html>\s*<html(?:\s[^>]*)?>\s*<head(?:\s[^>]*)?>/i);return opening?trustedHead+html.slice(opening[0].length):`${trustedHead}</head><body>${html}</body></html>`;}
 // Keep the child visible beneath the loading cover while it paints. A parent load
 // event does not establish that Chromium has published the child's input surface.
@@ -2919,16 +2922,32 @@ function refreshQuestBoardSnapshotFreshnessNotice(){
 function refreshWorldChronicleSnapshot(){
   if(mode!=='shared'||$('sheet').hidden||$('sheet-title').textContent!=='World Chronicle'||
      typeof activeWorldChronicleRefresh!=='function')return;
-  const disconnected=isSharedSnapshotStale();
-  const currentRevision=world?.revision;
-  const pinnedRevision=activeWorldChronicleSnapshot?.revision;
-  const revisionUnavailable=!Number.isSafeInteger(currentRevision)||currentRevision<0;
-  const revisionRegressed=Number.isSafeInteger(pinnedRevision)&&Number.isSafeInteger(currentRevision)&&currentRevision<pinnedRevision;
-  const stale=disconnected||revisionUnavailable||revisionRegressed;
-  const staleReason=disconnected?'disconnected':revisionUnavailable?'revision-unavailable':revisionRegressed?'revision-regression':'current';
-  const snapshot=stale?(activeWorldChronicleSnapshot||world):world;
-  if(!stale)activeWorldChronicleSnapshot=snapshot;
-  try{activeWorldChronicleRefresh(snapshot,stale,staleReason)}
+  const state=resolveWorldChronicleSnapshotState({
+    currentSnapshot:world,
+    pinnedSnapshot:activeWorldChronicleSnapshot||world,
+    explicitlyPinned:activeWorldChroniclePinned,
+    disconnected:isSharedSnapshotStale()
+  });
+  if(!state.stale)activeWorldChronicleSnapshot=state.snapshot;
+  try{activeWorldChronicleRefresh(state.snapshot,state.stale,state.staleReason,state.refreshAvailable)}
+  catch(error){handleError(error)}
+}
+function refreshPinnedWorldChronicle(){
+  if(mode!=='shared'||!activeWorldChroniclePinned||typeof activeWorldChronicleRefresh!=='function')return;
+  const state=resolveWorldChronicleSnapshotState({
+    currentSnapshot:world,
+    pinnedSnapshot:activeWorldChronicleSnapshot||world,
+    explicitlyPinned:true,
+    disconnected:isSharedSnapshotStale()
+  });
+  if(!state.refreshAvailable){
+    toast(state.staleReason==='disconnected'
+      ?'Reconnect before refreshing this pinned Chronicle.'
+      :'No newer accepted world revision is available to refresh.',true);
+    return;
+  }
+  activeWorldChronicleSnapshot=world;
+  try{activeWorldChronicleRefresh(world,false,'current',false)}
   catch(error){handleError(error)}
 }
 function walkToChroniclePlace(placeId){
@@ -2950,28 +2969,32 @@ function walkToChroniclePlace(placeId){
   if(Math.hypot(place.x-player.x,place.y-player.y)<160)view.interact(place.id,place.type);
   else view.goTo(place.id);
 }
-function openWorldChronicle(eventId,{returnToEvidenceArchive=false,snapshot=world,onReturnToEvidenceArchive}={}){
+function openWorldChronicle(eventId,options={}){
+  const snapshotProvided=Object.prototype.hasOwnProperty.call(options,'snapshot')&&options.snapshot!==undefined;
+  const {returnToEvidenceArchive=false,snapshot=world,onReturnToEvidenceArchive}=options;
   const chronicleSnapshot=snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)?snapshot:world;
-  activeWorldChronicleSnapshot=chronicleSnapshot;
   const content=showSheet('World Chronicle','RETAINED WORLD EVENTS · READ ONLY');
+  activeWorldChronicleSnapshot=chronicleSnapshot;
+  activeWorldChroniclePinned=mode==='shared'&&snapshotProvided;
   const returnAction=typeof onReturnToEvidenceArchive==='function'
     ?onReturnToEvidenceArchive
     :returnToEvidenceArchive
       ?()=>openEvidenceArchive(null,null,{snapshot:activeWorldChronicleSnapshot||chronicleSnapshot})
       :undefined;
-  const currentRevision=world?.revision;
-  const chronicleRevision=chronicleSnapshot?.revision;
-  const disconnected=isSharedSnapshotStale();
-  const revisionUnavailable=mode==='shared'&&(!Number.isSafeInteger(currentRevision)||currentRevision<0||
-    !Number.isSafeInteger(chronicleRevision)||chronicleRevision<0);
-  const revisionMismatch=mode==='shared'&&Number.isSafeInteger(currentRevision)&&
-    Number.isSafeInteger(chronicleRevision)&&currentRevision!==chronicleRevision;
-  const stale=disconnected||revisionUnavailable||revisionMismatch;
-  const staleReason=disconnected?'disconnected':revisionUnavailable?'revision-unavailable':revisionMismatch?'revision-mismatch':'current';
+  const state=resolveWorldChronicleSnapshotState({
+    currentSnapshot:world,
+    pinnedSnapshot:chronicleSnapshot,
+    explicitlyPinned:activeWorldChroniclePinned,
+    disconnected:mode==='shared'&&isSharedSnapshotStale()
+  });
+  const stale=mode==='shared'&&state.stale;
+  const staleReason=mode==='shared'?state.staleReason:'current';
   activeWorldChronicleRefresh=renderWorldChronicle(content,chronicleSnapshot,eventId,{
     stale,
     staleReason,
-    onOpenArtifact:(id,version)=>openCreation(id,version,false,{snapshot:chronicleSnapshot}),
+    onRefresh:activeWorldChroniclePinned?refreshPinnedWorldChronicle:undefined,
+    refreshAvailable:state.refreshAvailable,
+    onOpenArtifact:(id,version)=>openCreation(id,version,false,{snapshot:activeWorldChronicleSnapshot||chronicleSnapshot}),
     onOpenLocation:stale?undefined:walkToChroniclePlace,
     onReturnToEvidenceArchive:returnAction
   });
