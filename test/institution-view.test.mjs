@@ -2540,9 +2540,15 @@ test('Chronicle routes retained events to related institutions and only explicit
       staleReason: 'disconnected',
       onOpenLocation: placeId => opened.push(placeId)
     });
-    assert.equal(walk(root).filter(item =>
+    const staleRoutes = walk(root).filter(item =>
       item.dataset?.chronicleInstitutionRoute || item.dataset?.chronicleRecordedLocation
-    ).length, 0, 'stale retained snapshots must remain navigable for inspection but cannot start shared-world routes');
+    );
+    assert.ok(staleRoutes.length > 0, 'stale Chronicle entries should still disclose their institutional and map destinations');
+    assert.ok(staleRoutes.every(item => item.disabled === true),
+      'stale retained snapshots must not start shared-world routes');
+    for (const route of staleRoutes) route.onclick();
+    assert.deepEqual(opened, ['evidence_archive'],
+      'disabled stale routes must not invoke the navigation callback');
   });
 
   withDocument(() => {
