@@ -699,6 +699,14 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
 }
 export function publicWorld(world,actor){
   const copy=clone(world);
+  // Response-only metadata: derive global positions before role filtering and
+  // overwrite any caller-supplied field. Canonical world events are not mutated.
+  if(Array.isArray(copy.events)){
+    copy.events=copy.events.map((event,index)=>{
+      if(!event||typeof event!=='object'||Array.isArray(event))return event;
+      return {...event,historyPosition:index+1};
+    });
+  }
   if(actor?.role!=='founder'){
     copy.drafts=[];
     const hidden=hiddenCommonsMessageIds(copy);

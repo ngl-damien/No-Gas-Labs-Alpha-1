@@ -1,10 +1,14 @@
 import { projectChronicle } from "./chronicle.mjs";
 import { projectCharacter } from "./character-sheet.mjs";
 import { getActiveQuest, getQuestTrail } from "./quests.mjs";
-import { projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from "./research-records.mjs";
+import { projectResearchRecords, projectSourceObservationRecords, sameResearchActor, retainedWorldEventHistoryPositions } from "./research-records.mjs";
 import { isStrictTimestamp } from "./timestamps.mjs";
 
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;};
+function sourceObservationPositionOptions(world) {
+ const positions=retainedWorldEventHistoryPositions(world,world?.events);
+ return {allowLocalPositions:positions.every((position,index)=>position===index+1)};
+}
 
 const CHARTER_IDENTITY_EQUATION = 'The-NEOPHYTE_FOUNDER + idea + multiple AI collaborators + adversarial_contempt + hardening + human-gate + synthesis + possibilities + abilities + provenance + agents + polymathy-training/fundamental-knowledge';
 const MAX_CODEX_EVIDENCE_ID_PREVIEW = 20;
@@ -62,7 +66,7 @@ export function projectCharterCodex(world, viewer) {
   let nextObjective;
   try {
     trail = getQuestTrail(world, viewer);
-    sourceRecords = projectSourceObservationRecords(world.events, world.creations)
+    sourceRecords = projectSourceObservationRecords(world.events, world.creations, sourceObservationPositionOptions(world))
       .filter(record => record?.projectionStatus === 'linked' && sameResearchActor(record.actor, viewer));
     researchRecords = projectResearchRecords(world.events, world.creations);
     nextObjective = getActiveQuest(world, viewer, trail);
@@ -1187,6 +1191,7 @@ function indexEvidenceArchiveSourceEvents(world) {
  };
  const byRecordId=new Map();
  const eventIdCounts=new Map();
+ const eventPositions=retainedWorldEventHistoryPositions(world,events);
  for(let index=0;index<events.length;index++){
   const event=events[index];
   if(normalizedEvidenceArchiveId(event?.id))
@@ -1195,7 +1200,7 @@ function indexEvidenceArchiveSourceEvents(world) {
   const recordId=hasRecordId?event.recordId:event?.actionResult?.id;
   if(!normalizedEvidenceArchiveId(recordId))continue;
   const matches=byRecordId.get(recordId)||[];
-  matches.push({event,index});
+  matches.push({event,index,eventPosition:eventPositions[index]});
   byRecordId.set(recordId,matches);
  }
  return {available:true,byRecordId,eventIdCounts};
@@ -1210,7 +1215,7 @@ function projectEvidenceArchiveSourceEvent(index,record,expectedType) {
   return {status:'unlinked',reason:'No retained Chronicle event identity identifies this record; source link is withheld.'};
  if(matches.length!==1)
   return {status:'ambiguous',reason:'Multiple retained Chronicle events identify this record; source link is withheld.'};
- const {event,index:eventIndex}=matches[0];
+ const {event,eventPosition}=matches[0];
  if(!normalizedEvidenceArchiveId(event?.id)||index.eventIdCounts.get(event.id)!==1)
   return {status:'ambiguous',reason:'The matching Chronicle event identity is missing, unnormalized or duplicated; source link is withheld.'};
  const mismatches=[];
@@ -1238,7 +1243,7 @@ function projectEvidenceArchiveSourceEvent(index,record,expectedType) {
  if(mismatches.length)
   return {status:'mismatched',reason:mismatches.join('; ')+'; source link is withheld.'};
  return {
-  status:'linked',eventId:event.id,eventPosition:eventIndex+1,eventType:event.type,reason:null
+  status:'linked',eventId:event.id,eventPosition:Number.isSafeInteger(eventPosition)&&eventPosition>0?eventPosition:null,eventType:event.type,reason:null
  };
 }
 
@@ -1394,7 +1399,13 @@ export function renderEvidenceArchiveActivityStreams(container,world={},onOpenAr
      inspect.className='secondary-button';
      inspect.dataset.evidenceArchiveOpenEvent='true';
      inspect.dataset.eventId=item.sourceEvent.eventId;
-     inspect.dataset.eventPosition=String(item.sourceEvent.eventPosition);
+     if(Number.isSafeInteger(item.sourceEvent.eventPosition)&&item.sourceEvent.eventPosition>0){
+       inspect.dataset.eventPosition=String(item.sourceEvent.eventPosition);
+       inspect.dataset.eventPositionStatus='available';
+      }else{
+       inspect.dataset.eventPositionStatus='unavailable';
+       card.append(el('small','Global append position unavailable in this partial snapshot; the unique retained event identity still permits Chronicle navigation.'));
+      }
      inspect.dataset.eventType=item.sourceEvent.eventType;
      inspect.onclick=()=>onInspectEvent(item.sourceEvent.eventId);
      card.append(inspect);
@@ -1442,7 +1453,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   return;
  }
  let records;
- try { records=projectSourceObservationRecords(world.events,world.creations); }
+ try { records=projectSourceObservationRecords(world.events,world.creations,sourceObservationPositionOptions(world)); }
  catch {
   const warning=el('p','The Source Observation projection could not be read safely. No response action is offered; inspect the retained Chronicle.');
   warning.className='evidence-warning';

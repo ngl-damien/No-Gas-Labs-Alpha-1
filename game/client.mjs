@@ -11,7 +11,7 @@ import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS,projectSou
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderCharterCodex,renderEvidenceArchive,renderInstitution,renderWorldChronicle} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
-import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION} from './research-records.mjs';
+import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,retainedWorldEventHistoryPositions} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {renderGitHubDecisionGate,renderGitHubSourceReader,shouldRenderGitHubDecisionGate,parseGitHubSourceCitation} from './github-decision-gate.mjs';
 import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
@@ -35,6 +35,10 @@ const timedSharedPositionWrite=createPositionWriteDeadline((position,{signal})=>
 },{timeoutMs:10000});
 const orderedSharedPositionWriter=createOrderedPositionWriter(position=>timedSharedPositionWrite(position));
 const COMMONS_MUTED_AUTHORS_KEY='ngl.common-ground.commons-muted-authors.v1';
+const sourceObservationPositionOptions=world=>{
+  const positions=retainedWorldEventHistoryPositions(world,world?.events);
+  return {allowLocalPositions:positions.every((position,index)=>position===index+1)};
+};
 function readMutedCommonsAuthors(){
   try{
     const storage=globalThis.localStorage;
@@ -1536,7 +1540,7 @@ function openCreation(id,requestedVersion=null,focusChallenge=false,{snapshot=wo
   title:selectedArtifact?.title??creation.title,
   intent:selectedArtifact?.intent??creation.intent,
   html:selectedArtifact?.html
-});const content=showSheet(creation.title,satireIssue?'AMERICA’S GOT PROBLEMS · SATIRE ISSUE':'A PLACE SOMEONE MADE');content.dataset.creationDetail='true';content.dataset.creationSnapshotRevision=Number.isSafeInteger(creationWorldSnapshot?.revision)&&creationWorldSnapshot.revision>=0?String(creationWorldSnapshot.revision):'unavailable';let sourceObservationList=null;function requireCurrentCreationSnapshot(){if(mode==='shared'&&(isSharedSnapshotStale()||!Number.isSafeInteger(creationWorldSnapshot?.revision)||!Number.isSafeInteger(world?.revision)||world.revision!==creationWorldSnapshot.revision))throw new Error('This artifact detail is pinned to an older or unavailable shared snapshot. Refresh it before recording new activity.');}function renderSourceObservations(){if(!sourceObservationList)return;sourceObservationList.replaceChildren(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS · v'+selectedVersion}));const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;sourceObservationList.append(attributionDisclosure);const records=projectSourceObservationRecords(creationWorldSnapshot.events,creationWorldSnapshot.creations).filter(record=>record.creationId===id&&record.version===selectedVersion);if(!records.length){sourceObservationList.append(paragraph('No source observations are retained against this version. The empty state is intentional.','empty-note'));return;}for(const record of records){const githubCitation=parseGitHubSourceCitation(record.source);
+});const content=showSheet(creation.title,satireIssue?'AMERICA’S GOT PROBLEMS · SATIRE ISSUE':'A PLACE SOMEONE MADE');content.dataset.creationDetail='true';content.dataset.creationSnapshotRevision=Number.isSafeInteger(creationWorldSnapshot?.revision)&&creationWorldSnapshot.revision>=0?String(creationWorldSnapshot.revision):'unavailable';let sourceObservationList=null;function requireCurrentCreationSnapshot(){if(mode==='shared'&&(isSharedSnapshotStale()||!Number.isSafeInteger(creationWorldSnapshot?.revision)||!Number.isSafeInteger(world?.revision)||world.revision!==creationWorldSnapshot.revision))throw new Error('This artifact detail is pinned to an older or unavailable shared snapshot. Refresh it before recording new activity.');}function renderSourceObservations(){if(!sourceObservationList)return;sourceObservationList.replaceChildren(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS · v'+selectedVersion}));const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;sourceObservationList.append(attributionDisclosure);const records=projectSourceObservationRecords(creationWorldSnapshot.events,creationWorldSnapshot.creations,sourceObservationPositionOptions(creationWorldSnapshot)).filter(record=>record.creationId===id&&record.version===selectedVersion);if(!records.length){sourceObservationList.append(paragraph('No source observations are retained against this version. The empty state is intentional.','empty-note'));return;}for(const record of records){const githubCitation=parseGitHubSourceCitation(record.source);
     const citationDisclosure=githubCitation
       ? paragraph('Client-reported unarchived citation metadata · commit '+githubCitation.commitSha+' · Git blob SHA-1 '+githubCitation.gitBlobSha+' · SHA-256 '+githubCitation.sha256+' · '+githubCitation.size+' bytes. These values are carried in the author-entered source text; the shared world cannot authenticate the browser fetch or any device-local capture. Hashes identify bytes only; they do not establish primary-source status, authorship, authority, or truth.','form-help')
       : null;
@@ -3517,7 +3521,7 @@ function openSourceObservatory(prefillNote=null,prefillOrigin='project-state-sna
     else content.append(paragraph('Wait for the Founder to publish a Source Observatory before recording a version-bound note.','form-help'));
   }else{
     let records=null;
-    try{records=projectSourceObservationRecords(world.events,world.creations)}catch{}
+    try{records=projectSourceObservationRecords(world.events,world.creations,sourceObservationPositionOptions(world))}catch{}
     if(!records){
       content.append(paragraph('The retained Source Observation projection is unavailable. No record action is offered; inspect the Chronicle or Evidence Archive instead.','evidence-warning'));
     }else{
@@ -3589,7 +3593,7 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null,{snapsho
   const confirmButton=button('Record notes in Evidence Archive →',async()=>{
     if(!parsedExport||!targetSelect.value||targetSelect.value!==previewTarget)return;
     confirmButton.disabled=true;
-    const beforeIds=new Set(projectSourceObservationRecords(world.events,world.creations).map(record=>record.observationId));
+    const beforeIds=new Set(projectSourceObservationRecords(world.events,world.creations,sourceObservationPositionOptions(world)).map(record=>record.observationId));
     let processed=0;
     try{
       const target=JSON.parse(targetSelect.value);
@@ -3607,7 +3611,7 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null,{snapsho
         });
         processed++;
       }
-      const afterIds=new Set(projectSourceObservationRecords(world.events,world.creations).map(record=>record.observationId));
+      const afterIds=new Set(projectSourceObservationRecords(world.events,world.creations,sourceObservationPositionOptions(world)).map(record=>record.observationId));
       const added=[...afterIds].filter(id=>!beforeIds.has(id)).length;
       toast('Processed '+processed+' source note(s); '+added+' new retained event(s). No verification or XP was granted.');
       parsedExport=null;
@@ -3786,22 +3790,26 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null,{snapsho
   // append-position streams. Do not duplicate them in a timestamp-sorted list.
 
   const researchEvents=projectResearchRecords(events,creations);
-  const sourceObservationRecords=projectSourceObservationRecords(events,creations);
+  const sourceObservationRecords=projectSourceObservationRecords(events,creations,sourceObservationPositionOptions(archiveWorld));
   content.append(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS'}));
   if(!sourceObservationRecords.length)content.append(paragraph('No source observations have been retained in this world yet.','empty-note'));
   for(const record of sourceObservationRecords){
-    const card=node('article',{class:'field-card','data-source-observation-card':'true','data-observation-id':record.observationId,'data-history-position':String(record.historyPosition)});
+    const hasHistoryPosition=Number.isSafeInteger(record.historyPosition)&&record.historyPosition>0;
+     const positionLabel=hasHistoryPosition?'world history position #'+record.historyPosition:'global history position unavailable in this partial snapshot';
+     const card=node('article',{class:'field-card','data-source-observation-card':'true','data-observation-id':record.observationId});
+     if(hasHistoryPosition)card.dataset.historyPosition=String(record.historyPosition);
+     else card.dataset.historyPositionStatus='unavailable';
     card.append(node('h3',{text:record.claim}));
     card.append(paragraph('Self-classified source kind: '+record.sourceKind+' · '+record.warning));
     card.append(paragraph('Source/attribution: '+record.source));
     card.append(paragraph('Falsifier: '+(record.falsifier||'NOT PROVIDED')+' · Uncertainty: '+(record.uncertainty||'NOT PROVIDED')));
     card.append(paragraph('Next test: '+(record.nextTest||'NOT PROVIDED')));
-    card.append(paragraph('History position #'+record.historyPosition+' · recorded by '+(record.actor?.name||record.actor?.id||'unknown actor')+' ('+record.actor?.role+') · event timestamp '+record.at));
+    card.append(paragraph(positionLabel+' · recorded by '+(record.actor?.name||record.actor?.id||'unknown actor')+' ('+record.actor?.role+') · event timestamp '+record.at));
     card.append(paragraph('Selected target: '+(record.targetTitle||record.creationId)+' · v'+record.version+' · binding '+record.bindingMode));
     card.append(paragraph('Assurance: source retrieval '+record.sourceRetrieval+'; independent verification '+record.independentVerification+'; model assertions '+record.modelAssertions+'; execution '+record.execution+'.','form-help'));
     for(const challenge of record.challenges||[]){
-      card.append(paragraph('Challenge · '+challenge.challengeType+': '+challenge.challengeText+' · history position #'+challenge.historyPosition,'form-help'));
-      if(challenge.responseStatus==='answered')for(const response of challenge.responses||[])card.append(paragraph('Author response · '+response.responseText+' · history position #'+response.historyPosition));
+      card.append(paragraph('Challenge · '+challenge.challengeType+': '+challenge.challengeText+(Number.isSafeInteger(challenge.historyPosition)&&challenge.historyPosition>0?' · world history position #'+challenge.historyPosition:' · global history position unavailable'),'form-help'));
+      if(challenge.responseStatus==='answered')for(const response of challenge.responses||[])card.append(paragraph('Author response · '+response.responseText+(Number.isSafeInteger(response.historyPosition)&&response.historyPosition>0?' · world history position #'+response.historyPosition:' · global history position unavailable')));
       else if(challenge.responseStatus==='ambiguous')card.append(paragraph('Response history is ambiguous; no reply is selected.','evidence-warning'));
     }
     card.append(paragraph(record.projectionStatus==='linked'?'Linked to one earlier retained Source Observatory publication. This reference does not prove that the export originated from that version.':'Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));

@@ -1,6 +1,6 @@
 import { FIELD_EQUIPMENT_SLOTS, projectCharacter } from './character-sheet.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
-import { projectResearchRecords, projectSourceArchivePredicateContrasts, sameResearchActor } from './research-records.mjs';
+import { projectResearchRecords, projectSourceArchivePredicateContrasts, sameResearchActor, retainedWorldEventHistoryPositions } from './research-records.mjs';
 
 import { isStrictTimestamp } from "./timestamps.mjs";
 import { PLACES, institutionDestinationsForEvent } from "./world-view.mjs";
@@ -231,12 +231,12 @@ function malformedCollectionEntry(source) {
   };
 }
 
-function malformedEventEntry(source, index) {
+function malformedEventEntry(source, index, streamPosition = index + 1) {
   const institutional = source === "kernel";
   return {
     id: `${source}:unclassified-${index}`,
     source,
-    streamPosition: index + 1,
+    streamPosition: Number.isSafeInteger(streamPosition) && streamPosition > 0 ? streamPosition : null,
     eventType: "unknown",
     at: "",
     actor: "unknown actor",
@@ -264,7 +264,7 @@ function findVersion(creations, creationId, version) {
   return matchingVersions.length === 1 ? matchingVersions[0] : null;
 }
 
-function sourceContrastEntriesByPosition(events, creations, eventPositionsById) {
+function sourceContrastEntriesByPosition(events, creations, eventPositionsById, streamPositions = []) {
   const records = projectResearchRecords(events, creations);
   const groups = projectSourceArchivePredicateContrasts(records);
   const byPosition = new Map();
@@ -299,7 +299,8 @@ function sourceContrastEntriesByPosition(events, creations, eventPositionsById) 
       const entry = {
         id: 'world:derived-source-predicate-conflict:' + firstConflict.id + ':' + lastConflict.id,
         source: 'world',
-        streamPosition: lastConflict._projection.index + 1,
+        streamPosition: Number.isSafeInteger(streamPositions[lastConflict._projection.index])
+          ? streamPositions[lastConflict._projection.index] : null,
         eventType: 'source-archive-predicate-conflict-projection',
         at: timestamp(lastConflict.at),
         actor: actorName(lastConflict.actor),
@@ -356,7 +357,8 @@ function sourceContrastEntriesByPosition(events, creations, eventPositionsById) 
     const entry = {
       id: 'world:derived-source-contrast:' + first.id + ':' + second.id,
       source: 'world',
-      streamPosition: secondIndex + 1,
+      streamPosition: Number.isSafeInteger(streamPositions[secondIndex])
+        ? streamPositions[secondIndex] : null,
       eventType: 'source-archive-predicate-contrast-projection',
       at: timestamp(second.at),
       actor: actorName(second.actor),
@@ -512,7 +514,7 @@ function markUnvalidatedCombatEntry(entry, event) {
   entry.warning = "Combat history failed closed; inspect the retained sequence. This record is not real-world skill evidence, a truth verdict, approval, or authority.";
 }
 
-function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIds=new Set(),fieldItemTransferValidEventIds=new Set(),combatProjection=null){
+function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIds=new Set(),fieldItemTransferValidEventIds=new Set(),combatProjection=null,streamPosition=index+1){
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   const creationId = text(event?.creationId) || text(event?.sourceCreationId) || text(event?.evidenceCreationId);
@@ -531,7 +533,7 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     locationId: recordedLocation?.id || null,
     locationName: recordedLocation?.name || null,
     institutionDestinations: institutionDestinationsForEvent(event),
-    streamPosition: index + 1,
+    streamPosition: Number.isSafeInteger(streamPosition) && streamPosition > 0 ? streamPosition : null,
     eventType: type,
     at: timestamp(event?.at),
     actor: actorName(event?.actor),
@@ -1100,6 +1102,9 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   const worldEvents = worldCollection.value;
   const kernelEvents = kernelCollection.value;
   const worldEventSnapshots = worldEvents.map(event => safeEventSnapshot(event));
+  const worldStreamPositions = worldCollection.valid
+    ? retainedWorldEventHistoryPositions(world, worldEventSnapshots)
+    : worldEventSnapshots.map(() => null);
   const worldEventPositionsById = new Map();
   for (let index = 0; index < worldEventSnapshots.length; index += 1) {
     const event = worldEventSnapshots[index];
@@ -1142,17 +1147,17 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   // Complete contrast dossiers are derived from already validated, linked records.
   // Anchor each immediately after its later predicate event; never append a new world event.
   const sourceContrastEntries = worldCollection.valid && creationsCollection.valid
-    ? sourceContrastEntriesByPosition(worldEventSnapshots, creations, worldEventPositionsById)
+    ? sourceContrastEntriesByPosition(worldEventSnapshots, creations, worldEventPositionsById, worldStreamPositions)
     : new Map();
 
   for (let index = 0; index < worldEventSnapshots.length; index += 1) {
     const event = worldEventSnapshots[index];
     if (!event) {
       malformed += 1;
-      worldEntries.push(malformedEventEntry("world", index));
+      worldEntries.push(malformedEventEntry("world", index, worldStreamPositions[index]));
       continue;
     }
-    worldEntries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds,combatProjection));
+    worldEntries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds,combatProjection,worldStreamPositions[index]));
     for (const derivedEntry of sourceContrastEntries.get(index) || []) {
       worldEntries.push(derivedEntry);
     }

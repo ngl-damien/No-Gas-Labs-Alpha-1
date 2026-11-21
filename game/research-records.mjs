@@ -154,6 +154,75 @@ function snapshotArrayEntries(value, maxItems) {
   return entries;
 }
 
+export function retainedEventHistoryPositions(eventsInput, {
+  allowLocalPositions = true,
+  revision,
+  revisionPresent = false
+} = {}) {
+  const events = Array.isArray(eventsInput) ? eventsInput : [];
+  let hasMetadata = false;
+  const positions = [];
+  for (let index = 0; index < events.length; index += 1) {
+    let slot;
+    try { slot = Object.getOwnPropertyDescriptor(events, String(index)); }
+    catch { return Array.from({ length: events.length }, () => null); }
+    if (!slot || !Object.hasOwn(slot, 'value')) {
+      positions.push(undefined);
+      continue;
+    }
+    const event = slot.value;
+    if (!event || typeof event !== 'object') {
+      positions.push(undefined);
+      continue;
+    }
+    let descriptor;
+    try { descriptor = Object.getOwnPropertyDescriptor(event, 'historyPosition'); }
+    catch {
+      hasMetadata = true;
+      positions.push(undefined);
+      continue;
+    }
+    if (!descriptor) {
+      positions.push(undefined);
+      continue;
+    }
+    hasMetadata = true;
+    positions.push(Object.hasOwn(descriptor, 'value') ? descriptor.value : undefined);
+  }
+  if (hasMetadata) {
+    let prior = 0;
+    const valid = positions.length === events.length && positions.every(position => {
+      if (!Number.isSafeInteger(position) || position <= prior ||
+          (revisionPresent && (!Number.isSafeInteger(revision) || revision < position))) return false;
+      prior = position;
+      return true;
+    });
+    return valid ? positions : Array.from({ length: events.length }, () => null);
+  }
+  if (allowLocalPositions && (!revisionPresent ||
+      (Number.isSafeInteger(revision) && revision >= 0 && revision === events.length))) {
+    return Array.from({ length: events.length }, (_, index) => index + 1);
+  }
+  return Array.from({ length: events.length }, () => null);
+}
+export function retainedWorldEventHistoryPositions(world, eventsInput) {
+  let revisionPresent = false;
+  let revision;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(world ?? {}, 'revision');
+    if (descriptor) {
+      revisionPresent = true;
+      if (Object.hasOwn(descriptor, 'value')) revision = descriptor.value;
+    }
+  } catch {
+    revisionPresent = true;
+  }
+  const events = Array.isArray(eventsInput) ? eventsInput : [];
+  const allowLocalPositions = !revisionPresent ||
+    (Number.isSafeInteger(revision) && revision >= 0 && revision === events.length);
+  return retainedEventHistoryPositions(events, { allowLocalPositions, revision, revisionPresent });
+}
+
 function countBy(events, field, predicate = () => true) {
   const counts = new Map();
   for (const event of events) {
@@ -731,11 +800,12 @@ export function sourceObservationRequestMaterial({
   });
 }
 
-export function projectSourceObservationRecords(eventsInput, creationsInput) {
+export function projectSourceObservationRecords(eventsInput, creationsInput, { allowLocalPositions = true } = {}) {
   const eventEntries = snapshotArrayEntries(eventsInput, MAX_EVENT_COUNT);
   const creationEntries = snapshotArrayEntries(creationsInput, MAX_RETAINED_CREATIONS);
   const events = eventEntries.map(entry => entry.value);
   const creations = creationEntries.map(entry => entry.value);
+  const historyPositions = retainedEventHistoryPositions(events, { allowLocalPositions });
   const unsafeEvents = new WeakSet();
   const unsafeCreations = new WeakSet();
   eventEntries.forEach(entry => {
@@ -866,7 +936,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
         Array.from(response.responseText).length <= 1000 && isStrictTimestamp(response.at) &&
         responseIndex > challengeIndex
       ).map(({ event: response, index: responseIndex }) => Object.freeze({
-        id: response.id, type: response.type, historyPosition: responseIndex + 1, responseId: response.responseId,
+        id: response.id, type: response.type, historyPosition: historyPositions[responseIndex], responseId: response.responseId,
         challengeId: response.challengeId, observationId: response.observationId,
         creationId: response.creationId, version: response.version,
         responseText: response.responseText, actor: response.actor, at: response.at
@@ -874,7 +944,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       const responseStatus = responseRows.length === 0 ? 'unanswered' :
         responseRows.length === 1 && responses.length === 1 ? 'answered' : 'ambiguous';
       return Object.freeze({
-        id: challenge.id, historyPosition: challengeIndex + 1, challengeId: challenge.challengeId, observationId: challenge.observationId,
+        id: challenge.id, historyPosition: historyPositions[challengeIndex], challengeId: challenge.challengeId, observationId: challenge.observationId,
         creationId: challenge.creationId, version: challenge.version, challengeType: challenge.challengeType,
         challengeText: challenge.challengeText, actor: challenge.actor, at: challenge.at,
         responseStatus, responses: Object.freeze(responses)
@@ -887,7 +957,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
         : 'This is an author-entered note, not an independently verified claim.';
     records.push(Object.freeze({
       id: event.id,
-      historyPosition: index + 1,
+      historyPosition: historyPositions[index],
       observationId: event.observationId,
       creationId: event.creationId,
       version: event.version,
