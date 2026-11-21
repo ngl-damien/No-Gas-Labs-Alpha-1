@@ -28,7 +28,7 @@ Both authorized Desktop Commander devices were offline. Local pre-edit portable 
 
 Donor review rechecked the current Guild Dissent Circuit mechanism (#375/#398), the append-order pattern in prior draft #515 (Synthesis, a different event family), RAE/Relay provenance and failure retention, Decision Chamber authority/replay boundaries, and the World Projection Contract. No donor branch or subsystem was merged/copied wholesale.
 
-PR #718 is draft/unmerged at `eea8c04ea362f17025c7aa99f89126c1f9d442aa`, 77 commits ahead / 0 behind main, 16 changed paths. Canonical main remains `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. PR #719 remains on its existing diverged documentation branch: 67 commits ahead / 41 behind current #718; no rebase or force-sync. G6/G7 remain IN_PROGRESS; G9 NOT_STARTED; Founder trust NOT_ENROLLED. No canonical event, XP, truth verdict, approval, authority, merge, release, deployment, or external publication occurred.
+PR #718 is draft/unmerged at `eea8c04ea362f17025c7aa99f89126c1f9d442aa`, 77 commits ahead / 0 behind main, 16 changed paths. Canonical main remains `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. PR #719 remains on its existing diverged documentation branch, with base pinned at #718 head `15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da`; no rebase or force-sync. G6/G7 remain IN_PROGRESS; G9 NOT_STARTED; Founder trust NOT_ENROLLED. No canonical event, XP, truth verdict, approval, authority, merge, release, deployment, or external publication occurred.
 
 ## Next
 1. Collect terminal Quest Board and Synthesis acceptance on exact head `eea8c04ea362f17025c7aa99f89126c1f9d442aa`.
