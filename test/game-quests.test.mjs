@@ -2599,6 +2599,44 @@ test('Guild Dissent Circuit requires membership at event time and a challenge af
   assert.match(blocked.blockedReason, /guild history is ambiguous or invalid/i);
 });
 
+test('Guild Dissent Circuit follows append order when source-action timestamps regress', () => {
+  const fixture = guildDissentCircuitFixture();
+  const {
+    world, publication, guildCreated, guildJoined,
+    founderObservation, witnessObservation, challenge, response
+  } = fixture;
+
+  // Membership events remain in their required chronological order. The
+  // Source Observatory actions are explicitly append-ordered and may carry
+  // valid timestamps below the world clock high-water mark.
+  witnessObservation.at = '2026-10-28T19:01:30.000Z';
+  challenge.at = '2026-10-28T19:01:40.000Z';
+  response.at = '2026-10-28T19:01:50.000Z';
+  world.events = [
+    publication, guildCreated, guildJoined,
+    founderObservation, witnessObservation, challenge, response
+  ];
+
+  const beforeProjection = structuredClone(world);
+  const objective = actor => getQuestTrail(world, actor)
+    .find(item => item.id === actor.role + '-guild-dissent-circuit');
+
+  const founderQuest = objective(founder);
+  const witnessQuest = objective(witness);
+  assert.equal(founderQuest.progress, 4,
+    'later-appended observation, challenge and response remain causally ordered despite clock regression');
+  assert.equal(founderQuest.complete, true);
+  assert.deepEqual(founderQuest.evidenceIds, [
+    founderObservation.id, witnessObservation.id, challenge.id, response.id
+  ]);
+  assert.equal(witnessQuest.progress, 4,
+    'the same append-ordered group objective is visible to the other current member');
+  assert.deepEqual(witnessQuest.evidenceIds, founderQuest.evidenceIds);
+  assert.match(founderQuest.interpretation, /timestamps are metadata, not causal order/i);
+  assert.equal(world.xp, 100, 'the participation objective awards no XP');
+  assert.deepEqual(world, beforeProjection, 'the projection is read-only and preserves all original timestamps and events');
+});
+
 test('Guild Dissent Circuit excludes observations appended before the prior author response from the next round', () => {
   const fixture = guildDissentCircuitFixture();
   const actor = fixture.founderObservation.actor;
