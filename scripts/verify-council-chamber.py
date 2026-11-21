@@ -124,15 +124,53 @@ def assert_populated_council_room(page, fixture):
         expect(details).to_have_count(1)
         expect(details).to_have_attribute('data-council-review-status', 'valid-for-human-review')
         summary = details.locator('summary')
-        summary.evaluate("(el) => el.scrollIntoView({block: 'center', inline: 'nearest', behavior: 'instant'})")
-        page.wait_for_timeout(50)
-        summary_in_view = summary.evaluate("""el => {
+        scroll_metrics = summary.evaluate("""el => {
+          const panel = document.querySelector('#sheet');
+          const panelRect = panel.getBoundingClientRect();
+          const header = panel.querySelector('.sheet-top');
+          const headerBottom = header ? header.getBoundingClientRect().bottom : panelRect.top;
           const item = el.getBoundingClientRect();
-          const panel = document.querySelector('#sheet').getBoundingClientRect();
-          return item.width > 0 && item.height > 0 &&
-            item.top >= panel.top && item.bottom <= panel.bottom;
+          const visibleTop = Math.max(panelRect.top, headerBottom) + 8;
+          const visibleBottom = panelRect.bottom - 8;
+          const delta = item.top < visibleTop
+            ? item.top - visibleTop
+            : item.bottom > visibleBottom
+              ? item.bottom - visibleBottom
+              : 0;
+          const maxScroll = Math.max(0, panel.scrollHeight - panel.clientHeight);
+          panel.scrollTop = Math.max(0, Math.min(maxScroll, panel.scrollTop + delta));
+          return {
+            requestedDelta: Math.round(delta),
+            scrollTop: Math.round(panel.scrollTop),
+            maxScroll: Math.round(maxScroll)
+          };
         }""")
-        assert summary_in_view, 'Each bounded Council review summary must be reachable inside the mobile sheet scrollport.'
+        page.wait_for_timeout(50)
+        summary_state = summary.evaluate("""el => {
+          const panel = document.querySelector('#sheet');
+          const panelRect = panel.getBoundingClientRect();
+          const header = panel.querySelector('.sheet-top');
+          const headerBottom = header ? header.getBoundingClientRect().bottom : panelRect.top;
+          const item = el.getBoundingClientRect();
+          const visibleTop = Math.max(panelRect.top, headerBottom) + 4;
+          const visibleBottom = panelRect.bottom - 4;
+          return {
+            visible: item.width > 0 && item.height > 0 &&
+              item.top >= visibleTop && item.bottom <= visibleBottom,
+            itemTop: Math.round(item.top),
+            itemBottom: Math.round(item.bottom),
+            visibleTop: Math.round(visibleTop),
+            visibleBottom: Math.round(visibleBottom),
+            scrollTop: Math.round(panel.scrollTop),
+            scrollHeight: Math.round(panel.scrollHeight),
+            clientHeight: Math.round(panel.clientHeight)
+          };
+        }""")
+        assert summary_state['visible'], (
+            'Each bounded Council review summary must be reachable below the sticky header '
+            'inside the mobile sheet scrollport (' + role + '): ' +
+            json.dumps({**scroll_metrics, **summary_state})
+        )
         close_in_view = page.locator('#sheet-close').evaluate("""el => {
           const button = el.getBoundingClientRect();
           const panel = document.querySelector('#sheet').getBoundingClientRect();
