@@ -4395,6 +4395,10 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
             document.querySelector('#mode-label')?.textContent.includes('offline preview')""",
         timeout=10000
     )
+    expect(page.locator('#connection-dot')).to_have_attribute(
+        'aria-label',
+        'Shared snapshot preview only. Local travel is not saved to the shared world.'
+    )
     page.wait_for_function(
         "() => document.querySelector('#world')?.dataset.movementEnabled === 'true'",
         timeout=10000
