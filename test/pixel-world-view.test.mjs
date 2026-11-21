@@ -2054,6 +2054,10 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
 
   const phone = renderProbe(390, 120);
   assert.ok(phone.labels.includes('TAP · TALK · ' + npc.shortName));
+  assert.equal(phone.dataset.playerX, '100');
+  assert.equal(phone.dataset.playerY, '100');
+  assert.equal(phone.dataset.playerPositionSource, 'local-renderer',
+    'DOM coordinates must identify themselves as renderer-local, never server-authoritative');
   assert.equal(phone.dataset.nearbyNpcRole, npc.roleId);
   assert.equal(phone.dataset.nearbyNpcPacketState, 'ready');
   assert.match(phone.attributes['aria-description'], /tap the character to talk/i);
