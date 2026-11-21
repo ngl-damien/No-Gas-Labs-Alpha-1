@@ -33,7 +33,7 @@ Root AGENTS, complete shared protocol, Institutional Charter, World Projection C
 ## Repository and governance
 - Canonical main remains `0d950c501cf128d828ae4f263cc05a9013d7e8c1`, unchanged.
 - Runtime PR #718 remains draft/unmerged at `1a2b83032919fd23d6a431c9e4931061e37f8ff1`, 50 commits ahead / 0 behind main, 11 changed paths, GitHub reports mergeable. No merge performed.
-- Documentation PR #719 remains draft/unmerged. Its branch is based on merge-base `15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da`, 14 commits behind current #718 and currently not mergeable. This checkpoint is updated on the existing docs branch without rebasing; no attempt to force-sync or merge it.
+- Documentation PR #719 remains draft/unmerged. Its branch is based on merge-base `15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da`, 14 commits behind current #718; GitHub reports mergeable=true, but the branch is not synchronized. This checkpoint is updated on the existing docs branch without rebasing; no attempt to force-sync or merge it.
 - No canonical world event, XP, evidence certification, truth verdict, approval, authority transition, merge, release, or deployment occurred. G6/G7 remain IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
 
 ## Next
