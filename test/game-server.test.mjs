@@ -1238,6 +1238,14 @@ test('shared action request IDs replay the original result across lost responses
   assert.equal(first.body.idempotentReplay, false);
   const revision = first.body.world.revision;
   const reportId = first.body.result.id;
+  const expectedRecordTextReceipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(Buffer.from(action.text, 'utf8')).digest('hex'),
+    size: Buffer.byteLength(action.text, 'utf8')
+  };
+  const retainedReportEvent = first.body.world.events.find(event => event.requestId === requestId);
+  assert.equal(retainedReportEvent.recordId, reportId);
+  assert.deepEqual(retainedReportEvent.recordTextReceipt, expectedRecordTextReceipt);
   assert.equal(first.body.world.reports.filter(report => report.text === action.text).length, 1);
 
   const replay = await founder.request('/api/action', { ...action, requestId });
@@ -1270,6 +1278,9 @@ test('shared action request IDs replay the original result across lost responses
     assert.equal(afterRestart.response.status, 200, JSON.stringify(afterRestart.body));
     assert.equal(afterRestart.body.idempotentReplay, true);
     assert.equal(afterRestart.body.result.id, reportId);
+    const replayedReportEvent = afterRestart.body.world.events.find(event => event.requestId === requestId);
+    assert.equal(replayedReportEvent.recordId, reportId);
+    assert.deepEqual(replayedReportEvent.recordTextReceipt, expectedRecordTextReceipt);
     assert.equal(afterRestart.body.world.reports.filter(report => report.text === action.text).length, 1);
   } finally {
     await reopened.closeGame();
