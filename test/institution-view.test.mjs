@@ -2393,3 +2393,151 @@ test('Evidence Archive withholds source-event links for missing, duplicate, or m
     assert.deepEqual(world, before, fixture.name + ' projection must not mutate history');
   }
 });
+
+
+test('Chronicle routes retained events to related institutions and only explicit discovery events to recorded map places', () => {
+  const actor = { id: 'chronicle-route-founder', name: 'Chronicle Founder', role: 'founder' };
+  const world = {
+    creations: [{
+      id: 'creation-route',
+      title: 'Route fixture',
+      kind: 'observatory',
+      version: 1,
+      versions: [{ version: 1, title: 'Route fixture', publishedAt: '2026-11-20T12:00:00.000Z' }]
+    }],
+    reports: [{
+      id: 'report-route',
+      creationId: 'creation-route',
+      version: 1,
+      text: 'A retained report; its claim is not independently verified.',
+      actor,
+      at: '2026-11-20T12:01:00.000Z'
+    }],
+    contributions: [],
+    discoveries: [],
+    events: [
+      {
+        id: 'publish-route-event',
+        type: 'publish',
+        creationId: 'creation-route',
+        version: 1,
+        actor,
+        at: '2026-11-20T12:00:00.000Z'
+      },
+      {
+        id: 'report-route-event',
+        type: 'report',
+        creationId: 'creation-route',
+        version: 1,
+        actionResult: { id: 'report-route' },
+        actor,
+        at: '2026-11-20T12:01:00.000Z'
+      },
+      {
+        id: 'discover-route-event',
+        type: 'discover',
+        locationId: 'overlook',
+        actor,
+        at: '2026-11-20T12:02:00.000Z'
+      },
+      {
+        id: 'discover-prototype-key',
+        type: 'discover',
+        locationId: 'toString',
+        actor,
+        at: '2026-11-20T12:03:00.000Z'
+      },
+      {
+        id: 'discover-institution-id',
+        type: 'discover',
+        locationId: 'town-square',
+        actor,
+        at: '2026-11-20T12:04:00.000Z'
+      }
+    ]
+  };
+  const before = structuredClone(world);
+  const opened = [];
+
+  withDocument(() => {
+    const root = element('main');
+    renderWorldChronicle(root, world, 'report-route-event', {
+      onOpenLocation: placeId => opened.push(placeId)
+    });
+    const reportCard = walk(root).find(item => item.dataset?.eventId === 'world:report-route-event');
+    assert.ok(reportCard);
+    const reportRoutes = walk(reportCard).filter(item => item.dataset?.chronicleInstitutionRoute);
+    assert.deepEqual(reportRoutes.map(item => item.dataset.chronicleInstitutionRoute),
+      ['evidence_archive', 'town-square']);
+    assert.match(textOf(reportCard), /not claims about the event's physical location/i);
+    const archiveButton = reportRoutes.find(item => item.dataset.chronicleInstitutionRoute === 'evidence_archive');
+    assert.ok(archiveButton);
+    archiveButton.onclick();
+    assert.deepEqual(opened, ['evidence_archive']);
+  });
+
+  withDocument(() => {
+    const root = element('main');
+    renderWorldChronicle(root, world, 'report-route-event', {
+      stale: true,
+      staleReason: 'disconnected',
+      onOpenLocation: placeId => opened.push(placeId)
+    });
+    assert.equal(walk(root).filter(item =>
+      item.dataset?.chronicleInstitutionRoute || item.dataset?.chronicleRecordedLocation
+    ).length, 0, 'stale retained snapshots must remain navigable for inspection but cannot start shared-world routes');
+  });
+
+  withDocument(() => {
+    const root = element('main');
+    renderWorldChronicle(root, world, 'discover-route-event', {
+      onOpenLocation: placeId => opened.push(placeId)
+    });
+    const discoveryCard = walk(root).find(item => item.dataset?.eventId === 'world:discover-route-event');
+    assert.ok(discoveryCard);
+    const recordedPlaceButton = walk(discoveryCard).find(item =>
+      item.dataset?.chronicleRecordedLocation === 'overlook'
+    );
+    assert.ok(recordedPlaceButton, 'an explicit retained discovery can route to its actual map location');
+    assert.match(recordedPlaceButton.textContent, /The Long View/);
+    recordedPlaceButton.onclick();
+    assert.deepEqual(opened, ['evidence_archive', 'overlook']);
+  });
+
+  withDocument(() => {
+    const root = element('main');
+    renderWorldChronicle(root, world, 'discover-prototype-key', {
+      onOpenLocation: placeId => opened.push(placeId)
+    });
+    assert.equal(walk(root).some(item => item.dataset?.chronicleRecordedLocation),
+      false, 'prototype keys must not resolve as map locations');
+  });
+
+  withDocument(() => {
+    const root = element('main');
+    renderWorldChronicle(root, world, 'discover-institution-id', {
+      onOpenLocation: placeId => opened.push(placeId)
+    });
+    assert.equal(walk(root).some(item => item.dataset?.chronicleRecordedLocation),
+      false, 'a discovery event cannot claim an institution ID as a recorded scenic location');
+  });
+
+  withDocument(() => {
+    const root = element('main');
+    renderInstitution(root, projects, gate, {
+      world,
+      kernelUnavailable: true,
+      onOpenLocation: placeId => opened.push(placeId)
+    });
+    const publicationCard = walk(root).find(item => item.dataset?.eventId === 'world:publish-route-event');
+    assert.ok(publicationCard);
+    const publicationHouseButton = walk(publicationCard).find(item =>
+      item.dataset?.chronicleInstitutionRoute === 'publication_house'
+    );
+    assert.ok(publicationHouseButton, 'a retained publication must link to the Publication House');
+    publicationHouseButton.onclick();
+    assert.deepEqual(opened, ['evidence_archive', 'overlook', 'publication_house']);
+  });
+
+  assert.deepEqual(world, before, 'Chronicle navigation projection must not mutate retained world history or progression');
+});
