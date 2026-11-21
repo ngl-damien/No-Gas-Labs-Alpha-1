@@ -612,6 +612,7 @@ function clearSharedPresence(){
 }
 function pauseSharedMovement({allowOfflinePreview=false}={}){
   if(mode!=='shared')return;
+  const wasPaused=sharedMovementPaused;
   sharedMovementPaused=true;
   // Invalidate any in-flight response before stopping shared movement. A late
   // response must not pull the renderer away from the last accepted snapshot.
@@ -619,11 +620,12 @@ function pauseSharedMovement({allowOfflinePreview=false}={}){
   // them rather than sending stale movement after the connection is interrupted.
   positionWriteSequence+=1;
   orderedSharedPositionWriter.cancelPending();
-  view.setMovementEnabled(false);
-  // A disconnected shared world remains locally navigable as a read-only
-  // preview. submitSharedPosition() stays gated by sharedMovementPaused, so
-  // these local coordinates are never sent or replayed as shared state.
-  if(allowOfflinePreview)view.setMovementEnabled(true);
+  if(allowOfflinePreview){
+    // Cancel an online route once, then retain local-only navigation. Repeated
+    // EventSource errors must not cancel a preview route already underway.
+    if(!wasPaused)view.setMovementEnabled(false);
+    view.setMovementEnabled(true);
+  }else view.setMovementEnabled(false);
 }
 function setConnection(connected){
   const networkAvailable=globalThis.navigator?.onLine!==false;
