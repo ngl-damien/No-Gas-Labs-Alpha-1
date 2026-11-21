@@ -317,4 +317,12 @@ test('exact artifact target resolution rejects accessor-backed and exotic snapsh
   assert.equal(exoticCollection.status, 'unavailable');
   assert.equal(exoticCollection.reason, 'creation-collection-unavailable');
   assert.equal(getterCalls, 0);
+
+  const invalidIdentity = resolveRetainedCreationTarget(
+    { creations: [creation] },
+    'creation-1' + String.fromCharCode(0),
+    1
+  );
+  assert.equal(invalidIdentity.status, 'unavailable');
+  assert.equal(invalidIdentity.reason, 'invalid-creation-id');
 });
