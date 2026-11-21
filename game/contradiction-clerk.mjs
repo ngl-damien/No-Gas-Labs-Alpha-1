@@ -216,6 +216,64 @@ export function prepareContradictionReview(creation, version) {
   });
 }
 
+
+/**
+ * Resolve an exact artifact identity and edition from an accepted world snapshot.
+ * Missing, duplicate, malformed, or unavailable targets stay unavailable; this
+ * selector never substitutes another creation or the current edition.
+ */
+export function resolveRetainedCreationTarget(snapshot, creationId, requestedVersion = null) {
+  const unavailable = (reason, title = "Artifact unavailable", version = requestedVersion) => Object.freeze({
+    status: "unavailable",
+    reason,
+    creationId: typeof creationId === "string" ? creationId : "",
+    version: Number.isSafeInteger(version) && version > 0 ? version : null,
+    title: typeof title === "string" && title.trim() && Array.from(title).length <= 80
+      ? title
+      : "Artifact unavailable",
+  });
+
+  if (typeof creationId !== "string" || !creationId || creationId.length > 80 ||
+      creationId.trim() !== creationId || /[\\u0000-\\u001F\\u007F]/.test(creationId)) {
+    return unavailable("invalid-creation-id");
+  }
+
+  let creations;
+  try {
+    requirePlainObject(snapshot, "accepted world snapshot");
+    creations = ownDataArray(ownDataValue(snapshot, "creations"), "retained creation collection");
+  } catch {
+    return unavailable("creation-collection-unavailable");
+  }
+
+  const matches = creations.filter(candidate => ownDataValue(candidate, "id") === creationId);
+  if (matches.length !== 1) {
+    return unavailable(matches.length === 0 ? "creation-not-retained" : "creation-identity-ambiguous");
+  }
+
+  const creation = matches[0];
+  let title = "Artifact unavailable";
+  try {
+    title = boundedText(ownDataValue(creation, "title"), "retained creation title", 80);
+  } catch {
+    // The unavailable view uses a neutral title when retained metadata is malformed.
+  }
+  const version = requestedVersion === null ? ownDataValue(creation, "version") : requestedVersion;
+  try {
+    const review = prepareContradictionReview(creation, version);
+    return Object.freeze({
+      status: "available",
+      creationId,
+      version: review.target.version,
+      title: review.target.title,
+      creation,
+      review,
+    });
+  } catch {
+    return unavailable("version-not-uniquely-retained", title, version);
+  }
+}
+
 function challengeAnswers(answers) {
   requirePlainObject(answers, "structured challenge answers");
   const keys = Reflect.ownKeys(answers);
