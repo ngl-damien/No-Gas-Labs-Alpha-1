@@ -1365,3 +1365,50 @@ test('Combat Yard clock regressions preserve retained append order and the world
   }, founderActor, { now: at(39) }), error => error.code === 'INVALID_CHRONOLOGY',
   'the clock-regression exception is limited to Source Observatory and Combat Yard actions');
 });
+
+
+test('private report text is bound to its exact retained Chronicle event', async () => {
+  const published = await publish(createWorld({ id: 'report-text-binding-world', now }));
+  const creation = published.world.creations[0];
+  const reported = await applyAction(published.world, {
+    type: 'report', creationId: creation.id, version: 1,
+    text: 'The retained observation remains uncertain.'
+  }, witness, { now });
+
+  await validateWorld(reported.world);
+  const tampered = structuredClone(reported.world);
+  tampered.reports[0].text += ' altered after retention';
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+});
+
+test('private contribution text is bound to its exact retained Chronicle event', async () => {
+  const published = await publish(createWorld({ id: 'contribution-text-binding-world', now }));
+  const creation = published.world.creations[0];
+  const contributed = await applyAction(published.world, {
+    type: 'contribute', creationId: creation.id, version: 1,
+    text: 'A retained contribution with exact bytes.'
+  }, witness, { now });
+
+  await validateWorld(contributed.world);
+  const tampered = structuredClone(contributed.world);
+  tampered.contributions[0].text += ' altered after retention';
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+});
+
+test('private activity records cannot survive without their retained Chronicle event', async () => {
+  const published = await publish(createWorld({ id: 'orphan-activity-binding-world', now }));
+  const creation = published.world.creations[0];
+  const contributed = await applyAction(published.world, {
+    type: 'contribute', creationId: creation.id, version: 1,
+    text: 'This contribution requires a retained event.'
+  }, witness, { now });
+
+  const orphaned = structuredClone(contributed.world);
+  orphaned.events = orphaned.events.filter(event => event.type !== 'contribute');
+  orphaned.revision = orphaned.events.length;
+  orphaned.updatedAt = orphaned.events.reduce(
+    (latest, event) => Date.parse(event.at) > Date.parse(latest) ? event.at : latest,
+    orphaned.createdAt
+  );
+  await assert.rejects(validateWorld(orphaned), error => error.code === 'INVALID_WORLD');
+});
