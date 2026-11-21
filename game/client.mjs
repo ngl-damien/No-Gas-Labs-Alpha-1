@@ -318,6 +318,7 @@ function openQuestBoard() {
     onInspectEvent: eventId => openWorldChronicle(eventId, { snapshot: questSnapshot })
   });
   content.append(list);
+  refreshQuestBoardSnapshotFreshnessNotice();
 }
 
 function openCombatYard(){
@@ -660,6 +661,7 @@ function setConnection(connected){
   refreshWorldChronicleSnapshot();
   refreshEvidenceArchiveSnapshotFreshnessNotice();
   refreshAcademySnapshotFreshnessNotice();
+  refreshQuestBoardSnapshotFreshnessNotice();
 }
 function handleSharedDisconnect(){
   if(mode!=='shared')return;
@@ -1111,7 +1113,7 @@ function renderQuestTrail(milestones, list = $('quest-trail'), options = {}) {
   }
 }
 
-function render(){view.setWorld(world,mode==='shared'?institution:null,viewer);$('world').setAttribute('data-world-revision',String(world.revision));view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').querySelector('.character-level').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' character XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=getQuestTrail(world,viewer);const quest=getActiveQuest(world,viewer,questTrail);const nextQuestAction=quest.nextAction||questTrail.find(isQuestObjectiveActionable)?.action||null;view.setQuestTarget(nextQuestAction);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();refreshAcademySnapshotFreshnessNotice();}
+function render(){view.setWorld(world,mode==='shared'?institution:null,viewer);$('world').setAttribute('data-world-revision',String(world.revision));view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').querySelector('.character-level').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' character XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=getQuestTrail(world,viewer);const quest=getActiveQuest(world,viewer,questTrail);const nextQuestAction=quest.nextAction||questTrail.find(isQuestObjectiveActionable)?.action||null;view.setQuestTarget(nextQuestAction);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();refreshAcademySnapshotFreshnessNotice();refreshQuestBoardSnapshotFreshnessNotice();}
 async function startPrivate(){pendingSourceObservatoryLead=null;stream?.close();stream=null;sharedStreamOpen=false;sharedMovementPaused=false;sharedOfflinePreview=false;view.setMovementEnabled(true);mode='private';viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
 async function startShared(){pendingSourceObservatoryLead=null;const dto=await request('/api/state');stream?.close();stream=null;mode='shared';sharedStreamOpen=false;sharedMovementPaused=true;sharedOfflinePreview=false;view.setMovementEnabled(false);acceptState(dto,{forcePosition:true});$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels()}catch{}});stream.onerror=handleSharedDisconnect;stream.onopen=()=>{sharedStreamOpen=true;void recoverSharedConnection().catch(handleError)};toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
 function showSheet(title,kicker='FIELD NOTES'){
@@ -2650,6 +2652,63 @@ function refreshAcademySnapshotFreshnessNotice(){
     return;
   }
   const notice=academySnapshotNotice(state,snapshotRevision,Number.isSafeInteger(currentRevision)?currentRevision:null);
+  if(existing)existing.replaceWith(notice);
+  else content.prepend(notice);
+}
+function questBoardSnapshotNotice(state,snapshotRevision,currentRevision){
+  const stale=state==='stale';
+  const refreshRequired=state==='refresh-required';
+  const regressed=state==='revision-regression';
+  const newerAccepted=Number.isSafeInteger(currentRevision)&&Number.isSafeInteger(snapshotRevision)&&currentRevision>snapshotRevision;
+  const detail=stale
+    ?'The shared connection is offline. This Quest Board remains pinned to the last accepted snapshot at revision '+snapshotRevision+'.'+(newerAccepted?' The accepted projection had advanced to revision '+currentRevision+' before disconnection.':'')+' Reconnect before refreshing; offline preview does not update shared quest progress.'
+    :refreshRequired
+      ?'The accepted shared world has advanced to revision '+currentRevision+', but this Quest Board remains pinned to revision '+snapshotRevision+'. Use Refresh Quest Board to replace this view with the newest accepted snapshot. Refreshing is read-only and awards no XP.'
+      :regressed
+        ?'The current shared projection is revision '+currentRevision+', below this view\'s pinned revision '+snapshotRevision+'. The older view is preserved; do not treat the regressed projection as fresh.'
+        :'The accepted shared snapshot revision is unavailable. This Quest Board cannot be represented as current.';
+  const children=[
+    node('h3',{text:stale?'SHARED SNAPSHOT · STALE':refreshRequired?'SHARED SNAPSHOT · REFRESH AVAILABLE':regressed?'SHARED SNAPSHOT · REVISION REGRESSION':'SHARED SNAPSHOT · REVISION UNAVAILABLE'}),
+    paragraph(detail,'form-help')
+  ];
+  if(refreshRequired)children.push(button('Refresh Quest Board →',()=>openQuestBoard(),{
+    class:'list-button',
+    'data-quest-board-refresh':'true',
+    'aria-label':'Refresh Quest Board from the latest accepted shared snapshot'
+  }));
+  return node('aside',{
+    class:'field-card',
+    role:'status',
+    'aria-live':'polite',
+    'data-quest-board-snapshot-notice':'true',
+    'data-snapshot-revision':String(snapshotRevision),
+    'data-current-revision':Number.isSafeInteger(currentRevision)?String(currentRevision):'unavailable'
+  },children);
+}
+function refreshQuestBoardSnapshotFreshnessNotice(){
+  if($('sheet').hidden||$('sheet-title').textContent!=='Quest Board')return;
+  const content=$('sheet-content');
+  const revisionText=content.dataset.questBoardSnapshotRevision;
+  const snapshotRevision=typeof revisionText==='string'&&/^(0|[1-9][0-9]*)$/.test(revisionText)
+    ?Number(revisionText):null;
+  const currentRevision=world?.revision;
+  const state=!Number.isSafeInteger(snapshotRevision)||!Number.isSafeInteger(currentRevision)||currentRevision<0
+    ?'unavailable'
+    :isSharedSnapshotStale()
+      ?'stale'
+      :currentRevision===snapshotRevision
+        ?'current'
+        :currentRevision>snapshotRevision
+          ?'refresh-required'
+          :'revision-regression';
+  content.dataset.questBoardSnapshotFreshness=state;
+  const existing=content.querySelector('[data-quest-board-snapshot-notice]');
+  if(state==='current'){
+    if(existing)existing.remove();
+    return;
+  }
+  const notice=questBoardSnapshotNotice(state,snapshotRevision,
+    Number.isSafeInteger(currentRevision)?currentRevision:null);
   if(existing)existing.replaceWith(notice);
   else content.prepend(notice);
 }

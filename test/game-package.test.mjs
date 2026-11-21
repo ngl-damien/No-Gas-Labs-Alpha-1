@@ -82,7 +82,7 @@ async function serviceWorkerHarness({
   return handlers;
 }
 
-test('service-worker installation rotates the offline shell and precaches Character Sheet and Chronicle navigation modules', async () => {
+test('service-worker installation rotates the offline shell and precaches Character Sheet, Quest Board and Chronicle modules', async () => {
   let openedCacheName = null;
   let precachedUrls = [];
   const handlers = await serviceWorkerHarness({
