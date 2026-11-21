@@ -21,6 +21,7 @@ import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_M
 
 registerOfflineShell();
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0,positionConflictNoticeKey=null,sharedMovementPaused=false,sharedOfflinePreview=false,sharedStreamOpen=false,sharedConnectionRecovery=null,activeWorldChronicleRefresh=null,activeWorldChronicleSnapshot=null;let commonsDraftText='';
+const sourceSnapshotReceiptsByRevision = new Map();
 const timedSharedPositionWrite=createPositionWriteDeadline((position,{signal})=>{
   const expectedEpoch=positionEpoch;
   const expectedRevision=positionWriteRevision;
@@ -720,6 +721,14 @@ function acceptState(dto,{forcePosition=false}={}){
   if(positionEpochChanged){positionEpoch=incomingEpoch;positionWriteRevision=incomingRevision;}
   else positionWriteRevision=Math.max(positionWriteRevision,incomingRevision);
   const demoted=viewer?.role==='founder'&&dto.viewer.role!=='founder';
+  if(positionEpochChanged||(viewer&&(viewer.id!==dto.viewer.id||viewer.role!==dto.viewer.role)))sourceSnapshotReceiptsByRevision.clear();
+  const sourceSnapshotReceipt=dto.sourceSnapshotReceipt;
+  if(sourceSnapshotReceipt&&Number.isSafeInteger(sourceSnapshotReceipt.revision)&&sourceSnapshotReceipt.revision===dto.world?.revision&&
+     typeof sourceSnapshotReceipt.token==='string'&&/^[A-Za-z0-9_-]{43}$/.test(sourceSnapshotReceipt.token)&&
+     Number.isSafeInteger(sourceSnapshotReceipt.expiresAt)){
+    sourceSnapshotReceiptsByRevision.set(sourceSnapshotReceipt.revision,sourceSnapshotReceipt);
+    while(sourceSnapshotReceiptsByRevision.size>32)sourceSnapshotReceiptsByRevision.delete(sourceSnapshotReceiptsByRevision.keys().next().value);
+  }
   world=dto.world;viewer=dto.viewer;const player={id:nextSessionId,positionEpoch:incomingEpoch};
   if(hasValidServerPosition&&shouldApplyServerPosition({
     previousSessionId,
@@ -1119,7 +1128,7 @@ function renderQuestTrail(milestones, list = $('quest-trail'), options = {}) {
 }
 
 function render(){view.setWorld(world,mode==='shared'?institution:null,viewer);$('world').setAttribute('data-world-revision',String(world.revision));view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').querySelector('.character-level').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' character XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=getQuestTrail(world,viewer);const quest=getActiveQuest(world,viewer,questTrail);const nextQuestAction=quest.nextAction||questTrail.find(isQuestObjectiveActionable)?.action||null;view.setQuestTarget(nextQuestAction);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();refreshAcademySnapshotFreshnessNotice();refreshQuestBoardSnapshotFreshnessNotice();refreshCreationSnapshotFreshnessNotice();}
-async function startPrivate(){pendingSourceObservatoryLead=null;stream?.close();stream=null;sharedStreamOpen=false;sharedMovementPaused=false;sharedOfflinePreview=false;view.setMovementEnabled(true);mode='private';viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
+async function startPrivate(){pendingSourceObservatoryLead=null;sourceSnapshotReceiptsByRevision.clear();stream?.close();stream=null;sharedStreamOpen=false;sharedMovementPaused=false;sharedOfflinePreview=false;view.setMovementEnabled(true);mode='private';viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
 async function startShared(){pendingSourceObservatoryLead=null;const dto=await request('/api/state');stream?.close();stream=null;mode='shared';sharedStreamOpen=false;sharedMovementPaused=true;sharedOfflinePreview=false;view.setMovementEnabled(false);acceptState(dto,{forcePosition:true});$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels()}catch{}});stream.onerror=handleSharedDisconnect;stream.onopen=()=>{sharedStreamOpen=true;void recoverSharedConnection().catch(handleError)};toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
 function showSheet(title,kicker='FIELD NOTES'){
   institutionRequestGeneration++;
@@ -1362,6 +1371,8 @@ function sourceObservationAttributionCopy(){
 function openSourceObservation(creationId,versionNumber,prefillNote=null,prefillOrigin=null,sourceSnapshot=world){
   const observationWorldSnapshot=sourceSnapshot&&typeof sourceSnapshot==='object'&&!Array.isArray(sourceSnapshot)?sourceSnapshot:world;
   const sourceSnapshotRevision=Number.isSafeInteger(observationWorldSnapshot?.revision)&&observationWorldSnapshot.revision>=0?observationWorldSnapshot.revision:null;
+  const sourceSnapshotReceipt=mode==='shared'&&sourceSnapshotRevision!==null?sourceSnapshotReceiptsByRevision.get(sourceSnapshotRevision)||null:null;
+  const usableSourceSnapshotReceipt=sourceSnapshotReceipt&&sourceSnapshotReceipt.revision===sourceSnapshotRevision?sourceSnapshotReceipt:null;
   const creation=(Array.isArray(observationWorldSnapshot?.creations)?observationWorldSnapshot.creations:[]).find(item=>item.id===creationId);
   if(sourceSnapshotRevision===null){
     toast('The accepted world snapshot revision is unavailable; no Source Observation form was opened.',true);
@@ -1389,7 +1400,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
       : 'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. The optional GitHub reader can inspect a public commit-pinned file and save a copy in this browser origin/profile. Saving or previewing that copy does not send its bytes to the shared service. A Founder may explicitly submit a saved capture as a private Source Archive draft. In shared mode the service receives only the pinned permalink and expected Git blob SHA-1, SHA-256 and byte length, then re-fetches the file before creating the draft; offline pending actions store metadata, not source bytes. Private mode keeps a client-reported local archive. Explicit publication exposes the retained text, but retrieval does not verify authorship, claim accuracy, independent verification or truth. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No XP is awarded.';
   content.append(
     paragraph('Target: '+creation.title+' · retained v'+versionNumber+' · '+version.receipt.size+' bytes.'),
-    paragraph('Snapshot reference: accepted world revision '+sourceSnapshotRevision+'. This identifies the retained event-history prefix used to prepare this note. If another actor appends while the form is open, the note keeps this reference; it does not prove source origin or truth.','form-help'),
+    paragraph('Author-declared snapshot reference: accepted world revision '+sourceSnapshotRevision+'. The retained-history projection checks that this prefix includes the selected publication and precedes this note. '+(usableSourceSnapshotReceipt?'A server-issued receipt is attached for delivery of this revision to the authenticated session; it does not prove a person viewed, read or understood it.':'No server-delivery receipt is available; this remains an author-declared reference only.')+' The reference does not establish source origin or truth.','form-help'),
     paragraph('This is an attributed research note, not a truth verdict. The source class is your selection. The optional GitHub reader below can inspect a public file from this repository pinned to a full commit SHA (UTF-8 text, at most 64 KiB). It checks the returned bytes against GitHub’s reported blob SHA-1 and computes SHA-256. The reader can optionally save exact bytes in this browser origin/profile. Saving or previewing does not send them to the shared service. A Founder may explicitly submit a rechecked capture as a private Source Archive draft; shared mode stores the unpublished draft on the service, while private mode keeps it in the local save. Only later explicit publication makes it a world object. The publication receipt binds artifact bytes only, not the original GitHub source or truth. Local storage can be edited, and the reader does not verify the claim. A model assertion is a lead only; tool output is attributed output only. No test executes, XP is not awarded, and authority is not granted.','form-help'),
     attributionDisclosure,
     ...(importedNote?[node('p',{
@@ -1498,12 +1509,14 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
       const observationId='source-observation-'+digest;
       const result=await act({
         type:'record-source-observation',requestId:observationId,observationId,
-        creationId,version:versionNumber,...note,sourceSnapshotRevision
+        creationId,version:versionNumber,...note,sourceSnapshotRevision,
+        ...(usableSourceSnapshotReceipt?{sourceSnapshotReceipt:usableSourceSnapshotReceipt.token}:{})
       });
       const destination=mode==='shared'?'the shared world · authenticated-session attribution':'this private save · local attribution only';
+      const snapshotBinding=usableSourceSnapshotReceipt?'server-delivered to this session':'author-declared reference only';
       toast(result?.duplicate===true||result?.idempotentReplay===true
         ?'That exact source observation is already retained in '+destination+'. No duplicate event or XP was added.'
-        :'Source observation retained in '+destination+' · no XP or truth verdict.');
+        :'Source observation retained in '+destination+' · snapshot binding: '+snapshotBinding+' · no XP or truth verdict.');
       openCreation(creationId,versionNumber);
     }catch(error){
       status.textContent='No confirmed response was received. If the exact local Relay receipt remains, retry it from The Relay before starting another note. '+(error?.message||'');
