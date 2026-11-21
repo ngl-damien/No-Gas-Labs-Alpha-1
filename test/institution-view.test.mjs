@@ -637,6 +637,7 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       }, founder, { now: '2026-11-08T09:00:02.500Z' });
       observationBase = hiddenDraft.world;
     }
+    const sourceSnapshotRevision = observationBase.revision;
     const note = {
       claim: 'The model says the bridge is open.',
       sourceKind: 'model-assertion',
@@ -646,16 +647,17 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       nextTest: 'Inspect the bridge status at the primary source.'
     };
     const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-      actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, sourceSnapshotRevision, ...note
     })).digest('hex');
     const observationId = 'source-observation-' + digest;
     const recorded = await applyAction(observationBase, {
-      type: 'record-source-observation', creationId, version: 1, observationId, ...note
+      type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision, observationId, ...note
     }, actor, {
       now: '2026-11-08T09:00:03.000Z',
       requestId: observationId,
       actionFingerprint: 'a'.repeat(64)
     });
+    const secondSourceSnapshotRevision = recorded.world.revision;
     const secondNote = {
       ...note,
       claim: 'A second model assertion says the bridge is open.',
@@ -663,11 +665,11 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       uncertainty: 'No independent observation for this second assertion.'
     };
     const secondDigest = createHash('sha256').update(sourceObservationRequestMaterial({
-      actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...secondNote
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, sourceSnapshotRevision: secondSourceSnapshotRevision, ...secondNote
     })).digest('hex');
     const secondObservationId = 'source-observation-' + secondDigest;
     const recordedAgain = await applyAction(recorded.world, {
-      type: 'record-source-observation', creationId, version: 1,
+      type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision: secondSourceSnapshotRevision,
       observationId: secondObservationId, ...secondNote
     }, actor, {
       now: '2026-11-08T09:00:03.500Z',
