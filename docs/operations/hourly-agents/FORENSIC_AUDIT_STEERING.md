@@ -1,3 +1,14 @@
+## Run 294 Worker B steering — Moonshot Field failure objects — 2026-11-21T21:27Z
+
+- Continue on existing runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `745b7c157de177fdc6bbd5b96418f6703b7bce25`. Do not create a competing runtime PR.
+- The Moonshot Field now projects the newest six validated Source Archive failure events from the shared failure projector. Evidence Archive remains the complete paginated history. Exact Chronicle navigation and a failure-derived Source Observatory lead are read-only until explicit submission.
+- Test-first red: `d7269c89d784f6819e323793560ee4a79ddcf172` failed because the panel was absent. Final Synthesis mobile acceptance [44951200378](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44951200378) and Full Verify [44951200389](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44951200389) pass. Artifact [14725772180](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44951200378/artifacts/14725772180).
+- Preserve the invariant: failed retrieval is not a source verdict; opening the failure, Chronicle event or prefilled lead must not append history, award XP, or create authority. A later success must not erase the failed attempt. Partial/stale projections must disclose unseen history.
+- Do not touch Worker A-owned `scripts/verify-browser.py` or Android implementation. Browser [44951200393](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44951200393) still fails at line 472 because its inherited Guild Hall expectation conflicts with the single Clerk in Evidence Archive; keep one Clerk and route through the human gate. Android [44951200400](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44951200400) remains in the offline-world emulator journey after APK assembly. Quest Board [44951200431](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44951200431) remains in progress at checkpoint capture.
+- Next: obtain terminal Quest Board/Android receipts; add direct acceptance of the Moonshot panel under a partial Witness snapshot; inspect Worker A's latest #472/#533 handoffs before any coordination; path-by-path reconcile the 222-commit #718 stack before considering integration. No merge/release/deployment authority is implied.
+
+---
+
 ## Run 271 Worker B steering — Evidence Archive challenge chronology — 2026-11-20T17:15Z
 
 - Continue on existing runtime PR [#713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/713), branch feat/offline-character-chronicle-run269-20261120; no competing runtime PR. Exact code/test head: aaa9e9c6bd8bdc411dad103800adc9c0d9189fcf.
