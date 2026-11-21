@@ -1,3 +1,13 @@
+## Run 294 — Moonshot Field failure-object projection — 2026-11-21
+
+- **Capability:** Moonshot Field now exposes the newest six valid server-observed Source Archive failure objects as read-only research blockers, with exact Chronicle links and a prefilled-but-unsubmitted Source Observatory lead. Evidence Archive remains the complete paginated owner/history.
+- **Evidence:** PR #718 head `745b7c157de177fdc6bbd5b96418f6703b7bce25`; Full Verify 44951200389 PASS; Genesis 44951200391 PASS; Synthesis mobile 44951200378 PASS at 320px/390px (14 failure objects, latest six shown, three pages, exact Chronicle event, lead not submitted, no mutation from panel navigation); Live Source Archive 44951200494 PASS; PWA build 44951200534 PASS (deploy skipped).
+- **Boundaries:** Source Archive failures are service-observed operational events, not source truth or claim verdicts. Clients cannot author canonical failure events. Partial/stale/invalid/unavailable snapshots disclose their limits; later success does not erase failure history. The panel does not award XP or grant authority.
+- **Remaining:** Quest Board 44951200431 and Android emulator 44951200400 were still IN PROGRESS at checkpoint capture. Browser 44951200393 retains Worker A's Contradiction Clerk placement failure at `scripts/verify-browser.py:472`; its offline PWA recovery subjourney passes. No native-device acceptance, merge, release or deployment is claimed.
+- **Gate status unchanged:** G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. This is a vertical-slice improvement, not completion of the persistent MMORPG or mainline integration.
+
+---
+
 ## Run 271 — Evidence Archive Source Observation challenge chronology — 2026-11-20
 
 - **Capability advanced:** the Evidence Archive author-response queue now follows the canonical retained event order instead of wall-clock timestamps. A clock regression can no longer make a later appended challenge appear older than an earlier challenge.
