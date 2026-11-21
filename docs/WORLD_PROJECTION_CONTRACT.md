@@ -26,6 +26,14 @@ Failures, refutations, and rejected candidates remain in history.
 
 Replay is idempotent by `event_id`.
 
+## Snapshot identity and navigation/inspection
+
+- Opening World Chronicle with an explicit accepted snapshot pins the view to that snapshot's revision and retained event set. A newer accepted world snapshot does not silently replace an explicitly pinned view; it is reported as `revision-mismatch` until the player explicitly refreshes.
+- Explicit Chronicle refresh adopts only the already accepted in-memory world snapshot. The refresh action is a read-only re-projection: it does not fetch shared state, append a world event, award XP, create evidence, grant approval, or change authority.
+- Disconnected, unavailable, or regressed snapshot state remains stale and fails closed; refresh is not offered until a newer accepted snapshot is available.
+- Bounded projections such as Moonshot Field must disclose partial scope and unseen-event count. A visible subset is not a global total and does not establish newest-order completeness. Evidence Archive remains the complete paginated owner.
+- Route arrival may append legitimate `discover` events. Preserve those events in history. After the post-arrival snapshot is captured, opening or reading an NPC card and inspecting its linked Chronicle event is read-only. Acceptance tests must separate route-discovery effects from the subsequent read-only NPC interaction rather than comparing against a pre-route snapshot.
+
 ## Chronology and replay
 
 - The retained event array position defines sequence. Replay must not sort events by wall-clock timestamp.

@@ -1,3 +1,13 @@
+## Run 295 — partial-snapshot Chronicle and Synthesis mobile acceptance — 2026-11-21
+
+- **Capability evidenced:** the Moonshot Field failure-object mirror and exact World Chronicle/Source Observatory navigation are exercised from a partial accepted snapshot in the mobile Synthesis Clerk journey.
+- **Mobile evidence:** [Synthesis acceptance 44956605485](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44956605485) PASS at 320px and 390px; [artifact 14727891330](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44956605485/artifacts/14727891330). The receipt records 14 visible failure objects, one unseen event, disclosed partial scope, Chronicle 26→27, Evidence Archive 27→28, Source Observatory/form revision 28, failure lead not submitted, route discoveries retained, and zero inspection XP.
+- **Authority/provenance:** the 14 failure events are server-attributed fixture outcomes, not client-authored claims. The Source Observation requires explicit submission and remains `NOT_PERFORMED` for retrieval/independent verification, `LEADS_ONLY` for model assertions, and `NOT_EXECUTED` for execution. The Witness sees shared history but receives no Founder progress. No truth verdict, approval, authority or XP is created by inspection.
+- **Verification:** Full Verify 44956605626, Genesis 44956605634, Live Source Archive 44956605740, Combat Yard 44956605521, Academy 44956605506 and Council 44956605617 PASS. Phone PWA artifact 14727766294 built; deploy skipped on PR. Quest Board 44956605489 and Android emulator 44956605550 remain IN_PROGRESS at capture. Browser 44956605532 retains the Worker A-owned Contradiction Clerk placement mismatch.
+- **Gate effect:** no completion-gate transition. G2/G6/G7 remain IN_PROGRESS; G9 remains NOT_STARTED; Founder trust remains NOT_ENROLLED. No merge, release, public deployment, approval or authority transition.
+
+---
+
 ## Run 294 — Moonshot Field failure-object projection — 2026-11-21
 
 - **Capability:** Moonshot Field now exposes the newest six valid server-observed Source Archive failure objects as read-only research blockers, with exact Chronicle links and a prefilled-but-unsubmitted Source Observatory lead. Evidence Archive remains the complete paginated owner/history.
