@@ -191,6 +191,7 @@ def authoritative_snapshot(page):
         revision: world.revision,
         xp: world.xp,
         eventIds: world.events.map(event => event.id),
+        eventHistoryPositions: world.events.map(event => Number.isSafeInteger(event?.historyPosition) ? event.historyPosition : null),
         // Draft/repair events and actor-private reports are intentionally not
         // present in every actor's publicWorld projection. Compare the common
         // event surface when checking that separate clients share one world.
@@ -940,12 +941,15 @@ def assert_source_observation_queue_mobile(page, challenge_id, challenge_event_i
 
     accepted = authoritative_snapshot(page)
     try:
-        expected_position = accepted['eventIds'].index(challenge_event_id) + 1
-    except ValueError as error:
+        event_index = accepted['eventIds'].index(challenge_event_id)
+        expected_position = accepted['eventHistoryPositions'][event_index]
+    except (ValueError, IndexError, KeyError, TypeError) as error:
         raise AssertionError(
             "The challenge card must link to an event in this client accepted world stream."
         ) from error
-    assert expected_position > 0
+    assert isinstance(expected_position, int) and expected_position > 0, (
+        'The accepted event must carry a validated global history position, not a filtered-list index.'
+    )
     expect(card).to_have_attribute('data-history-position', str(expected_position))
     expect(card).to_contain_text('WORLD STREAM · APPEND POSITION ' + str(expected_position))
     expect(card).to_contain_text(expected_claim)
@@ -4095,12 +4099,14 @@ def evidence_archive_activity_collection_ids(page):
         }
       }
       world.events.forEach((event, index) => {
-        const recordId = event?.actionResult?.id;
+        const recordId = typeof event?.recordId === 'string' && event.recordId
+          ? event.recordId : event?.actionResult?.id;
         if (typeof recordId !== 'string' || !recordId) return;
         if (!result.sourceEvents[recordId]) result.sourceEvents[recordId] = [];
         result.sourceEvents[recordId].push({
           eventId: event.id,
-          eventPosition: index + 1,
+          eventPosition: Number.isSafeInteger(event?.historyPosition) && event.historyPosition > 0
+            ? event.historyPosition : null,
           type: event.type,
           creationId: event.creationId,
           version: event.version,
