@@ -1594,6 +1594,13 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact, 
    ? String(record.sourceSnapshotRevision)
    : 'unrecorded';
   card.append(el('p',snapshotReference,'form-help'));
+  const receiptDigest=typeof record.sourceSnapshotReceiptDigest==='string'&&/^[a-f0-9]{64}$/.test(record.sourceSnapshotReceiptDigest)
+   ?record.sourceSnapshotReceiptDigest:null;
+  const snapshotBinding=record.bindingMode==='SERVER_SESSION_RECEIPT'&&receiptDigest
+   ?'Snapshot binding: SERVER-DELIVERED TO THIS SESSION · receipt SHA-256 '+receiptDigest.slice(0,12)+'… . This establishes server delivery to the authenticated session only; it does not prove a person viewed, read or understood the snapshot.'
+   :'Snapshot binding: AUTHOR-DECLARED ONLY · no server-session delivery receipt is retained; it does not prove the actor viewed that snapshot.';
+  card.dataset.sourceObservationSnapshotBinding=record.bindingMode||'unavailable';
+  card.append(el('p',snapshotBinding,'form-help'));
   card.append(el('p','Author-selected source class: '+record.sourceKind));
   card.append(el('p','Source / attribution: '+record.source));
   card.append(el('p',record.falsifier?'Possible falsifier: '+record.falsifier:'Possible falsifier: not supplied in this note.'));
