@@ -1824,8 +1824,8 @@ test("Chronicle ignores untrusted event-supplied combat outcome and XP fields", 
   assert.match(entry.summary, /encounter remains active/i);
   // Encounter IDs are random and may contain the digits 999; assert the forged fields, not arbitrary digits.
   assert.doesNotMatch(entry.summary, /victory/i);
-  assert.doesNotMatch(entry.summary, /\\bXP\\b/i);
-  assert.doesNotMatch(entry.summary + ' ' + entry.detail, /\\b(?:outcome|xpAwarded)\\b/i);
+  assert.doesNotMatch(entry.summary, /\bXP\b/i);
+  assert.doesNotMatch(entry.summary + ' ' + entry.detail, /\b(?:outcome|xpAwarded)\b/i);
 });
 
 test("Chronicle fails closed for malformed combat history instead of displaying a forged victory", async () => {
