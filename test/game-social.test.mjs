@@ -331,12 +331,13 @@ test('Guild Hall field satchel indexes current members’ retained work, dissent
     uncertainty: 'The cited page may be stale.',
     nextTest: 'Retrieve the current page and compare its timestamp.'
   };
+  const sourceSnapshotRevision = world.revision;
   const material = sourceObservationRequestMaterial({
-    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, sourceSnapshotRevision, ...note
   });
   const observationId = 'source-observation-' + createHash('sha256').update(material).digest('hex');
   world = (await applyAction(world, {
-    type: 'record-source-observation', creationId, version: 1,
+    type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision,
     observationId, ...note
   }, founder, {
     now: at(11000), requestId: observationId, actionFingerprint: 'd'.repeat(64)
