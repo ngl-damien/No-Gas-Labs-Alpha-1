@@ -23,6 +23,24 @@ export function sameResearchActor(left, right) {
     ['founder', 'witness'].includes(left.role) && left.role === right.role && left.id === right.id;
 }
 
+/**
+ * Validate the provenance mode for a retained Source Observation.
+ * A server-session binding must carry both the exact accepted snapshot revision
+ * and the digest of the ephemeral receipt validated by the shared server.
+ * The bearer token itself must never enter canonical event history.
+ */
+export function isValidSourceObservationBinding(event) {
+  const digest = event?.sourceSnapshotReceiptDigest;
+  if (event?.bindingMode === 'USER_SELECTED') {
+    return digest === undefined || digest === null;
+  }
+  return event?.bindingMode === 'SERVER_SESSION_RECEIPT' &&
+    Number.isSafeInteger(event.sourceSnapshotRevision) &&
+    event.sourceSnapshotRevision >= 0 &&
+    typeof digest === 'string' &&
+    /^[a-f0-9]{64}$/.test(digest);
+}
+
 const RESEARCH_TYPES = new Set([
   'moonshot-proposed',
   'experiment-reported',
