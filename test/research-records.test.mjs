@@ -528,7 +528,7 @@ test('Source Observation notes, challenges and responses retain server-projected
       historyPosition: 6
     }
   ];
-  const records = projectSourceObservationRecords(events, [retainedSource()]);
+  const records = projectSourceObservationRecords(events, [retainedSource()], { revision: 6, revisionPresent: true });
   assert.equal(records.length, 1);
   assert.equal(records[0].historyPosition, 3);
   assert.equal(records[0].sourceSnapshotRevision, 1);
