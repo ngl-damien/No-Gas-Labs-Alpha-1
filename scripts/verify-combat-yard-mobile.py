@@ -316,8 +316,13 @@ def run_viewport(browser, url, out, width):
         page.wait_for_function(
             """() => navigator.onLine === false &&
               document.querySelector('#connection-dot')?.dataset.connectionState === 'offline' &&
-              document.querySelector('#mode-label')?.textContent.includes('reconnecting')""",
+              document.querySelector('#world')?.dataset.sharedOfflinePreview === 'true' &&
+              document.querySelector('#mode-label')?.textContent.includes('offline preview')""",
             timeout=15000
+        )
+        expect(page.locator("#connection-dot")).to_have_attribute(
+            "aria-label",
+            "Shared snapshot preview only. Local travel is not saved to the shared world."
         )
         offline_character_notice = page.locator(
             "#sheet-content [data-character-snapshot-stale]"
@@ -399,6 +404,7 @@ def run_viewport(browser, url, out, width):
         page.wait_for_function(
             """() => navigator.onLine === true &&
               document.querySelector('#connection-dot')?.dataset.connectionState === 'online' &&
+              document.querySelector('#world')?.dataset.sharedOfflinePreview === 'false' &&
               !document.querySelector('#mode-label')?.textContent.includes('reconnecting')""",
             timeout=45000
         )
