@@ -715,6 +715,12 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  }
  container.append(el('h3', heading));
  container.append(introElement);
+ if(typeof options.onOpenLocation==='function'){
+  const routeDisclosure=el('p',"Institution routes are deterministic navigation associations based on retained event types and the same rules used for world activity counts. They are not claims about the event's physical location or the truth of its contents. Only a retained discovery event can supply a recorded map location.");
+  routeDisclosure.className='form-help';
+  routeDisclosure.dataset.chronicleRouteDisclosure='true';
+  container.append(routeDisclosure);
+ }
  container.append(el('p','Each source stream has its own append positions. Positions preserve order within that stream; timestamps only interleave the current stream heads and may regress. The combined list is not a single global sequence. Unsequenced corruption warnings have no invented position.'));
  const malformedWarning = el('p');
  malformedWarning.className = 'evidence-warning';
@@ -770,6 +776,46 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   card.append(el('p',entry.summary));
   if(entry.detail)card.append(el('p',entry.detail));
   if(entry.warning){const warning=el('p',entry.warning);warning.className='evidence-warning';card.append(warning);}
+  if(typeof options.onOpenLocation==='function'){
+   if(entry.source==='world'&&typeof entry.locationId==='string'&&entry.locationId.trim()===entry.locationId&&
+      typeof entry.locationName==='string'&&entry.locationName.trim()===entry.locationName){
+    const recordedPlace=el('button','Walk to recorded place: '+entry.locationName+' →');
+    recordedPlace.type='button';
+    recordedPlace.className='secondary-button';
+    recordedPlace.dataset.chronicleRecordedLocation=entry.locationId;
+    recordedPlace.setAttribute('aria-label','Walk to recorded map location '+entry.locationName);
+    recordedPlace.onclick=()=>options.onOpenLocation(entry.locationId);
+    card.append(recordedPlace);
+   }
+   const destinations=Array.isArray(entry.institutionDestinations)?entry.institutionDestinations:[];
+   const validDestinations=destinations.filter(destination=>
+    destination&&typeof destination.id==='string'&&destination.id.length>0&&destination.id.trim()===destination.id&&
+    typeof destination.name==='string'&&destination.name.length>0&&destination.name.trim()===destination.name
+   ).slice(0,6);
+   if(validDestinations.length){
+    const routeSection=el('section');
+    routeSection.dataset.chronicleInstitutionRoutes='true';
+    routeSection.append(el('small','RELATED INSTITUTIONS · DETERMINISTIC EVENT-TYPE ROUTES'));
+    const routeList=el('div');
+    routeList.className='chronicle-institution-routes';
+    for(const destination of validDestinations){
+     const routeItem=el('div');
+     routeItem.className='chronicle-institution-destination';
+     const route=el('button','Open '+destination.name+' →');
+     route.type='button';
+     route.className='secondary-button';
+     route.dataset.chronicleInstitutionRoute=destination.id;
+     route.setAttribute('aria-label','Open related institution '+destination.name+
+      (typeof destination.purpose==='string'&&destination.purpose?' · '+destination.purpose:''));
+     route.onclick=()=>options.onOpenLocation(destination.id);
+     routeItem.append(route);
+     if(typeof destination.purpose==='string'&&destination.purpose)routeItem.append(el('small',destination.purpose));
+     routeList.append(routeItem);
+    }
+    routeSection.append(routeList);
+    card.append(routeSection);
+   }
+  }
   if(entry.projectionKind==='DERIVED_READ_ONLY'&&Array.isArray(entry.derivedFromEventIds)){
    const allSourceEventIds=[...new Set(entry.derivedFromEventIds.filter(eventId=>
     typeof eventId==='string'&&eventId.length>0&&eventId.trim()===eventId
@@ -1024,7 +1070,7 @@ const WORLD_CHRONICLE_REVISION_STALE_INTRO = 'Read-only retained world history. 
 const WORLD_CHRONICLE_REVISION_UNAVAILABLE_INTRO = 'Read-only retained world history. The accepted world revision is unavailable; this view remains pinned and may be stale. Reconnect or refresh before relying on it as current.';
 const WORLD_CHRONICLE_CURRENT_INTRO = 'Read-only retained world history from the current client snapshot. Event identity and append position are preserved; inspection creates no activity or reward.';
 
-export function renderWorldChronicle(container,world,eventId,{stale=false,staleReason='disconnected',onOpenArtifact,onReturnToEvidenceArchive}={}){
+export function renderWorldChronicle(container,world,eventId,{stale=false,staleReason='disconnected',onOpenArtifact,onOpenLocation,onReturnToEvidenceArchive}={}){
  if(typeof eventId!=='string'||!eventId||eventId.trim()!==eventId)
   throw new TypeError('A retained world event ID is required for Chronicle navigation.');
  if(typeof stale!=='boolean')throw new TypeError('Chronicle snapshot freshness must be explicit.');
@@ -1033,6 +1079,8 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,staleR
   throw new TypeError('Chronicle stale state requires an explicit supported reason.');
  if(onReturnToEvidenceArchive!==undefined&&typeof onReturnToEvidenceArchive!=='function')
   throw new TypeError('Chronicle return navigation must be a bounded callback.');
+ if(onOpenLocation!==undefined&&typeof onOpenLocation!=='function')
+  throw new TypeError('Chronicle location navigation must be a bounded callback.');
  if(typeof onReturnToEvidenceArchive==='function'){
   const returnButton=el('button','Return to Evidence Archive →');
   returnButton.type='button';
@@ -1057,7 +1105,8 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,staleR
    intro:isStale?staleIntro:WORLD_CHRONICLE_CURRENT_INTRO,
    staleIntro,
    freshnessState:isStale?'stale':'current',
-   exactEventLookup:{eventId,source:'world'}
+   exactEventLookup:{eventId,source:'world'},
+   onOpenLocation:isStale?undefined:onOpenLocation
   });
   container.dataset.chronicleSnapshotRevision=snapshotRevision(snapshot);
   container.dataset.chronicleSnapshotFreshnessReason=freshnessReason;
@@ -1549,7 +1598,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   container.append(more);
  }
 }
-export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact,onInspectEvent}={}){
+export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact,onOpenLocation,onInspectEvent}={}){
  if(shared&&kernelUnavailable){
   const warning=el('p','Canonical institutional history could not be loaded. The missing history is not being treated as empty; retry when the shared service is reachable.');
   warning.className='evidence-warning';container.append(warning);
@@ -1572,13 +1621,14 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
    :'Retained local world events are shown separately from the reports and contributions above. A saved event records activity, not external truth or authority.',
   emptyMessage:shared
    ?'No retained institutional or world events are recorded in this snapshot.'
-   :'No retained world events are recorded in this local snapshot.'
+   :'No retained world events are recorded in this local snapshot.',
+  onOpenLocation
  });
 }
 
-export function renderInstitution(container,projects,gate,{founder=false,onChoice,kernel,kernelUnavailable=false,world,onOpenArtifact,exactEventLookup}={}){
+export function renderInstitution(container,projects,gate,{founder=false,onChoice,kernel,kernelUnavailable=false,world,onOpenArtifact,onOpenLocation,exactEventLookup}={}){
  container.append(el('p','Real project records, archived contradictions and scoped decisions. These records do not award game XP.'));
- renderChronicle(container,projectChronicle({world,kernel}),onOpenArtifact,{exactEventLookup});
+ renderChronicle(container,projectChronicle({world,kernel}),onOpenArtifact,{exactEventLookup,onOpenLocation});
  if(kernelUnavailable){container.append(el('h3','CANONICAL WORK RECEIPTS'));const warning=el('p','Canonical work receipts could not be loaded from the shared service. Project and decision records remain available; the missing kernel history is not being treated as empty.');warning.className='evidence-warning';container.append(warning);}else renderKernelHistory(container,kernel);
  for(const [name,rows]of [['PROJECTS',projects.projects],['ACCOMPLISHMENTS',projects.accomplishments],['DISPUTES',projects.disputes],['DECISION STATUS',projects.decisions]]){container.append(el('h3',name));if(!rows.length)container.append(el('p','No retained record is installed.'));for(const row of rows){const card=el('article');card.className='field-card';card.dataset.recordType=name;card.append(el('h3',row.title||row.statement),el('p',row.status||row.disposition),el('small',row.evidenceDigest?`Evidence SHA-256 · ${row.evidenceDigest}`:''));if(row.limitation)card.append(el('p',row.limitation));container.append(card);}}
  const dispositionAuthorization = gate?.dispositionAuthorization;
