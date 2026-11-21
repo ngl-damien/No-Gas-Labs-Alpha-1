@@ -400,10 +400,11 @@ test('Source Observation challenges preserve attributed dissent without changing
   const draft=await applyAction(start,{type:'draft',kind:'observatory',title:'Source Observatory',intent:'Retain a falsifiable research note.'},founder,{now});
   const published=await applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now:'2026-10-17T12:00:01.000Z'});
   const creationId=published.result.creationId;
+  const sourceSnapshotRevision=published.world.revision;
   const note={claim:'The bridge is open.',sourceKind:'model-assertion',source:'A model response; no source retrieved.',falsifier:'Direct inspection finds the bridge closed.',uncertainty:'No independent observation.',nextTest:'Inspect the primary source.'};
-  const digest=createHash('sha256').update(sourceObservationRequestMaterial({actorId:founder.id,actorRole:founder.role,creationId,version:1,...note})).digest('hex');
+  const digest=createHash('sha256').update(sourceObservationRequestMaterial({actorId:founder.id,actorRole:founder.role,creationId,version:1,sourceSnapshotRevision,...note})).digest('hex');
   const observationId='source-observation-'+digest;
-  const recorded=await applyAction(published.world,{type:'record-source-observation',creationId,version:1,observationId,...note},founder,{now:'2026-10-17T12:00:02.000Z',requestId:observationId,actionFingerprint:'c'.repeat(64)});
+  const recorded=await applyAction(published.world,{type:'record-source-observation',creationId,version:1,sourceSnapshotRevision,observationId,...note},founder,{now:'2026-10-17T12:00:02.000Z',requestId:observationId,actionFingerprint:'c'.repeat(64)});
   const beforeXp=recorded.world.xp;
   const crossRoleWitness={...witness,id:founder.id,name:'Witness role collision'};
   const challenged=await applyAction(recorded.world,{type:'challenge-source-observation',observationId,challengeType:'contradiction',challengeText:'The note cites a model assertion but identifies no retrievable primary source.'},crossRoleWitness,{now:'2026-10-17T12:00:03.000Z',requestId:'source-challenge-1',actionFingerprint:'d'.repeat(64)});
