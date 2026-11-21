@@ -102,6 +102,7 @@ def assert_council_room(page):
 
 
 def assert_populated_council_room(page, fixture):
+    expect(page.locator('#sheet')).to_be_visible()
     content = page.locator('#sheet-content')
     expect(page.locator('#sheet-title')).to_have_text('Council Chamber')
     expect(content).to_have_attribute('data-council-chamber', 'true')
@@ -542,8 +543,8 @@ def run_viewport(browser, url, out, width):
             assert fixture['responseCount'] == 4
             assert fixture['distinctActors'] is True
 
-            # The route list brings the player beside the room; the canvas tap
-            # then opens the actual map landmark and all four bounded summaries.
+            # The route list and canvas landmark are navigation only. The explicit
+            # nearby Interact action is required to enter the institutional room.
             page.locator('#places-button').tap()
             populated_route = page.get_by_role('button', name='Walk to Council Chamber', exact=True)
             expect(populated_route).to_be_visible()
@@ -555,9 +556,11 @@ def run_viewport(browser, url, out, width):
             page.wait_for_timeout(750)
             page.locator('#world').tap(position=council_canvas_tap_position(page))
             page.wait_for_function(
-                "() => document.querySelector('#sheet-title')?.textContent === 'Council Chamber'",
+                "() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'council_chamber' && " +
+                "document.querySelector('#sheet')?.hidden === true",
                 timeout=10000
             )
+            enter_nearby_institution(page, 'council_chamber', 'Council Chamber', 'Council Chamber', timeout=10000)
             assert_populated_council_room(page, fixture)
             populated_after = authoritative_snapshot(page)
             assert populated_after == populated_before, (
