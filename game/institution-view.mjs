@@ -1156,6 +1156,25 @@ function retainedActivityArtifactVersion(world, record) {
  return retained.length===1?{creation,version:retained[0]}:null;
 }
 
+function validEvidenceArchiveTextReceipt(value) {
+ try {
+  if(!value||typeof value!=='object'||Array.isArray(value))return false;
+  const prototype=Object.getPrototypeOf(value);
+  if(prototype!==Object.prototype&&prototype!==null)return false;
+  const descriptors=Object.getOwnPropertyDescriptors(value);
+  const keys=Reflect.ownKeys(descriptors);
+  const fields=['algorithm','digest','size'];
+  if(keys.length!==fields.length||keys.some(key=>!fields.includes(key)))return false;
+  for(const field of fields){
+   const descriptor=descriptors[field];
+   if(!descriptor||descriptor.enumerable!==true||!Object.hasOwn(descriptor,'value'))return false;
+  }
+  return descriptors.algorithm.value==='sha256'&&
+   typeof descriptors.digest.value==='string'&&/^[a-f0-9]{64}$/.test(descriptors.digest.value)&&
+   Number.isSafeInteger(descriptors.size.value)&&descriptors.size.value>0;
+ }catch{return false;}
+}
+
 function indexEvidenceArchiveSourceEvents(world) {
  const events=world?.events;
  if(!Array.isArray(events))return {
@@ -1172,7 +1191,8 @@ function indexEvidenceArchiveSourceEvents(world) {
   const event=events[index];
   if(normalizedEvidenceArchiveId(event?.id))
    eventIdCounts.set(event.id,(eventIdCounts.get(event.id)||0)+1);
-  const recordId=event?.actionResult?.id;
+  const hasRecordId=!!event&&typeof event==='object'&&Object.hasOwn(event,'recordId');
+  const recordId=hasRecordId?event.recordId:event?.actionResult?.id;
   if(!normalizedEvidenceArchiveId(recordId))continue;
   const matches=byRecordId.get(recordId)||[];
   matches.push({event,index});
@@ -1187,14 +1207,24 @@ function projectEvidenceArchiveSourceEvent(index,record,expectedType) {
   return {status:'unlinked',reason:'The activity record identity is missing or unnormalized; source link is withheld.'};
  const matches=index.byRecordId.get(record.id)||[];
  if(matches.length===0)
-  return {status:'unlinked',reason:'No retained action result identifies this record; source link is withheld.'};
+  return {status:'unlinked',reason:'No retained Chronicle event identity identifies this record; source link is withheld.'};
  if(matches.length!==1)
-  return {status:'ambiguous',reason:'Multiple retained action results identify this record; source link is withheld.'};
+  return {status:'ambiguous',reason:'Multiple retained Chronicle events identify this record; source link is withheld.'};
  const {event,index:eventIndex}=matches[0];
  if(!normalizedEvidenceArchiveId(event?.id)||index.eventIdCounts.get(event.id)!==1)
   return {status:'ambiguous',reason:'The matching Chronicle event identity is missing, unnormalized or duplicated; source link is withheld.'};
  const mismatches=[];
  if(event.type!==expectedType)mismatches.push('event type does not match');
+ if(Object.hasOwn(event,'recordId')){
+  if(!normalizedEvidenceArchiveId(event.recordId)||event.recordId!==record.id)
+   mismatches.push('retained record identity does not match');
+  if(!validEvidenceArchiveTextReceipt(event.recordTextReceipt))
+   mismatches.push('retained record text receipt is missing or malformed');
+  if(event.actionResult!==undefined&&event.actionResult?.id!==event.recordId)
+   mismatches.push('idempotency result does not match the retained record identity');
+ }else if(event.actionResult?.id!==record.id){
+  mismatches.push('legacy action result does not match the retained record identity');
+ }
  if(!normalizedEvidenceArchiveId(record.creationId)||
     !normalizedEvidenceArchiveId(event.creationId)||event.creationId!==record.creationId)
   mismatches.push('artifact identity is missing, unnormalized or does not match');
