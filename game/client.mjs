@@ -2951,6 +2951,18 @@ function refreshPinnedWorldChronicle(){
   catch(error){handleError(error)}
 }
 function walkToChroniclePlace(placeId){
+  if(mode==='shared'&&activeWorldChroniclePinned){
+    const state=resolveWorldChronicleSnapshotState({
+      currentSnapshot:world,
+      pinnedSnapshot:activeWorldChronicleSnapshot||world,
+      explicitlyPinned:true,
+      disconnected:isSharedSnapshotStale()
+    });
+    if(state.stale){
+      toast('This Chronicle is pinned to a stale snapshot. Refresh it before following this route.',true);
+      return;
+    }
+  }
   if(mode==='shared'&&isSharedSnapshotStale()){
     toast('The shared snapshot is stale. Reconnect before following this Chronicle route.',true);
     return;
@@ -2995,7 +3007,7 @@ function openWorldChronicle(eventId,options={}){
     onRefresh:activeWorldChroniclePinned?refreshPinnedWorldChronicle:undefined,
     refreshAvailable:state.refreshAvailable,
     onOpenArtifact:(id,version)=>openCreation(id,version,false,{snapshot:activeWorldChronicleSnapshot||chronicleSnapshot}),
-    onOpenLocation:stale?undefined:walkToChroniclePlace,
+    onOpenLocation:walkToChroniclePlace,
     onReturnToEvidenceArchive:returnAction
   });
 }
