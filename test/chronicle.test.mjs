@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { projectChronicle } from "../game/chronicle.mjs";
+import { projectChronicle, resolveWorldChronicleSnapshotState } from "../game/chronicle.mjs";
 import { institutionActivityCount, institutionDestinationsForEvent } from "../game/world-view.mjs";
 import { projectCharacter, findRetainedPublicationEventId } from "../game/character-sheet.mjs";
 import { createWorld, applyAction } from "../game/model.mjs";
@@ -2148,4 +2148,72 @@ test('Chronicle preserves global append positions when a public snapshot omits e
   assert.equal(byId.get('world:publish-v1')?.streamPosition, 2);
   assert.equal(byId.get('world:orphan-report')?.streamPosition, 5);
   assert.deepEqual(filtered, before, 'Chronicle projection must not mutate the filtered snapshot');
+});
+
+
+test('World Chronicle snapshot policy keeps an explicit pin while a newer accepted revision exists', () => {
+  const pinned = Object.freeze({ revision: 7, marker: 'pinned' });
+  const current = Object.freeze({ revision: 8, marker: 'current' });
+  const state = resolveWorldChronicleSnapshotState({
+    currentSnapshot: current,
+    pinnedSnapshot: pinned,
+    explicitlyPinned: true,
+    disconnected: false
+  });
+  assert.equal(state.snapshot, pinned);
+  assert.equal(state.stale, true);
+  assert.equal(state.staleReason, 'revision-mismatch');
+  assert.equal(state.refreshAvailable, true);
+});
+
+test('World Chronicle snapshot policy lets unpinned live views follow accepted updates', () => {
+  const previous = Object.freeze({ revision: 7 });
+  const current = Object.freeze({ revision: 8 });
+  const state = resolveWorldChronicleSnapshotState({
+    currentSnapshot: current,
+    pinnedSnapshot: previous,
+    explicitlyPinned: false,
+    disconnected: false
+  });
+  assert.equal(state.snapshot, current);
+  assert.equal(state.stale, false);
+  assert.equal(state.staleReason, 'current');
+  assert.equal(state.refreshAvailable, false);
+});
+
+test('World Chronicle snapshot policy fails closed for offline, unavailable and regressed pins', () => {
+  const pinned = Object.freeze({ revision: 8 });
+  const newer = Object.freeze({ revision: 9 });
+  const offline = resolveWorldChronicleSnapshotState({
+    currentSnapshot: newer,
+    pinnedSnapshot: pinned,
+    explicitlyPinned: true,
+    disconnected: true
+  });
+  assert.equal(offline.snapshot, pinned);
+  assert.equal(offline.stale, true);
+  assert.equal(offline.staleReason, 'disconnected');
+  assert.equal(offline.refreshAvailable, false);
+
+  const regressed = resolveWorldChronicleSnapshotState({
+    currentSnapshot: Object.freeze({ revision: 7 }),
+    pinnedSnapshot: pinned,
+    explicitlyPinned: true,
+    disconnected: false
+  });
+  assert.equal(regressed.snapshot, pinned);
+  assert.equal(regressed.stale, true);
+  assert.equal(regressed.staleReason, 'revision-regression');
+  assert.equal(regressed.refreshAvailable, false);
+
+  const unavailable = resolveWorldChronicleSnapshotState({
+    currentSnapshot: Object.freeze({}),
+    pinnedSnapshot: pinned,
+    explicitlyPinned: true,
+    disconnected: false
+  });
+  assert.equal(unavailable.snapshot, pinned);
+  assert.equal(unavailable.stale, true);
+  assert.equal(unavailable.staleReason, 'revision-unavailable');
+  assert.equal(unavailable.refreshAvailable, false);
 });
