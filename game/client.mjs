@@ -650,6 +650,7 @@ function setConnection(connected){
   refreshCharacterSnapshotFreshnessNotice();
   refreshWorldChronicleSnapshot();
   refreshEvidenceArchiveSnapshotFreshnessNotice();
+  refreshAcademySnapshotFreshnessNotice();
 }
 function handleSharedDisconnect(){
   if(mode!=='shared')return;
@@ -1066,10 +1067,29 @@ function renderQuestTrail(milestones, list = $('quest-trail')) {
   }
 }
 
-function render(){view.setWorld(world,mode==='shared'?institution:null,viewer);$('world').setAttribute('data-world-revision',String(world.revision));view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').querySelector('.character-level').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' character XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=getQuestTrail(world,viewer);const quest=getActiveQuest(world,viewer,questTrail);const nextQuestAction=quest.nextAction||questTrail.find(isQuestObjectiveActionable)?.action||null;view.setQuestTarget(nextQuestAction);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();}
+function render(){view.setWorld(world,mode==='shared'?institution:null,viewer);$('world').setAttribute('data-world-revision',String(world.revision));view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').querySelector('.character-level').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' character XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=getQuestTrail(world,viewer);const quest=getActiveQuest(world,viewer,questTrail);const nextQuestAction=quest.nextAction||questTrail.find(isQuestObjectiveActionable)?.action||null;view.setQuestTarget(nextQuestAction);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();refreshAcademySnapshotFreshnessNotice();}
 async function startPrivate(){pendingSourceObservatoryLead=null;stream?.close();stream=null;sharedStreamOpen=false;sharedMovementPaused=false;sharedOfflinePreview=false;view.setMovementEnabled(true);mode='private';viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
 async function startShared(){pendingSourceObservatoryLead=null;const dto=await request('/api/state');stream?.close();stream=null;mode='shared';sharedStreamOpen=false;sharedMovementPaused=true;sharedOfflinePreview=false;view.setMovementEnabled(false);acceptState(dto,{forcePosition:true});$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels()}catch{}});stream.onerror=handleSharedDisconnect;stream.onopen=()=>{sharedStreamOpen=true;void recoverSharedConnection().catch(handleError)};toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
-function showSheet(title,kicker='FIELD NOTES'){institutionRequestGeneration++;activeNoteRenderer=null;activeWorldChronicleRefresh=null;if($('sheet').hidden)lastFocus=document.activeElement;$('sheet-title').textContent=title;$('sheet-kicker').textContent=kicker;$('sheet-content').replaceChildren();$('sheet-backdrop').hidden=false;$('sheet').hidden=false;document.body.classList.add('modal-open');$('sheet').scrollTop=0;$('sheet-close').focus({preventScroll:true});return $('sheet-content')}
+function showSheet(title,kicker='FIELD NOTES'){
+  institutionRequestGeneration++;
+  activeNoteRenderer=null;
+  activeWorldChronicleRefresh=null;
+  if($('sheet').hidden)lastFocus=document.activeElement;
+  const content=$('sheet-content');
+  // A sheet is a new institutional surface. Never leak the prior panel's root metadata.
+  for(const attribute of Array.from(content.attributes)){
+    if(attribute.name.startsWith('data-'))content.removeAttribute(attribute.name);
+  }
+  content.replaceChildren();
+  $('sheet-title').textContent=title;
+  $('sheet-kicker').textContent=kicker;
+  $('sheet-backdrop').hidden=false;
+  $('sheet').hidden=false;
+  document.body.classList.add('modal-open');
+  $('sheet').scrollTop=0;
+  $('sheet-close').focus({preventScroll:true});
+  return content;
+}
 function closeSheet(){institutionRequestGeneration++;activeNoteRenderer=null;activeWorldChronicleRefresh=null;$('sheet').hidden=true;$('sheet-backdrop').hidden=true;if($('portal').hidden){document.body.classList.remove('modal-open');(lastFocus?.isConnected?lastFocus:$('world')).focus({preventScroll:true})}}
 function sandboxDocument(html,bootstrap=''){for(const page of globalThis.NGL_ASSETS?.pages||[])if(page.path&&/^\/assets\/comic\/(cover_a|p3|p4|p5|p10|p13)\.jpg$/.test(page.path)&&typeof page.src==='string'&&page.src.startsWith('data:image/jpeg;base64,'))html=html.split(page.path).join(page.src);const localImages=location.protocol==='http:'||location.protocol==='https:'?['cover_a','p3','p4','p5','p10','p13'].map(p=>`${location.origin}/assets/comic/${p}.jpg`).join(' '):'';const policy=`default-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: ${localImages}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;const trustedHead=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${bootstrap}`;const opening=html.match(/^\s*<!doctype html>\s*<html(?:\s[^>]*)?>\s*<head(?:\s[^>]*)?>/i);return opening?trustedHead+html.slice(opening[0].length):`${trustedHead}</head><body>${html}</body></html>`;}
 // Keep the child visible beneath the loading cover while it paints. A parent load
@@ -2533,6 +2553,56 @@ function refreshEvidenceArchiveSnapshotFreshnessNotice(){
   if(existing)existing.replaceWith(notice);
   else content.prepend(notice);
 }
+function academySnapshotNotice(state,snapshotRevision,currentRevision){
+  const stale=state==='stale';
+  const refreshRequired=state==='refresh-required';
+  const regressed=state==='revision-regression';
+  const newerAccepted=Number.isSafeInteger(currentRevision)&&Number.isSafeInteger(snapshotRevision)&&currentRevision>snapshotRevision;
+  const detail=stale
+    ?'The shared connection is offline. This Academy view remains pinned to the last accepted snapshot at revision '+snapshotRevision+'.'+(newerAccepted?' The accepted projection had advanced to revision '+currentRevision+' before disconnection.':'')+' Local map travel is preview-only and is not saved to the shared world. Reconnect and reopen the Academy to inspect a newer accepted snapshot.'
+    :refreshRequired
+      ?'The accepted shared world has advanced to revision '+currentRevision+', but this Academy view remains pinned to revision '+snapshotRevision+'. Close and reopen the Academy to refresh its records.'
+      :regressed
+        ?'The current shared projection is revision '+currentRevision+', below this view\'s pinned revision '+snapshotRevision+'. The older view is preserved; do not treat the regressed projection as fresh.'
+        :'The accepted shared snapshot revision is unavailable. This Academy view cannot be represented as current.';
+  return node('aside',{
+    class:'field-card',
+    role:'status',
+    'aria-live':'polite',
+    'data-academy-snapshot-notice':'true',
+    'data-snapshot-revision':String(snapshotRevision),
+    'data-current-revision':Number.isSafeInteger(currentRevision)?String(currentRevision):'unavailable'
+  },[
+    node('h3',{text:stale?'SHARED SNAPSHOT · STALE':refreshRequired?'SHARED SNAPSHOT · REFRESH AVAILABLE':regressed?'SHARED SNAPSHOT · REVISION REGRESSION':'SHARED SNAPSHOT · REVISION UNAVAILABLE'}),
+    paragraph(detail,'form-help')
+  ]);
+}
+function refreshAcademySnapshotFreshnessNotice(){
+  if($('sheet').hidden||$('sheet-title').textContent!=='Polymath Academy')return;
+  const content=$('sheet-content');
+  const revisionText=content.dataset.academySnapshotRevision;
+  const snapshotRevision=typeof revisionText==='string'&&/^(0|[1-9][0-9]*)$/.test(revisionText)
+    ?Number(revisionText):null;
+  const currentRevision=world?.revision;
+  const state=!Number.isSafeInteger(snapshotRevision)||!Number.isSafeInteger(currentRevision)||currentRevision<0
+    ?'unavailable'
+    :isSharedSnapshotStale()
+      ?'stale'
+      :currentRevision===snapshotRevision
+        ?'current'
+        :currentRevision>snapshotRevision
+          ?'refresh-required'
+          :'revision-regression';
+  content.dataset.academySnapshotFreshness=state;
+  const existing=content.querySelector('[data-academy-snapshot-notice]');
+  if(state==='current'){
+    if(existing)existing.remove();
+    return;
+  }
+  const notice=academySnapshotNotice(state,snapshotRevision,Number.isSafeInteger(currentRevision)?currentRevision:null);
+  if(existing)existing.replaceWith(notice);
+  else content.prepend(notice);
+}
 function refreshWorldChronicleSnapshot(){
   if(mode!=='shared'||$('sheet').hidden||$('sheet-title').textContent!=='World Chronicle'||
      typeof activeWorldChronicleRefresh!=='function')return;
@@ -3662,15 +3732,20 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
 
 function openAcademy(focusRoleId = null){
   const content=showSheet('Polymath Academy','FUNDAMENTAL KNOWLEDGE · STUDY');
+  const academyWorld=world;
+  const academyViewer=viewer;
+  const snapshotRevision=Number.isSafeInteger(academyWorld?.revision)&&academyWorld.revision>=0?academyWorld.revision:null;
+  content.dataset.academySnapshotRevision=snapshotRevision===null?'unavailable':String(snapshotRevision);
+  refreshAcademySnapshotFreshnessNotice();
   content.append(paragraph('Study published work and compare its claims with its retained sources. A study note records your question, your own explanation, and the next check. It is activity evidence, not proof of correctness or mastery; it awards no XP.'));
-  renderCharterCodex(content,{world,viewer,onOpenAction:followQuestAction});
-  appendCollaboratorContracts(content,world,['tutor'],'POLYMATH TUTOR · BOUNDED COLLABORATOR');
+  renderCharterCodex(content,{world:academyWorld,viewer:academyViewer,onOpenAction:followQuestAction});
+  appendCollaboratorContracts(content,academyWorld,['tutor'],'POLYMATH TUTOR · BOUNDED COLLABORATOR');
   if(focusRoleId)focusGuildCollaborator(content,focusRoleId);
-  appendStudyCardCollection(content,projectCharacter(world,viewer),{heading:'ACADEMY STUDY SHELF',maxItems:8});
-  const works=[...(Array.isArray(world.creations)?world.creations:[])].reverse();
+  appendStudyCardCollection(content,projectCharacter(academyWorld,academyViewer),{heading:'ACADEMY STUDY SHELF',maxItems:8});
+  const works=[...(Array.isArray(academyWorld.creations)?academyWorld.creations:[])].reverse();
   if(!works.length){
     content.append(paragraph('No published study objects are available yet. The Founder can make the first artifact at the Forge.','empty-note'));
-    if(viewer.role==='founder')content.append(button('Visit the Forge →',()=>{closeSheet();view.goTo('forge')},{class:'list-button'}));
+    if(academyViewer.role==='founder')content.append(button('Visit the Forge →',()=>{closeSheet();view.goTo('forge')},{class:'list-button'}));
   }
   for(const creation of works)content.append(node('article',{class:'field-card'},[
     node('h3',{text:creation.title}),
@@ -3678,14 +3753,14 @@ function openAcademy(focusRoleId = null){
     button('Open source →',()=>openCreation(creation.id,creation.version),{class:'list-button'}),
     button('Record study note →',()=>openStudyNote(creation.id,creation.version),{class:'list-button'})
   ]));
-  const notes=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='study').slice().reverse().slice(0,8);
+  const notes=(Array.isArray(academyWorld.events)?academyWorld.events:[]).filter(event=>event?.type==='study').slice().reverse().slice(0,8);
   content.append(node('h3',{class:'section-title',text:'RETAINED STUDY NOTES'}));
   if(!notes.length)content.append(paragraph('No study notes retained yet. The first note should identify an exact source version and what remains to check.','empty-note'));
-  const allReviews=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='study-reviewed');
+  const allReviews=(Array.isArray(academyWorld.events)?academyWorld.events:[]).filter(event=>event?.type==='study-reviewed');
   const reviews=allReviews.slice().reverse().slice(0,8);
   for(const note of notes){
-    const source=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===note.creationId);
-    const review=findStudyReview(note,world.events);
+    const source=(Array.isArray(academyWorld.creations)?academyWorld.creations:[]).find(item=>item.id===note.creationId);
+    const review=findStudyReview(note,academyWorld.events);
     const children=[
       node('h3',{text:(source?.title||'Source unavailable')+' · v'+note.version}),
       paragraph('Question: '+note.question),
@@ -3693,10 +3768,10 @@ function openAcademy(focusRoleId = null){
       paragraph('Next check: '+note.nextCheck),
       paragraph((note.actor?.name||'Unknown actor')+' · '+note.at+' · recorded practice, not mastery.','attribution')
     ];
-    const unresolvedReview=hasStudyReviewRecord(note,world.events)&&!review;
+    const unresolvedReview=hasStudyReviewRecord(note,academyWorld.events)&&!review;
     if(unresolvedReview)
       children.push(paragraph('A review record exists, but it does not uniquely match this retained note and source version. No completion is credited; inspect the retained history rather than creating a duplicate.','evidence-warning'));
-    else if(note.actor?.id===viewer.id&&note.actor?.role===viewer.role&&!review)
+    else if(note.actor?.id===academyViewer.id&&note.actor?.role===academyViewer.role&&!review)
       children.push(button('Review next check →',()=>openStudyReview(note),{class:'list-button'}));
     if(review)children.push(paragraph('A retrieval review is retained for this note; its response remains self-reported.','form-help'));
     children.push(button('Inspect retained source version →',()=>openCreation(note.creationId,note.version),{class:'list-button'}));
@@ -3705,7 +3780,7 @@ function openAcademy(focusRoleId = null){
   content.append(node('h3',{class:'section-title',text:'RETAINED RETRIEVAL REVIEWS'}));
   if(!reviews.length)content.append(paragraph('No retrieval reviews retained yet. A review must follow your own source-bound study note.','empty-note'));
   for(const review of reviews){
-    const source=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===review.creationId);
+    const source=(Array.isArray(academyWorld.creations)?academyWorld.creations:[]).find(item=>item.id===review.creationId);
     content.append(node('article',{class:'field-card'},[
       node('h3',{text:(source?.title||'Source unavailable')+' · v'+review.version}),
       paragraph('Response: '+review.response),
