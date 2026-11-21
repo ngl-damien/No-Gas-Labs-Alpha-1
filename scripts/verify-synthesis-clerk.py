@@ -1041,12 +1041,17 @@ def open_synthesis_clerk(page, packet):
             "The restored session may open the Guild Hall as soon as the accessible NPC route reaches interaction range."
         )
     else:
-        # The NPC route has reached interaction range. Activate the same bounded
-        # NPC control again; this opens its owning workbench with the Synthesis role
-        # focused. Generic Guild Hall entry is a different, unfocused action.
+        # The NPC route has reached interaction range. The visible Interact
+        # control now changes to Talk to Synthesis and opens the exact owning
+        # workbench; the map's accessible route target is not the talk action.
         expect(control).to_have_attribute("data-guild-npc-action", "talk")
-        expect(control).to_be_visible()
-        control.tap()
+        interact_button = page.locator("#interact-button")
+        expect(interact_button).to_be_visible()
+        interact_label = interact_button.get_attribute("aria-label") or ""
+        assert "Talk to Synthesis Clerk" in interact_label, (
+            "Nearby Interact must expose the exact bounded Synthesis action: " + interact_label
+        )
+        interact_button.tap()
         page.wait_for_function(
             "() => document.querySelector('#sheet-title')?.textContent === 'Guild Hall' && " +
             "!document.querySelector('#sheet').hidden",
