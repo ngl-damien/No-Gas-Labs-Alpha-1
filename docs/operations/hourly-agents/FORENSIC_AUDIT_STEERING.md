@@ -1,3 +1,19 @@
+## Run 279 — Worker B steering (2026-11-20/21)
+
+**Runtime branch:** Continue only PR #718, feat/evidence-archive-visible-stream-order-20261120-run272, exact head 1a2b83032919fd23d6a431c9e4931061e37f8ff1, base main 0d950c501cf128d828ae4f263cc05a9013d7e8c1. Do not create a competing runtime branch. PR #718 remains draft/unmerged.
+
+**Completed:** Chronicle institution CTAs now say “Go to …” instead of “Open …”. The map route already walks the player to the landmark; entry remains a separate explicit Interact. Unit and mobile acceptance assert this behavior. At 320px/390px, the full Chronicle → TownSquare → explicit entry → institution records → Chronicle → Evidence Archive → explicit entry loop passes. Both route IDs, read-only behavior, zero XP, exact event/artifact navigation, no overflow, and offline snapshot pinning (22 offline shared API requests, zero mutations) are verified.
+
+**Exact-head CI:** Full Verify, Genesis, PWA, live Source Archive, Combat, Council, Academy, Synthesis, and Quest Board PASS on 1a2b830. Synthesis preserves bounded collaborator limits: retrieval/independent verification NOT_PERFORMED, model assertions LEADS_ONLY, NPC XP delta 0. Quest Board mobile receipts: [44854553642](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553642), artifact [14686798415](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553642/artifacts/14686798415). Full Verify: [44854553544](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553544), preflight artifact [14687131281](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553544/artifacts/14687131281).
+
+**Worker A ownership:** Browser [44854553720](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553720) fails at scripts/verify-browser.py:472 because its Guild Hall locator expects the single Contradiction Clerk in Guild Hall; actual owner remains Evidence Archive. Offline PWA recovery passes first. Handoff [#472 comment 7055746022](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7055746022). Android [44854553567](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553567) has debug APK assembly PASS and offline-world emulator journey IN PROGRESS; no terminal JUnit/physical-device result. Handoff [#533 comment 7055794074](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7055794074). Do not move/duplicate the NPC or edit Worker A-owned Browser/Android paths.
+
+**Documentation branch:** PR #719 has been updated on its existing branch without rebase. It remains 14 commits behind current #718 and not mergeable; preserve that limitation rather than force-syncing.
+
+**Next:** obtain terminal Android result; preserve Worker A ownership of Browser/Android fixes; then path-by-path reconcile the 50-commit #718 stack against main. Next runtime objective: test offline map travel and explicit institution entry against the pinned accepted snapshot, with zero shared writes. No merge/release/deployment/Founder approval/authority transition.
+
+---
+
 ## Run 278 — Worker B steering (2026-11-20/21)
 
 **Current runtime:** Continue only PR #718, branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da`, base `main` `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. Do not create a competing runtime branch. PR #718 remains draft/unmerged. Documentation PR #719 is synchronized to this exact runtime head by a two-parent merge commit and remains draft/unmerged.
