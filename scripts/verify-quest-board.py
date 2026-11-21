@@ -486,6 +486,106 @@ def assert_circuit_progress(page, role, progress, complete=False):
     assert_circuit_round_progress(page, role, 1, progress, complete)
 
 
+def open_quest_board_current(page, role, round_number, progress):
+    open_quest_board(page)
+    server = authoritative_snapshot(page)
+    page.wait_for_function(
+        "(expected) => Number(document.querySelector('#world')?.dataset.worldRevision) >= expected",
+        arg=server['revision']
+    )
+    content = page.locator('#sheet-content')
+    revision_text = content.get_attribute('data-quest-board-snapshot-revision')
+    assert isinstance(revision_text, str) and revision_text.isdigit(), (
+        'Quest Board must identify the accepted snapshot it actually projects.'
+    )
+    pinned_revision = int(revision_text)
+    if pinned_revision < server['revision']:
+        expect(content).to_have_attribute('data-quest-board-snapshot-freshness', 'refresh-required')
+        refresh = content.locator('[data-quest-board-refresh]')
+        expect(refresh).to_have_count(1)
+        refresh.tap()
+    elif pinned_revision > server['revision']:
+        raise AssertionError('Quest Board snapshot is ahead of the server-accepted revision.')
+    current = authoritative_snapshot(page)
+    page.wait_for_function(
+        "(expected) => document.querySelector('#sheet-content')?.dataset.questBoardSnapshotRevision === String(expected) && " +
+        "document.querySelector('#sheet-content')?.dataset.questBoardSnapshotFreshness === 'current'",
+        arg=current['revision']
+    )
+    assert_circuit_round_progress(page, role, round_number, progress, complete=False)
+    assert int(content.get_attribute('data-quest-board-snapshot-revision')) == current['revision']
+    return current
+
+
+def assert_quest_board_snapshot_refresh(page, role, round_number, pinned_progress,
+                                        accepted_revision, screenshot):
+    content = page.locator('#sheet-content')
+    expect(page.locator('#sheet-title')).to_have_text('Quest Board')
+    expect(content).to_have_attribute('data-quest-board', 'true')
+    expect(content).to_have_attribute('data-quest-board-snapshot-freshness', 'refresh-required')
+    pinned_text = content.get_attribute('data-quest-board-snapshot-revision')
+    assert isinstance(pinned_text, str) and pinned_text.isdigit()
+    pinned_revision = int(pinned_text)
+    assert pinned_revision < accepted_revision, (
+        'A refreshable Quest Board must remain pinned to an older accepted snapshot.'
+    )
+    notice = content.locator('[data-quest-board-snapshot-notice]')
+    expect(notice).to_have_count(1)
+    expect(notice).to_contain_text('advanced to revision ' + str(accepted_revision))
+    refresh = notice.locator('[data-quest-board-refresh]')
+    expect(refresh).to_have_count(1)
+    expect(refresh).to_be_visible()
+    expect(page.locator('#connection-dot')).to_have_attribute('data-connection-state', 'online')
+    assert_circuit_round_progress(page, role, round_number, pinned_progress, complete=False)
+
+    before = authoritative_snapshot(page)
+    assert before['revision'] == accepted_revision
+    api_requests = []
+
+    def capture_request(request):
+        if request.resource_type in ('fetch', 'xhr') and '/api/' in request.url:
+            api_requests.append(request.url)
+
+    page.on('request', capture_request)
+    try:
+        refresh.tap()
+    finally:
+        page.remove_listener('request', capture_request)
+
+    refreshed = page.locator('#sheet-content')
+    expect(refreshed).to_have_attribute('data-quest-board-snapshot-revision', str(accepted_revision))
+    expect(refreshed).to_have_attribute('data-quest-board-snapshot-freshness', 'current')
+    expect(refreshed.locator('[data-quest-board-snapshot-notice]')).to_have_count(0)
+    assert_circuit_round_progress(page, role, round_number, '4/4', complete=True)
+    after = authoritative_snapshot(page)
+    assert shared_world_snapshot(after) == shared_world_snapshot(before), (
+        'Refreshing the Quest Board must not mutate the accepted world snapshot.'
+    )
+    assert after['xp'] == before['xp'], 'Refreshing quest progress must award no XP.'
+    assert not api_requests, (
+        'Refreshing from the latest accepted in-memory snapshot must issue no shared API request: ' +
+        json.dumps(api_requests)
+    )
+    assert after['revision'] == before['revision']
+    screenshot = Path(screenshot)
+    page.screenshot(path=str(screenshot), full_page=True)
+    receipt = {
+        'role': role,
+        'round': round_number,
+        'viewportWidth': page.evaluate('() => window.innerWidth'),
+        'pinnedRevision': pinned_revision,
+        'acceptedRevision': accepted_revision,
+        'pinnedProgress': pinned_progress,
+        'refreshedProgress': '4/4',
+        'readOnly': shared_world_snapshot(after) == shared_world_snapshot(before),
+        'xpDelta': after['xp'] - before['xp'],
+        'sharedApiRequestsDuringRefresh': len(api_requests),
+        'screenshot': screenshot.name
+    }
+    screenshot.with_suffix('.json').write_text(json.dumps(receipt, indent=2))
+    return receipt
+
+
 def assert_contradiction_ward_objectives(page, role, progress):
     for suffix in ('forge-contradiction-ward', 'equip-contradiction-ward'):
         row = page.locator(f'#sheet-content [data-objective-id="{role}-{suffix}"]')
@@ -2436,6 +2536,11 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         # A completed circuit must open a fresh round. New notes, challenge and
         # response are distinct retained actions; the first round is not reused.
         after_first_round = authoritative_snapshot(founder_page)
+        # Pin the 320px silent member's board before the next shared round.
+        silent_board_baseline = open_quest_board_current(
+            silent_page, 'witness', 2, '0/4'
+        )
+        assert silent_board_baseline['revision'] >= after_first_round['revision']
         founder_round_two_note = record_source_observation(
             founder_page, observatory_fixture, 'Founder round two: retrieval is still outstanding.'
         )
@@ -2451,6 +2556,18 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         })
         round_two_challenge_id = round_two_challenge_payload.get('result', {}).get('challengeId')
         assert isinstance(round_two_challenge_id, str) and round_two_challenge_id
+        # The 390px Witness opens after the challenge but before the original author responds.
+        witness_board_baseline = open_quest_board_current(
+            witness_page, 'witness', 2, '3/4'
+        )
+        founder_page.wait_for_function(
+            "(expected) => Number(document.querySelector('#world')?.dataset.worldRevision) >= expected",
+            arg=witness_board_baseline['revision']
+        )
+        before_final_response = authoritative_snapshot(founder_page)
+        assert before_final_response['revision'] == witness_board_baseline['revision'], (
+            'The author response must follow the exact accepted snapshot pinned by the Witness board.'
+        )
         round_two_response_payload = post_action(founder_page, {
             'type': 'respond-source-observation-challenge',
             'challengeId': round_two_challenge_id,
@@ -2462,8 +2579,21 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         after_second_founder = authoritative_snapshot(founder_page)
         after_second_witness = authoritative_snapshot(witness_page)
         assert shared_world_snapshot(after_second_founder) == shared_world_snapshot(after_second_witness)
-        assert after_second_founder['revision'] == after_first_round['revision'] + 4, (
-            'A second circuit must retain exactly two new observations, one challenge and one response.'
+        assert after_second_founder['revision'] == before_final_response['revision'] + 1, (
+            'Only the original-author response may follow the Witness board snapshot in this final step.'
+        )
+        for pinned_page in (silent_page, witness_page):
+            pinned_page.wait_for_function(
+                "(expected) => Number(document.querySelector('#world')?.dataset.worldRevision) === expected",
+                arg=after_second_founder['revision']
+            )
+        quest_board_refresh_silent_320 = assert_quest_board_snapshot_refresh(
+            silent_page, 'witness', 2, '0/4', after_second_founder['revision'],
+            out / 'quest-board-snapshot-refresh-silent-320.png'
+        )
+        quest_board_refresh_witness_390 = assert_quest_board_snapshot_refresh(
+            witness_page, 'witness', 2, '3/4', after_second_founder['revision'],
+            out / 'quest-board-snapshot-refresh-witness-390.png'
         )
         assert after_second_founder['xp'] == founder_before['xp'], (
             'A repeat circuit records participation only and awards no XP.'
@@ -2842,6 +2972,10 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
                 founder_round_two_note['observationId'], witness_round_two_note['observationId']
             ],
             'secondRoundEventSummary': full_event_summary,
+            'questBoardSnapshotRefresh': {
+                'silentMember320': quest_board_refresh_silent_320,
+                'witness390': quest_board_refresh_witness_390
+            },
             'noXpAwarded': after_second_founder['xp'] == founder_before['xp'],
             'boardInspectionReadOnly': True,
             'characterProjectionReadOnly': True,
