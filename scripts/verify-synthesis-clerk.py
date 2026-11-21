@@ -779,10 +779,10 @@ def inspect_moonshot_source_archive_failures(page, failure, width, out):
         timeout=30000
     )
     exact_event = page.locator(
-        '#sheet-content [data-chronicle-entries] [data-event-id="' + failure["eventId"] + '"]'
+        '#sheet-content [data-chronicle-entries] [data-event-id="world:' + failure["eventId"] + '"]'
     )
     expect(exact_event).to_have_count(1)
-    expect(exact_event).to_have_attribute("data-event-id", failure["eventId"])
+    expect(exact_event).to_have_attribute("data-event-id", "world:" + failure["eventId"])
     after_chronicle = authoritative_snapshot(page)
     assert_canonical_state_unchanged(
         before_chronicle, after_chronicle,
