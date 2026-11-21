@@ -123,7 +123,11 @@ def assert_populated_council_room(page, fixture):
         details = card.locator('details[data-council-review-summary="' + role + '"]')
         expect(details).to_have_count(1)
         expect(details).to_have_attribute('data-council-review-status', 'valid-for-human-review')
-        details.locator('summary').click()
+        summary = details.locator('summary')
+        summary.scroll_into_view_if_needed()
+        expect(summary).to_be_visible()
+        expect(page.locator('#sheet-close')).to_be_visible()
+        summary.tap()
         for label in expected_labels:
             expect(details).to_contain_text(label)
         if role == 'synthesizer':
