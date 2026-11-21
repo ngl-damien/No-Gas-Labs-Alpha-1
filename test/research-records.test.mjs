@@ -545,5 +545,6 @@ test('Source Observation notes, challenges and responses retain server-projected
   assert.equal(unsequenced[0].historyPosition, null);
   assert.equal(unsequenced[0].projectionStatus, 'malformed');
   assert.equal(unsequenced[0].challenges[0].historyPosition, null);
-  assert.equal(unsequenced[0].challenges[0].responses[0].historyPosition, null);
+  assert.equal(unsequenced[0].challenges[0].responses.length, 0,
+    'a response cannot be attributed without retained global append positions');
 });
