@@ -2093,3 +2093,24 @@ test("Chronicle preserves server-projected global positions after actor filterin
   assert.ok(malformedEntries.every(entry => !Number.isSafeInteger(entry.streamPosition)),
     "duplicate or regressing projection positions must fail closed");
 });
+
+test('Chronicle preserves global append positions when a public snapshot omits earlier events', () => {
+  const { world } = fixture();
+  const filtered = structuredClone(world);
+  filtered.revision = 5;
+  filtered.methods = [];
+  filtered.events = [
+    { ...world.events[0], historyPosition: 2 },
+    { ...world.events[2], historyPosition: 5 }
+  ];
+  const before = structuredClone(filtered);
+
+  const chronicle = projectChronicle({ world: filtered, kernel: null });
+  const byId = new Map(chronicle.entries
+    .filter(entry => entry.source === 'world')
+    .map(entry => [entry.id, entry]));
+
+  assert.equal(byId.get('world:publish-v1')?.streamPosition, 2);
+  assert.equal(byId.get('world:orphan-report')?.streamPosition, 5);
+  assert.deepEqual(filtered, before, 'Chronicle projection must not mutate the filtered snapshot');
+});
