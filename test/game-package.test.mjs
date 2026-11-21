@@ -795,12 +795,19 @@ test('artifact detail fails closed for unavailable exact versions and guards sta
   const enterStart = client.indexOf('function enterCreation(', openStart);
   assert.ok(openStart >= 0 && enterStart > openStart, 'artifact detail and entry functions must be present');
   const detail = client.slice(openStart, enterStart);
-  const exactVersionValidation = detail.indexOf('prepareContradictionReview(creation, targetVersion)');
+  const exactTargetResolution = detail.indexOf('resolveRetainedCreationTarget(creationWorldSnapshot,id,requestedVersion)');
+  const unavailableGate = detail.indexOf("if(targetResolution.status!=='available')");
   const availableVersions = detail.indexOf('const availableVersions=');
-  assert.ok(exactVersionValidation >= 0,
-    'the requested version must pass the strict retained-version validator');
-  assert.ok(availableVersions > exactVersionValidation,
-    'the selector must not be built before exact-version validation');
+  assert.ok(exactTargetResolution >= 0,
+    'the requested artifact identity and edition must pass the strict retained-target resolver');
+  assert.ok(unavailableGate > exactTargetResolution,
+    'missing or ambiguous artifact targets must fail closed before detail selection');
+  assert.ok(availableVersions > unavailableGate,
+    'the version selector must not be built before exact-target validation');
+  assert.match(detail, /selectedCreation=null;\\s*selectedVersion=null;\\s*activeNoteRenderer=null;/,
+    'an unavailable target must clear the prior artifact selection');
+  assert.match(detail, /creationRequestedId/);
+  assert.match(detail, /creationResolutionReason/);
   assert.match(detail, /ARTIFACT VERSION UNAVAILABLE/);
   assert.match(detail, /creationVersionStatus/);
   assert.match(detail, /current version was not substituted/i);
