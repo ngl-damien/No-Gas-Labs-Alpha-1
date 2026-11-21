@@ -5423,9 +5423,10 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
         expect(detail).to_have_attribute('data-creation-snapshot-freshness', 'refresh-required')
         expect(detail.locator('[data-creation-snapshot-refresh]')).to_be_visible()
 
-        # The Witness has advanced the accepted shared world while this Founder
-        # detail remains pinned. Verify every ordinary write route is blocked
-        # before it reaches the shared action endpoint.
+        # The Witness has advanced the accepted shared world while this detail
+        # remains pinned. Verify every write route exposed to this session is
+        # blocked before it reaches the shared action endpoint. Founder-only
+        # repair must be tested for Founder and absent for Witness.
         before_guard = authoritative_snapshot(page)
         blocked_action_requests = []
 
@@ -5460,10 +5461,24 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
                 'pinned to an older or unavailable shared snapshot'
             )
 
-            page.locator('#repair-button').tap()
-            expect(page.locator('#toast')).to_contain_text(
-                'pinned to an older or unavailable shared snapshot'
-            )
+            blocked_actions = ['contribute', 'report']
+            repair_hidden_by_role = False
+            if before_guard['viewerRole'] == 'founder':
+                expect(page.locator('#repair-button')).to_have_count(1)
+                page.locator('#repair-button').tap()
+                expect(page.locator('#toast')).to_contain_text(
+                    'pinned to an older or unavailable shared snapshot'
+                )
+                blocked_actions.append('repair')
+            elif before_guard['viewerRole'] == 'witness':
+                # Repair is Founder-only. A Witness must not be offered a
+                # control that it could never authorize, even before freshness checks.
+                expect(page.locator('#repair-button')).to_have_count(0)
+                repair_hidden_by_role = True
+            else:
+                raise AssertionError(
+                    'Stale-write acceptance requires a Founder or Witness session.'
+                )
             expect(page.locator('#sheet-title')).to_have_text(target['title'])
         finally:
             page.remove_listener('request', capture_blocked_action_request)
@@ -5485,7 +5500,9 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
         stale_write_guard = {
             'pinnedRevision': pinned['revision'],
             'acceptedRevision': witness_after['revision'],
-            'blockedActions': ['contribute', 'report', 'repair'],
+            'viewerRole': before_guard['viewerRole'],
+            'blockedActions': blocked_actions,
+            'repairHiddenByRole': repair_hidden_by_role,
             'actionRequests': len(blocked_action_requests),
             'readOnly': shared_world_snapshot(after_guard) == shared_world_snapshot(before_guard),
             'xpDelta': after_guard['xp'] - before_guard['xp'],
