@@ -2105,7 +2105,9 @@ test('Source Observatory HTTP observations are hash-bound, actor-attributed, rep
   const actorRole = before.body.viewer?.role || 'founder';
   const sourceSnapshotRevision = before.body.world.revision;
   const interveningWitness = f.client();
-  await interveningWitness.login();
+  const witnessSession = await interveningWitness.request('/api/state');
+  assert.equal(witnessSession.body.viewer.role, 'witness');
+  assert.notEqual(witnessSession.body.viewer.id, actorId);
   const intervening = await interveningWitness.request('/api/action', {
     type: 'report', creationId, version: 1,
     text: 'A second session appended a report after the pinned Source Observatory snapshot.'
