@@ -1094,7 +1094,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
 }
 
 const WORLD_CHRONICLE_STALE_INTRO = 'Read-only retained world history. The shared stream is disconnected; this is the last accepted snapshot and may be stale. Reconnect before relying on it as current.';
-const WORLD_CHRONICLE_REVISION_STALE_INTRO = 'Read-only retained world history. A newer accepted revision exists, but this view remains pinned to its captured snapshot. Refresh explicitly to move this Chronicle forward; refreshing creates no world activity or reward.';
+const WORLD_CHRONICLE_REVISION_STALE_INTRO = 'Read-only retained world history. The accepted revision differs from the snapshot captured for this view; it may have advanced or regressed. This Chronicle remains pinned. If a newer accepted revision is available, refresh explicitly to move this view forward; refreshing creates no world activity or reward.';
 const WORLD_CHRONICLE_REVISION_UNAVAILABLE_INTRO = 'Read-only retained world history. The accepted world revision is unavailable; this view remains pinned and may be stale. Reconnect or refresh before relying on it as current.';
 const WORLD_CHRONICLE_CURRENT_INTRO = 'Read-only retained world history from the current client snapshot. Event identity and append position are preserved; inspection creates no activity or reward.';
 
