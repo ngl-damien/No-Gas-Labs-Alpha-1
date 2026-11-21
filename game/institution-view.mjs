@@ -720,6 +720,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  }
  container.append(el('h3', heading));
  container.append(introElement);
+ let locationNavigationAvailable = options.freshnessState !== 'stale';
  const refreshButton = typeof options.onRefresh === 'function' ? el('button') : null;
  const updateRefreshButton = (freshness, reason, available) => {
   if (!refreshButton) return;
@@ -811,7 +812,9 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
     recordedPlace.className='secondary-button';
     recordedPlace.dataset.chronicleRecordedLocation=entry.locationId;
     recordedPlace.setAttribute('aria-label','Walk to recorded map location '+entry.locationName);
-    recordedPlace.onclick=()=>options.onOpenLocation(entry.locationId);
+    recordedPlace.disabled=!locationNavigationAvailable;
+    recordedPlace.setAttribute('aria-disabled',String(recordedPlace.disabled));
+    recordedPlace.onclick=()=>{if(locationNavigationAvailable)options.onOpenLocation(entry.locationId)};
     card.append(recordedPlace);
    }
    const destinations=Array.isArray(entry.institutionDestinations)?entry.institutionDestinations:[];
@@ -834,7 +837,9 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
      route.dataset.chronicleInstitutionRoute=destination.id;
      route.setAttribute('aria-label','Go to related institution '+destination.name+
       (typeof destination.purpose==='string'&&destination.purpose?' · '+destination.purpose:''));
-     route.onclick=()=>options.onOpenLocation(destination.id);
+     route.disabled=!locationNavigationAvailable;
+     route.setAttribute('aria-disabled',String(route.disabled));
+     route.onclick=()=>{if(locationNavigationAvailable)options.onOpenLocation(destination.id)};
      routeItem.append(route);
      if(typeof destination.purpose==='string'&&destination.purpose)routeItem.append(el('small',destination.purpose));
      routeList.append(routeItem);
@@ -1054,6 +1059,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   currentChronicle=nextChronicle;
   introElement.textContent=nextIntro;
   if(options.freshnessState)introElement.dataset.chronicleSnapshotFreshness=nextFreshness;
+  locationNavigationAvailable=nextFreshness==='current';
   updateRefreshButton(nextFreshness,nextFreshnessReason,nextRefreshAvailable===true);
   updateMalformedWarning(currentChronicle.malformed);
   if(exactEventId!==null){
@@ -1143,7 +1149,7 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,staleR
    onRefresh,
    refreshAvailable:isStale&&isRefreshAvailable,
    exactEventLookup:{eventId,source:'world'},
-   onOpenLocation:isStale?undefined:onOpenLocation
+   onOpenLocation
   });
   container.dataset.chronicleSnapshotRevision=snapshotRevision(snapshot);
   container.dataset.chronicleSnapshotFreshnessReason=freshnessReason;
