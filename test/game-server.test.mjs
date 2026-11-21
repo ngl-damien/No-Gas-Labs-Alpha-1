@@ -3488,6 +3488,40 @@ test('stored-world validation accepts server clock-regressed Source Observatory 
   assert.equal(responded.world.updatedAt, publishedAt);
   assert.doesNotThrow(() => validateStoredWorldHistory(responded.world));
 
+  const receiptNote = {
+    ...note,
+    claim: 'A second note carries a server-issued snapshot receipt digest.'
+  };
+  const receiptDigest = artifactReceipt(sourceObservationRequestMaterial({
+    actorId: founderActor.id, actorRole: founderActor.role,
+    creationId: published.result.creationId, version: 1, sourceSnapshotRevision, ...receiptNote
+  })).digest;
+  const receiptObservationId = 'source-observation-' + receiptDigest;
+  const receiptBound = await applyAction(responded.world, {
+    type: 'record-source-observation', creationId: published.result.creationId,
+    version: 1, sourceSnapshotRevision, observationId: receiptObservationId, ...receiptNote
+  }, founderActor, {
+    now: '2026-10-17T12:00:04.000Z',
+    requestId: receiptObservationId, actionFingerprint: 'd'.repeat(64),
+    sourceSnapshotReceiptDigest: 'b'.repeat(64)
+  });
+  const receiptEvent = receiptBound.world.events.at(-1);
+  assert.equal(receiptEvent.bindingMode, 'SERVER_SESSION_RECEIPT');
+  assert.equal(receiptEvent.sourceSnapshotReceiptDigest, 'b'.repeat(64));
+  assert.doesNotThrow(() => validateStoredWorldHistory(receiptBound.world),
+    'the server history validator must accept a receipt digest computed after session-token validation');
+
+  const missingReceiptDigest = structuredClone(receiptBound.world);
+  delete missingReceiptDigest.events.at(-1).sourceSnapshotReceiptDigest;
+  assert.throws(() => validateStoredWorldHistory(missingReceiptDigest),
+    /Stored Source Observatory observation is malformed or unbound/,
+    'a server-session binding without its digest must fail closed');
+  const digestOnUserSelected = structuredClone(receiptBound.world);
+  digestOnUserSelected.events.at(-1).bindingMode = 'USER_SELECTED';
+  assert.throws(() => validateStoredWorldHistory(digestOnUserSelected),
+    /Stored Source Observatory observation is malformed or unbound/,
+    'a receipt digest cannot be relabeled as an author-selected binding');
+
   const outOfOrder = structuredClone(responded.world);
   const challengeIndex = outOfOrder.events.findIndex(event => event.type === 'source-observation-challenged');
   const responseIndex = outOfOrder.events.findIndex(event => event.type === 'source-observation-challenge-responded');
