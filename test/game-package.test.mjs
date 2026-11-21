@@ -804,7 +804,7 @@ test('artifact detail fails closed for unavailable exact versions and guards sta
     'missing or ambiguous artifact targets must fail closed before detail selection');
   assert.ok(availableVersions > unavailableGate,
     'the version selector must not be built before exact-target validation');
-  assert.match(detail, /selectedCreation=null;\\s*selectedVersion=null;\\s*activeNoteRenderer=null;/,
+  assert.match(detail, /selectedCreation=null;\s*selectedVersion=null;\s*activeNoteRenderer=null;/,
     'an unavailable target must clear the prior artifact selection');
   assert.match(detail, /creationRequestedId/);
   assert.match(detail, /creationResolutionReason/);
