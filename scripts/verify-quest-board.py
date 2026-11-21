@@ -4445,6 +4445,22 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     expect(academy_snapshot).to_have_attribute(
         'data-academy-snapshot-freshness', 'stale'
     )
+    stale_panel_markers = {
+        name: academy_snapshot.get_attribute(name)
+        for name in (
+            'data-commons-panel',
+            'data-chronicle-snapshot-revision',
+            'data-evidence-archive-snapshot-revision'
+        )
+    }
+    assert all(value is None for value in stale_panel_markers.values()), (
+        'Opening Polymath Academy must clear prior institution root metadata: ' +
+        json.dumps(stale_panel_markers)
+    )
+    academy_notice = academy_snapshot.locator('[data-academy-snapshot-notice="true"]')
+    expect(academy_notice).to_have_count(1)
+    expect(academy_notice).to_contain_text('SHARED SNAPSHOT · STALE')
+    expect(academy_notice).to_contain_text(str(refreshed_state['revision']))
     expect(academy_snapshot.locator(
         '[data-study-card-collection="academy-study-shelf"]'
     )).to_have_count(1)
