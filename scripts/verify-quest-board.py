@@ -5995,7 +5995,51 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
         assert retained['publicationPosition'] <= pinned['revision'] < retained['reportPosition'] < retained['observationPosition'], (
             'The source snapshot must include the exact publication but exclude later appended activity.'
         )
-        screenshot = out / ('source-observation-snapshot-provenance-' + str(width) + '.png')
+        observation_event_id = retained['event'].get('id')
+        observation_id = retained['event'].get('observationId')
+        assert isinstance(observation_event_id, str) and observation_event_id
+        assert isinstance(observation_id, str) and observation_id
+
+        page.locator('#sheet-close').tap()
+        expect(page.locator('#sheet')).to_be_hidden()
+        open_evidence_archive(page)
+        expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+        register = page.locator(
+            '#sheet-content [data-source-observation-register-record="' + observation_id + '"]'
+        )
+        expect(register).to_have_count(1)
+        expect(register).to_contain_text(
+            'Snapshot reference: world revision ' + str(pinned['revision'])
+        )
+        expect(register).to_contain_text(
+            'does not prove the actor viewed that snapshot'
+        )
+        chronicle_link = register.locator(
+            '[data-source-observation-chronicle-event="' + observation_event_id + '"]'
+        )
+        expect(chronicle_link).to_have_count(1)
+        archive_before = authoritative_snapshot(page)
+        chronicle_link.tap()
+        expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
+        chronicle_event = page.locator(
+            '#sheet-content [data-event-id="world:' + observation_event_id + '"]'
+        )
+        expect(chronicle_event).to_have_count(1)
+        expect(chronicle_event).to_contain_text(
+            'Declared snapshot reference: world revision ' + str(pinned['revision'])
+        )
+        expect(chronicle_event).to_contain_text(
+            'does not prove the actor viewed that snapshot'
+        )
+        archive_after = authoritative_snapshot(page)
+        assert shared_world_snapshot(archive_after) == shared_world_snapshot(archive_before), (
+            'Opening the retained Source Observation in Chronicle must not mutate the shared world.'
+        )
+        assert archive_after['xp'] == archive_before['xp'], (
+            'Opening the retained Source Observation in Chronicle must award no XP.'
+        )
+
+        screenshot = out / ('source-observation-chronicle-provenance-' + str(width) + '.png')
         page.screenshot(path=str(screenshot), full_page=True)
         assert not witness_errors, 'Intervening-session page errors: ' + json.dumps(witness_errors)
         return {
