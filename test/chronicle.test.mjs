@@ -319,6 +319,41 @@ test("reports remain visible against their exact retained version with the actua
   assert.match(report.summary, /report.*not an adjudication/i);
 });
 
+test("Source Observation Chronicle shows declared snapshot references without treating them as proof", () => {
+  const { world, kernel } = fixture();
+  const base = {
+    type: "source-observation-recorded",
+    creationId: "creation-observatory",
+    version: 1,
+    actor: { id: "damien", name: "Damien", role: "founder" },
+    claim: "A model says the bridge is open.",
+    sourceKind: "model-assertion",
+    source: "Model output only; no primary source retrieved.",
+    falsifier: "A direct inspection finds it closed.",
+    uncertainty: "No independent observation.",
+    nextTest: "Inspect the bridge."
+  };
+  world.events.push(
+    { ...base, id: "source-observation-snapshot", sourceSnapshotRevision: 1, at: "2026-10-26T10:08:00.000Z" },
+    { ...base, id: "source-observation-legacy", at: "2026-10-26T10:09:00.000Z" },
+    { ...base, id: "source-observation-malformed", sourceSnapshotRevision: "1", at: "2026-10-26T10:10:00.000Z" }
+  );
+  const before = structuredClone(world);
+  const entries = projectChronicle({ world, kernel }).entries;
+  const snapshot = entries.find(entry => entry.id === "world:source-observation-snapshot");
+  const legacy = entries.find(entry => entry.id === "world:source-observation-legacy");
+  const malformed = entries.find(entry => entry.id === "world:source-observation-malformed");
+
+  assert.ok(snapshot);
+  assert.match(snapshot.detail, /Declared snapshot reference: world revision 1/);
+  assert.match(snapshot.detail, /actor-declared/i);
+  assert.match(snapshot.detail, /does not prove the actor viewed that snapshot/i);
+  assert.match(legacy.detail, /not recorded on this legacy note/i);
+  assert.match(malformed.detail, /malformed or unavailable/i);
+  assert.deepEqual(world, before, "Chronicle snapshot-reference disclosure is read-only");
+});
+
+
 test("orphaned reports remain visible and are not assigned an invented target", () => {
   const { world, kernel } = fixture();
   const orphan = projectChronicle({ world, kernel }).entries.find(entry => entry.id === "world:orphan-report");
