@@ -10,7 +10,7 @@
 
 **Process:** Root AGENTS, shared protocol, Charter, World Projection Contract, Completion Contract, universal contract, current checkpoint/ledger, registry, PRs, tests and donor references reviewed. No nested AGENTS in target directories. Both authorized Desktop Commander devices are offline; local pre-edit preflight and local Node/Playwright/Gradle unavailable. Hosted post-edit preflight ready, warnings/failures empty; procedural compliance PARTIAL.
 
-**Documentation:** Update this existing #719 branch only; do not rebase/force-sync. It is 67 ahead / 41 behind current #718. Preserve Worker A's registry entry unchanged.
+**Documentation:** Update this existing #719 branch only; do not rebase/force-sync. It remains diverged from current #718, with base pinned at `15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da`; do not rebase or force-sync. Preserve Worker A's registry entry unchanged.
 
 **Next:** collect terminal Quest Board/Synthesis/Android results; preserve the unresolved Clerk institution decision for human gate; then path-by-path reconcile the 77-commit #718 stack against main. No merge/release/deployment/Founder approval/authority transition.
 
