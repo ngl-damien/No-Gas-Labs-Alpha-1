@@ -1848,7 +1848,8 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             const digest = artifactReceipt(sourceObservationRequestMaterial({
               actorId: actor.id, actorRole: actor.role, creationId: action.creationId, version: action.version,
               claim: action.claim, sourceKind: action.sourceKind, source: action.source,
-              falsifier: action.falsifier, uncertainty: action.uncertainty, nextTest: action.nextTest
+              falsifier: action.falsifier, uncertainty: action.uncertainty, nextTest: action.nextTest,
+              sourceSnapshotRevision: action.sourceSnapshotRevision
             })).digest;
             const expectedObservationId = 'source-observation-' + digest;
             if (action.observationId !== expectedObservationId || requestId !== expectedObservationId) {
