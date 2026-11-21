@@ -421,6 +421,50 @@ def assert_board(page, role):
 
 
 
+def inspect_quest_evidence_event(page, objective_id, event_id, expected_type, screenshot):
+    row = page.locator(f'#sheet-content [data-objective-id="{objective_id}"]')
+    expect(row).to_have_count(1)
+    details = row.locator('details.quest-evidence')
+    expect(details).to_have_count(1)
+    details.locator('summary').tap()
+
+    event_link = details.locator('[data-quest-evidence-event-link="' + event_id + '"]')
+    expect(event_link).to_have_count(1)
+    expect(event_link).to_have_attribute('data-chronicle-event-id', event_id)
+    expect(event_link).to_have_attribute('data-chronicle-source', 'world')
+    expect(event_link).to_have_attribute(
+        'aria-label', 'Inspect retained ' + expected_type + ' event in World Chronicle'
+    )
+
+    before = authoritative_snapshot(page)
+    event_link.tap()
+    expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
+    exact_event = page.locator('#sheet-content [data-event-id="world:' + event_id + '"]')
+    expect(exact_event).to_have_count(1)
+    expect(exact_event).to_have_attribute('data-event-source', 'world')
+    expect(page.locator('#sheet-content')).to_have_attribute(
+        'data-chronicle-snapshot-revision', str(before['revision'])
+    )
+    after = authoritative_snapshot(page)
+    assert shared_world_snapshot(after) == shared_world_snapshot(before), (
+        'Opening quest evidence in World Chronicle must preserve the accepted world snapshot.'
+    )
+    assert after['xp'] == before['xp'], 'Quest evidence inspection must award no XP.'
+
+    screenshot = Path(screenshot)
+    page.screenshot(path=str(screenshot), full_page=True)
+    return {
+        'objectiveId': objective_id,
+        'eventId': event_id,
+        'eventType': expected_type,
+        'exactWorldEventOpened': True,
+        'snapshotRevision': before['revision'],
+        'readOnly': shared_world_snapshot(after) == shared_world_snapshot(before),
+        'xpDelta': after['xp'] - before['xp'],
+        'screenshot': screenshot.name
+    }
+
+
 def assert_circuit_round_progress(page, role, round_number, progress, complete=False):
     suffix = '' if round_number == 1 else f'-{round_number}'
     row = page.locator(
@@ -2543,6 +2587,14 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         founder_page.screenshot(path=str(founder_screenshot), full_page=True)
         witness_page.screenshot(path=str(witness_screenshot), full_page=True)
         silent_page.screenshot(path=str(silent_screenshot), full_page=True)
+        founder_quest_evidence_chronicle = inspect_quest_evidence_event(
+            founder_page, 'founder-guild-dissent-circuit', source_observation_event_id,
+            'source-observation-recorded', out / 'quest-evidence-chronicle-founder-390.png'
+        )
+        silent_quest_evidence_chronicle = inspect_quest_evidence_event(
+            silent_page, 'witness-guild-dissent-circuit', challenge_event_id,
+            'source-observation-challenged', out / 'quest-evidence-chronicle-silent-320.png'
+        )
         assert not witness_errors, 'Witness browser page errors: ' + json.dumps(witness_errors)
         assert not silent_errors, 'Silent-member browser page errors: ' + json.dumps(silent_errors)
 
@@ -2802,6 +2854,10 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'declinedChronicleCard': declined_chronicle_card,
             'itemHistoryChronicleNavigation': item_history_chronicle_navigation,
             'itemHistoryChronicleNavigation320': item_history_chronicle_navigation_320,
+            'questEvidenceChronicleNavigation': {
+                'founder390': founder_quest_evidence_chronicle,
+                'silentMember320': silent_quest_evidence_chronicle
+            },
             'eventChainNavigation': {
                 'declinedEventKinds': chain_navigation_results,
                 'declinedChainComplete': chain_navigation_results == ['source', 'forge', 'offer', 'declined'],
