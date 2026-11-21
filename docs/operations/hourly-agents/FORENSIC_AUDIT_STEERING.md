@@ -10,7 +10,7 @@
 
 **Documentation branch:** PR #719 has been updated on its existing branch without rebase. It remains 14 commits behind current #718; GitHub reports mergeable=true, but the branch is not synchronized; preserve that limitation rather than force-syncing.
 
-**Next:** obtain terminal Android result; preserve Worker A ownership of Browser/Android fixes; then path-by-path reconcile the 50-commit #718 stack against main. Next runtime objective: test offline map travel and explicit institution entry against the pinned accepted snapshot, with zero shared writes. No merge/release/deployment/Founder approval/authority transition.
+**Next:** coordinate with Worker A on terminal Android evidence (ADB offline, empty JUnit failure body, system crash; root cause unknown) and preserve APK/project-state artifacts; preserve Worker A ownership of Browser/Android fixes; then path-by-path reconcile the 50-commit #718 stack against main. Next runtime objective: test offline map travel and explicit institution entry against the pinned accepted snapshot, with zero shared writes. No merge/release/deployment/Founder approval/authority transition.
 
 ---
 
