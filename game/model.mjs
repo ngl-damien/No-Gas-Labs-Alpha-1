@@ -1151,7 +1151,8 @@ export async function validateWorld(raw) {
   }
   const activityRecordsById=new Map(),legacyActivityQueues=new Map();
   const boundActivityRecordIds=new Set(raw.events
-    .filter(event=>(event.type==='contribute'||event.type==='report')&&Object.hasOwn(event,'recordId'))
+    .filter(event=>event&&typeof event==='object'&&
+      (event.type==='contribute'||event.type==='report')&&Object.hasOwn(event,'recordId'))
     .map(event=>event.recordId));
   const activityRecordKey=(type,value)=>JSON.stringify([
     type,value.creationId,value.version,value.at,
