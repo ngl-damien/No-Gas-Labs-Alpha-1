@@ -1,3 +1,61 @@
+# Run 282 — Polymath Academy explicit refresh adopts only an accepted snapshot (2026-11-20/21)
+
+## Objective
+Remove the unnecessary close/reopen step when another shared session advances the accepted world while Polymath Academy remains open. Keep the Academy content pinned until the player explicitly refreshes; make refresh a local read-only projection change, never a canonical world action.
+
+## Runtime and acceptance changes
+Runtime/test head: `b7b993b60fa8b4aba6263cf8e9772d2669e2a419` on [PR #718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`.
+
+- `game/client.mjs`: the Academy's `refresh-required` notice now contains an accessible **Refresh Polymath Academy →** button. It appears only when the accepted shared revision is newer than the snapshot pinned by the open Academy. The button reopens the same institutional view from the latest already-accepted in-memory `world` projection. The notice explicitly says refresh is read-only and awards no XP. Stale/offline, revision-regression, and unavailable states do not expose this action.
+- `scripts/verify-quest-board.py`: added a two-session Witness/Founder mobile acceptance at 320px and 390px. While the Founder keeps Academy open at revision R, a separate pseudonymous Witness session appends one report at R+1. The Founder sees the refresh-required notice while the Academy remains pinned to R, then taps the explicit refresh action and sees the Academy at R+1.
+- The acceptance verifies that the refresh itself makes **zero shared API requests**, creates **zero world revision/event changes**, and awards **zero XP**. It also checks that the exact Witness report event remains in the shared event projection after refresh. The separate Witness browser session proves distinct session attribution, not a distinct human participant.
+- `game/sw.js` and `test/game-package.test.mjs`: public shell cache namespace rotated to `20261120-academy-explicit-refresh-35` so installed offline clients receive the changed client module. Cache Storage time bounds, public-shell allowlist, and network-only shared APIs were not changed.
+- The existing Evidence Archive/Chronicle offline journey still verifies pinned snapshots across disconnect/reconnect, exact report/contribution source-event and artifact-version navigation, and zero offline shared API mutations.
+
+Test-first sequence:
+- Test-only commit `eeb227c3d03504e18f7080a4cb09be9f9012cc19` intentionally failed at the new assertion in `scripts/verify-quest-board.py:4597`: the refresh-required notice existed, but no `data-academy-refresh` action was rendered. Red run [44867741137](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44867741137), artifact [14692418770](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44867741137/artifacts/14692418770).
+- Runtime button/copy: `79ba9f427b65d24bf8acedc542faf7142f4dc44e`.
+- PWA cache rotation: `021845845419ed077b5ea3149b21a2722a6ebedb`.
+- Package/cache assertions: `91d2a20109fb13f7c0aa1a3c6412635d918270f8`.
+- Mobile screenshot and structured refresh receipt: `b7b993b60fa8b4aba6263cf8e9772d2669e2a419`.
+
+## Exact-head verification
+All results below concern `b7b993b60fa8b4aba6263cf8e9772d2669e2a419`.
+
+- Full Verify [44868235269](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235269) PASS. Hosted post-edit preflight `ready`, warnings `[]`, failures `[]`; Node 24 tests, Python inspector, game package build, and bounded institutional exercise all exited 0. Preflight artifact [14692364472](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235269/artifacts/14692364472); diagnostics [14692399464](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235269/artifacts/14692399464).
+- Genesis Evidence Invariant [44868235267](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235267) PASS.
+- PWA build [44868235274](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235274) PASS; the deploy job was skipped for this PR run. Build artifact [14692653620](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235274/artifacts/14692653620).
+- Quest Board / Evidence Archive mobile [44868235252](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235252) PASS at 320px and 390px; artifact [14693250063](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235252/artifacts/14693250063).
+  - At 320px, Academy remained pinned at revision 101 while the Witness report advanced the accepted world to 102. Refresh event/report: `event-f7964572-08b3-4a78-a813-38b4c61d124c` / `report-8d82438c-4bca-4fce-b930-5ade89e7aa17`.
+  - At 390px, Academy remained pinned at revision 107 while the Witness report advanced the accepted world to 108. Refresh event/report: `event-a0de76e3-d0ab-49bb-af6b-45588aeb6292` / `report-c4fd3399-f5f4-4374-8369-7eaaa554621b`.
+  - Both refresh receipts record `sharedApiRequestCount: 0`, `xpDelta: 0`, `worldRevisionDelta: 0`, `eventIdsUnchanged: true`, and `currentAfterRefresh: true`. Screenshots preserve both refresh-required and refreshed-current states at both widths.
+  - The same run verifies Evidence Archive snapshots pinned at revisions 100 and 106 while 101 and 107 were accepted, 33 offline shared API requests and zero mutations at each width, then explicit reconnect refresh. Exact Chronicle source-event/artifact-version navigation passes (report position 99 at 320px; contribution position 106 at 390px). No horizontal overflow; main journey page-error arrays are empty.
+  - The Relay retry subjourney still records two sandboxed artifact-frame `navigator.serviceWorker` SecurityErrors without `allow-same-origin`; the main journey passes.
+- Synthesis Clerk mobile [44868235248](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235248) PASS at 320px/390px; artifact [14693190004](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235248/artifacts/14693190004). Source retrieval and independent verification remain `NOT_PERFORMED`, model assertions `LEADS_ONLY`, execution `NOT_EXECUTED`; rejected collaborator response and Source Archive failure history remain visible; no failure XP is awarded.
+- Academy Study Shelf [44868235286](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235286) PASS; artifact [14692513973](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235286/artifacts/14692513973).
+- Council Chamber [44868235251](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235251) PASS; artifact [14692554057](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235251/artifacts/14692554057).
+- Combat Yard [44868235250](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235250) PASS; artifact [14693145244](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235250/artifacts/14693145244).
+- Live Source Archive [44868235284](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235284) PASS.
+- Browser [44868235317](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235317) FAIL remains Worker A-owned. Offline PWA private recovery passed first (29 cached entries, two private publications, one notebook restore, one replay no-op, zero world mutation); the later journey fails at `scripts/verify-browser.py:472` because it expects `#contradiction-clerk-npc` / `BOUNDED ADVERSARY` in Guild Hall while #718 places the single Clerk in Evidence Archive. Handoff [#472 comment 7057579997](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7057579997). No Browser-owned file, locator, or NPC placement was changed.
+- Android [44868235244](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44868235244) is still IN_PROGRESS in the offline-world emulator journey after portable preflight, SDK/Gradle setup, project-state snapshot, and debug APK assembly passed. No terminal instrumentation/JUnit or physical-device result is claimed.
+
+## Process, donor review, and remaining state
+Root `AGENTS.md`, the complete shared protocol, Institutional Charter, World Projection Contract, MMORPG Completion Contract, universal agent contract, latest checkpoint, ledger, Worker B steering, registry, current PRs, source/tests, exact-head CI, and Worker A's latest Browser/Android results were reviewed. No nested `AGENTS.md` exists under `game/`, `scripts/`, `test/`, `docs/operations/`, or `docs/operations/hourly-agents/`.
+
+Both authorized Desktop Commander devices were offline; the local pre-edit portable preflight and local Node/Playwright/Gradle execution were unavailable. Hosted exact-head Full Verify ran the preflight after the edits and returned `ready`, warnings/failures empty. Procedural compliance remains PARTIAL for the unavailable local pre-edit receipt, not for the repository instruction review.
+
+Donor review rechecked RAE/Relay provenance and idempotent retry, Quest Engine host-verified grants/observations, Decision Chamber deterministic replay and authority/nonces, Guild bounded collaborator contracts, and the world projection/reducer. No donor code was copied. The Academy refresh uses the existing accepted-world projection and sheet lifecycle; it does not create a parallel state store or a new authority path.
+
+The previous Android run [44865624653](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44865624653) has since become terminal FAIL: 9/15 instrumentation tests executed, 2 failures, 0 errors, followed by process crash. One assertion compared the Source Observatory inspection against a snapshot that omitted a preceding `discover` event for `overlook`; the exact mismatch is route/arrival discovery versus the read-only inspection boundary. A second failure, `nativeExportQueueRejectsOversizedChunksAndExecutorSaturation`, has no failure body or stack trace; the WebView sandboxed process died, but no `FATAL EXCEPTION`, `AndroidRuntime`, `Caused by`, or ANR was captured. Root cause of the second failure remains unknown. Handoff [#533 comment 7057312031](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7057312031); Worker B made no Android-owned edits.
+
+Canonical main remains `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. PR #718 remains draft/unmerged at `b7b993b60fa8b4aba6263cf8e9772d2669e2a419`, 75 commits ahead / 0 behind main, 14 changed paths. PR #719 remains a draft documentation-only branch; it is updated on its existing branch without rebase/force-sync. Worker A's #392 cache branch remains stale (95 ahead / 943 behind main); the #718 cache-namespace-only handoff was posted, and #392 itself was not changed. The #718/#472 Contradiction Clerk placement disagreement remains a human-gate decision. G6/G7 remain IN_PROGRESS, G9 NOT_STARTED, Founder trust NOT_ENROLLED. No canonical event, XP, approval, authority, merge, release, deployment, or external publication was created by this run.
+
+## Next
+1. Collect terminal Android result for exact head `b7b993b60fa8b4aba6263cf8e9772d2669e2a419`; preserve the prior Android failure as a separate unresolved result.
+2. Obtain human-gate adjudication of the Contradiction Clerk's canonical institution before changing either Browser branch or NPC placement.
+3. Path-by-path reconcile the 75-commit #718 proposal against main before any integration decision; do not merge the stack merely because GitHub reports mergeable.
+4. Continue the playable-world loop by applying accepted-snapshot freshness/explicit-refresh semantics only where a real institution has a pinned shared-world view, with offline and zero-mutation acceptance.
+
 # Run 281 — Polymath Academy pins its accepted snapshot across offline map travel (2026-11-20/21)
 
 ## Objective
