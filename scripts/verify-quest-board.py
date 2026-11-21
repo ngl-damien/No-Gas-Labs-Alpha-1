@@ -5732,6 +5732,125 @@ def assert_publication_snapshot_pinning(browser, page, publication, out, width):
         )
         refreshed_link = page.locator('#publication-chronicle-link')
         expect(refreshed_link).to_have_attribute('data-publication-chronicle-event-id', target['eventId'])
+
+        # Reopen the Chronicle from this accepted artifact snapshot. A later
+        # report must make the pinned view stale, not silently replace it.
+        refreshed_link.tap()
+        expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
+        pinned_chronicle_content = page.locator('#sheet-content')
+        chronicle_pinned_revision = after_refresh['revision']
+        expect(pinned_chronicle_content).to_have_attribute(
+            'data-chronicle-snapshot-revision', str(chronicle_pinned_revision)
+        )
+        second_report = post_action(witness_page, {
+            'type': 'report',
+            'creationId': publication['creationId'],
+            'version': publication['version'],
+            'text': 'Chronicle live-update acceptance report. This is attributed activity, not independent evidence or a truth verdict.',
+            'requestId': 'publication-chronicle-explicit-refresh-report-' + str(width)
+        })
+        second_world = second_report.get('world', {})
+        second_events = second_world.get('events', [])
+        second_event = next(
+            (event for event in reversed(second_events) if event.get('type') == 'report'),
+            None
+        )
+        assert isinstance(second_event, dict) and isinstance(second_event.get('id'), str), (
+            'The second session must return the exact retained report event used to advance the live world.'
+        )
+        second_after = authoritative_snapshot(witness_page)
+        assert second_after['revision'] == chronicle_pinned_revision + 1, (
+            'The second session must append exactly one report while the Chronicle is open.'
+        )
+        assert second_after['xp'] == after_refresh['xp'], (
+            'The additional report used to advance the Chronicle must not award XP.'
+        )
+        page.wait_for_function(
+            """expected => Number(document.querySelector('#world')?.dataset.worldRevision) === expected""",
+            arg=second_after['revision']
+        )
+        expect(pinned_chronicle_content).to_have_attribute(
+            'data-chronicle-snapshot-revision', str(chronicle_pinned_revision)
+        )
+        expect(pinned_chronicle_content).to_have_attribute(
+            'data-chronicle-snapshot-freshness-reason', 'revision-mismatch'
+        )
+        chronicle_refresh_button = pinned_chronicle_content.locator(
+            '[data-chronicle-snapshot-refresh]'
+        )
+        expect(chronicle_refresh_button).to_be_visible()
+        expect(chronicle_refresh_button).to_be_enabled()
+
+        before_chronicle_refresh = authoritative_snapshot(page)
+        page.evaluate("""() => {
+          window.__chronicleRefreshApiRequests = 0;
+          window.__chronicleRefreshOriginalFetch = window.fetch;
+          window.fetch = function(input, init) {
+            const raw = typeof input === 'string' ? input : (input?.url || String(input));
+            if (new URL(raw, location.href).pathname.startsWith('/api/')) {
+              window.__chronicleRefreshApiRequests += 1;
+            }
+            return window.__chronicleRefreshOriginalFetch.call(this, input, init);
+          };
+          window.__chronicleRefreshOriginalOpen = XMLHttpRequest.prototype.open;
+          XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+            if (new URL(String(url), location.href).pathname.startsWith('/api/')) {
+              window.__chronicleRefreshApiRequests += 1;
+            }
+            return window.__chronicleRefreshOriginalOpen.call(this, method, url, ...rest);
+          };
+        }""")
+        chronicle_refresh_button.tap()
+        page.wait_for_function(
+            """expected => {
+              const content = document.querySelector('#sheet-content');
+              return content?.dataset.chronicleSnapshotRevision === String(expected) &&
+                content?.dataset.chronicleSnapshotFreshnessReason === 'current';
+            }""",
+            arg=second_after['revision']
+        )
+        chronicle_refresh_api_requests = page.evaluate("window.__chronicleRefreshApiRequests")
+        page.evaluate("""() => {
+          if (window.__chronicleRefreshOriginalFetch) window.fetch = window.__chronicleRefreshOriginalFetch;
+          if (window.__chronicleRefreshOriginalOpen) {
+            XMLHttpRequest.prototype.open = window.__chronicleRefreshOriginalOpen;
+          }
+        }""")
+        after_chronicle_refresh = authoritative_snapshot(page)
+        assert chronicle_refresh_api_requests == 0, (
+            'Refreshing a pinned Chronicle must use the accepted in-memory snapshot, not shared API requests.'
+        )
+        assert shared_world_snapshot(after_chronicle_refresh) == shared_world_snapshot(before_chronicle_refresh), (
+            'Chronicle snapshot refresh must not mutate the shared world.'
+        )
+        assert after_chronicle_refresh['xp'] == before_chronicle_refresh['xp'], (
+            'Chronicle snapshot refresh must not award XP.'
+        )
+        assert after_chronicle_refresh['revision'] == before_chronicle_refresh['revision'], (
+            'Chronicle snapshot refresh must not append a world event.'
+        )
+        exact_event_after_refresh = pinned_chronicle_content.locator(
+            '[data-event-id="world:' + target['eventId'] + '"]'
+        )
+        expect(exact_event_after_refresh).to_have_count(1)
+        chronicle_search = pinned_chronicle_content.locator('[data-chronicle-search]')
+        expect(chronicle_search).to_have_value(target['eventId'])
+        chronicle_search.fill('')
+        new_report_event = pinned_chronicle_content.locator(
+            '[data-event-id="world:' + second_event['id'] + '"]'
+        )
+        expect(new_report_event).to_have_count(1)
+        chronicle_refresh = {
+            'pinnedRevision': chronicle_pinned_revision,
+            'acceptedRevision': second_after['revision'],
+            'refreshedRevision': after_chronicle_refresh['revision'],
+            'newReportEventId': second_event['id'],
+            'apiRequests': chronicle_refresh_api_requests,
+            'worldMutation': shared_world_snapshot(after_chronicle_refresh) != shared_world_snapshot(before_chronicle_refresh),
+            'xpDelta': after_chronicle_refresh['xp'] - before_chronicle_refresh['xp'],
+            'exactPublicationEventPreserved': exact_event_after_refresh.count() == 1,
+            'searchPreservedUntilCleared': True
+        }
         screenshot = out / ('publication-snapshot-pin-' + str(width) + '.png')
         page.screenshot(path=str(screenshot), full_page=True)
         page.locator('#sheet-close').tap()
