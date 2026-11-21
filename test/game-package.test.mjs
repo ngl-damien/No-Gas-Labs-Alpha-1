@@ -786,3 +786,29 @@ test('secure origin registers the offline shell once and consumes an asynchronou
   assert.deepEqual(calls, [['./sw.js', { scope: './' }]]);
   await Promise.resolve();
 });
+
+test('artifact detail fails closed for unavailable exact versions and guards stale satire follow-ups', async () => {
+  const client = await readFile(join(process.cwd(), 'game/client.mjs'), 'utf8');
+  const openStart = client.indexOf('function openCreation(');
+  const enterStart = client.indexOf('function enterCreation(', openStart);
+  assert.ok(openStart >= 0 && enterStart > openStart, 'artifact detail and entry functions must be present');
+  const detail = client.slice(openStart, enterStart);
+  const exactVersionValidation = detail.indexOf('prepareContradictionReview(creation, targetVersion)');
+  const availableVersions = detail.indexOf('const availableVersions=');
+  assert.ok(exactVersionValidation >= 0,
+    'the requested version must pass the strict retained-version validator');
+  assert.ok(availableVersions > exactVersionValidation,
+    'the selector must not be built before exact-version validation');
+  assert.match(detail, /ARTIFACT VERSION UNAVAILABLE/);
+  assert.match(detail, /creationVersionStatus/);
+  assert.match(detail, /current version was not substituted/i);
+  assert.doesNotMatch(detail,
+    /availableVersions\.some\(version=>version\.version===requestedVersion\)\?requestedVersion:creation\.version/);
+  assert.match(detail, /Draft a linked follow-up issue →',\s*guarded\(/,
+    'the stale satire follow-up guard must use the normal guarded error surface');
+
+  const enterEnd = client.indexOf('function pendingPredicateNeedsRetentionAcknowledgement', enterStart);
+  const entry = client.slice(enterStart, enterEnd);
+  assert.match(entry, /prepareContradictionReview\(c,versionNumber\)/,
+    'entering an artifact must revalidate the exact requested version');
+});
