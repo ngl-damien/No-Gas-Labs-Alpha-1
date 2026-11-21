@@ -2561,10 +2561,19 @@ function academySnapshotNotice(state,snapshotRevision,currentRevision){
   const detail=stale
     ?'The shared connection is offline. This Academy view remains pinned to the last accepted snapshot at revision '+snapshotRevision+'.'+(newerAccepted?' The accepted projection had advanced to revision '+currentRevision+' before disconnection.':'')+' Local map travel is preview-only and is not saved to the shared world. Reconnect and reopen the Academy to inspect a newer accepted snapshot.'
     :refreshRequired
-      ?'The accepted shared world has advanced to revision '+currentRevision+', but this Academy view remains pinned to revision '+snapshotRevision+'. Close and reopen the Academy to refresh its records.'
+      ?'The accepted shared world has advanced to revision '+currentRevision+', but this Academy view remains pinned to revision '+snapshotRevision+'. Use Refresh Polymath Academy to replace this view with the newest accepted snapshot. Refreshing is read-only and awards no XP.'
       :regressed
         ?'The current shared projection is revision '+currentRevision+', below this view\'s pinned revision '+snapshotRevision+'. The older view is preserved; do not treat the regressed projection as fresh.'
         :'The accepted shared snapshot revision is unavailable. This Academy view cannot be represented as current.';
+  const children=[
+    node('h3',{text:stale?'SHARED SNAPSHOT · STALE':refreshRequired?'SHARED SNAPSHOT · REFRESH AVAILABLE':regressed?'SHARED SNAPSHOT · REVISION REGRESSION':'SHARED SNAPSHOT · REVISION UNAVAILABLE'}),
+    paragraph(detail,'form-help')
+  ];
+  if(refreshRequired)children.push(button('Refresh Polymath Academy →',()=>openAcademy(),{
+    class:'list-button',
+    'data-academy-refresh':'true',
+    'aria-label':'Refresh Polymath Academy from the latest accepted shared snapshot'
+  }));
   return node('aside',{
     class:'field-card',
     role:'status',
@@ -2572,10 +2581,7 @@ function academySnapshotNotice(state,snapshotRevision,currentRevision){
     'data-academy-snapshot-notice':'true',
     'data-snapshot-revision':String(snapshotRevision),
     'data-current-revision':Number.isSafeInteger(currentRevision)?String(currentRevision):'unavailable'
-  },[
-    node('h3',{text:stale?'SHARED SNAPSHOT · STALE':refreshRequired?'SHARED SNAPSHOT · REFRESH AVAILABLE':regressed?'SHARED SNAPSHOT · REVISION REGRESSION':'SHARED SNAPSHOT · REVISION UNAVAILABLE'}),
-    paragraph(detail,'form-help')
-  ]);
+  },children);
 }
 function refreshAcademySnapshotFreshnessNotice(){
   if($('sheet').hidden||$('sheet-title').textContent!=='Polymath Academy')return;
