@@ -200,7 +200,8 @@ def authoritative_snapshot(page):
           .map(event => event.id),
         creationVersions: world.creations.map(creation => [creation.id, creation.version]),
         viewerId: dto.viewer?.id,
-        viewerRole: dto.viewer?.role
+        viewerRole: dto.viewer?.role,
+        sourceSnapshotReceipt: dto.sourceSnapshotReceipt
       };
     }""")
 
@@ -5989,6 +5990,16 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
             'The Source Observation must retain the later append position.'
         )
         assert retained['event'] is not None
+        assert retained['event'].get('bindingMode') == 'SERVER_SESSION_RECEIPT', (
+            'The shared Source Observation must bind to a server-issued receipt for the session snapshot.'
+        )
+        receipt_digest = retained['event'].get('sourceSnapshotReceiptDigest')
+        assert isinstance(receipt_digest, str) and len(receipt_digest) == 64 and all(
+            character in '0123456789abcdef' for character in receipt_digest
+        ), 'The retained event must store only the SHA-256 receipt digest, never the bearer token.'
+        assert retained['event'].get('sourceSnapshotReceipt') is None, (
+            'The ephemeral session receipt token must not be copied into canonical world history.'
+        )
         assert retained['event'].get('sourceSnapshotRevision') == pinned['revision'], (
             'The event must retain the exact snapshot revision from which its form was opened.'
         )
