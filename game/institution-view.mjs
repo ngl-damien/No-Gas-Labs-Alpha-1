@@ -720,6 +720,28 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  }
  container.append(el('h3', heading));
  container.append(introElement);
+ const refreshButton = typeof options.onRefresh === 'function' ? el('button') : null;
+ const updateRefreshButton = (freshness, reason, available) => {
+  if (!refreshButton) return;
+  refreshButton.hidden = freshness !== 'stale';
+  refreshButton.disabled = available !== true;
+  refreshButton.textContent = available
+   ? 'Refresh World Chronicle →'
+   : reason === 'disconnected'
+     ? 'Reconnect to refresh Chronicle'
+     : 'Refresh unavailable';
+  refreshButton.setAttribute('aria-label', refreshButton.textContent);
+ };
+ if (refreshButton) {
+  refreshButton.type = 'button';
+  refreshButton.className = 'secondary-button';
+  refreshButton.dataset.chronicleSnapshotRefresh = 'true';
+  refreshButton.onclick = () => {
+   if (!refreshButton.disabled) options.onRefresh();
+  };
+  container.append(refreshButton);
+  updateRefreshButton(options.freshnessState, options.freshnessReason, options.refreshAvailable === true);
+ }
  if(typeof options.onOpenLocation==='function'){
   const routeDisclosure=el('p',"Institution routes are deterministic navigation associations based on retained event types and the same rules used for world activity counts. They are not claims about the event's physical location or the truth of its contents. Only a retained discovery event can supply a recorded map location.");
   routeDisclosure.className='form-help';
@@ -1012,7 +1034,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   pageStart=0;
   renderPage();
  };
- const refreshChronicle=(nextChronicleOrFactory,nextIntro,nextFreshness)=>{
+ const refreshChronicle=(nextChronicleOrFactory,nextIntro,nextFreshness,nextFreshnessReason='current',nextRefreshAvailable=false)=>{
   // Keep the previous snapshot explicitly stale while the next accepted
   // snapshot is projected. If projection fails, the UI never claims freshness.
   if(options.freshnessState){
@@ -1032,6 +1054,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   currentChronicle=nextChronicle;
   introElement.textContent=nextIntro;
   if(options.freshnessState)introElement.dataset.chronicleSnapshotFreshness=nextFreshness;
+  updateRefreshButton(nextFreshness,nextFreshnessReason,nextRefreshAvailable===true);
   updateMalformedWarning(currentChronicle.malformed);
   if(exactEventId!==null){
    matchingEntries=exactEventMatches(exactEventId,exactEventSource)||[];
@@ -1071,11 +1094,11 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
 }
 
 const WORLD_CHRONICLE_STALE_INTRO = 'Read-only retained world history. The shared stream is disconnected; this is the last accepted snapshot and may be stale. Reconnect before relying on it as current.';
-const WORLD_CHRONICLE_REVISION_STALE_INTRO = 'Read-only retained world history. The accepted world revision has advanced or regressed since this snapshot was captured; this view remains pinned and may be stale. Refresh before relying on it as current.';
+const WORLD_CHRONICLE_REVISION_STALE_INTRO = 'Read-only retained world history. A newer accepted revision exists, but this view remains pinned to its captured snapshot. Refresh explicitly to move this Chronicle forward; refreshing creates no world activity or reward.';
 const WORLD_CHRONICLE_REVISION_UNAVAILABLE_INTRO = 'Read-only retained world history. The accepted world revision is unavailable; this view remains pinned and may be stale. Reconnect or refresh before relying on it as current.';
 const WORLD_CHRONICLE_CURRENT_INTRO = 'Read-only retained world history from the current client snapshot. Event identity and append position are preserved; inspection creates no activity or reward.';
 
-export function renderWorldChronicle(container,world,eventId,{stale=false,staleReason='disconnected',onOpenArtifact,onOpenLocation,onReturnToEvidenceArchive}={}){
+export function renderWorldChronicle(container,world,eventId,{stale=false,staleReason='disconnected',onOpenArtifact,onOpenLocation,onReturnToEvidenceArchive,onRefresh,refreshAvailable=false}={}){
  if(typeof eventId!=='string'||!eventId||eventId.trim()!==eventId)
   throw new TypeError('A retained world event ID is required for Chronicle navigation.');
  if(typeof stale!=='boolean')throw new TypeError('Chronicle snapshot freshness must be explicit.');
@@ -1086,6 +1109,12 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,staleR
   throw new TypeError('Chronicle return navigation must be a bounded callback.');
  if(onOpenLocation!==undefined&&typeof onOpenLocation!=='function')
   throw new TypeError('Chronicle location navigation must be a bounded callback.');
+ if(onRefresh!==undefined&&typeof onRefresh!=='function')
+  throw new TypeError('Chronicle refresh navigation must be a bounded callback.');
+ if(typeof refreshAvailable!=='boolean')
+  throw new TypeError('Chronicle refresh availability must be explicit.');
+ if(refreshAvailable&&(!stale||typeof onRefresh!=='function'))
+  throw new TypeError('Chronicle refresh availability requires a stale snapshot and bounded callback.');
  if(typeof onReturnToEvidenceArchive==='function'){
   const returnButton=el('button','Return to Evidence Archive →');
   returnButton.type='button';
@@ -1102,7 +1131,7 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,staleR
   :['revision-mismatch','revision-regression'].includes(reason)
    ?WORLD_CHRONICLE_REVISION_STALE_INTRO
    :WORLD_CHRONICLE_STALE_INTRO;
- const renderSnapshot=(snapshot,isStale,reason)=>{
+ const renderSnapshot=(snapshot,isStale,reason,isRefreshAvailable=false)=>{
   const freshnessReason=isStale?reason:'current';
   const staleIntro=staleIntroFor(freshnessReason);
   const update=renderChronicle(container,projectChronicle({world:snapshot}),onOpenArtifact,{
@@ -1110,6 +1139,9 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,staleR
    intro:isStale?staleIntro:WORLD_CHRONICLE_CURRENT_INTRO,
    staleIntro,
    freshnessState:isStale?'stale':'current',
+   freshnessReason,
+   onRefresh,
+   refreshAvailable:isStale&&isRefreshAvailable,
    exactEventLookup:{eventId,source:'world'},
    onOpenLocation:isStale?undefined:onOpenLocation
   });
@@ -1117,8 +1149,8 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,staleR
   container.dataset.chronicleSnapshotFreshnessReason=freshnessReason;
   return update;
  };
- const refresh=renderSnapshot(world,stale,stale?staleReason:'current');
- return (nextWorld,nextStale,nextStaleReason='disconnected')=>{
+ const refresh=renderSnapshot(world,stale,stale?staleReason:'current',refreshAvailable);
+ return (nextWorld,nextStale,nextStaleReason='disconnected',nextRefreshAvailable=false)=>{
   if(!nextWorld||typeof nextWorld!=='object'||Array.isArray(nextWorld))
    throw new TypeError('Chronicle refresh requires a world snapshot.');
   if(typeof nextStale!=='boolean')
@@ -1128,7 +1160,7 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,staleR
    throw new TypeError('Chronicle refresh requires an explicit supported stale reason.');
   const refreshed=refresh(()=>projectChronicle({world:nextWorld}),
    nextStale?staleIntroFor(reason):WORLD_CHRONICLE_CURRENT_INTRO,
-   nextStale?'stale':'current');
+   nextStale?'stale':'current',reason,nextStale&&nextRefreshAvailable);
   if(refreshed){
    container.dataset.chronicleSnapshotRevision=snapshotRevision(nextWorld);
    container.dataset.chronicleSnapshotFreshnessReason=reason;
