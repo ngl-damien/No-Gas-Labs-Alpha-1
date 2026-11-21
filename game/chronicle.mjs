@@ -919,8 +919,16 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
       : event?.sourceSnapshotRevision === undefined
         ? "Snapshot reference: not recorded on this legacy note."
         : "Snapshot reference: malformed or unavailable; no revision is inferred.";
-    entry.detail = `Source/attribution: ${text(event?.source) || "NOT PROVIDED"}. Falsifier: ${text(event?.falsifier) || "NOT PROVIDED"}. Uncertainty: ${text(event?.uncertainty) || "NOT PROVIDED"}. Next test: ${text(event?.nextTest) || "NOT PROVIDED"}. ${snapshotReference}`;
-    entry.warning = `${sourceWarning} The selected version is a user-supplied binding; export origin is not cryptographically established. The declared snapshot reference does not prove the actor viewed that prefix. Source retrieval NOT_PERFORMED; independent verification NOT_PERFORMED; execution NOT_EXECUTED.`;
+    const receiptDigest = typeof event?.sourceSnapshotReceiptDigest === "string" && /^[a-f0-9]{64}$/.test(event.sourceSnapshotReceiptDigest)
+      ? event.sourceSnapshotReceiptDigest
+      : null;
+    const snapshotBinding = event?.bindingMode === "SERVER_SESSION_RECEIPT" && receiptDigest
+      ? `Server-delivery receipt: validated for this session (retained SHA-256 digest ${receiptDigest}). This establishes delivery to the authenticated session only; it does not prove a person viewed, read or understood the snapshot.`
+      : event?.bindingMode === "USER_SELECTED"
+        ? "Snapshot binding: author-declared only; no server-delivery receipt is retained."
+        : "Snapshot binding: malformed or unavailable; no delivery is inferred.";
+    entry.detail = `Source/attribution: ${text(event?.source) || "NOT PROVIDED"}. Falsifier: ${text(event?.falsifier) || "NOT PROVIDED"}. Uncertainty: ${text(event?.uncertainty) || "NOT PROVIDED"}. Next test: ${text(event?.nextTest) || "NOT PROVIDED"}. ${snapshotReference} ${snapshotBinding}`;
+    entry.warning = `${sourceWarning} The selected version is a user-supplied binding; export origin is not cryptographically established. The declared snapshot reference does not prove the actor viewed that prefix. ${snapshotBinding} Source retrieval NOT_PERFORMED; independent verification NOT_PERFORMED; execution NOT_EXECUTED.`;
   } else if (type === "source-observation-challenged") {
     const challengeType = text(event?.challengeType) || "unclassified";
     entry.title = `Source observation challenged · ${challengeType.toUpperCase()}`;
