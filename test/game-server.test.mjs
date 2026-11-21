@@ -11,7 +11,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { gunzipSync } from 'node:zlib';
 import { createGameServer, validateStoredWorldHistory } from '../game/server.mjs';
-import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
+import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
 import { GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR, buildGitHubSourceArchiveBody } from '../game/artifacts.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
@@ -3892,5 +3892,53 @@ test('stored report text cannot drift from its retained Chronicle event receipt'
   assert.throws(
     () => validateStoredWorldHistory(tampered),
     /receipt|text|contribution/i
+  );
+});
+
+test('stored-history validation accepts only complete response-position metadata', async () => {
+  const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const witness = { id: 'history-witness', name: 'History Witness', role: 'witness' };
+  const start = createWorld({
+    id: 'stored-response-history-position',
+    now: '2026-10-17T12:00:00.000Z'
+  });
+  const draft = await applyAction(start, {
+    type: 'draft', kind: 'loom', title: 'Private lead',
+    intent: 'A hidden event precedes public research.'
+  }, founder, { now: '2026-10-17T12:00:01.000Z' });
+  const proposal = await applyAction(draft.world, {
+    type: 'propose-moonshot',
+    title: 'Bound stored positions',
+    hypothesis: 'The retained event order is stable.',
+    falsifier: 'A public snapshot changes the event sequence.',
+    evidenceNeeded: 'A complete retained event sequence.'
+  }, founder, { now: '2026-10-17T12:00:02.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Inspect the retained event sequence.',
+    observation: 'The response exposes a derived position for each event.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, founder, { now: '2026-10-17T12:00:03.000Z' });
+
+  const full = publicWorld(report.world, founder);
+  assert.deepEqual(full.events.map(event => event.historyPosition), [1, 2, 3]);
+  assert.doesNotThrow(() => validateStoredWorldHistory(full));
+  assert.ok(report.world.events.every(event => !Object.hasOwn(event, 'historyPosition')));
+
+  const forged = structuredClone(full);
+  forged.events[1].historyPosition = 99;
+  assert.throws(
+    () => validateStoredWorldHistory(forged),
+    /history position/i
+  );
+
+  const filtered = publicWorld(report.world, witness);
+  assert.deepEqual(filtered.events.map(event => event.historyPosition), [2, 3]);
+  assert.throws(
+    () => validateStoredWorldHistory(filtered),
+    /filtered|history position/i
   );
 });
