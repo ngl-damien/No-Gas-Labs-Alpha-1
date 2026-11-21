@@ -1,3 +1,17 @@
+## Run 278 — 2026-11-20/21: Evidence Archive normalized lineage identities
+
+**Objective:** Reject padded or malformed activity, event, action-result, artifact, and actor identifiers before offering a Chronicle source link.
+
+**Runtime:** PR #718 exact head `15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da`. `game/institution-view.mjs` now requires normalized bounded identifiers and normalized recorded actor metadata; malformed records remain visible but unvalidated/unlinked. Exact retained artifact version and unique matching event remain mandatory.
+
+**Test-first:** test-only `81ce3e72` exposed a padded report ID incorrectly remaining linked (expected unvalidated, actual linked). Runtime `114b1b96` fixed the projection. Intermediate runs caught test-selector/copy assumptions, corrected by `ba4c3f9e` and final test `15bf7bbe`; final tests cover padded record/action-result/artifact/actor IDs and actor display. Projection remains read-only.
+
+**Exact-head checks:** Full Verify [44842948950](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948950), Genesis [44842948962](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948962), PWA [44842949004](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842949004), Combat [44842948957](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948957), Council [44842949074](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842949074), and Academy [44842949001](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842949001) PASS. Quest Board [44842948954](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948954) and Synthesis [44842949019](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842949019) were in progress. Browser [44842948978](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948978) repeats Worker A's Guild Hall Clerk locator mismatch after offline PWA recovery passes. Android [44842949028](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842949028) assembled the debug APK; emulator journey remains in progress.
+
+**Governance:** main unchanged; #718 draft/unmerged, 36 ahead/0 behind, 9 paths; #719 documentation-only child synchronized to #718 head by two-parent merge, four paths, draft/unmerged. No canonical state, XP, evidence certification, approval, authority, merge, release, or deployment. Hosted preflight ready with empty warnings/failures; local devices offline; procedural compliance PARTIAL. G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+
+---
+
 ## Run 277 — 2026-11-20: cross-actor Evidence Archive attribution
 
 **Objective:** Make retained Evidence Archive activity visibly attributable to its recorded pseudonymous actor ID/role and prove a distinct Witness actor can append a report while a Founder client retains an older snapshot.

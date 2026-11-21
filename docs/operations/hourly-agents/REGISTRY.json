@@ -23,14 +23,14 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 277 (2026-11-20): Evidence Archive actor attribution and cross-actor snapshot continuity; runtime head 184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588.",
-      "repo_delta": "PR #718 head 184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588, 29 commits ahead/0 behind main, 8 paths; PR #719 docs-only child synchronized by 324b849f585e247b3ff7eea88a6cdd4452233d9f, 15 ahead/0 behind, 4 paths; canonical main unchanged.",
-      "current_pr_focus": "PR #718: cross-actor Evidence Archive provenance and offline snapshot continuity. PR #719: synchronized Run 277 documentation-only checkpoint. Full Verify, Genesis, PWA, Council, Academy, Combat PASS; Quest Board, Synthesis, Browser, Android in progress at checkpoint."
+      "last_observed_run": "Run 278 (2026-11-20/21): Evidence Archive normalized lineage identities; runtime head 15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da.",
+      "repo_delta": "PR #718 head 15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da, 36 commits ahead/0 behind main, 9 paths; PR #719 docs-only child synchronized to this exact runtime head by a two-parent merge commit, 4 paths; canonical main unchanged.",
+      "current_pr_focus": "PR #718: Evidence Archive normalized lineage identity hardening. PR #719: synchronized Run 278 documentation checkpoint. Full Verify, Genesis, PWA, Combat, Council, Academy PASS; Quest Board/Synthesis/Android in progress at checkpoint; Browser reproduces Worker A-owned Clerk locator mismatch."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
   "manus_constraint": "Manus 300 credits/day — one credit = one sealed block — avoid fan-out",
-  "last_observed_run": "Run 277 (2026-11-20): Evidence Archive actor attribution and cross-actor snapshot continuity; runtime head 184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588.",
-  "repo_delta": "PR #718 head 184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588, 29 commits ahead/0 behind main, 8 paths; PR #719 docs-only child synchronized by 324b849f585e247b3ff7eea88a6cdd4452233d9f, 15 ahead/0 behind, 4 paths; canonical main unchanged.",
-  "current_pr_focus": "PR #718: cross-actor Evidence Archive provenance and offline snapshot continuity. PR #719: synchronized Run 277 documentation-only checkpoint. Full Verify, Genesis, PWA, Council, Academy, Combat PASS; Quest Board, Synthesis, Browser, Android in progress at checkpoint."
+  "last_observed_run": "Run 278 (2026-11-20/21): Evidence Archive normalized lineage identities; runtime head 15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da.",
+  "repo_delta": "PR #718 head 15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da, 36 commits ahead/0 behind main, 9 paths; PR #719 docs-only child synchronized to this exact runtime head by a two-parent merge commit, 4 paths; canonical main unchanged.",
+  "current_pr_focus": "PR #718: Evidence Archive normalized lineage identity hardening. PR #719: synchronized Run 278 documentation checkpoint. Full Verify, Genesis, PWA, Combat, Council, Academy PASS; Quest Board/Synthesis/Android in progress at checkpoint; Browser reproduces Worker A-owned Clerk locator mismatch."
 }

@@ -1,3 +1,17 @@
+## Run 278 — Worker B steering (2026-11-20/21)
+
+**Current runtime:** Continue only PR #718, branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da`, base `main` `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. Do not create a competing runtime branch. PR #718 remains draft/unmerged. Documentation PR #719 is synchronized to this exact runtime head by a two-parent merge commit and remains draft/unmerged.
+
+**Completed:** Evidence Archive now fails closed on unnormalized record, action-result, event, artifact, and actor identifiers. Padded actor IDs/names cannot create matching source links; malformed activity remains visible but unvalidated, and malformed actor labels are not echoed as valid attribution. A source link still means retained activity, not factual verification.
+
+**Exact-head checks:** Full Verify, Genesis, PWA, Combat, Council, and Academy PASS. Quest Board and Synthesis are IN PROGRESS; Browser reproduces the Worker A-owned Clerk locator mismatch after offline PWA recovery passes; Android has assembled the debug APK and is still in the offline-world emulator journey.
+
+**Ownership:** Worker A owns Browser and Android paths. Browser run [44842948978](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948978) fails at `scripts/verify-browser.py:472` because the journey expects the single Contradiction Clerk in Guild Hall; actual placement remains Evidence Archive. Handoff [PR #472 comment 7054019888](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7054019888). Do not move/duplicate the NPC or edit Worker A-owned Browser files. Android run [44842949028](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842949028) has APK assembly PASS; emulator result is not terminal. Do not edit Worker A-owned Android paths; hand off exact terminal failures to PR #533 if they appear.
+
+**Next:** collect terminal Quest Board/Synthesis/Android results; then path-by-path reconcile #718 against main. No merge, release, deployment, Founder approval, or authority transition.
+
+---
+
 ## Run 277 — Worker B steering (2026-11-20)
 
 **Current runtime:** Continue PR #718, branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588`. Do not create a competing runtime branch. PR #718 remains draft and unmerged. Documentation PR #719 is synchronized to this runtime head by merge commit `324b849f585e247b3ff7eea88a6cdd4452233d9f`; it remains draft and unmerged.

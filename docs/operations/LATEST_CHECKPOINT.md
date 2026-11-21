@@ -1,3 +1,53 @@
+# Run 278 — Evidence Archive rejects unnormalized lineage identities (2026-11-20/21)
+
+## Objective
+Harden the Evidence Archive's provenance links so malformed-but-equal identifiers cannot make a retained report or contribution appear to have a valid source event. A matching string is not sufficient if its identity is not normalized.
+
+## Runtime change
+Runtime/test head: `15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da` on [PR #718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718).
+
+- `game/institution-view.mjs` now accepts only nonempty, trimmed, bounded identifiers for activity record IDs, retained event IDs, `actionResult.id`, and artifact creation IDs.
+- Actor attribution must have a normalized bounded ID, an allowed recorded role (`founder` or `witness`), and a nonempty trimmed name within the existing 80-code-point bound.
+- Source-event linkage requires exactly one retained action result, a unique normalized event ID, matching event type, normalized matching creation ID, matching version, and normalized matching actor identity/role/name.
+- Artifact navigation requires the exact retained creation/version. Invalid creation or record identity leaves the card visible but unvalidated.
+- Malformed actor IDs are rendered as unavailable; malformed actor names are not echoed as if they were valid attribution.
+- Missing, malformed, duplicate, or mismatched lineage stays visible and unlinked. No guessed Chronicle link is offered.
+
+This is a read-only projection hardening. It does not change retained events, canonical world state, XP, evidence certification, truth, approval, or authority. A valid source link still identifies retained activity only; it does not verify the report's claim.
+
+## Test-first history
+1. Test-only commit `81ce3e725eaa1043b0fd9dd16fde95212dfea914` added regressions for padded record IDs, action-result IDs, actor IDs, and actor names. Full Verify [44842410952](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842410952) failed exactly as intended: a report ID with surrounding whitespace remained `linked` instead of becoming `unvalidated`.
+2. Runtime commit `114b1b961ddb10d027a180bee486ac8c2fc3eb67` added normalized identity validation. Its first follow-up run exposed a test-selector defect: the malformed record remained visible under its raw diagnostic ID, while the test searched for the normalized ID. The next run exposed an assertion-copy mismatch: an unvalidated card correctly said navigation was unavailable rather than claiming a source Chronicle link had been withheld.
+3. Test correction `ba4c3f9e12227318d7f8145a2c3262cca3f373fb` selected the card by stream/status. Final test commit `15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da` distinguishes unvalidated-card disclosure from source-link-withheld disclosure and adds normalized artifact identity plus actor-display assertions.
+
+## Exact-head verification
+At exact head `15bf7bbe`:
+- Full Verify [44842948950](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948950): PASS. Hosted preflight artifact [14681920663](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948950/artifacts/14681920663) reports `status=ready`, warnings `[]`, failures `[]`. Node tests, Python inspector, package build, and bounded institutional exercise all exited 0. Verification diagnostics artifact [14681408549](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948950/artifacts/14681408549).
+- Genesis Evidence Invariant [44842948962](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948962): PASS.
+- PWA build [44842949004](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842949004): PASS.
+- Combat Yard [44842948957](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948957): PASS.
+- Council Chamber [44842949074](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842949074): PASS.
+- Academy Study Shelf [44842949001](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842949001): PASS.
+- Quest Board [44842948954](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948954): IN PROGRESS at checkpoint.
+- Synthesis Clerk [44842949019](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842949019): IN PROGRESS at checkpoint.
+- Browser [44842948978](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842948978): FAIL at Worker A-owned `scripts/verify-browser.py:472`. Portable preflight, standalone build, and offline PWA private recovery passed first (29 cached entries, 2 private publications, 1 notebook restore, 1 replay no-op, no world mutation); the next journey expects the single Contradiction Clerk in Guild Hall, while the actual NPC remains in Evidence Archive. Exact-head handoff: [PR #472 comment 7054019888](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7054019888).
+- Android [44842949028](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44842949028): IN PROGRESS at checkpoint. Portable preflight, fake-ADB probe, SDK/Java, project-state snapshot, Gradle setup, and debug APK assembly passed; offline-world emulator journey still running. No terminal instrumentation/JUnit or physical-device acceptance is claimed.
+
+## Repository, donor, and governance audit
+- Canonical `main` remains `0d950c501cf128d828ae4f263cc05a9013d7e8c1`.
+- PR #718 remains draft/unmerged; exact head `15bf7bbe`, 36 commits ahead of main, zero behind, nine changed paths. It is a substantial stacked proposal, not merge-ready.
+- PR #719 remains the documentation-only child; this checkpoint synchronizes it to the exact runtime head through a two-parent merge commit. It remains draft/unmerged with four documentation paths.
+- Re-inspected `game/chronicle.mjs`'s strict actor-ID boundary, `src/mesh/execution.js` claim/adjudication distinction, `src/quest/engine.js` host-verified grant/observation gates, `src/institution/decisions.mjs` deterministic authority replay, `src/authority/decision.js`'s rule that signature verification alone is not event authority, `game/research-records.mjs`, and `src/institution/kernel.mjs`. No donor code was copied. External Mesh root instructions returned 404; RuneUX was not found as an executable donor.
+- Root AGENTS, the complete shared protocol, and Institutional Charter were read; the initial metadata inventory preceded sequential bootstrap, so the baseline was restarted. Nested AGENTS checks for game/test/scripts/.github/docs paths returned 404. Both authorized Desktop Commander devices were offline; local preflight and local Node/Playwright/Gradle execution were unavailable. Hosted exact-head preflight passed. Procedural compliance remains PARTIAL.
+- No canonical event, XP, evidence certification, approval, authority, merge, release, or deployment was created. G6/G7 remain IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+
+## Next
+1. Obtain terminal Quest Board, Synthesis, and Android results on exact head `15bf7bbe`.
+2. Preserve Worker A ownership of Browser/Android paths; hand off terminal Android findings on PR #533 if any.
+3. Reconcile the 36-commit #718 stack path-by-path against main before proposing integration. Keep both PRs draft and unmerged.
+
+---
+
 # Run 277 — Cross-actor Evidence Archive provenance (2026-11-20)
 
 ## Objective and decision

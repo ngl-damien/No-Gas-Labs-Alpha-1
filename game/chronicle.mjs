@@ -25,6 +25,11 @@ const actorName = actor => typeof actor === "string"
   ? actor
   : text(actor?.name) || text(actor?.id) || "unknown actor";
 const actorId = actor => typeof actor === "string" ? actor : text(actor?.id);
+const recordedActorId = actor => {
+  const value = typeof actor?.id === "string" ? actor.id : "";
+  return value && value.trim() === value && value.length <= 128 ? value : "";
+};
+const recordedActorRole = actor => ["founder", "witness"].includes(actor?.role) ? actor.role : "";
 const timestamp = value => isStrictTimestamp(value) ? value : "";
 const eventTime = value => isStrictTimestamp(value) ? Date.parse(value) : null;
 
@@ -523,6 +528,8 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     eventType: type,
     at: timestamp(event?.at),
     actor: actorName(event?.actor),
+    actorId: recordedActorId(event?.actor),
+    actorRole: recordedActorRole(event?.actor),
     title: "Unclassified retained world event",
     category: "WORLD ACTIVITY",
     summary: "The event is retained; no unrecorded consequence is inferred.",

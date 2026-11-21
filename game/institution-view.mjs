@@ -753,6 +753,17 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   if(hasStreamPosition)card.dataset.streamPosition=String(entry.streamPosition);
   card.append(el('h3',entry.title));
   card.append(el('p',entry.category+' · '+entry.eventType.toUpperCase()+' · '+entry.actor+' · '+(entry.at||'time unavailable')));
+  if(entry.source==='world'){
+   const recordedId=typeof entry.actorId==='string'&&entry.actorId?entry.actorId:'unavailable';
+   const recordedRole=['founder','witness'].includes(entry.actorRole)?entry.actorRole:'unavailable';
+   const complete=recordedId!=='unavailable'&&recordedRole!=='unavailable';
+   card.dataset.chronicleActorId=recordedId;
+   card.dataset.chronicleActorRole=recordedRole;
+   card.dataset.chronicleActorAttribution=complete?'complete':'incomplete';
+   card.append(el('small',complete
+    ?'Recorded actor ID: '+recordedId+' · Recorded actor role: '+recordedRole+' · pseudonymous session attribution; not proof of a distinct human, endorsement or authority.'
+    :'Recorded actor attribution incomplete: ID '+recordedId+' · role '+recordedRole+'. Missing identity or authority is not inferred.'));
+  }
   card.append(el('small',hasStreamPosition
    ? streamLabel+' · APPEND POSITION '+entry.streamPosition
    : 'UNSEQUENCED · STREAM POSITION UNAVAILABLE'));
@@ -933,7 +944,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   const terms=nextQuery.split(/\s+/).filter(Boolean);
   const entries=currentChronicle.entries.filter(entry=>{
    const streamName=entry.source==='kernel'?'institutional stream':entry.source==='world'?'world stream':'retained stream';
-   const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
+   const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.actorId,entry.actorRole,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
     .map(value=>typeof value==='string'||typeof value==='number'?String(value):'')
     .join(' ')
     .toLowerCase();
@@ -1074,11 +1085,21 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,staleR
 
 const MAX_EVIDENCE_ARCHIVE_ACTIVITY_RECORDS = 100_000;
 const MAX_EVIDENCE_ARCHIVE_ACTIVITY_CARDS = 50;
+const normalizedEvidenceArchiveId = value =>
+ typeof value==='string'&&value.length>0&&value.length<=128&&value.trim()===value;
+const normalizedEvidenceArchiveActor = actor =>
+ !!actor&&typeof actor==='object'&&!Array.isArray(actor)&&
+ normalizedEvidenceArchiveId(actor.id)&&
+ ['founder','witness'].includes(actor.role)&&
+ typeof actor.name==='string'&&actor.name.length>0&&actor.name.trim()===actor.name&&
+ Array.from(actor.name).length<=80;
 
 function retainedActivityArtifactVersion(world, record) {
- if(!Array.isArray(world?.creations)||typeof record?.creationId!=='string'||
+ if(!Array.isArray(world?.creations)||!normalizedEvidenceArchiveId(record?.creationId)||
     !Number.isSafeInteger(record?.version)||record.version<1)return null;
- const matches=world.creations.filter(creation=>creation?.id===record.creationId);
+ const matches=world.creations.filter(creation=>
+  normalizedEvidenceArchiveId(creation?.id)&&creation.id===record.creationId
+ );
  if(matches.length!==1)return null;
  const creation=matches[0];
  const versions=[creation,...(Array.isArray(creation.versions)?creation.versions:[])];
@@ -1100,10 +1121,10 @@ function indexEvidenceArchiveSourceEvents(world) {
  const eventIdCounts=new Map();
  for(let index=0;index<events.length;index++){
   const event=events[index];
-  if(typeof event?.id==='string'&&event.id.trim())
+  if(normalizedEvidenceArchiveId(event?.id))
    eventIdCounts.set(event.id,(eventIdCounts.get(event.id)||0)+1);
   const recordId=event?.actionResult?.id;
-  if(typeof recordId!=='string'||!recordId.trim())continue;
+  if(!normalizedEvidenceArchiveId(recordId))continue;
   const matches=byRecordId.get(recordId)||[];
   matches.push({event,index});
   byRecordId.set(recordId,matches);
@@ -1113,25 +1134,28 @@ function indexEvidenceArchiveSourceEvents(world) {
 
 function projectEvidenceArchiveSourceEvent(index,record,expectedType) {
  if(!index.available)return {status:'unavailable',reason:index.reason};
- if(typeof record?.id!=='string'||!record.id.trim())
-  return {status:'unlinked',reason:'The activity record has no usable identity; source link is withheld.'};
+ if(!normalizedEvidenceArchiveId(record?.id))
+  return {status:'unlinked',reason:'The activity record identity is missing or unnormalized; source link is withheld.'};
  const matches=index.byRecordId.get(record.id)||[];
  if(matches.length===0)
   return {status:'unlinked',reason:'No retained action result identifies this record; source link is withheld.'};
  if(matches.length!==1)
   return {status:'ambiguous',reason:'Multiple retained action results identify this record; source link is withheld.'};
  const {event,index:eventIndex}=matches[0];
- if(typeof event?.id!=='string'||!event.id.trim()||event.id!==event.id.trim()||event.id.length>128||
-    index.eventIdCounts.get(event.id)!==1)
+ if(!normalizedEvidenceArchiveId(event?.id)||index.eventIdCounts.get(event.id)!==1)
   return {status:'ambiguous',reason:'The matching Chronicle event identity is missing, unnormalized or duplicated; source link is withheld.'};
  const mismatches=[];
  if(event.type!==expectedType)mismatches.push('event type does not match');
- if(event.creationId!==record.creationId)mismatches.push('artifact identity does not match');
+ if(!normalizedEvidenceArchiveId(record.creationId)||
+    !normalizedEvidenceArchiveId(event.creationId)||event.creationId!==record.creationId)
+  mismatches.push('artifact identity is missing, unnormalized or does not match');
  if(event.version!==record.version)mismatches.push('artifact version does not match');
  const expectedActor=record.actor,actualActor=event.actor;
- if(!expectedActor||!actualActor||expectedActor.id!==actualActor.id||
+ if(!normalizedEvidenceArchiveActor(expectedActor)||
+    !normalizedEvidenceArchiveActor(actualActor)||
+    expectedActor.id!==actualActor.id||
     expectedActor.role!==actualActor.role||expectedActor.name!==actualActor.name)
-  mismatches.push('actor attribution does not match');
+  mismatches.push('actor attribution is missing, unnormalized or does not match');
  if(mismatches.length)
   return {status:'mismatched',reason:mismatches.join('; ')+'; source link is withheld.'};
  return {
@@ -1154,7 +1178,7 @@ export function projectEvidenceArchiveActivityStreams(world={}) {
  for(const key of ['reports','contributions']){
   if(!Array.isArray(snapshot[key]))continue;
   for(const record of snapshot[key]){
-   if(typeof record?.id==='string'&&record.id.trim()){
+   if(normalizedEvidenceArchiveId(record?.id)){
     idCounts.set(record.id,(idCounts.get(record.id)||0)+1);
    }
   }
@@ -1181,12 +1205,12 @@ export function projectEvidenceArchiveActivityStreams(world={}) {
    if(!record||typeof record!=='object'||Array.isArray(record)){
     issues.push('record shape is invalid');
    }else{
-    if(typeof record.id!=='string'||!record.id.trim()||record.id.length>128)
-     issues.push('record identity is invalid');
+    if(!normalizedEvidenceArchiveId(record.id))
+     issues.push('record identity is invalid or unnormalized');
     else if(idCounts.get(record.id)!==1)
      issues.push('record identity is duplicated across retained collections');
-    if(typeof record.creationId!=='string'||!record.creationId.trim()||record.creationId.length>128)
-     issues.push('artifact identity is invalid');
+    if(!normalizedEvidenceArchiveId(record.creationId))
+     issues.push('artifact identity is invalid or unnormalized');
     if(!Number.isSafeInteger(record.version)||record.version<1)
      issues.push('artifact version is invalid');
     if(typeof record.text!=='string'||!record.text.trim()||Array.from(record.text).length>definition.maxTextLength)
@@ -1194,11 +1218,8 @@ export function projectEvidenceArchiveActivityStreams(world={}) {
     if(!isStrictTimestamp(record.at))
      issues.push('timestamp is malformed; retained append position still defines order');
     const actor=record.actor;
-    if(!actor||typeof actor!=='object'||Array.isArray(actor)||
-       typeof actor.id!=='string'||!actor.id.trim()||actor.id.length>128||
-       !['founder','witness'].includes(actor.role)||
-       typeof actor.name!=='string'||!actor.name.trim()||Array.from(actor.name).length>80)
-     issues.push('actor attribution is invalid');
+    if(!normalizedEvidenceArchiveActor(actor))
+     issues.push('actor attribution is invalid or unnormalized');
    }
    const retained=retainedActivityArtifactVersion(snapshot,record);
    if(!retained)issues.push('exact retained artifact version is unavailable; navigation is withheld');
@@ -1257,8 +1278,9 @@ export function renderEvidenceArchiveActivityStreams(container,world={},onOpenAr
    card.dataset.streamPosition=String(item.streamPosition);
    card.dataset.recordStatus=item.status;
    card.dataset.orderingBasis=stream.orderingBasis;
-   const actorName=record?.actor?.name||record?.actor?.id||'unknown actor';
-   const actorId=typeof record?.actor?.id==='string'&&record.actor.id.trim()&&record.actor.id.length<=128?record.actor.id:'unavailable';
+   const actorName=typeof record?.actor?.name==='string'&&record.actor.name.trim()===record.actor.name&&Array.from(record.actor.name).length<=80
+    ?record.actor.name:'unknown actor';
+   const actorId=normalizedEvidenceArchiveId(record?.actor?.id)?record.actor.id:'unavailable';
    const actorRole=['founder','witness'].includes(record?.actor?.role)?record.actor.role:'unavailable';
    const timestamp=isStrictTimestamp(record?.at)?record.at:'time unavailable';
    card.dataset.activityActorId=actorId;
