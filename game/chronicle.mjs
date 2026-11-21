@@ -7,6 +7,45 @@ import { PLACES, institutionDestinationsForEvent } from "./world-view.mjs";
 
 const INVALID_EVENT_TIMESTAMP_WARNING = "The retained event has no valid strict RFC 3339 timestamp; its append position is preserved, but cross-stream placement is approximate.";
 
+/**
+ * Resolve the view a World Chronicle may display without silently advancing an
+ * explicitly pinned snapshot. This is a read-only UI policy over accepted
+ * snapshots; it never fetches, mutates world state, or creates progression.
+ */
+export function resolveWorldChronicleSnapshotState({
+  currentSnapshot,
+  pinnedSnapshot,
+  explicitlyPinned = false,
+  disconnected = false
+} = {}) {
+  if (typeof explicitlyPinned !== "boolean" || typeof disconnected !== "boolean") {
+    throw new TypeError("Chronicle pin and connection state must be explicit booleans.");
+  }
+  const currentRevision = currentSnapshot?.revision;
+  const pinnedRevision = pinnedSnapshot?.revision;
+  const currentRevisionValid = Number.isSafeInteger(currentRevision) && currentRevision >= 0;
+  const pinnedRevisionValid = Number.isSafeInteger(pinnedRevision) && pinnedRevision >= 0;
+  const revisionUnavailable = !currentRevisionValid || (explicitlyPinned && !pinnedRevisionValid);
+  const revisionRegressed = pinnedRevisionValid && currentRevisionValid && currentRevision < pinnedRevision;
+  const revisionMismatch = explicitlyPinned && pinnedRevisionValid &&
+    currentRevisionValid && currentRevision !== pinnedRevision;
+  const stale = disconnected || revisionUnavailable || revisionRegressed || revisionMismatch;
+  const staleReason = disconnected
+    ? "disconnected"
+    : revisionUnavailable
+      ? "revision-unavailable"
+      : revisionRegressed
+        ? "revision-regression"
+        : revisionMismatch
+          ? "revision-mismatch"
+          : "current";
+  const snapshot = stale ? (pinnedSnapshot || currentSnapshot) : currentSnapshot;
+  const refreshAvailable = explicitlyPinned && !disconnected && !revisionUnavailable &&
+    !revisionRegressed && pinnedRevisionValid && currentRevisionValid &&
+    currentRevision > pinnedRevision;
+  return Object.freeze({ snapshot, stale, staleReason, refreshAvailable });
+}
+
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
   relay: "The Relay",
