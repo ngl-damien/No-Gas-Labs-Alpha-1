@@ -971,8 +971,7 @@ export async function validateWorld(raw) {
        ![e.falsifier,e.uncertainty,e.nextTest].every(value=>value===null||(typeof value==='string'&&value.trim()&&Array.from(value).length<=500))||
        (e.sourceSnapshotRevision!==undefined&&(!Number.isSafeInteger(e.sourceSnapshotRevision)||e.sourceSnapshotRevision<0||!Number.isSafeInteger(eventPositions.get(e))||e.sourceSnapshotRevision>=eventPositions.get(e)+1))||
        e.originSchema!=='ngl.source-observatory.v2'||
-       !((e.bindingMode==='USER_SELECTED'&&(e.sourceSnapshotReceiptDigest===undefined||e.sourceSnapshotReceiptDigest===null))||
-         (e.bindingMode==='SERVER_SESSION_RECEIPT'&&typeof e.sourceSnapshotReceiptDigest==='string'&&/^[a-f0-9]{64}$/.test(e.sourceSnapshotReceiptDigest)))||
+       !isValidSourceObservationBinding(e)||
        e.sourceRetrieval!=='NOT_PERFORMED'||e.independentVerification!=='NOT_PERFORMED'||e.modelAssertions!=='LEADS_ONLY'||e.execution!=='NOT_EXECUTED'||
        !/^[a-f0-9]{64}$/.test(e.normalizedRecordDigest)||e.normalizedRecordDigest!==digest||
        (e.requestId!==undefined&&e.requestId!==e.observationId)||
