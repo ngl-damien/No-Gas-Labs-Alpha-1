@@ -1117,6 +1117,7 @@ test('Source Observation challenge quest offers a same-ID different-role actor t
     type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
   }, founder, { now: '2026-10-17T12:00:01.000Z' });
   const creationId = published.result.creationId;
+  const sourceSnapshotRevision = published.world.revision;
   const note = {
     claim: 'The bridge is open.',
     sourceKind: 'model-assertion',
@@ -1126,11 +1127,11 @@ test('Source Observation challenge quest offers a same-ID different-role actor t
     nextTest: 'Inspect the primary source.'
   };
   const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, sourceSnapshotRevision, ...note
   })).digest('hex');
   const observationId = 'source-observation-' + digest;
   const recorded = await applyAction(published.world, {
-    type: 'record-source-observation', creationId, version: 1, observationId, ...note
+    type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision, observationId, ...note
   }, founder, {
     now: '2026-10-17T12:00:02.000Z',
     requestId: observationId, actionFingerprint: 'd'.repeat(64)
