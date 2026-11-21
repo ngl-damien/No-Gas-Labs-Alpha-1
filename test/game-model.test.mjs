@@ -1421,3 +1421,28 @@ test('private activity records cannot survive without their retained Chronicle e
   );
   await assert.rejects(validateWorld(orphaned), error => error.code === 'INVALID_WORLD');
 });
+
+
+test('publicWorld assigns global append positions before actor-specific event filtering', () => {
+  const world = createWorld({ id: 'public-world-history-positions', now });
+  world.events = [
+    { id: 'event-visible-first', type: 'publish', at: now, historyPosition: 999 },
+    { id: 'event-founder-draft', type: 'draft', at: now },
+    { id: 'event-visible-report', type: 'report', at: now },
+    { id: 'event-founder-repair', type: 'repair', at: now },
+    { id: 'event-visible-observation', type: 'source-observation-recorded', at: now }
+  ];
+  world.revision = 5;
+  const before = structuredClone(world);
+
+  const witnessView = publicWorld(world, witness);
+  assert.deepEqual(witnessView.events.map(event => event.id), [
+    'event-visible-first', 'event-visible-report', 'event-visible-observation'
+  ]);
+  assert.deepEqual(witnessView.events.map(event => event.historyPosition), [1, 3, 5]);
+  assert.deepEqual(
+    publicWorld(world, founder).events.map(event => event.historyPosition),
+    [1, 2, 3, 4, 5]
+  );
+  assert.deepEqual(world, before, 'server projection must not mutate canonical event history');
+});

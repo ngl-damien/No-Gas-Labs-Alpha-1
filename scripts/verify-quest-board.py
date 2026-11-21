@@ -5890,7 +5890,15 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
           const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
           if (!response.ok) throw new Error('Unable to inspect retained Source Observation history.');
           const dto = await response.json();
-          const events = (dto.world?.events ?? []).map((event, index) => ({ event, position: index + 1 }));
+          const events = (dto.world?.events ?? []).map(event => ({ event, position: event?.historyPosition }));
+          const positions = events.map(({ position }) => position);
+          const worldRevision = dto.world?.revision;
+          const historyPositionsValid = Number.isSafeInteger(worldRevision) &&
+            positions.every((position, index) =>
+              Number.isSafeInteger(position) && position > 0 && position <= worldRevision &&
+              (index === 0 || position > positions[index - 1])
+            );
+          const filteredHistoryGapObserved = positions.some((position, index) => position !== index + 1);
           const report = events.filter(({ event }) =>
             event?.type === 'report' &&
             event.recordId === expected.reportId &&
@@ -5931,7 +5939,10 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
             reportReceiptSize: reportReceipt?.size ?? null,
             observationPosition: observations.length === 1 ? observations[0].position : null,
             event: observations.length === 1 ? observations[0].event : null,
-            publicationPosition: publications.length === 1 ? publications[0].position : null
+            publicationPosition: publications.length === 1 ? publications[0].position : null,
+            historyPositionsValid,
+            filteredHistoryGapObserved,
+            worldRevision
           };
         }""", {
             'interveningActorId': witness_before['viewerId'],
@@ -5943,6 +5954,15 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
             'claim': 'This source note was prepared from a pinned world snapshot before another session appended a report.'
         })
         assert retained['publicationPosition'] is not None
+        assert retained['historyPositionsValid'] is True, (
+            'Every actor-visible event must retain a unique increasing global append position.'
+        )
+        assert retained['filteredHistoryGapObserved'] is True, (
+            'The Witness snapshot must exercise hidden Founder-only events without compressing global positions.'
+        )
+        assert retained['worldRevision'] == witness_after['revision'], (
+            'The projected world revision must remain the canonical append high-water mark.'
+        )
         assert retained['reportRecordId'] == report_id, (
             'The retained report event must identify the exact record returned by the action.'
         )

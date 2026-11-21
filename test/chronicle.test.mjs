@@ -2045,3 +2045,51 @@ test("Publication House withholds Chronicle links for missing, duplicate, malfor
   assert.equal(findRetainedPublicationEventId({ creations: [duplicateVersion], events: [publication] }, creation.id, 1), null,
     "duplicate retained version identities remain ambiguous");
 });
+
+
+test("Chronicle preserves server-projected global positions after actor filtering", () => {
+  const visibleEvents = [
+    { id: "event-public-1", type: "discover", at: "2026-11-20T12:00:00.000Z", historyPosition: 1 },
+    { id: "event-public-3", type: "report", at: "2026-11-20T12:01:00.000Z", historyPosition: 3 },
+    { id: "event-public-6", type: "discover", at: "2026-11-20T12:02:00.000Z", historyPosition: 6 },
+  ];
+  const world = {
+    revision: 6,
+    events: visibleEvents,
+    creations: [],
+    reports: [],
+    contributions: [],
+    discoveries: [],
+    methods: [],
+  };
+  const entries = projectChronicle({ world }).entries.filter(entry => entry.source === "world");
+  assert.deepEqual(entries.map(entry => entry.streamPosition), [6, 3, 1]);
+
+  const partialLegacyWorld = {
+    ...world,
+    events: visibleEvents.map(({ historyPosition, ...event }) => event),
+  };
+  const partialEntries = projectChronicle({ world: partialLegacyWorld }).entries
+    .filter(entry => entry.source === "world");
+  assert.ok(partialEntries.every(entry => !Number.isSafeInteger(entry.streamPosition)),
+    "a filtered legacy snapshot without global position metadata must not invent positions");
+
+  const completeLocalWorld = { ...partialLegacyWorld, revision: 3 };
+  const localEntries = projectChronicle({ world: completeLocalWorld }).entries
+    .filter(entry => entry.source === "world");
+  assert.deepEqual(localEntries.map(entry => entry.streamPosition), [3, 2, 1],
+    "a complete local history may retain the array-index fallback");
+
+  const malformedPositionsWorld = {
+    ...world,
+    events: [
+      { ...visibleEvents[0], historyPosition: 3 },
+      { ...visibleEvents[1], historyPosition: 2 },
+      visibleEvents[2],
+    ],
+  };
+  const malformedEntries = projectChronicle({ world: malformedPositionsWorld }).entries
+    .filter(entry => entry.source === "world");
+  assert.ok(malformedEntries.every(entry => !Number.isSafeInteger(entry.streamPosition)),
+    "duplicate or regressing projection positions must fail closed");
+});

@@ -2193,6 +2193,7 @@ test('Evidence Archive mounts reports and contributions as separate streams', ()
 test('Evidence Archive links report and contribution cards to their unique exact source events', () => {
   const actor = { id: 'damien', name: 'Damien', role: 'founder' };
   const world = {
+    revision: 4,
     creations: [{ id: 'creation-1', title: 'Research object', version: 1, versions: [] }],
     reports: [{
       id: 'report-1', creationId: 'creation-1', version: 1,
@@ -2207,11 +2208,11 @@ test('Evidence Archive links report and contribution cards to their unique exact
     events: [
       {
         id: 'event-report-1', type: 'report', actor, creationId: 'creation-1', version: 1,
-        actionResult: { id: 'report-1' }, at: '2026-11-20T12:01:00.000Z'
+        actionResult: { id: 'report-1' }, at: '2026-11-20T12:01:00.000Z', historyPosition: 2
       },
       {
         id: 'event-contribution-1', type: 'contribute', actor, creationId: 'creation-1', version: 1,
-        actionResult: { id: 'contribution-1' }, at: '2026-11-20T12:02:00.000Z'
+        actionResult: { id: 'contribution-1' }, at: '2026-11-20T12:02:00.000Z', historyPosition: 4
       }
     ]
   };
@@ -2222,10 +2223,10 @@ test('Evidence Archive links report and contribution cards to their unique exact
 
   assert.equal(report.sourceEvent.status, 'linked');
   assert.equal(report.sourceEvent.eventId, 'event-report-1');
-  assert.equal(report.sourceEvent.eventPosition, 1);
+  assert.equal(report.sourceEvent.eventPosition, 2);
   assert.equal(contribution.sourceEvent.status, 'linked');
   assert.equal(contribution.sourceEvent.eventId, 'event-contribution-1');
-  assert.equal(contribution.sourceEvent.eventPosition, 2);
+  assert.equal(contribution.sourceEvent.eventPosition, 4);
 
   withDocument(() => {
     const root = element('main');
@@ -2248,6 +2249,7 @@ test('Evidence Archive links report and contribution cards to their unique exact
       const link = walk(card).find(node => node.dataset?.evidenceArchiveOpenEvent === 'true');
       assert.ok(link, 'a unique exact source event must expose Chronicle navigation');
       assert.equal(link.dataset.eventId, eventId);
+      assert.equal(link.dataset.eventPosition, eventId === 'event-report-1' ? '2' : '4');
       link.onclick();
     }
     assert.deepEqual(inspected, ['event-report-1', 'event-contribution-1']);
@@ -2582,4 +2584,45 @@ test('Evidence Archive links private report records through their receipt-bound 
   const withheld = projectEvidenceArchiveActivityStreams(mismatched).streams
     .find(stream => stream.id === 'report').records[0];
   assert.equal(withheld.sourceEvent.status, 'mismatched');
+});
+
+
+test('Evidence Archive withholds invented positions for partial legacy event snapshots', () => {
+  const actor = { id: 'witness-1', name: 'Witness', role: 'witness' };
+  const world = {
+    revision: 4,
+    creations: [{ id: 'creation-legacy', title: 'Legacy research object', version: 1, versions: [] }],
+    reports: [{
+      id: 'report-legacy', creationId: 'creation-legacy', version: 1,
+      text: 'A retained report without projected global positions.', actor,
+      at: '2026-11-20T12:01:00.000Z'
+    }],
+    contributions: [],
+    events: [{
+      id: 'event-report-legacy', type: 'report', actor, creationId: 'creation-legacy', version: 1,
+      actionResult: { id: 'report-legacy' }, at: '2026-11-20T12:01:00.000Z'
+    }]
+  };
+  const before = structuredClone(world);
+  const report = projectEvidenceArchiveActivityStreams(world).streams
+    .find(stream => stream.id === 'report').records[0];
+  assert.equal(report.sourceEvent.status, 'linked',
+    'a unique source event can remain navigable even when its global position is unavailable');
+  assert.equal(report.sourceEvent.eventPosition, null);
+
+  withDocument(() => {
+    const root = element('main');
+    renderEvidenceArchive(root, {
+      world,
+      onOpenArtifact: () => {},
+      onInspectEvent: () => {}
+    });
+    const card = walk(root).find(node => node.dataset?.activityRecordId === 'report-legacy');
+    assert.ok(card);
+    const link = walk(card).find(node => node.dataset?.evidenceArchiveOpenEvent === 'true');
+    assert.ok(link, 'unique event identity still permits Chronicle navigation');
+    assert.equal(link.dataset.eventPosition, undefined);
+    assert.equal(link.dataset.eventPositionStatus, 'unavailable');
+  });
+  assert.deepEqual(world, before, 'position projection must remain read-only');
 });
