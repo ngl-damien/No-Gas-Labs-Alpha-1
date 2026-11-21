@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { projectChronicle } from "../game/chronicle.mjs";
+import { institutionActivityCount } from "../game/world-view.mjs";
 import { projectCharacter } from "../game/character-sheet.mjs";
 import { createWorld, applyAction } from "../game/model.mjs";
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from "../game/artifacts.mjs";
@@ -1913,4 +1914,62 @@ test("Chronicle does not let Date.parse leniency promote malformed retained time
     "invalid timestamps must not reorder the retained institutional stream"
   );
   assert.deepEqual({ world, kernel }, before, "invalid-time Chronicle inspection must remain read-only");
+});
+
+
+test("institution activity counters include retained Commons, guild, and field-item transfer events", () => {
+  const types = [
+    "message-posted", "message-reported", "message-moderated",
+    "guild-created", "guild-joined", "guild-left", "guild-disbanded",
+    "guild-leadership-transfer-offered", "guild-leadership-transfer-cancelled",
+    "guild-leadership-transfer-declined", "guild-leadership-transferred",
+    "field-item-transfer-offered", "field-item-transfer-cancelled",
+    "field-item-transfer-declined", "field-item-transferred",
+  ];
+  const events = types.map((type, index) => ({
+    id: "institution-route-fixture-" + index,
+    type,
+  }));
+  const world = { revision: events.length, events };
+
+  assert.equal(institutionActivityCount("town-square", world), 3,
+    "all three retained Commons message lifecycle events belong to TownSquare");
+  assert.equal(institutionActivityCount("guild_hall", world), 8,
+    "guild founding, membership, closure and leadership handoffs belong to Guild Hall");
+  assert.equal(institutionActivityCount("forge", world), 4,
+    "field-item transfer offers, refusals and acceptance belong to the Forge");
+});
+
+test("Chronicle entries carry institutional destinations and explicit discovery locations without conflating them", () => {
+  const { world, kernel } = fixture();
+  const chronicle = projectChronicle({ world, kernel });
+  const report = chronicle.entries.find(entry => entry.id === "world:report-v1");
+  const publication = chronicle.entries.find(entry => entry.id === "world:publish-v1");
+  const adjudication = chronicle.entries.find(entry => entry.id === "kernel:adjudicate-1");
+
+  assert.deepEqual(report.institutionDestinations?.map(place => place.id),
+    ["evidence_archive", "town-square"]);
+  assert.equal(report.locationId, null,
+    "related institutions are not a claim about the report's physical location");
+  assert.deepEqual(publication.institutionDestinations?.map(place => place.id),
+    ["forge", "evidence_archive", "publication_house"]);
+  assert.deepEqual(adjudication.institutionDestinations?.map(place => place.id),
+    ["guild_hall", "evidence_archive", "town-square", "decision_chamber"]);
+
+  const discoveryWorld = {
+    events: [{
+      id: "visit-overlook",
+      type: "discover",
+      locationId: "overlook",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-10-26T10:08:00.000Z",
+    }],
+    discoveries: [],
+  };
+  const discovery = projectChronicle({ world: discoveryWorld }).entries
+    .find(entry => entry.id === "world:visit-overlook");
+  assert.equal(discovery.locationId, "overlook");
+  assert.equal(discovery.locationName, "The Long View");
+  assert.deepEqual(discovery.institutionDestinations || [], [],
+    "a discovery event uses its explicitly retained map location, not an inferred institution route");
 });
