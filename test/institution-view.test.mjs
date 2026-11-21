@@ -4,7 +4,7 @@ import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from '../game/artifacts.mjs';
 import assert from 'node:assert/strict';
 import { renderCharterCodex, projectCharterCodex, projectEvidenceArchiveActivityStreams, renderEvidenceArchive, renderEvidenceArchiveActivityStreams, renderInstitution, renderWorldChronicle } from '../game/institution-view.mjs';
-import { applyAction, createWorld } from '../game/model.mjs';
+import { applyAction, createWorld, publicWorld } from '../game/model.mjs';
 import { projectChronicle } from '../game/chronicle.mjs';
 
 function element(tag) {
@@ -143,7 +143,7 @@ function sourceObservationWorld({ claim = 'A model says the bridge is open.' } =
     nextTest: 'Inspect the bridge.'
   };
   const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+    actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
   })).digest('hex');
   const observationId = 'source-observation-' + digest;
   const challengeId = 'source-challenge-1';
@@ -613,7 +613,8 @@ test('AOTA Codex projects all twelve charter stages without awarding progress or
 
 test('AOTA Codex distinguishes same-version Source Observatory follow-up from unrelated experiment evidence', async () => {
   const founder = { id: 'damien', name: 'Damien', role: 'founder' };
-  async function buildWorld({ reportUsesSourceVersion }) {
+  const witness = { id: 'codex-witness', name: 'Codex Witness', role: 'witness' };
+  async function buildWorld({ reportUsesSourceVersion, actor = founder, hiddenDraftBeforeNotes = false }) {
     const start = createWorld({
       id: 'codex-source-followup-' + (reportUsesSourceVersion ? 'linked' : 'unrelated'),
       founderName: 'Damien',
@@ -627,6 +628,14 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       type: 'publish', draftId: sourceDraft.result.draftId, expectedVersion: 0
     }, founder, { now: '2026-11-08T09:00:02.000Z' });
     const creationId = sourcePublished.result.creationId;
+    let observationBase = sourcePublished.world;
+    if (hiddenDraftBeforeNotes) {
+      const hiddenDraft = await applyAction(observationBase, {
+        type: 'draft', kind: 'loom', title: 'Private pre-observation draft',
+        intent: 'This retained Founder draft is hidden from the Witness projection.'
+      }, founder, { now: '2026-11-08T09:00:02.500Z' });
+      observationBase = hiddenDraft.world;
+    }
     const note = {
       claim: 'The model says the bridge is open.',
       sourceKind: 'model-assertion',
@@ -636,12 +645,12 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       nextTest: 'Inspect the bridge status at the primary source.'
     };
     const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-      actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
     })).digest('hex');
     const observationId = 'source-observation-' + digest;
-    const recorded = await applyAction(sourcePublished.world, {
+    const recorded = await applyAction(observationBase, {
       type: 'record-source-observation', creationId, version: 1, observationId, ...note
-    }, founder, {
+    }, actor, {
       now: '2026-11-08T09:00:03.000Z',
       requestId: observationId,
       actionFingerprint: 'a'.repeat(64)
@@ -653,13 +662,13 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       uncertainty: 'No independent observation for this second assertion.'
     };
     const secondDigest = createHash('sha256').update(sourceObservationRequestMaterial({
-      actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...secondNote
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...secondNote
     })).digest('hex');
     const secondObservationId = 'source-observation-' + secondDigest;
     const recordedAgain = await applyAction(recorded.world, {
       type: 'record-source-observation', creationId, version: 1,
       observationId: secondObservationId, ...secondNote
-    }, founder, {
+    }, actor, {
       now: '2026-11-08T09:00:03.500Z',
       requestId: secondObservationId,
       actionFingerprint: 'b'.repeat(64)
@@ -689,7 +698,7 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       evidenceNeeded: 'A retained observation of the primary source.',
       sourceCreationId: creationId,
       sourceVersion: 1
-    }, founder, { now: proposalAt });
+    }, actor, { now: proposalAt });
     const report = await applyAction(proposal.world, {
       type: 'report-experiment',
       moonshotId: proposal.result.moonshotId,
@@ -698,13 +707,14 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       reportedOutcome: 'failed',
       evidenceCreationId: reportEvidenceCreationId,
       evidenceVersion: 1
-    }, founder, { now: reportAt });
+    }, actor, { now: reportAt });
     return {
       world: report.world,
       sourceNoteEventIds: [recorded.world.events.at(-1).id, recordedAgain.world.events.at(-1).id],
       proposalEventId: proposal.world.events.at(-1).id,
       reportEventId: report.world.events.at(-1).id,
-      founder
+      founder,
+      viewer: actor
     };
   }
 
@@ -738,6 +748,24 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
   assert.equal(unrelatedProjection.worldMutation, false);
   assert.deepEqual(unrelated.world, unrelatedBefore);
 
+  const filtered = await buildWorld({
+    reportUsesSourceVersion: true, actor: witness, hiddenDraftBeforeNotes: true
+  });
+  const filteredSnapshot = publicWorld(filtered.world, witness);
+  assert.ok(filteredSnapshot.events.some((event, index) => event.historyPosition > index + 1),
+    'the Witness snapshot must retain global positions across the hidden Founder draft');
+  const filteredSnapshotBefore = structuredClone(filteredSnapshot);
+  const filteredProjection = projectCharterCodex(filteredSnapshot, witness);
+  const filteredStage = filteredProjection.stages.find(stage => stage.id === 'experiment');
+  assert.equal(filteredStage.status, 'SAME-VERSION-LINKED ATTEMPT REPORT(S) · SELF-REPORTED');
+  for (const id of [...filtered.sourceNoteEventIds, filtered.proposalEventId, filtered.reportEventId]) {
+    assert.ok(filteredStage.evidenceIds.includes(id));
+  }
+  assert.equal(filteredProjection.readOnly, true);
+  assert.equal(filteredProjection.xpDelta, 0);
+  assert.equal(filteredProjection.worldMutation, false);
+  assert.deepEqual(filteredSnapshot, filteredSnapshotBefore);
+
   const ambiguous = await buildWorld({ reportUsesSourceVersion: true });
   const originalReport = ambiguous.world.events.find(event => event.id === ambiguous.reportEventId);
   const duplicateReport = structuredClone(originalReport);
@@ -748,6 +776,8 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
   duplicateReport.actor = { id: 'witness-2', role: 'witness', name: 'Second Witness' };
   duplicateReport.at = '2026-11-08T09:00:06.000Z';
   ambiguous.world.events.push(duplicateReport);
+  ambiguous.world.revision = ambiguous.world.events.length;
+  ambiguous.world.updatedAt = duplicateReport.at;
   const ambiguousBefore = structuredClone(ambiguous.world);
   const ambiguousProjection = projectCharterCodex(ambiguous.world, ambiguous.founder);
   const ambiguousStage = ambiguousProjection.stages.find(stage => stage.id === 'experiment');
@@ -770,6 +800,8 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
   unrelatedDuplicateReport.actor = { id: 'witness-2', role: 'witness', name: 'Second Witness' };
   unrelatedDuplicateReport.at = '2026-11-08T09:00:06.000Z';
   unrelatedAmbiguous.world.events.push(unrelatedDuplicateReport);
+  unrelatedAmbiguous.world.revision = unrelatedAmbiguous.world.events.length;
+  unrelatedAmbiguous.world.updatedAt = unrelatedDuplicateReport.at;
   const unrelatedAmbiguousBefore = structuredClone(unrelatedAmbiguous.world);
   const unrelatedAmbiguousProjection = projectCharterCodex(unrelatedAmbiguous.world, unrelatedAmbiguous.founder);
   const unrelatedAmbiguousStage = unrelatedAmbiguousProjection.stages.find(stage => stage.id === 'experiment');
