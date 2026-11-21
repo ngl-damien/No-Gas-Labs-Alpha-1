@@ -2367,7 +2367,10 @@ test('Evidence Archive withholds source-event links for missing, duplicate, or m
       renderEvidenceArchiveActivityStreams(root, world, undefined, () => {
         assert.fail(fixture.name + ' must not create a Chronicle link');
       });
-      const card = walk(root).find(node => node.dataset?.activityRecordId === 'report-1');
+      const card = walk(root).find(node =>
+        node.dataset?.evidenceArchiveActivityRecord === 'report' &&
+        node.dataset?.recordStatus === (fixture.recordStatus || 'linked')
+      );
       assert.ok(card, fixture.name + ' must preserve the visible activity record');
       assert.equal(walk(card).some(node => node.dataset?.evidenceArchiveOpenEvent === 'true'), false,
         fixture.name + ' must not offer a guessed or ambiguous source link');
