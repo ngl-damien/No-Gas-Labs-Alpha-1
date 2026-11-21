@@ -4376,7 +4376,8 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     server_position_before_offline = authoritative_player_position(page)
     offline_start_position = page.evaluate("""() => ({
       x: Number(document.querySelector('#world')?.dataset.playerX),
-      y: Number(document.querySelector('#world')?.dataset.playerY)
+      y: Number(document.querySelector('#world')?.dataset.playerY),
+      source: document.querySelector('#world')?.dataset.playerPositionSource ?? null
     })""")
     offline_route_api_requests = []
 
@@ -4413,13 +4414,29 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     enter_nearby_institution(page, 'academy', 'Polymath Academy', 'Polymath Academy')
     offline_end_position = page.evaluate("""() => ({
       x: Number(document.querySelector('#world')?.dataset.playerX),
-      y: Number(document.querySelector('#world')?.dataset.playerY)
+      y: Number(document.querySelector('#world')?.dataset.playerY),
+      source: document.querySelector('#world')?.dataset.playerPositionSource ?? null
     })""")
-    assert math.hypot(
+    assert offline_start_position['source'] == offline_end_position['source'] == 'local-renderer', (
+        'Offline travel coordinates must be explicitly identified as renderer-local, not server-authoritative.'
+    )
+    assert all(math.isfinite(position[key]) for position in (
+        offline_start_position, offline_end_position
+    ) for key in ('x', 'y')), (
+        'The map must expose finite renderer-local coordinates for offline travel verification: ' +
+        json.dumps({'start': offline_start_position, 'end': offline_end_position})
+    )
+    offline_travel_distance = math.hypot(
         offline_end_position['x'] - offline_start_position['x'],
         offline_end_position['y'] - offline_start_position['y']
-    ) > 100, (
-        'Offline preview must allow real local map travel to Polymath Academy.'
+    )
+    assert offline_travel_distance > 100, (
+        'Offline preview must allow real local map travel to Polymath Academy: ' +
+        json.dumps({
+            'start': offline_start_position,
+            'end': offline_end_position,
+            'distance': offline_travel_distance
+        })
     )
     academy_snapshot = page.locator('#sheet-content')
     expect(academy_snapshot).to_have_attribute(
