@@ -1,3 +1,47 @@
+# Run 279 — Chronicle institution routes describe travel and require explicit entry (2026-11-20/21)
+
+## Objective
+Make Chronicle-to-institution navigation match the actual MMORPG movement model. The old button said “Open …”, but the runtime walks to a map landmark and requires a separate Interact action after arrival. Preserve the physical world loop: no teleport, instant institution entry, or canonical transition from navigation.
+
+## Runtime and acceptance changes
+Runtime/test head: `1a2b83032919fd23d6a431c9e4931061e37f8ff1` on [PR #718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718).
+
+- Test-first mobile acceptance commit `0853e3e7d1b9b7d48989820943cec7221a375ef8` changed the Chronicle route journey to require “Go to …” and reuse the existing `enter_nearby_institution` helper after the player reaches the map landmark.
+- Test-only unit commit `7ce458b26f356c1d0f4fda3685fef64711d74930` asserts both button text and accessible labels. Its exact-head Full Verify [44854492853](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854492853) was the intended red: 1,456 tests, 1,455 passed, one failed because the rendered label was `Open TownSquare →` instead of `Go to TownSquare →`.
+- Runtime commit `1a2b83032919fd23d6a431c9e4931061e37f8ff1` changes only `game/institution-view.mjs` route text and accessible labels from “Open related institution” to “Go to related institution”. Movement/entry logic was not changed.
+- `scripts/verify-quest-board.py` now exercises Chronicle → TownSquare → explicit Interact → TownSquare institution records → Chronicle → Evidence Archive → explicit Interact, rather than assuming the route button teleports or opens a distant destination.
+- No event, XP, evidence verdict, approval, authority, publication, quest progress, or world-state mutation is created by walking or inspection.
+
+## Exact-head verification
+All results below concern runtime/test head `1a2b83032919fd23d6a431c9e4931061e37f8ff1`.
+
+- Full Verify [44854553544](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553544) PASS. Hosted preflight `ready`, warnings `[]`, failures `[]`; Node tests, Python inspector, package build, and institutional exercise exit 0; verification report `passed=true`. Preflight artifact [14687131281](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553544/artifacts/14687131281).
+- Genesis Evidence Invariant [44854553519](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553519) PASS.
+- PWA build [44854553725](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553725) PASS; deploy was skipped.
+- Source Archive live GitHub [44854553515](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553515) PASS.
+- Combat Yard mobile [44854553578](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553578), Council Chamber mobile [44854553658](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553658), and Academy Study Shelf mobile [44854553690](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553690) PASS.
+- Synthesis Clerk mobile [44854553495](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553495) PASS at 320px/390px; artifact [14686494943](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553495/artifacts/14686494943). The bounded collaborator remains advisory: source retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, NPC interaction XP delta 0, accepted/rejected history retained.
+- Quest Board / Evidence Archive mobile [44854553642](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553642) PASS at 320px/390px; artifact [14686798415](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553642/artifacts/14686798415). Both receipts record `chronicleInstitutionRouting=true`, route IDs `town-square` and `evidence_archive`, explicit walk/entry, exact source-event and artifact-version navigation, `institutionNavigationReadOnly=true`, XP delta 0, and no horizontal overflow. Offline continuity: 22 shared API requests and zero mutations; at 320px Archive snapshot revision 100 remained pinned while revision 101 was accepted, and at 390px revision 105 remained pinned while 106 was accepted. Offline Chronicle/return retained the old snapshot; explicit refresh after reconnect adopted the newer revision. A separate pseudonymous Witness session remained actor-distinct and received zero XP.
+- Browser acceptance [44854553720](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553720) FAILs at `scripts/verify-browser.py:472`: Worker A's locator expects `#contradiction-clerk-npc` / BOUNDED ADVERSARY in Guild Hall, but the single NPC remains in Evidence Archive. Offline PWA private recovery passed first (29 cached entries, two private publications, one notebook restore, one replay no-op, zero world mutation). Artifact [14686947623](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553720/artifacts/14686947623); handoff [PR #472 comment 7055746022](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7055746022). Worker B did not move/duplicate the NPC or edit Browser-owned files.
+- Android Alpha-1 [44854553567](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553567) remains in the offline-world emulator journey after portable preflight, fake-ADB probe, SDK/Gradle setup, receipt-verified project snapshot, and debug APK assembly passed. No terminal instrumentation/JUnit or physical-device result is claimed; Worker A owns Android paths. Handoff [PR #533 comment 7055794074](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7055794074).
+
+## Donor and process audit
+Re-inspected `src/mesh/execution.js`, `src/quest/engine.js`, `src/authority/decision.js`, `src/institution/decisions.mjs`, `game/collaborator-contracts.mjs`, and `game/model.mjs`. Their useful boundaries remain: claimed result ≠ observed receipt; source retrieval ≠ independent verification; host verification and scoped grants gate consequential projections; decision replay is deterministic; model assertions remain leads only. No donor code was copied. External RAE bridge/Mesh root material was unavailable in this checkout; executable RuneUX/AGP donor code was not identified.
+
+Root AGENTS, complete shared protocol, Institutional Charter, World Projection Contract, MMORPG Completion Contract, Universal Agent Operating Contract, latest checkpoint/ledger, steering, registry, and DO_NOT_DELETE were read. Nested AGENTS checks for game/scripts/test/.github/docs returned 404 (none found). Both authorized Desktop Commander devices were offline, so local Node/Playwright/Gradle execution was unavailable; hosted preflight and CI were used. The initial metadata inventory preceded sequential bootstrap; baseline inspection was restarted after reading the governing documents. Procedural compliance remains PARTIAL.
+
+## Repository and governance
+- Canonical main remains `0d950c501cf128d828ae4f263cc05a9013d7e8c1`, unchanged.
+- Runtime PR #718 remains draft/unmerged at `1a2b83032919fd23d6a431c9e4931061e37f8ff1`, 50 commits ahead / 0 behind main, 11 changed paths, GitHub reports mergeable. No merge performed.
+- Documentation PR #719 remains draft/unmerged. Its branch is based on merge-base `15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da`, 14 commits behind current #718 and currently not mergeable. This checkpoint is updated on the existing docs branch without rebasing; no attempt to force-sync or merge it.
+- No canonical world event, XP, evidence certification, truth verdict, approval, authority transition, merge, release, or deployment occurred. G6/G7 remain IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+
+## Next
+Collect the terminal Android emulator result and retain Worker A ownership of Android/Browser repairs. Then path-by-path reconcile the 50-commit #718 stack against main before any integration/merge proposal. The next runtime objective should extend the verified Chronicle-to-institution loop through offline map navigation and explicit entry while preserving the pinned accepted snapshot and zero shared writes.
+
+
+---
+
 # Run 278 — Evidence Archive rejects unnormalized lineage identities (2026-11-20/21)
 
 ## Objective
