@@ -8,7 +8,7 @@
 
 **Worker A ownership:** Browser [44854553720](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553720) fails at scripts/verify-browser.py:472 because its Guild Hall locator expects the single Contradiction Clerk in Guild Hall; actual owner remains Evidence Archive. Offline PWA recovery passes first. Handoff [#472 comment 7055746022](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7055746022). Android [44854553567](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44854553567) has debug APK assembly PASS and offline-world emulator journey IN PROGRESS; no terminal JUnit/physical-device result. Handoff [#533 comment 7055794074](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7055794074). Do not move/duplicate the NPC or edit Worker A-owned Browser/Android paths.
 
-**Documentation branch:** PR #719 has been updated on its existing branch without rebase. It remains 14 commits behind current #718 and not mergeable; preserve that limitation rather than force-syncing.
+**Documentation branch:** PR #719 has been updated on its existing branch without rebase. It remains 14 commits behind current #718; GitHub reports mergeable=true, but the branch is not synchronized; preserve that limitation rather than force-syncing.
 
 **Next:** obtain terminal Android result; preserve Worker A ownership of Browser/Android fixes; then path-by-path reconcile the 50-commit #718 stack against main. Next runtime objective: test offline map travel and explicit institution entry against the pinned accepted snapshot, with zero shared writes. No merge/release/deployment/Founder approval/authority transition.
 
