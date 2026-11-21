@@ -570,7 +570,7 @@ function validateHistory(world) {
       ...(event.type === 'contribute' || event.type === 'report' ? ['recordId', 'recordTextReceipt'] : []),
       ...(event.type === 'discover' ? ['repeat'] : []),
       ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion'] : []),
-      ...(event.type === 'source-observation-recorded' ? ['sourceSnapshotRevision'] : [])
+      ...(event.type === 'source-observation-recorded' ? ['sourceSnapshotRevision', 'sourceSnapshotReceiptDigest'] : [])
     ];
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
