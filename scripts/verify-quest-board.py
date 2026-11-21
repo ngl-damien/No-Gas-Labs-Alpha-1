@@ -5887,7 +5887,10 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
           const dto = await response.json();
           const events = (dto.world?.events ?? []).map((event, index) => ({ event, position: index + 1 }));
           const report = events.filter(({ event }) =>
-            event?.type === 'report' && event.requestId === expected.reportRequestId
+            event?.type === 'report' &&
+            event.creationId === expected.creationId &&
+            event.version === expected.version &&
+            event.actor?.id === expected.interveningActorId
           );
           const observations = events.filter(({ event }) =>
             event?.type === 'source-observation-recorded' &&
@@ -5908,7 +5911,7 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
             publicationPosition: publications.length === 1 ? publications[0].position : null
           };
         }""", {
-            'reportRequestId': report_request_id,
+            'interveningActorId': witness_before['viewerId'],
             'creationId': fixture['creationId'],
             'version': fixture['version'],
             'actorId': pinned['viewerId'],
