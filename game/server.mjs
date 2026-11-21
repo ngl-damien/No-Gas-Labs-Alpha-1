@@ -39,6 +39,8 @@ const JSON_GZIP_THRESHOLD_BYTES = 16 * 1024;
 const gzipAsync = promisify(gzip);
 const COOKIE = 'ngl_session';
 const SESSION_TTL = 24 * 60 * 60 * 1000;
+const SOURCE_SNAPSHOT_RECEIPT_TTL = SESSION_TTL;
+const MAX_SOURCE_SNAPSHOT_RECEIPTS_PER_SESSION = 32;
 const SESSION_POSITION_STORE_SCHEMA = 'ngl.session-position-store.v1';
 const SESSION_POSITION_TTL = 7 * 24 * 60 * 60 * 1000;
 const MAX_SESSION_POSITION_RECORDS = 512;
@@ -109,7 +111,7 @@ const actionFields = {
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'respond-experiment-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
-  'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'sourceSnapshotRevision', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId'],
+  'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'sourceSnapshotRevision', 'sourceSnapshotReceipt', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId'],
   'challenge-source-observation': ['type', 'observationId', 'challengeType', 'challengeText', 'requestId'],
   'respond-source-observation-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'post-message': ['type', 'text', 'requestId'],
@@ -224,6 +226,7 @@ function preflightAction(input) {
       if (!Number.isSafeInteger(input.version) || input.version < 1) fail('INVALID_VERSION', 'Select a positive retained Observatory version.');
       requiredId(input.observationId, 'Source observation identity');
       if (!/^source-observation-[a-f0-9]{64}$/.test(input.observationId) || input.requestId !== input.observationId) fail('INVALID_SOURCE_OBSERVATION_ID', 'Observation and request IDs must match the normalized SHA-256 identity.');
+      if (input.sourceSnapshotReceipt !== undefined && (typeof input.sourceSnapshotReceipt !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(input.sourceSnapshotReceipt))) fail('INVALID_SOURCE_SNAPSHOT_RECEIPT', 'A server-issued snapshot receipt must be a bounded opaque token.');
       preflightText(input.claim, 500, 'Claim', { required: true });
       if (!SOURCE_OBSERVATION_SOURCE_KINDS.includes(input.sourceKind)) fail('INVALID_SOURCE_KIND', 'Choose a known self-classified source kind.');
       preflightText(input.source, 500, 'Source or attribution', { required: true });
@@ -1315,10 +1318,29 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     }
     return position;
   };
-  const dto = session => {
+  const sourceSnapshotReceiptFor = (session, revision) => {
+    const now = Date.now();
+    if (!(session.sourceSnapshotReceipts instanceof Map)) session.sourceSnapshotReceipts = new Map();
+    for (const [storedRevision, receipt] of session.sourceSnapshotReceipts) {
+      if (!receipt || !Number.isSafeInteger(receipt.expiresAt) || receipt.expiresAt <= now) session.sourceSnapshotReceipts.delete(storedRevision);
+    }
+    let receipt = session.sourceSnapshotReceipts.get(revision);
+    if (!receipt) {
+      receipt = { token: randomBytes(32).toString('base64url'), revision, issuedAt: now, expiresAt: now + SOURCE_SNAPSHOT_RECEIPT_TTL };
+      session.sourceSnapshotReceipts.set(revision, receipt);
+    }
+    while (session.sourceSnapshotReceipts.size > MAX_SOURCE_SNAPSHOT_RECEIPTS_PER_SESSION) {
+      session.sourceSnapshotReceipts.delete(session.sourceSnapshotReceipts.keys().next().value);
+    }
+    return { token: receipt.token, revision: receipt.revision, issuedAt: receipt.issuedAt, expiresAt: receipt.expiresAt };
+  };
+  const dto = (session, { includeSourceSnapshotReceipt = true } = {}) => {
     const position = sessionPositionForWorld(session);
+    const world = publicWorld(store.value.world, session.actor);
+    const sourceSnapshotReceipt = includeSourceSnapshotReceipt ? sourceSnapshotReceiptFor(session, world.revision) : undefined;
     return {
-      world: publicWorld(store.value.world, session.actor),
+      world,
+      ...(sourceSnapshotReceipt ? { sourceSnapshotReceipt } : {}),
       viewer: {
         ...session.actor,
         presenceId: session.presenceId,
@@ -1347,7 +1369,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
   const sessionCookie = (token, request, actor) => `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict${actor.role === 'witness' ? `; Max-Age=${Math.floor(SESSION_TTL / 1000)}` : ''}${request.socket.encrypted ? '; Secure' : ''}`;
   function expireSession(token, session) {
     presence.delete(session.token); session.actor = witness(session.token); session.lastSeen = Date.now();
-    for (const stream of [...streams]) if (stream.session === session) { sendEvent(stream, 'world', dto(session)); stream.response.end(); }
+    for (const stream of [...streams]) if (stream.session === session) { sendEvent(stream, 'world', dto(session, { includeSourceSnapshotReceipt: false })); stream.response.end(); }
     broadcastPresence();
     if (token) sessions.delete(token);
   }
@@ -1379,7 +1401,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       session = {
         token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now(),
         position: restoreSessionPosition(positionStore, actor, movementNow(), store.value.world),
-        positionEpoch: randomUUID(), positionRevision: 0
+        positionEpoch: randomUUID(), positionRevision: 0, sourceSnapshotReceipts: new Map()
       }; sessions.set(id, session);
       response.setHeader('Set-Cookie', sessionCookie(id, request, actor));
     }
@@ -1387,6 +1409,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     if (!isWalkable(session.position.x, session.position.y, store.value.world.creations)) {
       session.position = reconcileSessionPosition(session, store.value.world, movementNow());
     }
+    if (!(session.sourceSnapshotReceipts instanceof Map)) session.sourceSnapshotReceipts = new Map();
     session.lastSeen = Date.now(); return session;
   }
   // Founder login is authenticated before it consumes a session slot. A stale or
@@ -1452,7 +1475,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     const session = {
       token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now(),
       position: restoreSessionPosition(positionStore, resolvedActor, movementNow(), store.value.world),
-      positionEpoch: randomUUID(), positionRevision: 0
+      positionEpoch: randomUUID(), positionRevision: 0, sourceSnapshotReceipts: new Map()
     }; sessions.set(token, session);
     response.setHeader('Set-Cookie', sessionCookie(token, request, resolvedActor));
     return session;
@@ -1575,7 +1598,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
           if (before.available && after.available && before.revision !== after.revision) broadcastWorld();
           return await json(response, 200, snapshot);
         }
-        if (path === '/api/state' || path === '/api/export') return await json(response, 200, dto(session), { acceptEncoding: request.headers['accept-encoding'] });
+        if (path === '/api/state' || path === '/api/export') return await json(response, 200, dto(session, { includeSourceSnapshotReceipt: path === '/api/state' }), { acceptEncoding: request.headers['accept-encoding'] });
         if (path === '/api/events') {
           response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
           response.flushHeaders();
@@ -1856,11 +1879,25 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
               fail('INVALID_SOURCE_OBSERVATION_ID', 'Observation ID must match this actor, selected version and normalized note content.');
             }
           }
-          const actionFingerprint = artifactReceipt(canonicalStringify({ actor: { id: actor.id, role: actor.role }, action })).digest;
+          const fingerprintAction = action.type === 'record-source-observation'
+            ? Object.fromEntries(Object.entries(action).filter(([key]) => key !== 'sourceSnapshotReceipt'))
+            : action;
+          const actionFingerprint = artifactReceipt(canonicalStringify({ actor: { id: actor.id, role: actor.role }, action: fingerprintAction })).digest;
           const previous = store.value.world.events.find(event => event.requestId === requestId);
           if (previous) {
             if (previous.actionFingerprint !== actionFingerprint || previous.actor.id !== actor.id || previous.actor.role !== actor.role) fail('IDEMPOTENCY_CONFLICT', 'This request ID is already bound to a different actor or action.', 409);
             return await json(response, 200, { ...dto(session), result: previous.actionResult, requestId, idempotentReplay: true });
+          }
+          let sourceSnapshotReceiptDigest = null;
+          if (action.type === 'record-source-observation' && action.sourceSnapshotReceipt !== undefined) {
+            const receipt = session.sourceSnapshotReceipts instanceof Map
+              ? session.sourceSnapshotReceipts.get(action.sourceSnapshotRevision)
+              : null;
+            if (sessions.get(session.token) !== session || !receipt || receipt.token !== action.sourceSnapshotReceipt ||
+                receipt.revision !== action.sourceSnapshotRevision || !Number.isSafeInteger(receipt.expiresAt) || receipt.expiresAt <= Date.now()) {
+              fail('INVALID_SOURCE_SNAPSHOT_RECEIPT', 'The server-delivered snapshot receipt is missing, expired, belongs to another session, or names a different revision. Refresh the accepted snapshot and reopen the note.', 409);
+            }
+            sourceSnapshotReceiptDigest = artifactReceipt(action.sourceSnapshotReceipt).digest;
           }
           // A client-side tap is not a location check. Shared discovery is retained
           // only when this session's server-checked position is near the guide.
@@ -1903,7 +1940,8 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
           let outcome;
           try {
             outcome = await applyAction(store.value.world, action, actor, {
-            requestId, actionFingerprint, allowTransfers: true, allowGuildLeadershipTransfers: true, allowSourceArchivePredicate: true
+            requestId, actionFingerprint, allowTransfers: true, allowGuildLeadershipTransfers: true, allowSourceArchivePredicate: true,
+            sourceSnapshotReceiptDigest
           });
           } catch (error) {
             if (!Number.isSafeInteger(error.status) && typeof error.code === 'string' && (error.code.startsWith('COMBAT_') || error.code.startsWith('INVALID_COMBAT_') || error.code === 'UNKNOWN_COMBAT_OPPONENT')) {
