@@ -1881,6 +1881,7 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out)
         '#sheet-content [data-moonshot-source-archive-failure-open-ledger="true"]'
     )
     expect(full_ledger).to_be_visible()
+    expect(full_ledger).to_contain_text("Open visible failure pages")
     before_archive = authoritative_snapshot(page)
     full_ledger.tap()
     page.wait_for_function(
@@ -1902,6 +1903,8 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out)
     expect(archive_failures).to_be_visible()
     expect(archive_failures).to_have_attribute("data-source-archive-failure-total", str(projection["total"]))
     expect(archive_failures).to_have_attribute("data-source-archive-failure-complete", "false")
+    expect(archive_failures).to_have_attribute("data-source-archive-failure-scope", "partial")
+    expect(archive_failures).to_have_attribute("data-source-archive-failure-unseen-event-count", str(projection["unseenEventCount"]))
     after_archive_open = authoritative_snapshot(page)
     assert_canonical_state_unchanged(
         before_archive, after_archive_open,
@@ -1948,6 +1951,10 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out)
     expect(source_observatory).to_have_attribute(
         "data-source-observatory-snapshot-freshness", "refresh-required"
     )
+    expect(source_observatory).to_have_attribute("data-source-observatory-snapshot-complete", "false")
+    expect(source_observatory).to_have_attribute(
+        "data-source-observatory-snapshot-unseen-event-count", str(projection["unseenEventCount"])
+    )
     expect(source_observatory.locator(
         '[data-source-observatory-snapshot-notice="true"]'
     )).to_be_visible()
@@ -1970,6 +1977,10 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out)
     )
     expect(observation_form).to_have_attribute(
         "data-source-observation-prefill-origin", "source-archive-failure"
+    )
+    expect(observation_form).to_have_attribute("data-source-snapshot-complete", "false")
+    expect(observation_form).to_have_attribute(
+        "data-source-snapshot-unseen-event-count", str(projection["unseenEventCount"])
     )
     after_investigation = authoritative_snapshot(page)
     assert_canonical_state_unchanged(
