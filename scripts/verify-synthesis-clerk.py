@@ -1718,6 +1718,287 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, w
     }
 
 
+def append_witness_moonshot_revision(page, width, suffix):
+    before = authoritative_snapshot(page)
+    assert before["viewer"]["role"] == "witness"
+    result = post_action(page, {
+        "type": "propose-moonshot",
+        "title": "Witness snapshot pin fixture " + str(width) + "-" + suffix,
+        "hypothesis": "A failure card must preserve the accepted snapshot from which it was opened.",
+        "falsifier": "A later accepted revision silently replaces the failure card's source snapshot.",
+        "evidenceNeeded": "The exact pinned revision and an explicit refresh receipt.",
+        "sourceCreationId": None,
+        "sourceVersion": None,
+        "requestId": "witness-moonshot-snapshot-" + str(width) + "-" + suffix
+    })
+    moonshot_id = result.get("result", {}).get("moonshotId")
+    assert isinstance(moonshot_id, str) and moonshot_id
+    after = authoritative_snapshot(page)
+    assert after["revision"] == before["revision"] + 1
+    assert after["xp"] == before["xp"], "a proposal must not award XP"
+    event = find_event(after, "moonshot-proposed", moonshotId=moonshot_id)
+    assert event is not None and event["actorId"] == before["viewer"]["id"]
+    page.wait_for_function(
+        "(revision) => document.querySelector('#world')?.dataset.worldRevision === String(revision)",
+        arg=after["revision"],
+        timeout=30000
+    )
+    return after
+
+
+def open_witness_moonshot_field(page, stage):
+    before_route = authoritative_snapshot(page)
+    page.locator("#places-button").tap()
+    route = page.get_by_role("button", name="Walk to Moonshot Field", exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    enter_nearby_institution(page, "moonshot_field", "Moonshot Field", "Moonshot Field")
+    arrival = authoritative_snapshot(page)
+    route_events = assert_route_travel_records_only_discoveries(
+        before_route, arrival, stage
+    )
+    opened = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        arrival, opened, "Opening the Witness Moonshot Field failure objects"
+    )
+    return opened, route_events
+
+
+def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out):
+    opened, route_discoveries = open_witness_moonshot_field(
+        page, "Walking from the Witness Quest Board to Moonshot Field"
+    )
+    section = page.locator(
+        '#sheet-content [data-moonshot-source-archive-failure-ledger="true"]'
+    )
+    expect(section).to_be_visible()
+    projection = page.evaluate("""async () => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Witness Moonshot snapshot read failed: ' + response.status);
+      const dto = await response.json();
+      const { projectSourceArchiveFailureObjects } = await import('/world-view.mjs');
+      const result = projectSourceArchiveFailureObjects(dto.world, { limit: 6, page: 0 });
+      if (!result) return null;
+      return {
+        complete: result.complete,
+        unseenEventCount: result.unseenEventCount,
+        total: result.total,
+        eventIds: result.records.map(record => record.eventId)
+      };
+    }""")
+    assert projection is not None
+    assert projection["complete"] is False, (
+        "The Witness fixture must retain an intentionally partial world projection."
+    )
+    assert projection["unseenEventCount"] > 0
+    assert failure_event_id in projection["eventIds"]
+    expect(section).to_have_attribute("data-moonshot-source-archive-failure-complete", "false")
+    expect(section).to_have_attribute("data-moonshot-source-archive-failure-scope", "partial")
+    expect(section).to_have_attribute(
+        "data-moonshot-source-archive-failure-unseen-event-count",
+        str(projection["unseenEventCount"])
+    )
+    expect(section).to_have_attribute(
+        "data-moonshot-source-archive-failure-snapshot-revision",
+        str(opened["revision"])
+    )
+    expect(section).to_contain_text("visible in this partial player snapshot")
+    expect(section).to_contain_text("not a global failure count or newest-order claim")
+    assert "Showing latest" not in (section.text_content() or "")
+    cards = section.locator('[data-moonshot-source-archive-failure-card="true"]')
+    expect(cards).to_have_count(6)
+    target_card = section.locator(
+        '[data-moonshot-source-archive-failure-card="true"]' +
+        '[data-moonshot-source-archive-failure-event-id="' + failure_event_id + '"]'
+    )
+    expect(target_card).to_have_count(1)
+
+    before_first_append = authoritative_snapshot(page)
+    after_first_append = append_witness_moonshot_revision(page, width, "chronicle")
+    assert after_first_append["revision"] > opened["revision"]
+    notice = page.locator(
+        '#sheet-content [data-moonshot-snapshot-notice="true"]'
+    )
+    expect(notice).to_be_visible()
+    expect(notice).to_have_attribute("data-moonshot-snapshot-freshness", "refresh-required")
+    expect(notice).to_contain_text("pinned to revision " + str(opened["revision"]))
+    expect(section).to_have_attribute(
+        "data-moonshot-source-archive-failure-freshness", "refresh-required"
+    )
+
+    inspect = target_card.locator(
+        '[data-moonshot-source-archive-failure-chronicle-event-id="' + failure_event_id + '"]'
+    )
+    expect(inspect).to_be_visible()
+    before_chronicle = authoritative_snapshot(page)
+    inspect.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'World Chronicle' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    chronicle = page.locator("#sheet-content")
+    expect(chronicle).to_have_attribute(
+        "data-chronicle-snapshot-revision", str(opened["revision"])
+    )
+    expect(chronicle).to_have_attribute(
+        "data-chronicle-snapshot-freshness-reason", "revision-mismatch"
+    )
+    exact_event = chronicle.locator(
+        '#sheet-content [data-chronicle-entries] [data-event-id="world:' + failure_event_id + '"]'
+    )
+    expect(exact_event).to_have_count(1)
+    refresh_chronicle = chronicle.locator('[data-chronicle-snapshot-refresh="true"]')
+    expect(refresh_chronicle).to_be_visible()
+    expect(refresh_chronicle).to_be_enabled()
+    after_chronicle_open = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        before_chronicle, after_chronicle_open,
+        "Opening a partial-snapshot failure in its exact pinned Chronicle"
+    )
+    refresh_chronicle.tap()
+    expect(chronicle).to_have_attribute(
+        "data-chronicle-snapshot-revision", str(after_first_append["revision"])
+    )
+    expect(chronicle).to_have_attribute(
+        "data-chronicle-snapshot-freshness-reason", "current"
+    )
+    expect(refresh_chronicle).to_be_hidden()
+    after_chronicle_refresh = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        after_chronicle_open, after_chronicle_refresh,
+        "Explicitly refreshing the pinned failure Chronicle"
+    )
+    page.locator("#sheet-close").tap()
+
+    enter_nearby_institution(page, "moonshot_field", "Moonshot Field", "Moonshot Field")
+    opened_archive_source = authoritative_snapshot(page)
+    after_second_append = append_witness_moonshot_revision(page, width, "archive")
+    full_ledger = page.locator(
+        '#sheet-content [data-moonshot-source-archive-failure-open-ledger="true"]'
+    )
+    expect(full_ledger).to_be_visible()
+    before_archive = authoritative_snapshot(page)
+    full_ledger.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Evidence Archive' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    archive = page.locator("#sheet-content")
+    expect(archive).to_have_attribute(
+        "data-evidence-archive-snapshot-revision", str(opened_archive_source["revision"])
+    )
+    archive_freshness = archive.locator(
+        '[data-evidence-archive-snapshot-freshness="refresh-required"]'
+    )
+    expect(archive_freshness).to_be_visible()
+    archive_failures = archive.locator(
+        '[data-source-archive-failure-ledger="true"]'
+    )
+    expect(archive_failures).to_be_visible()
+    expect(archive_failures).to_have_attribute("data-source-archive-failure-total", str(projection["total"]))
+    expect(archive_failures).to_have_attribute("data-source-archive-failure-complete", "false")
+    after_archive_open = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        before_archive, after_archive_open,
+        "Opening the full failure ledger from its pinned partial Moonshot snapshot"
+    )
+    refresh_archive = archive.locator('[data-evidence-archive-refresh="true"]')
+    expect(refresh_archive).to_be_visible()
+    refresh_archive.tap()
+    expect(archive).to_have_attribute(
+        "data-evidence-archive-snapshot-revision", str(after_second_append["revision"])
+    )
+    expect(archive.locator('[data-evidence-archive-snapshot-freshness]')).to_have_count(0)
+    after_archive_refresh = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        after_archive_open, after_archive_refresh,
+        "Explicitly refreshing the pinned Evidence Archive"
+    )
+    page.locator("#sheet-close").tap()
+
+    enter_nearby_institution(page, "moonshot_field", "Moonshot Field", "Moonshot Field")
+    opened_source_observatory = authoritative_snapshot(page)
+    after_third_append = append_witness_moonshot_revision(page, width, "source")
+    latest_card = page.locator(
+        '#sheet-content [data-moonshot-source-archive-failure-card="true"]' +
+        '[data-moonshot-source-archive-failure-event-id="' + failure_event_id + '"]'
+    )
+    expect(latest_card).to_have_count(1)
+    investigate = latest_card.locator(
+        '[data-moonshot-source-archive-failure-investigate-event-id="' + failure_event_id + '"]'
+    )
+    expect(investigate).to_be_visible()
+    before_investigation = authoritative_snapshot(page)
+    investigate.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Source Observatory' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    source_observatory = page.locator("#sheet-content")
+    expect(source_observatory).to_have_attribute(
+        "data-source-observatory-snapshot-revision",
+        str(opened_source_observatory["revision"])
+    )
+    expect(source_observatory).to_have_attribute(
+        "data-source-observatory-snapshot-freshness", "refresh-required"
+    )
+    expect(source_observatory.locator(
+        '[data-source-observatory-snapshot-notice="true"]'
+    )).to_be_visible()
+    record_lead = source_observatory.locator(
+        '[data-source-observatory-record-lead]'
+    )
+    expect(record_lead).to_be_visible()
+    record_lead.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Record a source observation' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    observation_form = page.locator(
+        '#sheet-content [data-source-observation-form="true"]'
+    )
+    expect(observation_form).to_be_visible()
+    expect(observation_form).to_have_attribute(
+        "data-source-snapshot-revision", str(opened_source_observatory["revision"])
+    )
+    expect(observation_form).to_have_attribute(
+        "data-source-observation-prefill-origin", "source-archive-failure"
+    )
+    after_investigation = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        before_investigation, after_investigation,
+        "Opening a snapshot-bound failure lead without submitting it"
+    )
+    layout = assert_mobile_layout(page, width)
+    page.screenshot(
+        path=str(out / ("witness-moonshot-partial-snapshot-" + str(width) + ".png")),
+        full_page=True
+    )
+    page.locator("#sheet-close").tap()
+    return {
+        "partialSnapshot": True,
+        "unseenEventCount": projection["unseenEventCount"],
+        "visibleFailureTotal": projection["total"],
+        "partialScopeDisclosed": True,
+        "chroniclePinnedRevision": opened["revision"],
+        "chronicleRefreshedRevision": after_first_append["revision"],
+        "evidenceArchivePinnedRevision": opened_archive_source["revision"],
+        "evidenceArchiveRefreshedRevision": after_second_append["revision"],
+        "sourceObservatoryPinnedRevision": opened_source_observatory["revision"],
+        "sourceObservationFormSnapshotRevision": opened_source_observatory["revision"],
+        "failureLeadNotSubmitted": True,
+        "routeDiscoveries": route_discoveries,
+        "layout": layout
+    }
+
+
 def inspect_witness_scope(page, founder_id, response_event_id, source_observation_event_id, source_archive_failure_event_id, after_archive, width, out):
     page.locator("#sheet-close").tap()
     witness = logout_to_witness(page)
@@ -1790,6 +2071,9 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
     assert_canonical_state_unchanged(after_board, after_character, "Reading the Witness character record")
 
     page.locator("#sheet-close").tap()
+    moonshot_failure_history = inspect_witness_moonshot_failure_history(
+        page, source_archive_failure_event_id, width, out
+    )
     witness_packet = project_synthesis_packet(page)
     assert witness_packet["available"] is True
     before_npc = authoritative_snapshot(page)
@@ -1819,6 +2103,7 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
         "founderResponseVisibleInSharedHistory": True,
         "founderRejectedAttemptVisibleInSharedHistory": True,
         "witnessNpcRetainedAttemptCount": 0,
+        "moonshotFailureHistory": moonshot_failure_history,
         "routeDiscoveries": travel_discoveries
     }
 
