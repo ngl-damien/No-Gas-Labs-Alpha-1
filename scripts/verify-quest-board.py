@@ -1296,6 +1296,12 @@ def assert_source_archive_failure_chronicle(page, failure, expected_role):
     )
     open_evidence_archive(page)
     expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    # Entering the institution may update the session's retained player position.
+    # Pin the inspection baseline only after navigation so this assertion measures
+    # Chronicle reading/searching, not the legitimate route into Evidence Archive.
+    before_inspection = authoritative_snapshot(page)
+    assert before_inspection['viewerRole'] == expected_role
+    assert failure['eventId'] in before_inspection['eventIds']
     search = page.locator('#sheet-content [data-chronicle-search]')
     expect(search).to_have_count(1)
     # Chronicle pages are bounded to 20 entries. Search spans the full retained
@@ -1318,7 +1324,7 @@ def assert_source_archive_failure_chronicle(page, failure, expected_role):
     search.fill('GITHUB_SOURCE_UNAVAILABLE')
     expect(card).to_have_count(1)
     after = authoritative_snapshot(page)
-    assert after == before, 'Reading/searching the failure Chronicle must not mutate world state or XP.'
+    assert after == before_inspection, 'Reading/searching the failure Chronicle must not mutate world state or XP.'
     page.locator('#sheet-close').tap()
     page.wait_for_function("() => document.querySelector('#sheet')?.hidden === true")
     return {
