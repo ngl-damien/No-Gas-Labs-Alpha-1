@@ -996,10 +996,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput, {
       typeof event.source === 'string' && event.source.trim() && Array.from(event.source).length <= 500 &&
       optionalText(event.falsifier) && optionalText(event.uncertainty) && optionalText(event.nextTest) &&
       event.originSchema === 'ngl.source-observatory.v2' &&
-      ((event.bindingMode === 'USER_SELECTED' &&
-        (event.sourceSnapshotReceiptDigest === undefined || event.sourceSnapshotReceiptDigest === null)) ||
-       (event.bindingMode === 'SERVER_SESSION_RECEIPT' &&
-        typeof event.sourceSnapshotReceiptDigest === 'string' && /^[a-f0-9]{64}$/.test(event.sourceSnapshotReceiptDigest))) &&
+      isValidSourceObservationBinding(event) &&
       event.sourceRetrieval === 'NOT_PERFORMED' &&
       event.independentVerification === 'NOT_PERFORMED' &&
       event.modelAssertions === 'LEADS_ONLY' &&
