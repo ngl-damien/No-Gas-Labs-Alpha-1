@@ -2675,3 +2675,68 @@ test('Evidence Archive withholds invented positions for partial legacy event sna
   });
   assert.deepEqual(world, before, 'position projection must remain read-only');
 });
+
+
+test('World Chronicle keeps an explicitly pinned snapshot until the player refreshes it', () => withDocument(() => {
+  const { world, founder } = sourceObservationWorld();
+  const pinnedRevision = world.revision;
+  assert.ok(Number.isSafeInteger(pinnedRevision) && pinnedRevision >= 0);
+  const beforeWorld = structuredClone(world);
+  const refreshed = [];
+  const container = element('main');
+  const update = renderWorldChronicle(container, world, 'publish-observatory', {
+    stale: true,
+    staleReason: 'revision-mismatch',
+    onRefresh: () => refreshed.push('requested'),
+    refreshAvailable: true
+  });
+  const refreshButton = () => walk(container).find(item =>
+    item.dataset?.chronicleSnapshotRefresh === 'true'
+  );
+  const freshness = () => walk(container).find(item =>
+    item.dataset?.chronicleSnapshotFreshness
+  );
+
+  assert.ok(refreshButton(), 'a stale pinned Chronicle must expose an explicit refresh control');
+  assert.equal(refreshButton().textContent, 'Refresh World Chronicle →');
+  assert.equal(refreshButton().disabled, false);
+  assert.equal(container.dataset.chronicleSnapshotRevision, String(pinnedRevision));
+  refreshButton().onclick();
+  assert.deepEqual(refreshed, ['requested'], 'the refresh control must invoke only its bounded callback');
+
+  const nextWorld = structuredClone(world);
+  nextWorld.revision = pinnedRevision + 1;
+  nextWorld.events.push({
+    id: 'chronicle-pinned-later-discovery',
+    type: 'discover',
+    locationId: 'academy',
+    actor: founder,
+    at: '2026-10-27T09:04:00.000Z'
+  });
+  const beforeNextWorld = structuredClone(nextWorld);
+
+  assert.equal(update(world, true, 'revision-mismatch', false), true);
+  assert.equal(container.dataset.chronicleSnapshotRevision, String(pinnedRevision),
+    'a newer live revision must not silently replace the pinned snapshot');
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'revision-mismatch');
+  assert.equal(refreshButton().disabled, true,
+    'the control must remain unavailable when the newer snapshot is not currently usable');
+  assert.match(refreshButton().textContent, /reconnect to refresh/i);
+  assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
+
+  assert.equal(update(world, true, 'revision-mismatch', true), true);
+  assert.equal(refreshButton().disabled, false,
+    'a connected, newer accepted revision must enable explicit refresh');
+
+  assert.equal(update(nextWorld, false, 'current', false), true,
+    'the caller may advance the view only after the player chooses refresh');
+  assert.equal(container.dataset.chronicleSnapshotRevision, String(nextWorld.revision));
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'current');
+  assert.equal(refreshButton().hidden, true);
+  assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'current');
+  assert.ok(walk(container).some(item =>
+    item.dataset?.eventId === 'world:chronicle-pinned-later-discovery'
+  ), 'the refreshed Chronicle must reveal the newly accepted event');
+  assert.deepEqual(world, beforeWorld, 'snapshot pinning and refresh must not mutate the old world');
+  assert.deepEqual(nextWorld, beforeNextWorld, 'snapshot pinning and refresh must not mutate the new world');
+}));
