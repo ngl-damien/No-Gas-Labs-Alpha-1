@@ -177,6 +177,22 @@ function retainedPublicationEvents(world) {
   return retained;
 }
 
+/**
+ * Resolve the exact retained publication event for one artifact version.
+ * This reuses the character projection's unique-version and publication
+ * lineage rules; a receipt identifies retained bytes, not truth or XP.
+ */
+export function findRetainedPublicationEventId(world, creationId, version) {
+  if (typeof creationId !== 'string' || !creationId || creationId.trim() !== creationId ||
+      !Number.isSafeInteger(version) || version < 1) return null;
+  const matches = retainedPublicationEvents(world).filter(event =>
+    event.creationId === creationId && event.version === version &&
+    typeof event.id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.id) &&
+    !['constructor', 'prototype', '__proto__'].includes(event.id)
+  );
+  return matches.length === 1 ? matches[0].id : null;
+}
+
 // A publication is an XP receipt only when the exact fixed reward is present.
 // Invalid reward metadata does not erase a retained artifact from the world.
 // XP requires one unambiguous retained publication whose own event carries
