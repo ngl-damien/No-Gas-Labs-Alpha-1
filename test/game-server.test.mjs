@@ -2104,10 +2104,15 @@ test('Source Observatory HTTP observations are hash-bound, actor-attributed, rep
   const actorId = before.body.viewer?.id || 'damien';
   const actorRole = before.body.viewer?.role || 'founder';
   const sourceSnapshotRevision = before.body.world.revision;
+  const sourceSnapshotReceipt = before.body.sourceSnapshotReceipt;
+  assert.equal(sourceSnapshotReceipt?.revision, sourceSnapshotRevision);
+  assert.match(sourceSnapshotReceipt?.token || '', /^[A-Za-z0-9_-]{43}$/);
+  assert.ok(Number.isSafeInteger(sourceSnapshotReceipt?.expiresAt) && sourceSnapshotReceipt.expiresAt > Date.now());
   const interveningWitness = f.client();
   const witnessSession = await interveningWitness.request('/api/state');
   assert.equal(witnessSession.body.viewer.role, 'witness');
   assert.notEqual(witnessSession.body.viewer.id, actorId);
+  assert.equal(witnessSession.body.sourceSnapshotReceipt?.revision, sourceSnapshotRevision);
   const intervening = await interveningWitness.request('/api/action', {
     type: 'report', creationId, version: 1,
     text: 'A second session appended a report after the pinned Source Observatory snapshot.'
@@ -2116,9 +2121,20 @@ test('Source Observatory HTTP observations are hash-bound, actor-attributed, rep
   const afterIntervening = await founder.request('/api/state');
   assert.equal(afterIntervening.body.world.revision, sourceSnapshotRevision + 1);
   const note = { claim: 'The model says the bridge is open.', sourceKind: 'model-assertion', source: 'A model response; no external source retrieved.', falsifier: 'Independent inspection finds it closed.', uncertainty: 'No independent observation yet.', nextTest: 'Inspect the primary source directly.' };
+  const witnessDigest = artifactReceipt(sourceObservationRequestMaterial({
+    actorId: witnessSession.body.viewer.id, actorRole: witnessSession.body.viewer.role,
+    creationId, version: 1, sourceSnapshotRevision, ...note
+  })).digest;
+  const foreignReceipt = await interveningWitness.request('/api/action', {
+    type: 'record-source-observation', requestId: 'source-observation-' + witnessDigest,
+    observationId: 'source-observation-' + witnessDigest, creationId, version: 1,
+    sourceSnapshotRevision, sourceSnapshotReceipt: sourceSnapshotReceipt.token, ...note
+  });
+  assert.equal(foreignReceipt.response.status, 409);
+  assert.equal(foreignReceipt.body.error.code, 'INVALID_SOURCE_SNAPSHOT_RECEIPT');
   const digest = artifactReceipt(sourceObservationRequestMaterial({ actorId, actorRole, creationId, version: 1, sourceSnapshotRevision, ...note })).digest;
   const observationId = 'source-observation-' + digest;
-  const action = { type: 'record-source-observation', requestId: observationId, observationId, creationId, version: 1, sourceSnapshotRevision, ...note };
+  const action = { type: 'record-source-observation', requestId: observationId, observationId, creationId, version: 1, sourceSnapshotRevision, sourceSnapshotReceipt: sourceSnapshotReceipt.token, ...note };
   const first = await founder.request('/api/action', action);
   assert.equal(first.response.status, 200, JSON.stringify(first.body));
   const after = await founder.request('/api/state');
@@ -2127,8 +2143,12 @@ test('Source Observatory HTTP observations are hash-bound, actor-attributed, rep
   assert.equal(retained.length, 1);
   assert.equal(retained[0].actor.id, actorId);
   assert.equal(retained[0].actor.role, actorRole);
-  assert.equal(retained[0].bindingMode, 'USER_SELECTED');
+  assert.equal(retained[0].bindingMode, 'SERVER_SESSION_RECEIPT');
+  assert.equal(retained[0].sourceSnapshotReceiptDigest, artifactReceipt(sourceSnapshotReceipt.token).digest);
+  assert.equal(JSON.stringify(retained[0]).includes(sourceSnapshotReceipt.token), false);
   assert.equal(retained[0].sourceSnapshotRevision, sourceSnapshotRevision);
+  const exported = await founder.request('/api/export');
+  assert.equal(exported.body.sourceSnapshotReceipt, undefined);
   assert.equal(retained[0].sourceRetrieval, 'NOT_PERFORMED');
   assert.equal(retained[0].modelAssertions, 'LEADS_ONLY');
   assert.equal(after.body.world.xp, before.body.world.xp);
