@@ -295,6 +295,11 @@ function openQuestBoard() {
   content.setAttribute('data-quest-board', 'true');
   content.setAttribute('data-actor-role', viewer.role);
   const questSnapshot = world;
+  content.setAttribute(
+    'data-quest-board-snapshot-revision',
+    Number.isSafeInteger(questSnapshot?.revision) && questSnapshot.revision >= 0
+      ? String(questSnapshot.revision) : 'unavailable'
+  );
   const milestones = getQuestTrail(questSnapshot, viewer);
   const recorded = milestones.filter(item => item.complete).length;
   const blocked = milestones.filter(item => !item.complete && item.blockedReason).length;
