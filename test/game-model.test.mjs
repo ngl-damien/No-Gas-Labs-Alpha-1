@@ -1446,3 +1446,50 @@ test('publicWorld assigns global append positions before actor-specific event fi
   );
   assert.deepEqual(world, before, 'server projection must not mutate canonical event history');
 });
+
+test('public response history positions are accepted only for complete canonical streams', async () => {
+  const start = createWorld({ id: 'response-history-position-contract', now });
+  const privateDraft = await applyAction(start, {
+    type: 'draft', kind: 'loom', title: 'Private lead',
+    intent: 'A hidden event precedes public research.'
+  }, founder, { now: '2026-10-17T12:00:01.000Z' });
+  const proposal = await applyAction(privateDraft.world, {
+    type: 'propose-moonshot',
+    title: 'Bound append position',
+    hypothesis: 'The retained event order is stable.',
+    falsifier: 'A public snapshot changes the event sequence.',
+    evidenceNeeded: 'A complete retained event sequence.'
+  }, founder, { now: '2026-10-17T12:00:02.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Inspect the retained event sequence.',
+    observation: 'The response exposes a derived position for each event.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, founder, { now: '2026-10-17T12:00:03.000Z' });
+
+  const full = publicWorld(report.world, founder);
+  assert.deepEqual(full.events.map(event => event.historyPosition), [1, 2, 3]);
+  assert.ok(report.world.events.every(event => !Object.hasOwn(event, 'historyPosition')),
+    'response metadata must not mutate canonical event objects');
+
+  const validated = await validateWorld(full);
+  assert.ok(validated.events.every(event => !Object.hasOwn(event, 'historyPosition')),
+    'validation must return canonical events without response-only metadata');
+
+  const forged = structuredClone(full);
+  forged.events[1].historyPosition = 99;
+  await assert.rejects(
+    validateWorld(forged),
+    error => error.code === 'INVALID_WORLD' && /history position/i.test(error.message)
+  );
+
+  const filtered = publicWorld(report.world, witness);
+  assert.deepEqual(filtered.events.map(event => event.historyPosition), [2, 3]);
+  await assert.rejects(
+    validateWorld(filtered),
+    error => error.code === 'INVALID_WORLD' && /filtered|history position/i.test(error.message)
+  );
+});
