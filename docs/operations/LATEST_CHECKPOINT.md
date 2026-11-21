@@ -39,7 +39,7 @@ Root AGENTS, complete shared protocol, Institutional Charter, World Projection C
 - No canonical world event, XP, evidence certification, truth verdict, approval, authority transition, merge, release, or deployment occurred. G6/G7 remain IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
 
 ## Next
-Collect the terminal Android emulator result and retain Worker A ownership of Android/Browser repairs. Then path-by-path reconcile the 50-commit #718 stack against main before any integration/merge proposal. The next runtime objective should extend the verified Chronicle-to-institution loop through offline map navigation and explicit entry while preserving the pinned accepted snapshot and zero shared writes.
+Coordinate with Worker A on the terminal Android evidence (ADB offline, empty JUnit failure body, system crash; root cause unknown) while preserving the APK and project-state artifacts. Reconcile the single Contradiction Clerk's placement across #472/#718 through an explicit human decision before integration; do not move or duplicate it. Then path-by-path reconcile the 50-commit #718 stack against main. The next runtime objective should extend the verified Chronicle-to-institution loop through offline map navigation and explicit entry while preserving the pinned accepted snapshot and zero shared writes.
 
 
 ---
