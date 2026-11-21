@@ -1049,7 +1049,13 @@ def record_project_state_lead(page, founder_id, observatory):
     assert event["modelAssertions"] == "LEADS_ONLY"
     assert event["execution"] == "NOT_EXECUTED"
     assert event["originSchema"] == "ngl.source-observatory.v2"
-    assert event["bindingMode"] == "USER_SELECTED"
+    assert event["bindingMode"] == "SERVER_SESSION_RECEIPT"
+    assert event["sourceSnapshotRevision"] == before_submit["revision"]
+    receipt_digest = event.get("sourceSnapshotReceiptDigest")
+    assert isinstance(receipt_digest, str) and len(receipt_digest) == 64 and all(
+        character in "0123456789abcdef" for character in receipt_digest
+    ), "A server-session binding must retain only the digest of its snapshot receipt."
+    assert "sourceSnapshotReceipt" not in event, "The ephemeral bearer token must not enter canonical history."
     assert event["observationId"].startswith("source-observation-")
     assert event["normalizedRecordDigest"] == event["observationId"].removeprefix("source-observation-")
     assert after_submit["revision"] == before_submit["revision"] + 1
