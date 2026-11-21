@@ -2470,8 +2470,14 @@ test('Chronicle routes retained events to related institutions and only explicit
     assert.deepEqual(reportRoutes.map(item => item.dataset.chronicleInstitutionRoute),
       ['evidence_archive', 'town-square']);
     assert.match(textOf(root), /not claims about the event's physical location/i);
+    const townSquareButton = reportRoutes.find(item => item.dataset.chronicleInstitutionRoute === 'town-square');
+    assert.ok(townSquareButton);
+    assert.equal(townSquareButton.textContent, 'Go to TownSquare →');
+    assert.match(townSquareButton['aria-label'], /^Go to related institution TownSquare/);
     const archiveButton = reportRoutes.find(item => item.dataset.chronicleInstitutionRoute === 'evidence_archive');
     assert.ok(archiveButton);
+    assert.equal(archiveButton.textContent, 'Go to Evidence Archive →');
+    assert.match(archiveButton['aria-label'], /^Go to related institution Evidence Archive/);
     archiveButton.onclick();
     assert.deepEqual(opened, ['evidence_archive']);
   });
