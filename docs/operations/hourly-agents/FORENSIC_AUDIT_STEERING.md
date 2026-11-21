@@ -1,3 +1,15 @@
+## Run 286 Worker B steering — Publication detail / Chronicle snapshot pinning — 2026-11-21
+
+- Continue on existing runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `8f391d4b4a81e6071b61f66d3f1c24a9bd7bb9c5`. No competing runtime PR.
+- The test-only parent `04a94ad` reproduced the defect at [Quest Board run 44892519246](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44892519246): Chronicle opened at live revision 26 while publication detail was pinned to 25. Runtime commit `8f391d4` now passes the captured snapshot through publication → Chronicle → artifact detail and pins the detail projection itself. Evidence Archive and Quest Board artifact routes also pass their source snapshots.
+- Exact-head Full Verify [44894140041](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44894140041), Genesis [44894140053], PWA [44894140074], Source Archive [44894140056], Combat [44894140065], Council [44894140208], Academy [44894140088], Quest Board [44894140079] and Synthesis [44894140096] PASS. Hosted preflight ready, warnings/failures empty, report passed=true.
+- Quest Board artifact [14703288055](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44894140079/artifacts/14703288055): 320px pinned 25 → accepted 26 → refresh 26; Chronicle and round-trip detail remain 25. 390px pinned 95 → accepted 96 → refresh 96; Chronicle and round-trip detail remain 95. Both refreshes make zero shared API requests, mutate no world state, and award zero XP.
+- Browser [44894140035](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44894140035) remains FAIL at Worker A-owned `scripts/verify-browser.py:472` due Clerk placement disagreement. Offline PWA recovery passed first. Handoff [#472 comment 7061227052](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7061227052); do not move/duplicate NPC or edit Worker A's Browser files without human-gate placement adjudication.
+- Android [44894140198](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44894140198) remains IN_PROGRESS at offline-world emulator journey after APK assembly. Handoff [#533 comment 7061279866](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7061279866). Keep Android ownership with Worker A.
+- Next: terminal Android result; NPC placement human gate; exact-version fail-closed path; then reconcile the 97-commit runtime stack against main path-by-path before integration. No merge/release/deployment/approval.
+
+---
+
 ## Run 284 Worker B steering — Quest Board accepted-snapshot refresh verification — 2026-11-21
 
 - Continue on existing runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `4a60693ef739366cdfbd346144c3a89495109e1b`. No competing runtime PR was created.
