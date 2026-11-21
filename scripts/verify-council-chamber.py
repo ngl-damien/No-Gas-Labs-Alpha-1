@@ -83,6 +83,8 @@ def authoritative_snapshot(page):
 
 
 def assert_council_room(page):
+    expect(page.locator('#sheet')).to_be_visible()
+    expect(page.locator('#sheet-close')).to_be_visible()
     content = page.locator('#sheet-content')
     expect(page.locator('#sheet-title')).to_have_text('Council Chamber')
     expect(content).to_have_attribute('data-council-chamber', 'true')
@@ -100,6 +102,7 @@ def assert_council_room(page):
 
 
 def assert_populated_council_room(page, fixture):
+    expect(page.locator('#sheet')).to_be_visible()
     content = page.locator('#sheet-content')
     expect(page.locator('#sheet-title')).to_have_text('Council Chamber')
     expect(content).to_have_attribute('data-council-chamber', 'true')
@@ -121,9 +124,67 @@ def assert_populated_council_room(page, fixture):
         details = card.locator('details[data-council-review-summary="' + role + '"]')
         expect(details).to_have_count(1)
         expect(details).to_have_attribute('data-council-review-status', 'valid-for-human-review')
-        details.locator('summary').click()
+        summary = details.locator('summary')
+        scroll_metrics = summary.evaluate("""el => {
+          const panel = document.querySelector('#sheet');
+          const panelRect = panel.getBoundingClientRect();
+          const header = panel.querySelector('.sheet-top');
+          const headerBottom = header ? header.getBoundingClientRect().bottom : panelRect.top;
+          const item = el.getBoundingClientRect();
+          const visibleTop = Math.max(panelRect.top, headerBottom) + 8;
+          const visibleBottom = panelRect.bottom - 8;
+          const delta = item.top < visibleTop
+            ? item.top - visibleTop
+            : item.bottom > visibleBottom
+              ? item.bottom - visibleBottom
+              : 0;
+          const maxScroll = Math.max(0, panel.scrollHeight - panel.clientHeight);
+          panel.scrollTop = Math.max(0, Math.min(maxScroll, panel.scrollTop + delta));
+          return {
+            requestedDelta: Math.round(delta),
+            scrollTop: Math.round(panel.scrollTop),
+            maxScroll: Math.round(maxScroll)
+          };
+        }""")
+        page.wait_for_timeout(50)
+        summary_state = summary.evaluate("""el => {
+          const panel = document.querySelector('#sheet');
+          const panelRect = panel.getBoundingClientRect();
+          const header = panel.querySelector('.sheet-top');
+          const headerBottom = header ? header.getBoundingClientRect().bottom : panelRect.top;
+          const item = el.getBoundingClientRect();
+          const visibleTop = Math.max(panelRect.top, headerBottom) + 4;
+          const visibleBottom = panelRect.bottom - 4;
+          return {
+            visible: item.width > 0 && item.height > 0 &&
+              item.top >= visibleTop && item.bottom <= visibleBottom,
+            itemTop: Math.round(item.top),
+            itemBottom: Math.round(item.bottom),
+            visibleTop: Math.round(visibleTop),
+            visibleBottom: Math.round(visibleBottom),
+            scrollTop: Math.round(panel.scrollTop),
+            scrollHeight: Math.round(panel.scrollHeight),
+            clientHeight: Math.round(panel.clientHeight)
+          };
+        }""")
+        assert summary_state['visible'], (
+            'Each bounded Council review summary must be reachable below the sticky header '
+            'inside the mobile sheet scrollport (' + role + '): ' +
+            json.dumps({**scroll_metrics, **summary_state})
+        )
+        close_in_view = page.locator('#sheet-close').evaluate("""el => {
+          const button = el.getBoundingClientRect();
+          const panel = document.querySelector('#sheet').getBoundingClientRect();
+          return button.width > 0 && button.height > 0 &&
+            button.top >= panel.top && button.bottom <= panel.bottom &&
+            button.left >= panel.left && button.right <= panel.right;
+        }""")
+        assert close_in_view, 'The Council sheet close control must remain in the visible panel while role notes are inspected.'
+        expect(page.locator('.sheet-top')).to_have_css('position', 'sticky')
+        summary.tap()
         for label in expected_labels:
             expect(details).to_contain_text(label)
+        summary.tap()  # Collapse before the next role so long notes do not compound the scroll height.
         if role == 'synthesizer':
             expect(details).to_contain_text(fixture['challengeEventId'])
         expect(details).to_contain_text('not independent evidence, truth, execution')
@@ -432,16 +493,18 @@ def run_viewport(browser, url, out, width):
         enter_nearby_institution(page, 'council_chamber', 'Council Chamber', 'Council Chamber')
         assert_council_room(page)
 
-        # A tap on the visible Council landmark must resolve the same institution ID,
-        # not merely send the player toward an anonymous world coordinate.
+        # A landmark tap is navigation, not entry. Preserve that distinction:
+        # resolve the same institution ID, then use its explicit nearby Interact action.
         page.locator('#sheet-close').tap()
         expect(page.locator('#sheet')).to_be_hidden()
         page.wait_for_timeout(750)
         page.locator('#world').tap(position=council_canvas_tap_position(page))
         page.wait_for_function(
-            "() => document.querySelector('#sheet-title')?.textContent === 'Council Chamber'",
+            "() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'council_chamber' && " +
+            "document.querySelector('#sheet')?.hidden === true",
             timeout=10000
         )
+        enter_nearby_institution(page, 'council_chamber', 'Council Chamber', 'Council Chamber', timeout=10000)
         assert_council_room(page)
 
         # The explicit Interact control remains a second, accessible way to enter.
@@ -480,8 +543,8 @@ def run_viewport(browser, url, out, width):
             assert fixture['responseCount'] == 4
             assert fixture['distinctActors'] is True
 
-            # The route list brings the player beside the room; the canvas tap
-            # then opens the actual map landmark and all four bounded summaries.
+            # The route list and canvas landmark are navigation only. The explicit
+            # nearby Interact action is required to enter the institutional room.
             page.locator('#places-button').tap()
             populated_route = page.get_by_role('button', name='Walk to Council Chamber', exact=True)
             expect(populated_route).to_be_visible()
@@ -493,9 +556,11 @@ def run_viewport(browser, url, out, width):
             page.wait_for_timeout(750)
             page.locator('#world').tap(position=council_canvas_tap_position(page))
             page.wait_for_function(
-                "() => document.querySelector('#sheet-title')?.textContent === 'Council Chamber'",
+                "() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'council_chamber' && " +
+                "document.querySelector('#sheet')?.hidden === true",
                 timeout=10000
             )
+            enter_nearby_institution(page, 'council_chamber', 'Council Chamber', 'Council Chamber', timeout=10000)
             assert_populated_council_room(page, fixture)
             populated_after = authoritative_snapshot(page)
             assert populated_after == populated_before, (

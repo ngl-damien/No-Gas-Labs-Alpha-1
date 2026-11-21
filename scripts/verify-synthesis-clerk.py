@@ -986,6 +986,37 @@ def return_to_founder(page, founder_id):
     return authoritative_snapshot(page)
 
 
+def assert_world_visible_behind_sheet(page, label):
+    metrics = page.evaluate("""() => {
+        const world = document.querySelector('#world')
+        const sheet = document.querySelector('#sheet')
+        const backdrop = document.querySelector('#sheet-backdrop')
+        if (!world || !sheet || !backdrop) return null
+        const worldRect = world.getBoundingClientRect()
+        const sheetRect = sheet.getBoundingClientRect()
+        const worldStyle = getComputedStyle(world)
+        const backdropStyle = getComputedStyle(backdrop)
+        return {
+            sheetHidden: sheet.hidden,
+            worldVisible: worldRect.width > 0 && worldRect.height > 0 &&
+                worldStyle.display !== 'none' && worldStyle.visibility !== 'hidden',
+            sheetTop: sheetRect.top,
+            sheetHeight: sheetRect.height,
+            viewportHeight: window.innerHeight,
+            backdropFilter: backdropStyle.backdropFilter,
+            worldFilter: worldStyle.filter
+        }
+    }""")
+    assert metrics is not None, f"{label}: world/sheet/backdrop elements must exist"
+    assert metrics["sheetHidden"] is False, f"{label}: institution sheet must be open"
+    assert metrics["worldVisible"], f"{label}: world canvas must remain visible behind the sheet"
+    assert metrics["sheetTop"] >= 100, f"{label}: sheet must leave a visible world strip above it: {metrics}"
+    assert metrics["sheetHeight"] <= metrics["viewportHeight"] - 100, f"{label}: sheet must not consume the full viewport: {metrics}"
+    assert metrics["backdropFilter"] == "none", f"{label}: backdrop must not blur the world: {metrics}"
+    assert metrics["worldFilter"] == "none", f"{label}: world canvas itself must not be blurred: {metrics}"
+    return metrics
+
+
 def open_synthesis_clerk(page, packet):
     before = authoritative_snapshot(page)
     control = page.locator('[data-guild-npc-control="synthesizer"]')
@@ -1010,44 +1041,30 @@ def open_synthesis_clerk(page, packet):
             "The restored session may open the Guild Hall as soon as the accessible NPC route reaches interaction range."
         )
     else:
-        target = page.evaluate("""async () => {
-          const { GUILD_NPCS, projectGuildNpcPointerTarget } = await import('/pixel-world-view.mjs');
-          const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'synthesizer');
-          const canvas = document.querySelector('#world');
-          if (!npc || !canvas) throw new Error('Synthesis Clerk sprite or world canvas is missing.');
-          const rect = canvas.getBoundingClientRect();
-          // The NPC route terminates at (npc.x, npc.y + 12). Shared-world player
-          // positions are intentionally not persisted in private local storage.
-          const player = { x: npc.x, y: npc.y + 12 };
-          const zoom = rect.width < 600 ? 0.78 : Math.max(0.64, Math.min(0.92, rect.width / 1500));
-          const visibleWidth = rect.width / zoom;
-          const visibleHeight = rect.height / zoom;
-          const camera = {
-            x: Math.max(visibleWidth / 2, Math.min(1600 - visibleWidth / 2, player.x + 100)),
-            y: Math.max(visibleHeight / 2, Math.min(1000 - visibleHeight / 2, player.y - 50))
-          };
-          const point = {
-            x: rect.width / 2 + (npc.x - camera.x) * zoom,
-            y: rect.height / 2 + (npc.y + 10 - camera.y) * zoom
-          };
-          const selected = projectGuildNpcPointerTarget(point, camera, zoom, rect.width, rect.height);
-          return { point, selected, player, camera, zoom, width: rect.width, height: rect.height };
-        }""")
-        assert target["selected"] and target["selected"]["roleId"] == "synthesizer", (
-            "The computed touch point must resolve to the actual Synthesis Clerk NPC: " +
-            json.dumps(target)
+        # The NPC route has reached interaction range. The visible Interact
+        # control now changes to Talk to Synthesis and opens the exact owning
+        # workbench; the map's accessible route target is not the talk action.
+        expect(control).to_have_attribute("data-guild-npc-action", "talk")
+        interact_button = page.locator("#interact-button")
+        expect(interact_button).to_be_visible()
+        interact_label = interact_button.get_attribute("aria-label") or ""
+        assert "Synthesis Clerk" in interact_label and "nearby collaborator" in interact_label, (
+            "Nearby Interact must expose the exact bounded Synthesis action: " + interact_label
         )
-        page.locator("#world").tap(position=target["point"])
+        interact_button.tap()
         page.wait_for_function(
             "() => document.querySelector('#sheet-title')?.textContent === 'Guild Hall' && " +
             "!document.querySelector('#sheet').hidden",
             timeout=30000
         )
+        expect(page.locator("#sheet")).to_be_visible()
+        expect(page.locator("#sheet-close")).to_be_visible()
     
     arrival = authoritative_snapshot(page)
     route_discoveries = assert_route_travel_records_only_discoveries(
         before, arrival, "Walking to the Synthesis Clerk"
     )
+    world_surface = assert_world_visible_behind_sheet(page, "Synthesis Clerk")
 
     card = page.locator('#sheet-content [data-collaborator-role="synthesizer"]')
     expect(card).to_have_count(1)
@@ -1073,6 +1090,7 @@ def open_synthesis_clerk(page, packet):
         arrival, after, "Reading the Synthesis Clerk after navigation"
     )
     after["npcRouteDiscoveries"] = route_discoveries
+    after["worldSurface"] = world_surface
     return card, after
 
 def record_project_state_lead(page, founder_id, observatory):
@@ -2119,6 +2137,7 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
         "witnessNpcRetainedAttemptCount": 0,
         "moonshotFailureHistory": moonshot_failure_history,
         "npcRouteDiscoveries": after_npc["npcRouteDiscoveries"],
+        "worldSurface": after_npc["worldSurface"],
         "routeDiscoveries": travel_discoveries
     }
 
