@@ -25,12 +25,12 @@
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "Run 278 (2026-11-20/21): Evidence Archive normalized lineage identities; runtime head 15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da.",
       "repo_delta": "PR #718 head 15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da, 36 commits ahead/0 behind main, 9 paths; PR #719 docs-only child synchronized to this exact runtime head by a two-parent merge commit, 4 paths; canonical main unchanged.",
-      "current_pr_focus": "PR #718: Evidence Archive normalized lineage identity hardening. PR #719: synchronized Run 278 documentation checkpoint. Full Verify, Genesis, PWA, Combat, Council, Academy PASS; Quest Board/Synthesis/Android in progress at checkpoint; Browser reproduces Worker A-owned Clerk locator mismatch."
+      "current_pr_focus": "PR #718: Evidence Archive normalized lineage identity hardening. PR #719: Run 278 checkpoint. Full Verify, Genesis, PWA, Combat, Council, Academy, Quest Board, and Synthesis PASS; Browser reproduces Worker A-owned Clerk locator mismatch after offline PWA recovery; Android APK assembly PASS, emulator journey in progress."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
   "manus_constraint": "Manus 300 credits/day — one credit = one sealed block — avoid fan-out",
   "last_observed_run": "Run 278 (2026-11-20/21): Evidence Archive normalized lineage identities; runtime head 15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da.",
   "repo_delta": "PR #718 head 15bf7bbe0ed8eb8f8e8bd24f7445c25a9e0416da, 36 commits ahead/0 behind main, 9 paths; PR #719 docs-only child synchronized to this exact runtime head by a two-parent merge commit, 4 paths; canonical main unchanged.",
-  "current_pr_focus": "PR #718: Evidence Archive normalized lineage identity hardening. PR #719: synchronized Run 278 documentation checkpoint. Full Verify, Genesis, PWA, Combat, Council, Academy PASS; Quest Board/Synthesis/Android in progress at checkpoint; Browser reproduces Worker A-owned Clerk locator mismatch."
+  "current_pr_focus": "PR #718: Evidence Archive normalized lineage identity hardening. PR #719: Run 278 checkpoint. Full Verify, Genesis, PWA, Combat, Council, Academy, Quest Board, and Synthesis PASS; Browser reproduces Worker A-owned Clerk locator mismatch after offline PWA recovery; Android APK assembly PASS, emulator journey in progress."
 }
