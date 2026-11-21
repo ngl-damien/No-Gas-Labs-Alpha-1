@@ -2103,18 +2103,30 @@ test('Source Observatory HTTP observations are hash-bound, actor-attributed, rep
   const before = await founder.request('/api/state');
   const actorId = before.body.viewer?.id || 'damien';
   const actorRole = before.body.viewer?.role || 'founder';
+  const sourceSnapshotRevision = before.body.world.revision;
+  const interveningWitness = f.client();
+  await interveningWitness.login();
+  const intervening = await interveningWitness.request('/api/action', {
+    type: 'report', creationId, version: 1,
+    text: 'A second session appended a report after the pinned Source Observatory snapshot.'
+  });
+  assert.equal(intervening.response.status, 200, JSON.stringify(intervening.body));
+  const afterIntervening = await founder.request('/api/state');
+  assert.equal(afterIntervening.body.world.revision, sourceSnapshotRevision + 1);
   const note = { claim: 'The model says the bridge is open.', sourceKind: 'model-assertion', source: 'A model response; no external source retrieved.', falsifier: 'Independent inspection finds it closed.', uncertainty: 'No independent observation yet.', nextTest: 'Inspect the primary source directly.' };
-  const digest = artifactReceipt(sourceObservationRequestMaterial({ actorId, actorRole, creationId, version: 1, ...note })).digest;
+  const digest = artifactReceipt(sourceObservationRequestMaterial({ actorId, actorRole, creationId, version: 1, sourceSnapshotRevision, ...note })).digest;
   const observationId = 'source-observation-' + digest;
-  const action = { type: 'record-source-observation', requestId: observationId, observationId, creationId, version: 1, ...note };
+  const action = { type: 'record-source-observation', requestId: observationId, observationId, creationId, version: 1, sourceSnapshotRevision, ...note };
   const first = await founder.request('/api/action', action);
   assert.equal(first.response.status, 200, JSON.stringify(first.body));
   const after = await founder.request('/api/state');
+  assert.equal(after.body.world.revision, sourceSnapshotRevision + 2);
   const retained = after.body.world.events.filter(event => event.type === 'source-observation-recorded');
   assert.equal(retained.length, 1);
   assert.equal(retained[0].actor.id, actorId);
   assert.equal(retained[0].actor.role, actorRole);
   assert.equal(retained[0].bindingMode, 'USER_SELECTED');
+  assert.equal(retained[0].sourceSnapshotRevision, sourceSnapshotRevision);
   assert.equal(retained[0].sourceRetrieval, 'NOT_PERFORMED');
   assert.equal(retained[0].modelAssertions, 'LEADS_ONLY');
   assert.equal(after.body.world.xp, before.body.world.xp);

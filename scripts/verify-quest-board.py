@@ -5799,6 +5799,10 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
     form = page.locator('#sheet-content [data-source-observation-form="true"]')
     expect(form).to_have_count(1)
     pinned = authoritative_snapshot(page)
+    form_snapshot_revision = form.get_attribute('data-source-snapshot-revision')
+    assert form_snapshot_revision == str(pinned['revision']), (
+        'The Source Observation form must expose the exact accepted snapshot revision it captured.'
+    )
     assert pinned['viewerRole'] in ('founder', 'witness')
 
     witness_context = browser.new_context(
@@ -5994,6 +5998,7 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
         return {
             'journey': 'source-observation-snapshot-provenance-' + str(width),
             'sourceSnapshotRevision': retained['event'].get('sourceSnapshotRevision'),
+            'formSnapshotRevision': form_snapshot_revision,
             'interveningReportPosition': retained['reportPosition'],
             'sourceObservationAppendPosition': retained['observationPosition'],
             'exactCreationId': fixture['creationId'],

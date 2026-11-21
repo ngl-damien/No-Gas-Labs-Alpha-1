@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectResearchRecords, projectSourceObservationRecords, hasSourcePredicatePublicRetentionAcknowledgement, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER } from '../game/research-records.mjs';
+import { sourceObservationRequestMaterial, projectResearchRecords, projectSourceObservationRecords, hasSourcePredicatePublicRetentionAcknowledgement, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER } from '../game/research-records.mjs';
 
 const proposal = (overrides = {}) => ({
   id: 'proposal-event-1',
@@ -71,6 +71,25 @@ const retainedSource = (overrides = {}) => ({
   ...overrides
 });
 const project = (events, creations = [retainedSource()]) => projectResearchRecords(events, creations);
+
+test('Source Observation normalized identity binds a retained snapshot revision without rewriting legacy IDs', () => {
+  const base = {
+    actorId: 'witness-1', actorRole: 'witness', creationId: 'source-1', version: 1,
+    claim: 'A bounded author-entered observation.', sourceKind: 'user-report',
+    source: 'A participant report.', falsifier: null, uncertainty: null, nextTest: null
+  };
+  const legacy = sourceObservationRequestMaterial(base);
+  const firstSnapshot = sourceObservationRequestMaterial({ ...base, sourceSnapshotRevision: 1 });
+  const laterSnapshot = sourceObservationRequestMaterial({ ...base, sourceSnapshotRevision: 2 });
+  assert.equal(JSON.parse(legacy).protocol, 'ngl.source-observation-id.v1');
+  assert.equal(JSON.parse(firstSnapshot).protocol, 'ngl.source-observation-id.v2');
+  assert.equal(JSON.parse(firstSnapshot).sourceSnapshotRevision, 1);
+  assert.notEqual(firstSnapshot, laterSnapshot);
+  assert.throws(
+    () => sourceObservationRequestMaterial({ ...base, sourceSnapshotRevision: -1 }),
+    /snapshot revision/i
+  );
+});
 
 test('proposal source links require one earlier publication with consistent time', () => {
   const source = { sourceCreationId: 'source-1', sourceVersion: 1 };
@@ -462,6 +481,7 @@ test('Source Observation notes, challenges and responses retain server-projected
     normalizedRecordDigest: digest,
     creationId: 'source-1',
     version: 1,
+    sourceSnapshotRevision: 1,
     claim: 'A bounded author-entered observation.',
     sourceKind: 'user-report',
     source: 'A participant report.',
@@ -511,6 +531,7 @@ test('Source Observation notes, challenges and responses retain server-projected
   const records = projectSourceObservationRecords(events, [retainedSource()]);
   assert.equal(records.length, 1);
   assert.equal(records[0].historyPosition, 3);
+  assert.equal(records[0].sourceSnapshotRevision, 1);
   assert.equal(records[0].challenges[0].historyPosition, 5);
   assert.equal(records[0].challenges[0].responses[0].historyPosition, 6);
 
@@ -522,6 +543,7 @@ test('Source Observation notes, challenges and responses retain server-projected
     legacyPartial, [retainedSource()], { allowLocalPositions: false }
   );
   assert.equal(unsequenced[0].historyPosition, null);
+  assert.equal(unsequenced[0].projectionStatus, 'malformed');
   assert.equal(unsequenced[0].challenges[0].historyPosition, null);
   assert.equal(unsequenced[0].challenges[0].responses[0].historyPosition, null);
 });

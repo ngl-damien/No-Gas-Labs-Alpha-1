@@ -205,22 +205,31 @@ test('large interleaved Moonshot history preserves exact proposal/report pairing
   assert.equal(await validateWorld(world).then(() => true), true);
 });
 
-test('Source Observatory notes are actor-attributed, version-bound, idempotent and non-rewarding',async()=>{
+test('Source Observatory notes bind the accepted snapshot prefix, remain idempotent and non-rewarding',async()=>{
   const start=createWorld({id:'source-observation-world',now});
   const draft=await applyAction(start,{type:'draft',kind:'observatory',title:'Source Observatory',intent:'Record a falsifiable claim with its source.'},founder,{now});
   const published=await applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now:'2026-10-17T12:00:01.000Z'});
   const creationId=published.result.creationId;
+  const sourceSnapshotRevision=published.world.revision;
+  const intervening=await applyAction(published.world,{
+    type:'report',creationId,version:1,
+    text:'A second session appended this report after the pinned Source Observatory snapshot.'
+  },witness,{now:'2026-10-17T12:00:01.500Z'});
+  assert.equal(intervening.world.revision,sourceSnapshotRevision+1);
+  assert.equal(intervening.world.xp,published.world.xp);
   const note={claim:'The model says the bridge is open.',sourceKind:'model-assertion',source:'A model response; no external source retrieved.',falsifier:'Independent inspection finds it closed.',uncertainty:'No independent observation yet.',nextTest:'Inspect the primary source directly.'};
-  const digest=createHash('sha256').update(sourceObservationRequestMaterial({actorId:founder.id,actorRole:founder.role,creationId,version:1,...note})).digest('hex');
+  const digest=createHash('sha256').update(sourceObservationRequestMaterial({actorId:founder.id,actorRole:founder.role,creationId,version:1,sourceSnapshotRevision,...note})).digest('hex');
   const observationId='source-observation-'+digest;
-  const action={type:'record-source-observation',creationId,version:1,observationId,...note};
-  const recorded=await applyAction(published.world,action,founder,{now:'2026-10-17T12:00:02.000Z',requestId:observationId,actionFingerprint:'c'.repeat(64)});
+  const action={type:'record-source-observation',creationId,version:1,sourceSnapshotRevision,observationId,...note};
+  const recorded=await applyAction(intervening.world,action,founder,{now:'2026-10-17T12:00:02.000Z',requestId:observationId,actionFingerprint:'c'.repeat(64)});
   assert.deepEqual(recorded.result,{observationId,duplicate:false});
-  assert.equal(recorded.world.xp,published.world.xp);
+  assert.equal(recorded.world.xp,intervening.world.xp);
+  assert.equal(recorded.world.revision,intervening.world.revision+1);
   const event=recorded.world.events.at(-1);
   assert.equal(event.type,'source-observation-recorded');
   assert.equal(event.actor.id,founder.id);
   assert.equal(event.actor.role,'founder');
+  assert.equal(event.sourceSnapshotRevision,sourceSnapshotRevision);
   assert.equal(event.bindingMode,'USER_SELECTED');
   assert.equal(event.sourceRetrieval,'NOT_PERFORMED');
   assert.equal(event.independentVerification,'NOT_PERFORMED');
@@ -235,6 +244,27 @@ test('Source Observatory notes are actor-attributed, version-bound, idempotent a
   assert.equal(duplicate.world,recorded.world);
   assert.equal(duplicate.world.revision,revision);
   assert.equal(duplicate.world.events.filter(item=>item.type==='source-observation-recorded').length,1);
+  const makeRevisionAction=sourceSnapshotRevision=>{
+    const nextDigest=createHash('sha256').update(sourceObservationRequestMaterial({
+      actorId:founder.id,actorRole:founder.role,creationId,version:1,sourceSnapshotRevision,...note
+    })).digest('hex');
+    const nextId='source-observation-'+nextDigest;
+    return {...action,sourceSnapshotRevision,observationId:nextId};
+  };
+  const beforePublication=makeRevisionAction(sourceSnapshotRevision-1);
+  await assert.rejects(
+    applyAction(intervening.world,beforePublication,founder,{now:'2026-10-17T12:00:04.000Z',requestId:beforePublication.observationId,actionFingerprint:'d'.repeat(64)}),
+    error=>error.code==='SOURCE_SNAPSHOT_PREDATES_PUBLICATION'
+  );
+  const futureSnapshot=makeRevisionAction(intervening.world.revision+1);
+  await assert.rejects(
+    applyAction(intervening.world,futureSnapshot,founder,{now:'2026-10-17T12:00:04.000Z',requestId:futureSnapshot.observationId,actionFingerprint:'e'.repeat(64)}),
+    error=>error.code==='INVALID_SOURCE_SNAPSHOT_REVISION'
+  );
+  await assert.rejects(
+    applyAction(intervening.world,{...action,sourceSnapshotRevision:undefined},founder,{now:'2026-10-17T12:00:04.000Z',requestId:'missing-source-snapshot',actionFingerprint:'f'.repeat(64)}),
+    error=>error.code==='INVALID_SOURCE_SNAPSHOT_REVISION'
+  );
   const tampered=structuredClone(recorded.world);
   tampered.events.at(-1).bindingMode='INDEPENDENTLY_VERIFIED';
   await assert.rejects(validateWorld(tampered));
@@ -245,7 +275,8 @@ test('Source Observatory notes are actor-attributed, version-bound, idempotent a
     ['claim', event => { event.claim = 'A different claim with the same old ID.'; }],
     ['source', event => { event.source = 'A different attribution with the same old ID.'; }],
     ['actor ID', event => { event.actor.id = 'another-actor'; }],
-    ['actor role', event => { event.actor.role = 'witness'; }]
+    ['actor role', event => { event.actor.role = 'witness'; }],
+    ['snapshot revision', event => { event.sourceSnapshotRevision += 1; }]
   ]) {
     const forged = structuredClone(recorded.world);
     mutate(forged.events.at(-1));
