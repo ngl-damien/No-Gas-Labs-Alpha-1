@@ -1154,6 +1154,7 @@ test('Source Observatory actions use retained append order when the server wall 
   const published = await applyAction(draft.world, {
     type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
   }, founderActor, { now: publishedAt });
+  const sourceSnapshotRevision = published.world.revision;
   const note = {
     claim: 'The bridge is open.', sourceKind: 'model-assertion',
     source: 'A model assertion; no primary source was retrieved.',
@@ -1163,12 +1164,12 @@ test('Source Observatory actions use retained append order when the server wall 
   };
   const digest = createHash('sha256').update(sourceObservationRequestMaterial({
     actorId: founderActor.id, actorRole: founderActor.role,
-    creationId: published.result.creationId, version: 1, ...note
+    creationId: published.result.creationId, version: 1, sourceSnapshotRevision, ...note
   })).digest('hex');
   const observationId = 'source-observation-' + digest;
   const recorded = await applyAction(published.world, {
     type: 'record-source-observation', creationId: published.result.creationId,
-    version: 1, observationId, ...note
+    version: 1, sourceSnapshotRevision, observationId, ...note
   }, founderActor, {
     now: '2026-10-17T12:00:05.000Z',
     requestId: observationId, actionFingerprint: 'a'.repeat(64)
