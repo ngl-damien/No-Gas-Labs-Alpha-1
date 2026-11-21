@@ -2716,10 +2716,10 @@ test('World Chronicle keeps an explicitly pinned snapshot until the player refre
   });
   const beforeNextWorld = structuredClone(nextWorld);
 
-  assert.equal(update(world, true, 'revision-mismatch', false), true);
+  assert.equal(update(world, true, 'disconnected', false), true);
   assert.equal(container.dataset.chronicleSnapshotRevision, String(pinnedRevision),
     'a newer live revision must not silently replace the pinned snapshot');
-  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'revision-mismatch');
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'disconnected');
   assert.equal(refreshButton().disabled, true,
     'the control must remain unavailable when the newer snapshot is not currently usable');
   assert.match(refreshButton().textContent, /reconnect to refresh/i);
