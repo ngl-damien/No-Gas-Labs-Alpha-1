@@ -2547,3 +2547,39 @@ test('Chronicle routes retained events to related institutions and only explicit
 
   assert.deepEqual(world, before, 'Chronicle navigation projection must not mutate retained world history or progression');
 });
+
+
+test('Evidence Archive links private report records through their receipt-bound record ID', () => {
+  const actor = { id: 'witness-private', name: 'Private Witness', role: 'witness' };
+  const text = 'A private report with retained exact bytes.';
+  const recordTextReceipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(Buffer.from(text, 'utf8')).digest('hex'),
+    size: Buffer.byteLength(text, 'utf8')
+  };
+  const world = {
+    creations: [{ id: 'creation-private', title: 'Private research object', version: 1, versions: [] }],
+    reports: [{
+      id: 'report-private', creationId: 'creation-private', version: 1,
+      text, actor, at: '2026-11-21T07:00:00.000Z'
+    }],
+    contributions: [],
+    events: [{
+      id: 'event-private-report', type: 'report', actor,
+      creationId: 'creation-private', version: 1,
+      recordId: 'report-private', recordTextReceipt,
+      at: '2026-11-21T07:00:00.000Z'
+    }]
+  };
+
+  const linked = projectEvidenceArchiveActivityStreams(world).streams
+    .find(stream => stream.id === 'report').records[0];
+  assert.equal(linked.sourceEvent.status, 'linked');
+  assert.equal(linked.sourceEvent.eventId, 'event-private-report');
+
+  const mismatched = structuredClone(world);
+  mismatched.events[0].actionResult = { id: 'another-report' };
+  const withheld = projectEvidenceArchiveActivityStreams(mismatched).streams
+    .find(stream => stream.id === 'report').records[0];
+  assert.equal(withheld.sourceEvent.status, 'mismatched');
+});
