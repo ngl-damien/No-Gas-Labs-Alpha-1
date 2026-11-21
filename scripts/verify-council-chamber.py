@@ -134,6 +134,7 @@ def assert_populated_council_room(page, fixture):
             button.left >= panel.left && button.right <= panel.right;
         }""")
         assert close_in_view, 'The Council sheet close control must remain in the visible panel while role notes are inspected.'
+        expect(page.locator('.sheet-top')).to_have_css('position', 'sticky')
         summary.tap()
         for label in expected_labels:
             expect(details).to_contain_text(label)
