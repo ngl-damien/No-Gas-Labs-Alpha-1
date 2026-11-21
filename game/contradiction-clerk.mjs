@@ -223,20 +223,19 @@ export function prepareContradictionReview(creation, version) {
  * selector never substitutes another creation or the current edition.
  */
 export function resolveRetainedCreationTarget(snapshot, creationId, requestedVersion = null) {
+  const validCreationId = typeof creationId === "string" && creationId.length > 0 &&
+    creationId.length <= 80 && creationId.trim() === creationId && !/[\x00-\x1F\x7F]/.test(creationId);
   const unavailable = (reason, title = "Artifact unavailable", version = requestedVersion) => Object.freeze({
     status: "unavailable",
     reason,
-    creationId: typeof creationId === "string" ? creationId : "",
+    creationId: validCreationId ? creationId : "",
     version: Number.isSafeInteger(version) && version > 0 ? version : null,
     title: typeof title === "string" && title.trim() && Array.from(title).length <= 80
       ? title
       : "Artifact unavailable",
   });
 
-  if (typeof creationId !== "string" || !creationId || creationId.length > 80 ||
-      creationId.trim() !== creationId || /[\\u0000-\\u001F\\u007F]/.test(creationId)) {
-    return unavailable("invalid-creation-id");
-  }
+  if (!validCreationId) return unavailable("invalid-creation-id");
 
   let creations;
   try {
