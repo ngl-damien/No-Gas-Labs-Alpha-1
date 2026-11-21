@@ -5816,13 +5816,18 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
             'The intervening world event must come from a separate pseudonymous session.'
         )
         report_request_id = 'source-observation-provenance-report-' + str(width)
-        post_action(witness_page, {
+        report_text = 'A separate session advanced the world after the source note form opened. This is attributed activity, not verification.'
+        report_payload = post_action(witness_page, {
             'type': 'report',
             'creationId': fixture['creationId'],
             'version': fixture['version'],
-            'text': 'A separate session advanced the world after the source note form opened. This is attributed activity, not verification.',
+            'text': report_text,
             'requestId': report_request_id
         })
+        report_id = report_payload.get('result', {}).get('id')
+        assert isinstance(report_id, str) and report_id, (
+            'The intervening report must return its exact retained record ID.'
+        )
         witness_after = authoritative_snapshot(witness_page)
         assert witness_after['revision'] == witness_before['revision'] + 1, (
             'The second session must append exactly one report event.'
@@ -5888,9 +5893,23 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
           const events = (dto.world?.events ?? []).map((event, index) => ({ event, position: index + 1 }));
           const report = events.filter(({ event }) =>
             event?.type === 'report' &&
+            event.recordId === expected.reportId &&
+            event.actionResult?.id === expected.reportId &&
             event.creationId === expected.creationId &&
             event.version === expected.version &&
             event.actor?.id === expected.interveningActorId
+          );
+          const reportBytes = new TextEncoder().encode(expected.reportText);
+          const reportDigest = await crypto.subtle.digest('SHA-256', reportBytes);
+          const reportDigestHex = Array.from(new Uint8Array(reportDigest), value =>
+            value.toString(16).padStart(2, '0')
+          ).join('');
+          const reportReceipt = report.length === 1 ? report[0].event.recordTextReceipt : null;
+          const reportReceiptVerified = Boolean(
+            reportReceipt &&
+            reportReceipt.algorithm === 'sha256' &&
+            reportReceipt.digest === reportDigestHex &&
+            reportReceipt.size === reportBytes.byteLength
           );
           const observations = events.filter(({ event }) =>
             event?.type === 'source-observation-recorded' &&
@@ -5906,20 +5925,32 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
           );
           return {
             reportPosition: report.length === 1 ? report[0].position : null,
+            reportRecordId: report.length === 1 ? report[0].event.recordId : null,
+            reportReceiptVerified,
+            reportReceiptDigest: reportReceipt?.digest ?? null,
+            reportReceiptSize: reportReceipt?.size ?? null,
             observationPosition: observations.length === 1 ? observations[0].position : null,
             event: observations.length === 1 ? observations[0].event : null,
             publicationPosition: publications.length === 1 ? publications[0].position : null
           };
         }""", {
             'interveningActorId': witness_before['viewerId'],
+            'reportId': report_id,
+            'reportText': report_text,
             'creationId': fixture['creationId'],
             'version': fixture['version'],
             'actorId': pinned['viewerId'],
             'claim': 'This source note was prepared from a pinned world snapshot before another session appended a report.'
         })
         assert retained['publicationPosition'] is not None
+        assert retained['reportRecordId'] == report_id, (
+            'The retained report event must identify the exact record returned by the action.'
+        )
+        assert retained['reportReceiptVerified'] is True, (
+            'The retained report event must carry a SHA-256 receipt for the exact UTF-8 record text.'
+        )
         assert retained['reportPosition'] == witness_after['revision'], (
-            'The intervening report must retain its append position.'
+            'The exact intervening report must retain its append position.'
         )
         assert retained['observationPosition'] == after_submit['revision'], (
             'The Source Observation must retain the later append position.'
