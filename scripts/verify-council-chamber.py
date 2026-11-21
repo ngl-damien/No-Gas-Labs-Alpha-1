@@ -83,6 +83,8 @@ def authoritative_snapshot(page):
 
 
 def assert_council_room(page):
+    expect(page.locator('#sheet')).to_be_visible()
+    expect(page.locator('#sheet-close')).to_be_visible()
     content = page.locator('#sheet-content')
     expect(page.locator('#sheet-title')).to_have_text('Council Chamber')
     expect(content).to_have_attribute('data-council-chamber', 'true')
@@ -432,16 +434,18 @@ def run_viewport(browser, url, out, width):
         enter_nearby_institution(page, 'council_chamber', 'Council Chamber', 'Council Chamber')
         assert_council_room(page)
 
-        # A tap on the visible Council landmark must resolve the same institution ID,
-        # not merely send the player toward an anonymous world coordinate.
+        # A landmark tap is navigation, not entry. Preserve that distinction:
+        # resolve the same institution ID, then use its explicit nearby Interact action.
         page.locator('#sheet-close').tap()
         expect(page.locator('#sheet')).to_be_hidden()
         page.wait_for_timeout(750)
         page.locator('#world').tap(position=council_canvas_tap_position(page))
         page.wait_for_function(
-            "() => document.querySelector('#sheet-title')?.textContent === 'Council Chamber'",
+            "() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'council_chamber' && " +
+            "document.querySelector('#sheet')?.hidden === true",
             timeout=10000
         )
+        enter_nearby_institution(page, 'council_chamber', 'Council Chamber', 'Council Chamber', timeout=10000)
         assert_council_room(page)
 
         # The explicit Interact control remains a second, accessible way to enter.
