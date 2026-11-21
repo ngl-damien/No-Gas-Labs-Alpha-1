@@ -4297,8 +4297,38 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         '#sheet-content [data-chronicle-return-evidence-archive="true"]'
     )
     expect(return_button).to_have_count(1)
-    return_button.tap()
+    chronicle_route_before = authoritative_snapshot(page)
+    town_square_route = page.locator(
+        '#sheet-content [data-chronicle-institution-route="town-square"]'
+    )
+    expect(town_square_route).to_have_count(1)
+    town_square_route.tap()
+    expect(page.locator('#sheet-title')).to_have_text('The Commons at TownSquare')
+    institution_records = page.locator(
+        '#sheet-content [data-commons-institution-records="true"]'
+    )
+    expect(institution_records).to_have_count(1)
+    institution_records.tap()
+    expect(page.locator('#sheet-content [data-chronicle-search="true"]')).to_be_visible()
+    institution_chronicle_search = page.locator(
+        '#sheet-content [data-chronicle-search="true"]'
+    )
+    institution_chronicle_search.fill(source_event['eventId'])
+    institution_report_card = page.locator(
+        '#sheet-content [data-event-id="world:' + source_event['eventId'] + '"]'
+    )
+    expect(institution_report_card).to_have_count(1)
+    archive_route = institution_report_card.locator(
+        '[data-chronicle-institution-route="evidence_archive"]'
+    )
+    expect(archive_route).to_have_count(1)
+    archive_route.tap()
     expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    after_institution_navigation = authoritative_snapshot(page)
+    assert after_institution_navigation == chronicle_route_before, (
+        'Chronicle-to-institution routes must change player location only; they cannot create world events, XP or approval.'
+    )
+    assert after_institution_navigation['xp'] == chronicle_route_before['xp']
     artifact_inspection_before = authoritative_snapshot(page)
     report_cards = page.locator(
         '#sheet-content [data-evidence-archive-activity-stream="report"] [data-evidence-archive-activity-record="report"]'
@@ -4343,6 +4373,11 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'submissionXpDelta': after_actions['xp'] - baseline['xp'],
         'inspectionReadOnly': True,
         'offlineChronicleNavigation': True,
+        'chronicleInstitutionRouting': True,
+        'institutionRouteFromReport': 'town-square',
+        'institutionRouteBackToArchive': 'evidence_archive',
+        'institutionNavigationReadOnly': after_institution_navigation == chronicle_route_before,
+        'institutionNavigationXpDelta': after_institution_navigation['xp'] - chronicle_route_before['xp'],
         'returnToArchiveWhileOffline': True,
         'archivePinnedWhileOffline': True,
         'archiveSnapshotRevision': inspection_before['revision'],
