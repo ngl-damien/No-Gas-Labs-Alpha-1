@@ -2318,6 +2318,35 @@ test('Evidence Archive withholds source-event links for missing, duplicate, or m
       mutate: world => { world.events[0].actor = { ...actor, id: 'another-actor' }; }
     },
     {
+      name: 'unnormalized activity record identity',
+      status: 'unlinked',
+      recordStatus: 'unvalidated',
+      mutate: world => { world.reports[0].id = ' report-1 '; }
+    },
+    {
+      name: 'unnormalized source action-result identity',
+      status: 'unlinked',
+      mutate: world => { world.events[0].actionResult.id = ' report-1 '; }
+    },
+    {
+      name: 'unnormalized matching actor identity',
+      status: 'mismatched',
+      recordStatus: 'unvalidated',
+      mutate: world => {
+        world.reports[0].actor = { ...actor, id: ' damien ' };
+        world.events[0].actor = { ...actor, id: ' damien ' };
+      }
+    },
+    {
+      name: 'unnormalized matching actor name',
+      status: 'mismatched',
+      recordStatus: 'unvalidated',
+      mutate: world => {
+        world.reports[0].actor = { ...actor, name: ' Damien ' };
+        world.events[0].actor = { ...actor, name: ' Damien ' };
+      }
+    },
+    {
       name: 'wrong actor role',
       status: 'mismatched',
       mutate: world => { world.events[0].actor = { ...actor, role: 'witness' }; }
@@ -2331,6 +2360,7 @@ test('Evidence Archive withholds source-event links for missing, duplicate, or m
     const item = projectEvidenceArchiveActivityStreams(world).streams
       .find(stream => stream.id === 'report').records[0];
     assert.equal(item.sourceEvent.status, fixture.status, fixture.name);
+    if (fixture.recordStatus) assert.equal(item.status, fixture.recordStatus, fixture.name + ' must fail closed at the record level');
     assert.ok(item.sourceEvent.reason, fixture.name + ' must explain why navigation is withheld');
     withDocument(() => {
       const root = element('main');
