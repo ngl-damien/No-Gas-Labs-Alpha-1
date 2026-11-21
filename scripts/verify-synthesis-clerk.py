@@ -1848,7 +1848,7 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out)
         "data-chronicle-snapshot-freshness-reason", "revision-mismatch"
     )
     exact_event = chronicle.locator(
-        '#sheet-content [data-chronicle-entries] [data-event-id="world:' + failure_event_id + '"]'
+        '[data-chronicle-entries] [data-event-id="world:' + failure_event_id + '"]'
     )
     expect(exact_event).to_have_count(1)
     refresh_chronicle = chronicle.locator('[data-chronicle-snapshot-refresh="true"]')
