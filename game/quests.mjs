@@ -628,7 +628,7 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
   const sourceObservatory = { type: 'location', id: 'source_observatory' };
   const interpretationFor = guildName => [
     'Shared objective for ' + guildName + ': one linked Source Observation from each of two current guild actor identities, then a later challenge by a different current member, then the original author response.',
-    'Membership is evaluated at each event position in the append-only history and its timestamp; actor IDs are not proof of distinct humans.',
+    'Membership and Source Observatory stage order are evaluated by append position in retained history; strict timestamps are metadata, not causal order. Actor IDs are not proof of distinct humans.',
     'Source retrieval and independent verification remain NOT_PERFORMED; model assertions remain LEADS_ONLY. Completion records participation only; it does not establish truth, consensus, evidence certification, approval, mastery or authority, and grants no XP.',
     'Rejected, unanswered and contradictory events remain in history. Leaving or disbanding changes the current-roster projection but never deletes retained events.'
   ].join(' ');
@@ -683,8 +683,8 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
     eventPositionById.set(event.id, index);
   });
 
-  // Append-only position is the causal order. A regressing or backdated
-  // timestamp must not make work recorded before membership count for the guild.
+  // Source Observatory actions are append-ordered: a valid later-appended
+  // observation counts after the actor's join event even when its wall clock regresses.
   const memberJoinPositionByActor = new Map();
   for (const [eventId, event] of eventById) {
     if (!['guild-created', 'guild-joined'].includes(event?.type) || event.guildId !== guild.id) continue;
@@ -705,7 +705,6 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
       const position = eventPositionById.get(record.id);
       return Boolean(member && Number.isInteger(joinPosition) &&
         isStrictTimestamp(record.at) &&
-        Date.parse(record.at) >= Date.parse(member.joinedAt) &&
         Number.isInteger(position) && position > joinPosition && position > afterPosition);
     })
     .sort((left, right) =>
@@ -747,9 +746,6 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
   const latestObservationPosition = Math.max(...selectedObservations.map(record =>
     eventPositionById.get(record.id)
   ));
-  const latestObservationAt = Math.max(...selectedObservations.map(record =>
-    Date.parse(record.at)
-  ));
   const challengeRows = selectedObservations.flatMap(record =>
     trailRows(record.challenges).map(challenge => ({ record, challenge }))
   ).filter(({ record, challenge }) => {
@@ -761,8 +757,7 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
       key !== actorKey(record.actor) &&
       safeResearchId(challenge.id) && eventById.has(challenge.id) &&
       Number.isInteger(position) && position > latestObservationPosition && position > joinPosition &&
-      isStrictTimestamp(challenge.at) && Date.parse(challenge.at) >= Date.parse(member.joinedAt) &&
-      Date.parse(challenge.at) >= latestObservationAt);
+      isStrictTimestamp(challenge.at));
   }).map(({ record, challenge }) => {
     const challengePosition = eventPositionById.get(challenge.id);
     const response = challenge.responseStatus === 'answered' &&
@@ -777,7 +772,7 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
       safeResearchId(response.id) && eventById.has(response.id) &&
       Number.isInteger(responsePosition) && responsePosition > challengePosition &&
       responsePosition > responseJoinPosition &&
-      isStrictTimestamp(response.at) && Date.parse(response.at) >= Date.parse(responseMember.joinedAt)
+      isStrictTimestamp(response.at)
       ? eventById.get(response.id) : null;
     return {
       record,
