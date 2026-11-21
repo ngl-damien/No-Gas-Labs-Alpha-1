@@ -2167,6 +2167,7 @@ test('Source Observation challenges are actor-separated, append-only, replay-saf
   });
   assert.equal(published.response.status, 200, JSON.stringify(published.body));
   const before = await founder.request('/api/state');
+  const sourceSnapshotRevision = before.body.world.revision;
   const note = {
     claim: 'The bridge is open.', sourceKind: 'model-assertion',
     source: 'A model response; no primary source was retrieved.',
@@ -2176,12 +2177,12 @@ test('Source Observation challenges are actor-separated, append-only, replay-saf
   };
   const digest = artifactReceipt(sourceObservationRequestMaterial({
     actorId: before.body.viewer.id, actorRole: before.body.viewer.role,
-    creationId: published.body.result.creationId, version: 1, ...note
+    creationId: published.body.result.creationId, version: 1, sourceSnapshotRevision, ...note
   })).digest;
   const observationId = 'source-observation-' + digest;
   const recorded = await founder.request('/api/action', {
     type: 'record-source-observation', requestId: observationId, observationId,
-    creationId: published.body.result.creationId, version: 1, ...note
+    creationId: published.body.result.creationId, version: 1, sourceSnapshotRevision, ...note
   });
   assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
   const beforeChallenge = await witness.request('/api/state');
