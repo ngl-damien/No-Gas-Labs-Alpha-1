@@ -6029,7 +6029,8 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
         expect(register).to_contain_text(
             'does not prove the actor viewed that snapshot'
         )
-        expect(register).to_contain_text('Snapshot binding: SERVER-DELIVERED TO THIS SESSION')
+        expect(register).to_contain_text('Snapshot binding: SERVER_SESSION_RECEIPT')
+        expect(register).to_contain_text('private/imported history it is an unverified claim, not a signature')
         expect(register).to_contain_text('does not prove a person viewed, read or understood the snapshot')
         chronicle_link = register.locator(
             '[data-source-observation-chronicle-event="' + observation_event_id + '"]'
@@ -6048,7 +6049,8 @@ def assert_source_observation_snapshot_provenance(browser, page, url, fixture, o
         expect(chronicle_event).to_contain_text(
             'does not prove the actor viewed that snapshot'
         )
-        expect(chronicle_event).to_contain_text('Server-delivery receipt: validated for this session')
+        expect(chronicle_event).to_contain_text('Recorded snapshot binding: SERVER_SESSION_RECEIPT')
+        expect(chronicle_event).to_contain_text('private/imported history this field is an unverified claim, not a signature')
         expect(chronicle_event).to_contain_text('does not prove a person viewed, read or understood the snapshot')
         archive_after = authoritative_snapshot(page)
         assert shared_world_snapshot(archive_after) == shared_world_snapshot(archive_before), (
