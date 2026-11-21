@@ -959,7 +959,7 @@ export async function validateWorld(raw) {
       invalid('Source Archive predicate outcome does not match the exact retained bytes.');
   }
   const sourceObservationIds=new Set(),sourceObservationById=new Map(),sourceObservationChallengeIds=new Set(),sourceObservationChallengeById=new Map();
-  const allowedSourceObservationKeys=new Set(['id','type','actor','at','semantics','observationId','creationId','version','claim','sourceKind','source','falsifier','uncertainty','nextTest','sourceSnapshotRevision','originSchema','bindingMode','sourceRetrieval','independentVerification','modelAssertions','execution','normalizedRecordDigest','requestId','actionFingerprint','actionResult']);
+  const allowedSourceObservationKeys=new Set(['id','type','actor','at','semantics','observationId','creationId','version','claim','sourceKind','source','falsifier','uncertainty','nextTest','sourceSnapshotRevision','originSchema','bindingMode','sourceSnapshotReceiptDigest','sourceRetrieval','independentVerification','modelAssertions','execution','normalizedRecordDigest','requestId','actionFingerprint','actionResult']);
   for(const e of raw.events)if(e.type==='source-observation-recorded'){
     if(Object.keys(e).some(key=>!allowedSourceObservationKeys.has(key)))invalid('Source observation contains unsupported canonical fields.');
     unique(e.observationId);
@@ -970,7 +970,9 @@ export async function validateWorld(raw) {
        !SOURCE_OBSERVATION_SOURCE_KINDS.includes(e.sourceKind)||typeof e.source!=='string'||!e.source.trim()||Array.from(e.source).length>500||
        ![e.falsifier,e.uncertainty,e.nextTest].every(value=>value===null||(typeof value==='string'&&value.trim()&&Array.from(value).length<=500))||
        (e.sourceSnapshotRevision!==undefined&&(!Number.isSafeInteger(e.sourceSnapshotRevision)||e.sourceSnapshotRevision<0||!Number.isSafeInteger(eventPositions.get(e))||e.sourceSnapshotRevision>=eventPositions.get(e)+1))||
-       e.originSchema!=='ngl.source-observatory.v2'||e.bindingMode!=='USER_SELECTED'||
+       e.originSchema!=='ngl.source-observatory.v2'||
+       !((e.bindingMode==='USER_SELECTED'&&(e.sourceSnapshotReceiptDigest===undefined||e.sourceSnapshotReceiptDigest===null))||
+         (e.bindingMode==='SERVER_SESSION_RECEIPT'&&typeof e.sourceSnapshotReceiptDigest==='string'&&/^[a-f0-9]{64}$/.test(e.sourceSnapshotReceiptDigest)))||
        e.sourceRetrieval!=='NOT_PERFORMED'||e.independentVerification!=='NOT_PERFORMED'||e.modelAssertions!=='LEADS_ONLY'||e.execution!=='NOT_EXECUTED'||
        !/^[a-f0-9]{64}$/.test(e.normalizedRecordDigest)||e.normalizedRecordDigest!==digest||
        (e.requestId!==undefined&&e.requestId!==e.observationId)||
