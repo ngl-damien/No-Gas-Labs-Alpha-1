@@ -1942,7 +1942,7 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   nextWorld.events.push({
     id: 'chronicle-reconnect-new-discovery',
     type: 'discover',
-    locationId: 'academy',
+    locationId: 'overlook',
     actor: founder,
     at: '2026-10-27T09:04:00.000Z'
   });
@@ -2009,7 +2009,7 @@ test('World Chronicle exposes a bounded return path to Evidence Archive and keep
   nextWorld.events.push({
     id: 'chronicle-return-reconnect-discovery',
     type: 'discover',
-    locationId: 'academy',
+    locationId: 'overlook',
     actor: { id: 'damien', name: 'Damien', role: 'founder' },
     at: '2026-10-27T09:05:00.000Z'
   });
@@ -2682,7 +2682,7 @@ test('World Chronicle keeps an explicitly pinned snapshot until the player refre
   world.events.push({
     id: 'chronicle-pinned-existing-discovery',
     type: 'discover',
-    locationId: 'academy',
+    locationId: 'overlook',
     actor: founder,
     at: '2026-10-27T10:00:00.000Z'
   });
@@ -2720,7 +2720,7 @@ test('World Chronicle keeps an explicitly pinned snapshot until the player refre
   );
   assert.ok(pinnedDiscovery, 'the pinned discovery event must remain inspectable');
   const recordedPlace = walk(pinnedDiscovery).find(item =>
-    item.dataset?.chronicleRecordedLocation === 'academy'
+    item.dataset?.chronicleRecordedLocation === 'overlook'
   );
   assert.ok(recordedPlace, 'a retained discovery must expose its recorded map location');
   assert.equal(recordedPlace.disabled, true,
@@ -2733,7 +2733,7 @@ test('World Chronicle keeps an explicitly pinned snapshot until the player refre
   nextWorld.events.push({
     id: 'chronicle-pinned-later-discovery',
     type: 'discover',
-    locationId: 'academy',
+    locationId: 'overlook',
     actor: founder,
     at: '2026-10-27T09:04:00.000Z'
   });
@@ -2762,13 +2762,13 @@ test('World Chronicle keeps an explicitly pinned snapshot until the player refre
     item.dataset?.eventId === 'world:chronicle-pinned-existing-discovery'
   );
   const refreshedRoute = walk(refreshedPlace).find(item =>
-    item.dataset?.chronicleRecordedLocation === 'academy'
+    item.dataset?.chronicleRecordedLocation === 'overlook'
   );
   assert.ok(refreshedRoute);
   assert.equal(refreshedRoute.disabled, false,
     'explicit refresh must re-enable deterministic route navigation');
   refreshedRoute.onclick();
-  assert.deepEqual(routed, ['academy']);
+  assert.deepEqual(routed, ['overlook']);
   assert.ok(walk(container).some(item =>
     item.dataset?.eventId === 'world:chronicle-pinned-later-discovery'
   ), 'the refreshed Chronicle must reveal the newly accepted event');
