@@ -4597,6 +4597,10 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     expect(academy_refresh_button).to_have_count(1)
     expect(academy_refresh_button).to_be_visible()
     expect(academy_refresh_button).to_be_enabled()
+    page.screenshot(
+        path=str(out / ('academy-refresh-required-' + str(width) + '.png')),
+        full_page=True
+    )
 
     founder_before_academy_refresh = authoritative_snapshot(page)
     assert founder_before_academy_refresh['revision'] == academy_witness_after['revision']
@@ -4696,6 +4700,23 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'secondSessionXpDelta': second_after['xp'] - second_before['xp'],
         'archiveRefreshAfterReconnect': True,
         'reconnectedArchiveRevision': refreshed_state['revision'],
+        'academyRefresh': {
+            'requiredWhileOpen': True,
+            'snapshotRevision': academy_before['revision'],
+            'acceptedRevision': academy_witness_after['revision'],
+            'witnessReportId': academy_witness_report_id,
+            'witnessEventId': academy_new_event_id,
+            'buttonAction': 'read-only-local-projection-refresh',
+            'sharedApiRequestCount': len(academy_refresh_api_requests),
+            'xpDelta': academy_after_refresh['xp'] - founder_before_academy_refresh['xp'],
+            'worldRevisionDelta': academy_after_refresh['revision'] - founder_before_academy_refresh['revision'],
+            'eventIdsUnchanged': academy_after_refresh['eventIds'] == founder_before_academy_refresh['eventIds'],
+            'currentAfterRefresh': True,
+            'screenshots': [
+                'academy-refresh-required-' + str(width) + '.png',
+                'academy-refresh-current-' + str(width) + '.png'
+            ]
+        },
         'exactChronicleSourceNavigation': True,
         'sourceEventId': source_event['eventId'],
         'sourceEventPosition': source_event['eventPosition'],
