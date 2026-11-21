@@ -17,6 +17,13 @@ Claims and proposals may create visible quests, but cannot award XP, inventory, 
 
 Failures, refutations, and rejected candidates remain in history.
 
+## Source Archive failure objects
+
+- A `source-archive-attempt-failed` event is appended by the shared Source Archive service only after it observes a retrieval/build failure. Clients cannot submit this event as an action. The retained event binds a unique attempt, request/action digests, repository, commit, path, failure code and retryability, and identifies `shared-source-archive-service`; raw request IDs and action fingerprints are not retained.
+- Evidence Archive owns the complete paginated failure history. Moonshot Field may mirror a bounded newest-first subset as research blockers, using the same strict projection. This mirror does not change the failure's canonical Evidence Archive location.
+- Opening a failure card, following its exact Chronicle event, or opening a prefilled Source Observatory lead is read-only. A lead is not an observation until explicitly submitted and server-validated. These actions create no event, XP, truth verdict, approval or authority.
+- Later successful retrieval does not erase an earlier failed attempt. Partial, stale, invalid and unavailable projections must be distinguished; missing or unseen history is never interpreted as proof that no failure exists.
+
 Replay is idempotent by `event_id`.
 
 ## Chronology and replay
