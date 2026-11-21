@@ -1,3 +1,17 @@
+## Run 281 — Worker B steering (2026-11-20/21)
+
+**Runtime branch:** Continue only PR #718, `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `480c93b15d45903b6a3313624effc2502f97f6c8`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. Do not create a competing runtime branch. PR #718 remains draft/unmerged.
+
+**Completed:** The common sheet root no longer carries stale `data-*` metadata across institutional panels. Polymath Academy now pins the accepted world/viewer projection at open and exposes a visible, accessible freshness notice. The 320px/390px Quest Board journey asserts the accepted snapshot revision, stale state, prior-marker removal, and the existing offline route/explicit-entry/reconnect path. Cache namespace rotated; shared API and Cache Storage timeout semantics unchanged.
+
+**Exact-head checks:** Full Verify, Genesis, PWA build, Quest Board, Synthesis, Academy, Council, Combat, and Source Archive PASS on `480c93b`. Preflight warnings/failures are empty. Quest Board artifact [14691688057](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44865624638/artifacts/14691688057); Synthesis artifact [14691474159](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44865624696/artifacts/14691474159). Browser [44865624769](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44865624769) still fails at `scripts/verify-browser.py:472` on the Worker A Clerk-location divergence. Android [44865624653](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44865624653) remains in the offline-world emulator journey after APK assembly PASS; wait for terminal result, do not infer failure or success.
+
+**Worker A ownership:** No edits to Browser/Android-owned paths. #718's Evidence Archive Clerk placement conflicts with #472's Guild Hall placement; handoff [#472 comment 7057245179](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7057245179). The #392 service-worker branch is 95 ahead / 943 behind main and stale; only cache namespace/test-string changes were made on #718. Handoff [#392 comment 7057245469](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/392#issuecomment-7057245469). Registry points Worker A to #392 while `STUTTER_STEP_STEERING.md` points to #301; do not edit Worker A's steering/registry entry.
+
+**Documentation branch:** Update the existing #719 branch only; do not rebase or force-sync. It is diverged 44 ahead / 34 behind current #718. Preserve the exact divergence in the checkpoint.
+
+**Next:** Verify Android terminal outcome; add a mobile `refresh-required` case when a newer accepted shared revision arrives while Academy remains open, then reopen and verify `current`; obtain human-gate adjudication of the Contradiction Clerk's canonical institution before either branch changes.
+
 ## Run 279 — Worker B steering (2026-11-20/21)
 
 **Runtime branch:** Continue only PR #718, feat/evidence-archive-visible-stream-order-20261120-run272, exact head 1a2b83032919fd23d6a431c9e4931061e37f8ff1, base main 0d950c501cf128d828ae4f263cc05a9013d7e8c1. Do not create a competing runtime branch. PR #718 remains draft/unmerged.
