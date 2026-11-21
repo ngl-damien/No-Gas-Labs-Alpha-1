@@ -5251,6 +5251,10 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
                 'worldStateUnchangedByBoardInspection': True
             }
 
+        publication_snapshot_result = assert_publication_snapshot_pinning(
+            browser, page, source_archive_fixture, out, width
+        )
+
         layout = page.evaluate("""() => ({
           viewportWidth: window.innerWidth,
           documentWidth: document.documentElement.scrollWidth,
@@ -5271,6 +5275,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             'fixturePublication': fixture,
             'observatoryPublication': observatory_fixture,
             'publicationChronicle': publication_chronicle_result,
+            'publicationSnapshotPinning': publication_snapshot_result,
             'guildDissentCircuit': guild_circuit_result,
             'recordedFounderObjective': bool(fixture),
             'sourceArchiveFixture': source_archive_fixture,
@@ -5292,6 +5297,198 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
     finally:
         context.close()
 
+
+
+
+def assert_publication_snapshot_pinning(browser, page, publication, out, width):
+    """Prove an artifact detail and its Chronicle round-trip stay on one accepted snapshot."""
+    assert publication and publication.get('creationId') and publication.get('version'), (
+        'Publication snapshot pinning requires one exact retained artifact version.'
+    )
+    if not page.locator('#sheet').is_hidden():
+        page.locator('#sheet-close').tap()
+        expect(page.locator('#sheet')).to_be_hidden()
+    page.bring_to_front()
+    page.locator('#places-button').tap()
+    route = page.get_by_role('button', name='Walk to Publication House', exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    enter_nearby_institution(page, 'publication_house', 'Publication House', 'Publication House')
+
+    target = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Publication snapshot oracle could not read the accepted world.');
+      const dto = await response.json();
+      const creations = dto.world?.creations ?? [];
+      const events = dto.world?.events ?? [];
+      const matches = creations.filter(item => item?.id === expected.creationId);
+      if (matches.length !== 1) throw new Error('The publication target is missing or ambiguous.');
+      const creation = matches[0];
+      const versions = [...(Array.isArray(creation.versions) ? creation.versions : []), creation]
+        .filter(item => item?.version === expected.version);
+      if (versions.length !== 1) throw new Error('The exact retained publication version is missing or ambiguous.');
+      const version = versions[0];
+      const publications = events.filter(event => event?.type === 'publish' &&
+        event.creationId === expected.creationId && event.version === expected.version);
+      if (publications.length !== 1 || publications[0].actor?.role !== 'founder' ||
+          typeof publications[0].id !== 'string' || !publications[0].id ||
+          publications[0].id.trim() !== publications[0].id ||
+          publications[0].at !== version.publishedAt) {
+        throw new Error('The exact artifact version does not have one unambiguous Founder publication event.');
+      }
+      return {
+        title: creation.title,
+        kind: creation.kind,
+        version: version.version,
+        eventId: publications[0].id,
+        publishedAt: version.publishedAt
+      };
+    }""", publication)
+    artifact = page.get_by_role(
+        'button', name=f"{target['title']} · {target['kind']} · v{target['version']}", exact=True
+    )
+    expect(artifact).to_have_count(1)
+    artifact.tap()
+    expect(page.locator('#sheet-title')).to_have_text(target['title'])
+    expect(page.locator('#version-select')).to_have_value(str(target['version']))
+    pinned = authoritative_snapshot(page)
+
+    witness_context = browser.new_context(
+        viewport={'width': width, 'height': 844},
+        is_mobile=True,
+        has_touch=True
+    )
+    witness_page = witness_context.new_page()
+    witness_errors = []
+    witness_page.on('pageerror', lambda error: witness_errors.append(str(error)))
+    try:
+        witness_page.goto(page.url.split('/')[0] + '//' + page.url.split('/')[2], wait_until='networkidle')
+        witness_page.locator('#start-shared').tap()
+        witness_page.locator('#world').wait_for(state='visible')
+        witness_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
+        )
+        witness_before = authoritative_snapshot(witness_page)
+        assert witness_before['viewerRole'] == 'witness'
+        assert witness_before['viewerId'] != pinned['viewerId'], (
+            'The snapshot update must come from a separate pseudonymous session actor.'
+        )
+        post_action(witness_page, {
+            'type': 'report',
+            'creationId': publication['creationId'],
+            'version': publication['version'],
+            'text': 'Snapshot-pin acceptance report. This is attributed activity, not independent evidence or a truth verdict.',
+            'requestId': 'publication-snapshot-pin-report-' + str(width)
+        })
+        witness_after = authoritative_snapshot(witness_page)
+        assert witness_after['revision'] == witness_before['revision'] + 1, (
+            'The second session must append exactly one report event.'
+        )
+        assert witness_after['xp'] == witness_before['xp'], (
+            'A report used to advance the snapshot must not award XP.'
+        )
+        page.wait_for_function(
+            """expected => Number(document.querySelector('#world')?.dataset.worldRevision) === expected""",
+            arg=witness_after['revision']
+        )
+
+        link = page.locator('#publication-chronicle-link')
+        expect(link).to_have_count(1)
+        expect(link).to_have_attribute('data-publication-chronicle-event-id', target['eventId'])
+        link.tap()
+        expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
+        chronicle_content = page.locator('#sheet-content')
+        expect(chronicle_content).to_have_attribute(
+            'data-chronicle-snapshot-revision', str(pinned['revision'])
+        )
+        expect(chronicle_content).to_have_attribute(
+            'data-chronicle-snapshot-freshness-reason', 'revision-mismatch'
+        )
+        exact_event = chronicle_content.locator(
+            '[data-event-id="world:' + target['eventId'] + '"]'
+        )
+        expect(exact_event).to_have_count(1)
+        expect(exact_event).to_contain_text('Publication recorded')
+        inspect = exact_event.locator(
+            '[data-chronicle-target="' + publication['creationId'] +
+            '"][data-chronicle-version="' + str(publication['version']) + '"]'
+        )
+        expect(inspect).to_have_count(1)
+        inspect.tap()
+
+        expect(page.locator('#sheet-title')).to_have_text(target['title'])
+        expect(page.locator('#version-select')).to_have_value(str(target['version']))
+        detail = page.locator('#sheet-content')
+        expect(detail).to_have_attribute('data-creation-snapshot-revision', str(pinned['revision']))
+        expect(detail).to_have_attribute('data-creation-snapshot-freshness', 'refresh-required')
+        expect(detail.locator('[data-creation-snapshot-refresh]')).to_be_visible()
+
+        before_refresh = authoritative_snapshot(page)
+        page.evaluate("""() => {
+          window.__creationRefreshApiRequests = 0;
+          const originalFetch = window.fetch;
+          window.fetch = function(input, init) {
+            const raw = typeof input === 'string' ? input : (input?.url || String(input));
+            if (new URL(raw, location.href).pathname.startsWith('/api/')) {
+              window.__creationRefreshApiRequests += 1;
+            }
+            return originalFetch.call(this, input, init);
+          };
+          const originalOpen = XMLHttpRequest.prototype.open;
+          XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+            if (new URL(String(url), location.href).pathname.startsWith('/api/')) {
+              window.__creationRefreshApiRequests += 1;
+            }
+            return originalOpen.call(this, method, url, ...rest);
+          };
+        }""")
+        detail.locator('[data-creation-snapshot-refresh]').tap()
+        page.wait_for_function(
+            """expected => {
+              const content = document.querySelector('#sheet-content');
+              return content?.dataset.creationSnapshotRevision === String(expected) &&
+                content?.dataset.creationSnapshotFreshness === 'current' &&
+                !content.querySelector('[data-creation-snapshot-notice]');
+            }""",
+            arg=witness_after['revision']
+        )
+        refresh_api_requests = page.evaluate("window.__creationRefreshApiRequests")
+        after_refresh = authoritative_snapshot(page)
+        assert refresh_api_requests == 0, (
+            'Refreshing the artifact detail must use the accepted in-memory snapshot, not shared API requests.'
+        )
+        assert shared_world_snapshot(after_refresh) == shared_world_snapshot(before_refresh), (
+            'Artifact snapshot refresh must not mutate the shared world.'
+        )
+        assert after_refresh['xp'] == before_refresh['xp'], (
+            'Artifact snapshot refresh must not award XP.'
+        )
+        assert after_refresh['revision'] == before_refresh['revision'], (
+            'Artifact snapshot refresh must not append a world event.'
+        )
+        refreshed_link = page.locator('#publication-chronicle-link')
+        expect(refreshed_link).to_have_attribute('data-publication-chronicle-event-id', target['eventId'])
+        screenshot = out / ('publication-snapshot-pin-' + str(width) + '.png')
+        page.screenshot(path=str(screenshot), full_page=True)
+        page.locator('#sheet-close').tap()
+        expect(page.locator('#sheet')).to_be_hidden()
+        assert not witness_errors, 'Witness snapshot-update page errors: ' + json.dumps(witness_errors)
+        return {
+            'journey': 'publication-detail-chronicle-snapshot-pin-' + str(width),
+            'pinnedRevision': pinned['revision'],
+            'acceptedRevision': witness_after['revision'],
+            'chronicleRevision': pinned['revision'],
+            'roundTripDetailRevision': pinned['revision'],
+            'refreshedRevision': after_refresh['revision'],
+            'refreshApiRequests': refresh_api_requests,
+            'worldMutationOnRefresh': shared_world_snapshot(after_refresh) != shared_world_snapshot(before_refresh),
+            'xpDeltaOnRefresh': after_refresh['xp'] - before_refresh['xp'],
+            'separateSessionActor': witness_after['viewerId'] != pinned['viewerId'],
+            'exactPublicationEvent': target['eventId'],
+            'screenshot': screenshot.name
+        }
+    finally:
+        witness_context.close()
 
 def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, source_archive_fixture, retry_attempts_path):
     assert observatory_fixture and observatory_fixture.get('creationId'), (
