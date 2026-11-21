@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { projectChronicle } from "../game/chronicle.mjs";
-import { institutionActivityCount } from "../game/world-view.mjs";
+import { institutionActivityCount, institutionDestinationsForEvent } from "../game/world-view.mjs";
 import { projectCharacter } from "../game/character-sheet.mjs";
 import { createWorld, applyAction } from "../game/model.mjs";
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from "../game/artifacts.mjs";
@@ -1938,6 +1938,19 @@ test("institution activity counters include retained Commons, guild, and field-i
     "guild founding, membership, closure and leadership handoffs belong to Guild Hall");
   assert.equal(institutionActivityCount("forge", world), 4,
     "field-item transfer offers, refusals and acceptance belong to the Forge");
+  assert.deepEqual(institutionDestinationsForEvent({ type: "message-posted" }).map(place => place.id),
+    ["town-square"]);
+  assert.deepEqual(institutionDestinationsForEvent({ type: "guild-created" }).map(place => place.id),
+    ["guild_hall"]);
+  assert.deepEqual(institutionDestinationsForEvent({ type: "field-item-transferred" }).map(place => place.id),
+    ["forge"]);
+  assert.deepEqual(institutionDestinationsForEvent({ type: "execute" }, "kernel").map(place => place.id),
+    ["forge", "evidence_archive", "town-square"]);
+  const accessorEvent = Object.defineProperty({}, "type", {
+    get() { throw new Error("retained event accessors must not execute during route projection"); }
+  });
+  assert.deepEqual(institutionDestinationsForEvent(accessorEvent), [],
+    "route projection reads only own data properties and never invokes retained accessors");
 });
 
 test("Chronicle entries carry institutional destinations and explicit discovery locations without conflating them", () => {
