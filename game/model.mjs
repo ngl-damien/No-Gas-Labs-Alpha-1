@@ -178,9 +178,15 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
         return {world:original,result:{observationId,duplicate:true}};
       }
       result={observationId,duplicate:false};
+      const sourceSnapshotReceiptDigest = typeof requestMeta?.sourceSnapshotReceiptDigest === 'string' &&
+        /^[a-f0-9]{64}$/.test(requestMeta.sourceSnapshotReceiptDigest)
+        ? requestMeta.sourceSnapshotReceiptDigest
+        : null;
       recordEvent('source-observation-recorded',{
         observationId,creationId,version:action.version,sourceSnapshotRevision,claim,sourceKind,source,falsifier,uncertainty,nextTest,
-        originSchema:'ngl.source-observatory.v2',bindingMode:'USER_SELECTED',
+        originSchema:'ngl.source-observatory.v2',
+        bindingMode:sourceSnapshotReceiptDigest?'SERVER_SESSION_RECEIPT':'USER_SELECTED',
+        ...(sourceSnapshotReceiptDigest?{sourceSnapshotReceiptDigest}:{}),
         sourceRetrieval:'NOT_PERFORMED',independentVerification:'NOT_PERFORMED',
         modelAssertions:'LEADS_ONLY',execution:'NOT_EXECUTED',normalizedRecordDigest
       });
