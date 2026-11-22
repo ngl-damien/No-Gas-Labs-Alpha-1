@@ -17,6 +17,33 @@ const uniqueActivityIds = (...objectives) => [...new Set(objectives.flatMap(obje
 const hasRecordedActivity = objective =>
   objective?.complete === true && Array.isArray(objective.evidenceIds) && objective.evidenceIds.length > 0;
 
+// This is a narrow activity projection of an actor-authored Source Observation.
+// Its citation text is not checked against the bundled project-state bytes.
+function snapshotCitedSourceObservation(record) {
+  if (record?.projectionStatus !== 'linked' || record.sourceKind !== 'tool-output' ||
+      typeof record.id !== 'string' || !record.id.trim() ||
+      typeof record.claim !== 'string' || typeof record.source !== 'string' ||
+      typeof record.falsifier !== 'string' || !record.falsifier.trim() ||
+      typeof record.nextTest !== 'string' || !record.nextTest.trim()) return null;
+
+  const claimMatch = /^Build snapshot (\S+) reports .+ as .+\.$/.exec(record.claim);
+  if (!claimMatch || !isStrictTimestamp(claimMatch[1])) return null;
+
+  const marker = ' · snapshot captured ';
+  const markerIndex = record.source.lastIndexOf(marker);
+  if (markerIndex <= 0) return null;
+  const sourcePrefix = record.source.slice(0, markerIndex);
+  const sourceSuffix = record.source.slice(markerIndex + marker.length);
+  const receiptMatch = /^(\S+) · sha256 ([a-f0-9]{64})$/.exec(sourceSuffix);
+  if (!receiptMatch || receiptMatch[1] !== claimMatch[1]) return null;
+
+  const sourceUrl = sourcePrefix.split(' · ', 1)[0];
+  if (!/^https:\/\/github\.com\/ngl-damien\/No-Gas-Labs-Alpha-1\/(?:pull|issues|actions\/runs)\/\d+$/.test(sourceUrl)) {
+    return null;
+  }
+  return Object.freeze({ eventId: record.id, capturedAt: claimMatch[1] });
+}
+
 function charterStage(id, title, status, description, boundary, locationId, locationName, evidenceIds = [], relatedOnly = false, evidenceLabel = 'Retained activity IDs', activitySummary = null) {
   const retainedEvidenceIds = [...new Set(Array.isArray(evidenceIds) ? evidenceIds : [])]
     .filter(id => typeof id === 'string' && id.trim());
@@ -111,6 +138,20 @@ export function projectCharterCodex(world, viewer) {
     typeof record.falsifier === 'string' && record.falsifier.trim() &&
     typeof record.nextTest === 'string' && record.nextTest.trim()
   );
+  const projectSnapshotLeadNotes = sourceRecords
+    .map(snapshotCitedSourceObservation)
+    .filter(Boolean);
+  const projectSnapshotLeadEventIds = [...new Set(projectSnapshotLeadNotes
+    .map(record => record.eventId)
+    .filter(id => typeof id === 'string' && id.trim()))];
+  const projectSnapshotCaptureTimes = [...new Set(projectSnapshotLeadNotes
+    .map(record => record.capturedAt))];
+  const projectSnapshotLeadSummary = projectSnapshotLeadEventIds.length
+    ? 'AUTHOR-DECLARED BUILD SNAPSHOT LEADS ' + projectSnapshotLeadEventIds.length +
+      ' · CAPTURE TIME(S) ' + projectSnapshotCaptureTimes.slice(0, 3).join(', ') +
+      (projectSnapshotCaptureTimes.length > 3 ? ' · +' + (projectSnapshotCaptureTimes.length - 3) + ' more' : '') +
+      '. The URL and SHA-256 are actor-entered note text; this projection does not validate the bundled snapshot receipt.'
+    : null;
   // A version-linked follow-up is deliberately narrower than a claim-level test:
   // a later proposal and its report must cite the same exact Observatory
   // publication version as a falsifiable note. This does not prove that the
@@ -477,10 +518,13 @@ export function projectCharterCodex(world, viewer) {
     ),
     charterStage(
       'engineer-for-use', '10. Engineer for use',
-      'NOT REPRESENTED IN PLAYER-WORLD STATE',
-      'The Guild Hall Synthesis Clerk can inspect the dated public project-state snapshot bundled with this build and prepare an unsubmitted evidence lead for the Source Observatory.',
-      'This is a lead handoff only: the snapshot is dated, not live, and not an independent truth check. It does not establish current CI, source verification, safety, security, accessibility, operational acceptance, or release readiness.',
-      'guild_hall', 'Guild Hall · Synthesis Clerk', [], true
+      projectSnapshotLeadEventIds.length
+        ? 'SNAPSHOT-CITED LEAD(S) RETAINED · SELF-REPORTED · NOT ENGINEERING ACCEPTANCE'
+        : 'NOT REPRESENTED IN PLAYER-WORLD STATE',
+      'The Guild Hall Synthesis Clerk exposes a dated public project-state snapshot and can prepare a Source Observatory lead. An explicitly submitted, uniquely linked, falsifiable note with an author-declared snapshot citation appears here as research activity.',
+      'The URL, capture time, and SHA-256 are actor-entered note text. This projection does not validate them against the bundled snapshot or prove the player read it. A retained lead is not source retrieval, independent verification, current CI, engineering acceptance, safety, security, accessibility, operational acceptance, or release readiness.',
+      'guild_hall', 'Guild Hall · Synthesis Clerk', projectSnapshotLeadEventIds, true,
+      'Retained actor-authored Source Observation event IDs', projectSnapshotLeadSummary
     ),
     charterStage(
       'deploy-share-commercialize', '11. Deploy, share, and commercialize',
