@@ -4195,7 +4195,7 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     )
     assert stale_state_dto.get('viewer', {}).get('role') == 'founder'
 
-    report_stream = page.locator('#sheet-content [data-evidence-archive-activity-stream="report"])
+    report_stream = page.locator('#sheet-content [data-evidence-archive-activity-stream="report"]')
     contribution_stream = page.locator('#sheet-content [data-evidence-archive-activity-stream="contribution"]')
     expect(report_stream).to_have_count(1)
     expect(contribution_stream).to_have_count(1)
