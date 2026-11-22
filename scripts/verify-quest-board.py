@@ -2063,7 +2063,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             '#sheet-content [data-field-item-participant-history]'
         )
         expect(recipient_history).to_have_count(1)
-        expect(recipient_history).to_have_attribute('data-history-total', '3')
+        expect(recipient_history).to_have_attribute('data-history-total', '2')
         expect(recipient_history).to_contain_text('MY HANDOFF HISTORY')
         declined_participant_row = recipient_history.locator(
             '[data-field-item-participant-history-entry="' + decline_offer_id + '"]'
@@ -2694,6 +2694,12 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         ]
         assert len(recipient_equip_events) == 1
         assert recipient_equip_events[0]['id'] == recipient_equip_event_id
+        third_player_equip_events = [
+            item for item in event_summary['equips']
+            if item['actorId'] == silent_before['viewerId']
+        ]
+        assert len(third_player_equip_events) == 1
+        assert third_player_equip_events[0]['id'] == silent_equip_event_id
         assert len(event_summary['unequips']) == 2
         assert {item['actorId'] for item in event_summary['unequips']} == {
             witness_before['viewerId'], founder_before['viewerId']
