@@ -2434,6 +2434,12 @@ def assert_offline_cached_shared_snapshot_recovery(page, width):
       const dto = await response.json();
       return { id: dto.viewer.id, role: dto.viewer.role };
     }""")
+    viewer_before = page.evaluate("""async () => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Shared identity read failed: ' + response.status);
+      const dto = await response.json();
+      return { id: dto.viewer.id, role: dto.viewer.role };
+    }""")
     page.wait_for_function(
         "() => Boolean(navigator.serviceWorker?.controller)",
         timeout=20000
