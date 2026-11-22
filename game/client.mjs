@@ -1351,7 +1351,7 @@ async function startShared(){
     const cacheableFailure=error?.status===undefined||error.status>=500;
     const cached=cacheableFailure?readSharedSnapshotCache(localStorage):null;
     if(!sharedSessionGeneration.isCurrent(generation))return;
-    if(!cached){restorePrivateWorld();throw error;}
+    if(!cached){restorePrivateWorld();if(previousMode==='private')throw new Error('The shared world could not be opened. Your private world remains active and playable on this device.',{cause:error});throw error;}
     if(!sharedSnapshotAcceptance.accept(world,cached.world)){
       restorePrivateWorld();
       throw new Error('The cached shared snapshot is older than the last accepted shared world; the current accepted view was kept.');
