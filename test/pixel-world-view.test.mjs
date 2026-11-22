@@ -1002,6 +1002,8 @@ test('map renderer measures visible HUD overlays relative to its canvas', () => 
     assert.ok(Object.isFrozen(overlays[0]));
     assert.match(selectors[0], /#quest-card/);
     assert.match(selectors[0], /\.world-tools/);
+    assert.doesNotMatch(selectors[0], /#sheet-backdrop/, 'the pointer-transparent sheet backdrop must not reserve the map');
+    assert.match(selectors[0], /#sheet/, 'the actual institution panel still blocks map input within its own bounds');
   } finally {
     if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
     else delete globalThis.document;
