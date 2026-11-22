@@ -99,6 +99,44 @@ def assert_council_room(page):
     assert 'not four independent humans, votes, or endorsements' in text, (
         'Role coverage must not be presented as consensus or endorsement.'
     )
+    return assert_world_context_visible(page)
+
+
+def assert_world_context_visible(page):
+    geometry = page.evaluate("""() => {
+      const canvas = document.querySelector('#world');
+      const panel = document.querySelector('#sheet');
+      const backdrop = document.querySelector('#sheet-backdrop');
+      const canvasRect = canvas.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const canvasStyle = getComputedStyle(canvas);
+      const backdropStyle = getComputedStyle(backdrop);
+      return {
+        canvasWidth: Math.round(canvasRect.width),
+        canvasHeight: Math.round(canvasRect.height),
+        exposedWorldHeight: Math.max(0, Math.round(Math.min(canvasRect.bottom, panelRect.top) - canvasRect.top)),
+        canvasFilter: canvasStyle.filter,
+        backdropFilter: backdropStyle.backdropFilter || backdropStyle.webkitBackdropFilter || 'none',
+        backdropPointerEvents: backdropStyle.pointerEvents,
+        sheetTop: Math.round(panelRect.top)
+      };
+    }""")
+    assert geometry['canvasWidth'] > 0 and geometry['canvasHeight'] > 0, (
+        'The world canvas must remain rendered while Council Chamber is open: ' + json.dumps(geometry)
+    )
+    assert geometry['exposedWorldHeight'] >= 100, (
+        'Council Chamber must leave at least 100px of playable world context visible: ' + json.dumps(geometry)
+    )
+    assert geometry['canvasFilter'] == 'none', (
+        'The world canvas must not be blurred behind the institution sheet: ' + json.dumps(geometry)
+    )
+    assert geometry['backdropFilter'] == 'none', (
+        'The institution backdrop must not blur the world: ' + json.dumps(geometry)
+    )
+    assert geometry['backdropPointerEvents'] == 'none', (
+        'The modeless institution sheet must not intercept world-canvas input: ' + json.dumps(geometry)
+    )
+    return geometry
 
 
 def assert_populated_council_room(page, fixture):
@@ -193,6 +231,7 @@ def assert_populated_council_room(page, fixture):
     assert 'not four independent humans, votes, or endorsements' in text, (
         'Role coverage must not be presented as consensus or endorsement.'
     )
+    return assert_world_context_visible(page)
 
 
 def seed_council_review_fixture(page):
@@ -543,7 +582,7 @@ def run_viewport(browser, url, out, width):
 
         fixture = None
         populated_before = None
-        if width == 390:
+        if width in (320, 390):
             # Test fixture events are deliberately authored test data, not model
             # execution or independent evidence. Every response still crosses
             # the real server validator and is projected as review-only history.
@@ -619,13 +658,15 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     results = []
-    with tempfile.TemporaryDirectory(prefix='ngl-council-mobile-') as data_dir:
-        process, url = launch_server(data_dir)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(args=['--no-sandbox'])
         try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(args=['--no-sandbox'])
-                try:
-                    for width in (320, 390):
+            for width in (320, 390):
+                # Each viewport receives an isolated world so the populated
+                # fixture is independently exercised rather than replayed.
+                with tempfile.TemporaryDirectory(prefix='ngl-council-mobile-' + str(width) + '-') as data_dir:
+                    process, url = launch_server(data_dir)
+                    try:
                         try:
                             result = run_viewport(browser, url, out, width)
                             results.append(result)
@@ -639,10 +680,10 @@ def main():
                             })
                             (out / 'results.json').write_text(json.dumps(results, indent=2))
                             raise
-                finally:
-                    browser.close()
+                    finally:
+                        stop_server(process)
         finally:
-            stop_server(process)
+            browser.close()
     print(json.dumps(results))
 
 
