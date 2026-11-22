@@ -1108,6 +1108,9 @@ def assert_offline_preview_keeps_local_route(page, label):
             throw new Error('A complete world creation projection is required to select ground.')
         }
         const data = canvas.dataset
+        if (data.positionSource !== 'renderer-local') {
+            throw new Error('World renderer coordinates must be labeled renderer-local, not treated as shared authority.')
+        }
         const player = { x: Number(data.playerX), y: Number(data.playerY) }
         const camera = { x: Number(data.cameraX), y: Number(data.cameraY) }
         const zoom = Number(data.zoom)
@@ -1149,7 +1152,8 @@ def assert_offline_preview_keeps_local_route(page, label):
                 y: clientY,
                 world: destination,
                 routeLength: route.length,
-                playerBefore: player
+                playerBefore: player,
+                positionSource: data.positionSource
             }
         }
         throw new Error('No visible, walkable ground point without an NPC, player or institution hit target.')
@@ -1212,6 +1216,7 @@ def assert_offline_preview_keeps_local_route(page, label):
         "transport": "synthetic navigator offline/online events",
         "targetWorld": target["world"],
         "routeLength": target["routeLength"],
+        "rendererPositionSource": target["positionSource"],
         "localMovementDelta": local_delta,
         "localRouteActiveAtCapture": local_after["routeActive"],
         "sharedPositionBefore": server_before,
