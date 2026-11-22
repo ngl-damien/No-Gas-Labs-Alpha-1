@@ -211,3 +211,33 @@ export function readSharedPositionCache(storage, snapshot) {
     return null;
   }
 }
+
+
+/**
+ * Tracks whether the in-memory world has actually been accepted from the
+ * shared server or from the read-only public shared-snapshot cache.
+ *
+ * A private import can preserve the same world ID and locally advance its
+ * revision. That local revision is not evidence that the client has ever
+ * accepted a shared snapshot, so it must not participate in the first-join
+ * monotonicity comparison.
+ */
+export function createSharedSnapshotAcceptanceGuard() {
+  let accepted = false;
+  return {
+    get hasAcceptedSnapshot() {
+      return accepted;
+    },
+    accept(currentWorld, incomingWorld) {
+      const allowed = isNonRegressingSharedWorldSnapshot(
+        accepted ? currentWorld : null,
+        incomingWorld
+      );
+      if (allowed) accepted = true;
+      return allowed;
+    },
+    reset() {
+      accepted = false;
+    }
+  };
+}
