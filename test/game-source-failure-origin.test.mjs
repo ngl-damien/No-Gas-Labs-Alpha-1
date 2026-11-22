@@ -95,7 +95,7 @@ test('failure-origin Source Observation identity uses v3 and binds the exact fai
   }), /failure event/i);
 });
 
-test('a failure-derived Source Observation links one exact earlier event and unlocks an actor-scoped research objective', async () => {
+test('a failure-derived Source Observation links one exact earlier event and records a provenance-only actor-scoped objective', async () => {
   const fixture = await worldWithFailure();
   const world = fixture.world;
   const failure = fixture.failure;
@@ -131,11 +131,11 @@ test('a failure-derived Source Observation links one exact earlier event and unl
     candidate.id === 'founder-source-archive-failure-investigation'
   );
   assert.ok(founderQuest);
-  assert.equal(founderQuest.title, 'Link a Source Archive failure to a retained observation');
+  assert.equal(founderQuest.title, 'Link a Source Archive failure to a Source Observation');
   assert.equal(founderQuest.complete, true);
   assert.deepEqual(founderQuest.evidenceIds, [event.id]);
   assert.equal(founderQuest.countsForQuestkeeper, false);
-  assert.match(founderQuest.interpretation, /free text does not count.*provenance only.*NOT_PERFORMED.*no XP/i);
+  assert.match(founderQuest.interpretation, /provenance link only.*not a source retry.*NOT_PERFORMED.*no XP/i);
 
   const witnessQuest = getQuestTrail(recorded.world, witness).find(candidate =>
     candidate.id === 'witness-source-archive-failure-investigation'
