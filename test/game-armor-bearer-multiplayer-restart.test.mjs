@@ -724,3 +724,243 @@ test('one source-bound field item can pass through three sessions with actor-sco
   assert.equal(questMilestone(replay.body.world, founderViewer).progress, 4);
   assert.equal(questMilestone(replay.body.world, nextWitnessViewer).progress, 2);
 });
+
+
+test('a pending Armor Bearer offer survives restart and remains recipient-bound and single-use', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-armor-bearer-pending-restart-'));
+  let movementTime = 0;
+  let runtime = await startRuntime(dataDir, () => movementTime);
+  const closeRuntime = async () => {
+    if (!runtime) return;
+    const currentRuntime = runtime;
+    runtime = null;
+    await currentRuntime.server.closeGame();
+  };
+  t.after(async () => {
+    await closeRuntime();
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  const advanceMovementTime = ms => { movementTime += ms; };
+  const owner = makeClient(runtime.origin);
+  const ownerInitial = await owner.request('/api/state');
+  assert.equal(ownerInitial.response.status, 200);
+  const ownerViewer = ownerInitial.body.viewer;
+
+  await walkToGuide(advanceMovementTime, owner, 'river');
+  const discovered = await owner.request('/api/action', {
+    type: 'discover',
+    locationId: 'river',
+    requestId: 'pending-restart-discover'
+  });
+  assert.equal(discovered.response.status, 200, JSON.stringify(discovered.body));
+  const sourceEvent = discovered.body.world.events.find(event =>
+    event.type === 'discover' && event.actor?.id === ownerViewer.id &&
+    event.actor?.role === ownerViewer.role
+  );
+  assert.ok(sourceEvent);
+  const baselineXp = discovered.body.world.xp;
+
+  const forged = await owner.request('/api/action', {
+    type: 'forge-field-item',
+    slotId: 'scouting',
+    sourceEventId: sourceEvent.id,
+    requestId: 'pending-restart-forge'
+  });
+  assert.equal(forged.response.status, 200, JSON.stringify(forged.body));
+  const forgeEvent = forged.body.world.events.at(-1);
+  const equipped = await owner.request('/api/action', {
+    type: 'equip-field-item',
+    slotId: 'scouting',
+    sourceEventId: forgeEvent.id,
+    requestId: 'pending-restart-owner-equip'
+  });
+  assert.equal(equipped.response.status, 200, JSON.stringify(equipped.body));
+  const unequipped = await owner.request('/api/action', {
+    type: 'unequip-field-item',
+    slotId: 'scouting',
+    requestId: 'pending-restart-owner-unequip'
+  });
+  assert.equal(unequipped.response.status, 200, JSON.stringify(unequipped.body));
+
+  const founder = makeClient(runtime.origin);
+  await founder.login();
+  const founderInitial = await founder.request('/api/state');
+  assert.equal(founderInitial.response.status, 200);
+  const founderViewer = founderInitial.body.viewer;
+  assert.equal(founderViewer.role, 'founder');
+
+  const unrelated = makeClient(runtime.origin);
+  const unrelatedInitial = await unrelated.request('/api/state');
+  assert.equal(unrelatedInitial.response.status, 200);
+  const unrelatedViewer = unrelatedInitial.body.viewer;
+  assert.equal(unrelatedViewer.role, 'witness');
+  assert.notEqual(unrelatedViewer.id, ownerViewer.id);
+
+  const ownerStream = await owner.stream();
+  const founderStream = await founder.stream();
+  t.after(() => {
+    ownerStream.close();
+    founderStream.close();
+  });
+  await ownerStream.next('world');
+  await founderStream.next('world');
+
+  const online = await founder.request('/api/state');
+  assert.equal(online.response.status, 200);
+  assert.ok(online.body.presence.some(player =>
+    player.actorId === ownerViewer.id && player.role === 'witness'
+  ));
+  assert.ok(online.body.presence.some(player =>
+    player.actorId === founderViewer.id && player.role === 'founder'
+  ));
+
+  const offerAction = {
+    type: 'offer-field-item-transfer',
+    itemEventId: forgeEvent.id,
+    recipientId: founderViewer.id,
+    recipientRole: 'founder',
+    requestId: 'pending-restart-offer'
+  };
+  const offered = await owner.request('/api/action', offerAction);
+  assert.equal(offered.response.status, 200, JSON.stringify(offered.body));
+  const offerEvent = offered.body.world.events.at(-1);
+  assert.equal(offerEvent.type, 'field-item-transfer-offered');
+  assert.equal(offerEvent.actor.id, ownerViewer.id);
+  assert.equal(offerEvent.itemEventId, forgeEvent.id);
+  assert.equal(offerEvent.recipientId, founderViewer.id);
+  assert.equal(offerEvent.recipientRole, 'founder');
+  assert.equal(offered.body.world.xp, baselineXp);
+
+  for (const viewer of [ownerViewer, founderViewer]) {
+    const projected = projectCharacter(offered.body.world, viewer)
+      .fieldItemTransferOffers.find(item => item.offerId === offerEvent.offerId);
+    assert.ok(projected, 'the current owner and designated recipient must both see the exact pending offer');
+    assert.equal(projected.status, 'offered');
+    assert.equal(projected.itemId, forgeEvent.itemId);
+    assert.equal(projected.itemEventId, forgeEvent.id);
+    assert.equal(projected.fromActorId, ownerViewer.id);
+    assert.equal(projected.fromActorRole, 'witness');
+    assert.equal(projected.recipientId, founderViewer.id);
+    assert.equal(projected.recipientRole, 'founder');
+  }
+  assert.equal(
+    projectCharacter(offered.body.world, unrelatedViewer).fieldItemTransferOffers.some(
+      item => item.offerId === offerEvent.offerId
+    ),
+    false,
+    'an unrelated actor must not receive another pair of players\' private offer projection'
+  );
+
+  const pendingRevision = offered.body.world.revision;
+  const pendingEventIds = offered.body.world.events.map(event => event.id);
+  const ownerCookie = owner.cookie;
+  const founderCookie = founder.cookie;
+  const unrelatedCookie = unrelated.cookie;
+  ownerStream.close();
+  founderStream.close();
+  await closeRuntime();
+
+  runtime = await startRuntime(dataDir, () => movementTime);
+  const restoredOwner = makeClient(runtime.origin, ownerCookie);
+  const restoredOwnerState = await restoredOwner.request('/api/state');
+  assert.equal(restoredOwnerState.response.status, 200, JSON.stringify(restoredOwnerState.body));
+  assert.equal(restoredOwnerState.body.viewer.id, ownerViewer.id);
+
+  const restoredFounder = makeClient(runtime.origin, founderCookie);
+  const founderLogin = await restoredFounder.login();
+  assert.equal(founderLogin.viewer.id, founderViewer.id);
+  assert.notEqual(restoredFounder.cookie, founderCookie,
+    'Founder re-authentication must preserve actor identity while rotating the session cookie');
+  const restoredFounderState = await restoredFounder.request('/api/state');
+  assert.equal(restoredFounderState.response.status, 200, JSON.stringify(restoredFounderState.body));
+
+  const restoredUnrelated = makeClient(runtime.origin, unrelatedCookie);
+  const restoredUnrelatedState = await restoredUnrelated.request('/api/state');
+  assert.equal(restoredUnrelatedState.response.status, 200, JSON.stringify(restoredUnrelatedState.body));
+  assert.equal(restoredUnrelatedState.body.viewer.id, unrelatedViewer.id);
+
+  for (const state of [restoredOwnerState.body, restoredFounderState.body, restoredUnrelatedState.body]) {
+    assert.equal(state.world.revision, pendingRevision);
+    assert.deepEqual(state.world.events.map(event => event.id), pendingEventIds);
+    assert.equal(state.world.xp, baselineXp);
+  }
+
+  for (const viewer of [restoredOwnerState.body.viewer, restoredFounderState.body.viewer]) {
+    const projected = projectCharacter(restoredOwnerState.body.world, viewer)
+      .fieldItemTransferOffers.find(item => item.offerId === offerEvent.offerId);
+    assert.ok(projected, 'the pending offer must be reconstructed from retained events after restart');
+    assert.equal(projected.status, 'offered');
+    assert.equal(projected.itemId, forgeEvent.itemId);
+    assert.equal(projected.recipientId, founderViewer.id);
+    assert.equal(projected.fromActorId, ownerViewer.id);
+  }
+  assert.equal(
+    projectCharacter(restoredUnrelatedState.body.world, restoredUnrelatedState.body.viewer)
+      .fieldItemTransferOffers.some(item => item.offerId === offerEvent.offerId),
+    false,
+    'restart must not widen the private offer projection to an unrelated actor'
+  );
+
+  const wrongRecipient = await restoredUnrelated.request('/api/action', {
+    type: 'accept-field-item-transfer',
+    offerId: offerEvent.offerId,
+    requestId: 'pending-restart-wrong-recipient'
+  });
+  assert.equal(wrongRecipient.response.status, 409);
+  assert.equal(wrongRecipient.body.error.code, 'FIELD_ITEM_TRANSFER_NOT_ADDRESSED');
+
+  const afterWrongRecipient = await restoredOwner.request('/api/state');
+  assert.equal(afterWrongRecipient.response.status, 200);
+  assert.equal(afterWrongRecipient.body.world.revision, pendingRevision);
+  assert.deepEqual(afterWrongRecipient.body.world.events.map(event => event.id), pendingEventIds);
+  assert.equal(afterWrongRecipient.body.world.xp, baselineXp);
+  const stillPending = projectCharacter(afterWrongRecipient.body.world, afterWrongRecipient.body.viewer)
+    .fieldItemTransferOffers.find(item => item.offerId === offerEvent.offerId);
+  assert.ok(stillPending);
+  assert.equal(stillPending.status, 'offered');
+
+  const acceptAction = {
+    type: 'accept-field-item-transfer',
+    offerId: offerEvent.offerId,
+    requestId: 'pending-restart-accept'
+  };
+  const accepted = await restoredFounder.request('/api/action', acceptAction);
+  assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
+  const transferEvent = accepted.body.world.events.at(-1);
+  assert.equal(transferEvent.type, 'field-item-transferred');
+  assert.equal(transferEvent.offerId, offerEvent.offerId);
+  assert.equal(transferEvent.itemId, forgeEvent.itemId);
+  assert.equal(transferEvent.itemEventId, forgeEvent.id);
+  assert.equal(transferEvent.fromActorId, ownerViewer.id);
+  assert.equal(transferEvent.fromActorRole, 'witness');
+  assert.equal(transferEvent.actor.id, founderViewer.id);
+  assert.equal(accepted.body.world.xp, baselineXp);
+
+  const replay = await restoredFounder.request('/api/action', acceptAction);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.world.revision, accepted.body.world.revision);
+  assert.equal(replay.body.world.events.filter(event => event.type === 'field-item-transferred').length, 1);
+  assert.equal(replay.body.world.xp, baselineXp);
+
+  const ownerAfter = await restoredOwner.request('/api/state');
+  const founderAfter = await restoredFounder.request('/api/state');
+  const ownerRecord = projectCharacter(ownerAfter.body.world, ownerAfter.body.viewer);
+  const founderRecord = projectCharacter(founderAfter.body.world, founderAfter.body.viewer);
+  assert.equal(ownerRecord.fieldInventoryTotal, 0);
+  assert.equal(founderRecord.fieldInventoryTotal, 1);
+  assert.equal(founderRecord.fieldInventory[0].itemId, forgeEvent.itemId);
+  assert.equal(founderRecord.fieldInventory[0].sourceEventId, sourceEvent.id);
+  assert.equal(founderRecord.fieldInventory[0].creatorId, ownerViewer.id);
+  assert.equal(founderRecord.fieldInventory[0].ownerId, founderViewer.id);
+  assert.equal(ownerAfter.body.world.events.filter(event => event.type === 'field-item-transferred').length, 1);
+  assert.equal(founderAfter.body.world.revision, accepted.body.world.revision);
+  assert.equal(founderAfter.body.world.xp, baselineXp);
+
+  const ownerQuest = questMilestone(ownerAfter.body.world, ownerAfter.body.viewer);
+  assert.equal(ownerQuest.progress, 3);
+  assert.equal(ownerQuest.complete, false,
+    'the prior bearer cannot complete the four-step quest until the recipient equips the exact item');
+  assert.deepEqual(ownerQuest.evidenceIds, [forgeEvent.id, equipped.body.world.events.at(-1).id, transferEvent.id]);
+});
