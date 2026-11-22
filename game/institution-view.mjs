@@ -150,7 +150,7 @@ export function projectCharterCodex(world, viewer) {
     ? 'AUTHOR-DECLARED BUILD SNAPSHOT LEADS ' + projectSnapshotLeadEventIds.length +
       ' · CAPTURE TIME(S) ' + projectSnapshotCaptureTimes.slice(0, 3).join(', ') +
       (projectSnapshotCaptureTimes.length > 3 ? ' · +' + (projectSnapshotCaptureTimes.length - 3) + ' more' : '') +
-      '. The URL and SHA-256 are actor-entered note text; this projection does not validate the bundled snapshot receipt.'
+      '. The URL and SHA-256 are actor-entered note text and are not server-validated against the bundled snapshot receipt.'
     : null;
   // A version-linked follow-up is deliberately narrower than a claim-level test:
   // a later proposal and its report must cite the same exact Observatory
@@ -522,7 +522,7 @@ export function projectCharterCodex(world, viewer) {
         ? 'SNAPSHOT-CITED LEAD(S) RETAINED · SELF-REPORTED · NOT ENGINEERING ACCEPTANCE'
         : 'NOT REPRESENTED IN PLAYER-WORLD STATE',
       'The Guild Hall Synthesis Clerk exposes a dated public project-state snapshot and can prepare a Source Observatory lead. An explicitly submitted, uniquely linked, falsifiable note with an author-declared snapshot citation appears here as research activity.',
-      'The URL, capture time, and SHA-256 are actor-entered note text. This projection does not validate them against the bundled snapshot or prove the player read it. A retained lead is not source retrieval, independent verification, current CI, engineering acceptance, safety, security, accessibility, operational acceptance, or release readiness.',
+      'The URL, capture time, and SHA-256 are actor-entered note text and are not server-validated against the bundled snapshot. This does not prove the player read it. A retained lead is not source retrieval, independent verification, current CI, engineering acceptance, safety, security, accessibility, operational acceptance, or release readiness.',
       'guild_hall', 'Guild Hall · Synthesis Clerk', projectSnapshotLeadEventIds, true,
       'Retained actor-authored Source Observation event IDs', projectSnapshotLeadSummary
     ),
