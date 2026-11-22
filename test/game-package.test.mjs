@@ -836,7 +836,7 @@ test('phone PWA captures and publishes a bounded public project-state snapshot',
   assert.ok(capture < artifact, 'snapshot capture must finish before the Pages artifact is preserved');
   assert.ok(workflow.includes('GITHUB_TOKEN: ${{ github.token }}'));
   for (const permission of ['contents', 'pull-requests', 'issues', 'actions', 'checks', 'statuses']) {
-    assert.ok(workflow.includes('    ' + permission + ': read'));
+    assert.ok(workflow.includes('  ' + permission + ': read'));
   }
   assert.ok(workflow.includes('test -s _site/project-state.json'));
   assert.ok(workflow.includes('path: _site'));
