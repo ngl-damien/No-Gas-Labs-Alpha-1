@@ -1536,3 +1536,13 @@ PR #418 code/test head `f9b10ba3734cc365f6c5229c6040843a920ab999` corrects the A
 
 
 - 2026-11-20 Worker B Run 261: PR #699 exact code/test head `a6ded9d9c50e951d250f84b480a5d2ba913939b4`; added direct 390px Quest Board → World Chronicle assertions for the first-class field-item refusal card. Full Verify 44718451959 and Genesis 44718452469 PASS; Quest Board mobile 44718451963 PASS at 320/390 with exact refusal event/offer/recipient/Forge IDs, time-bounded ownership wording, no unvalidated warning, read-only state, and XP delta 0; Synthesis 44718451917 PASS at 320/390. Browser 44718452047 FAILs the inherited Worker A Guild Hall Clerk locator after offline PWA recovery passes. Android 44718452060: APK assembly PASS; emulator journey still IN PROGRESS at checkpoint time. Main `6f1a4aef` and #429 `d08658d` unchanged; #699 827 ahead of main / 603 ahead of #429, draft/unmerged. G6 IN PROGRESS, G9 NOT STARTED, Founder trust NOT_ENROLLED. No canonical state, XP, authority, or truth changes from inspection. Procedural compliance PARTIAL; local pre-edit preflight unavailable.
+
+
+## Run 300 — offline shared-cache identity boundary — 2026-11-22T04:02Z
+
+- PR #718 exact runtime/test head: `e1b7d3244d00627618b50e3a2989a3371e4cf2f5`; draft/unmerged, 299 ahead / 0 behind main, 40 changed paths.
+- Shared snapshot cache now preserves the highest accepted revision within the same world ID even across actor/role changes; a different world ID resets the revision comparison. Accepted-position cache v2 binds actor ID, role, world ID and world revision; v1 entries are rejected. Client call sites supply the world ID.
+- Test-first red: Full Verify/Synthesis at `039feb1` each reported 1,491/1,494 passing with the three new regressions failing. Runtime commits: `d8c7bff`, `49376c3`; regression commit `c168f73`; contract commit `e1b7d32`.
+- Exact-head Full Verify `44982927192` PASS; Genesis `44982927197`, PWA build `44982927222` (deploy skipped), Live Source Archive `44982927193`, Combat `44982927250`, Council `44982927216`, Academy `44982927283` PASS. Browser `44982927286` FAILs the Worker A-owned stale Guild Hall locator after offline PWA recovery passes. Quest Board `44982927237`, Synthesis `44982927244`, and Android `44982927248` were IN_PROGRESS at capture.
+- G6/G7 remain IN_PROGRESS; G9 NOT_STARTED; Founder trust NOT_ENROLLED. No merge, release, deployment, Founder approval, canonical state, XP, truth or authority transition.
+
