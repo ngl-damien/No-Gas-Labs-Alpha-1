@@ -1,7 +1,7 @@
 const CACHE_PREFIX = 'ngl-common-ground-shell-';
 // Bump the cache namespace when shell modules or cache lifecycle semantics change so installed clients receive them.
 // Network-first requests refresh online bytes in place and preserve optional assets cached offline.
-const CACHE_NAME = CACHE_PREFIX + '20261122-aota-codex-npc-navigation-55';
+const CACHE_NAME = CACHE_PREFIX + '20261122-pwa-project-state-snapshot-56';
 
 // Cache Storage is best-effort. A stalled browser storage promise must not pin
 // an offline navigation or keep a service-worker fetch event alive indefinitely.
@@ -12,7 +12,7 @@ const SHELL_INSTALL_TIMEOUT_MS = 30000;
 // Cache only the public application shell. Shared APIs, authenticated state,
 // private server data, and retained artifact endpoints are deliberately excluded.
 const CORE_SHELL = [
-  // project-state.json is generated only for native APK builds; its absence must not block the generic PWA shell.
+  // The dated public project-state snapshot is optional data, not a core-shell dependency; absence must never block installation.
   '/',
   '/index.html',
   '/manifest.webmanifest',
@@ -44,6 +44,7 @@ const CORE_SHELL = [
   '/timestamps.mjs'
 ];
 const OPTIONAL_SHELL = [
+  '/project-state.json',
   '/assets/comic/cover_a.jpg',
   '/assets/comic/p3.jpg',
   '/assets/comic/p4.jpg',
@@ -105,7 +106,8 @@ async function matchCache(cache, request) {
 async function preserveOptionalShellAssets(staleNames) {
   if (!Array.isArray(staleNames) || staleNames.length === 0 || OPTIONAL_SHELL.length === 0) return;
   // Inspect only the three newest prior NGL shell caches. These are public,
-  // allowlisted game images; authenticated state and API responses are never copied.
+  // allowlisted optional assets (artwork and the dated project-state snapshot);
+  // authenticated state and API responses are never copied.
   const sourceNames = [...staleNames].sort().reverse().slice(0, 3);
   const currentResult = await boundedCacheOperation(async () => ({
     cache: await caches.open(CACHE_NAME)
