@@ -1080,13 +1080,13 @@ export function getQuestTrail(world, viewer, options = {}) {
     ? [Object.freeze({
         ...trailMilestone(
           actorRole + '-source-archive-failure-investigation',
-          'Investigate a retained Source Archive failure',
+          'Link a Source Archive failure to a Source Observation',
           1,
           failureOriginObservationEvents.map(event => event.id),
           failureOriginObservationEvents,
           { type: 'location', id: 'moonshot_field' },
           null,
-          'Free text does not count. Only an exact retained originFailureEventId link to one earlier service-observed Source Archive failure included in the declared snapshot prefix counts; this is provenance only. Source retrieval and independent verification remain NOT_PERFORMED, model assertions remain LEADS_ONLY, execution remains NOT_EXECUTED, and no XP is awarded. This is not a truth verdict or evidence certification.'
+          'Only an exact retained originFailureEventId link to one earlier service-observed Source Archive failure in the declared snapshot prefix counts. This records a provenance link only; it is not a source retry or an investigation result. Source retrieval and independent verification remain NOT_PERFORMED, model assertions remain LEADS_ONLY, execution remains NOT_EXECUTED, and no XP, truth verdict, or evidence certification is awarded.'
         ),
         countsForQuestkeeper: false
       })]
