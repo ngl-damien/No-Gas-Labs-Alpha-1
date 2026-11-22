@@ -223,6 +223,47 @@ def authoritative_player_position(page):
     }""")
 
 
+
+def wait_for_shared_world_ready(page, timeout=30000):
+    """Wait for a live, server-backed shared session before attempting world travel."""
+    try:
+        page.wait_for_function(
+            """() => {
+                const dot = document.querySelector('#connection-dot');
+                const world = document.querySelector('#world');
+                return navigator.onLine === true &&
+                    dot?.dataset.connectionState === 'online' &&
+                    world?.dataset.sharedSnapshotSource === 'server' &&
+                    world?.dataset.sharedSnapshotCacheOnly === 'false' &&
+                    world?.dataset.sharedOfflinePreview === 'false' &&
+                    world?.dataset.movementEnabled === 'true';
+            }""",
+            timeout=timeout
+        )
+    except Exception as error:
+        diagnostics = page.evaluate("""() => {
+            const dot = document.querySelector('#connection-dot');
+            const world = document.querySelector('#world');
+            return {
+                navigatorOnLine: navigator.onLine,
+                modeLabel: document.querySelector('#mode-label')?.textContent ?? null,
+                connectionState: dot?.dataset.connectionState ?? null,
+                connectionLabel: dot?.getAttribute('aria-label') ?? null,
+                movementEnabled: world?.dataset.movementEnabled ?? null,
+                sharedOfflinePreview: world?.dataset.sharedOfflinePreview ?? null,
+                sharedSnapshotCacheOnly: world?.dataset.sharedSnapshotCacheOnly ?? null,
+                sharedSnapshotSource: world?.dataset.sharedSnapshotSource ?? null,
+                worldRevision: world?.dataset.worldRevision ?? null,
+                navigationState: world?.dataset.navigationState ?? null,
+                navigationTargetId: world?.dataset.navigationTargetId ?? null,
+                nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null
+            };
+        }""")
+        raise AssertionError(
+            'Shared session did not complete EventSource connection and authoritative position reconciliation before world interaction: ' +
+            json.dumps(diagnostics, sort_keys=True)
+        ) from error
+
 def publish_fixture(page):
     return page.evaluate("""async () => {
       const post = async action => {
@@ -396,6 +437,7 @@ def enter_nearby_institution(page, place_id, accessible_name, title, timeout=300
 
 def open_quest_board(page):
     page.bring_to_front()
+    wait_for_shared_world_ready(page)
     page.locator('#places-button').tap()
     route = page.get_by_role('button', name='Walk to Quest Board', exact=True)
     expect(route).to_be_visible()
@@ -481,6 +523,7 @@ def assert_publication_chronicle_navigation(page, publication, out, width):
         page.locator('#sheet-close').tap()
         expect(page.locator('#sheet')).to_be_hidden()
     page.bring_to_front()
+    wait_for_shared_world_ready(page)
     page.locator('#places-button').tap()
     route = page.get_by_role('button', name='Walk to Publication House', exact=True)
     expect(route).to_be_visible()
@@ -915,6 +958,7 @@ def record_source_archive_failure(page):
 
 def open_evidence_archive(page):
     page.bring_to_front()
+    wait_for_shared_world_ready(page)
     page.locator('#places-button').tap()
     route = page.get_by_role('button', name='Walk to Evidence Archive', exact=True)
     expect(route).to_be_visible()
@@ -1041,6 +1085,7 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').tap()
 
+    wait_for_shared_world_ready(page)
     page.locator('#places-button').tap()
     guild_route = page.get_by_role('button', name='Walk to Guild Hall', exact=True)
     expect(guild_route).to_be_visible()
@@ -1743,18 +1788,21 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
     silent_errors = []
     silent_page.on('pageerror', lambda error: silent_errors.append(str(error)))
     try:
+        wait_for_shared_world_ready(founder_page)
         witness_page.goto(url, wait_until='networkidle')
         witness_page.locator('#start-shared').tap()
         witness_page.locator('#world').wait_for(state='visible')
         witness_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        wait_for_shared_world_ready(witness_page)
         silent_page.goto(url, wait_until='networkidle')
         silent_page.locator('#start-shared').tap()
         silent_page.locator('#world').wait_for(state='visible')
         silent_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        wait_for_shared_world_ready(silent_page)
 
         founder_before = authoritative_snapshot(founder_page)
         witness_before = authoritative_snapshot(witness_page)
@@ -1925,6 +1973,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         founder_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
         )
+        wait_for_shared_world_ready(founder_page)
         founder_page.locator('#character-button').tap()
         founder_page.wait_for_function(
             "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
@@ -2030,6 +2079,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         founder_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
         )
+        wait_for_shared_world_ready(founder_page)
         founder_page.locator('#character-button').tap()
         founder_page.wait_for_function(
             "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
@@ -2248,6 +2298,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         witness_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        wait_for_shared_world_ready(witness_page)
         witness_page.locator('#character-button').tap()
         witness_page.wait_for_function(
             "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
@@ -2579,6 +2630,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         founder_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
         )
+        wait_for_shared_world_ready(founder_page)
         founder_transfer_dossier = assert_contradiction_ward_dossier(
             founder_page,
             'The model assertion has no retrieved primary source. Literal <img> text remains text.',
@@ -2598,6 +2650,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         witness_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        wait_for_shared_world_ready(witness_page)
         witness_before_empty_inventory = authoritative_snapshot(witness_page)
         witness_page.locator('#character-button').tap()
         witness_page.wait_for_function(
@@ -2879,18 +2932,21 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         founder_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
         )
+        wait_for_shared_world_ready(founder_page)
         witness_page.reload(wait_until='networkidle')
         witness_page.locator('#start-shared').tap()
         witness_page.locator('#world').wait_for(state='visible')
         witness_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        wait_for_shared_world_ready(witness_page)
         silent_page.reload(wait_until='networkidle')
         silent_page.locator('#start-shared').tap()
         silent_page.locator('#world').wait_for(state='visible')
         silent_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        wait_for_shared_world_ready(silent_page)
         founder_persisted = authoritative_snapshot(founder_page)
         witness_persisted = authoritative_snapshot(witness_page)
         silent_persisted = authoritative_snapshot(silent_page)
@@ -5358,6 +5414,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
         page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
         )
+        wait_for_shared_world_ready(page)
 
         if width == 390:
             # The 320px viewport has already published the shared Source Archive.
