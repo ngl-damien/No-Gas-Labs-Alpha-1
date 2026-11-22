@@ -1137,6 +1137,10 @@ function showSheet(title,kicker='FIELD NOTES'){
   activeWorldChronicleRefresh=null;
   activeWorldChronicleSnapshot=null;
   activeWorldChroniclePinned=false;
+  // Stop the approach that brought the player here, without pausing the world.
+  // The panel is modeless; a fresh map tap can start a new route at any time.
+  view.clearManualInput();
+  view.cancelRoute();
   if($('sheet').hidden)lastFocus=document.activeElement;
   const content=$('sheet-content');
   // A sheet is a new institutional surface. Never leak the prior panel's root metadata.
