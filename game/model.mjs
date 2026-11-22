@@ -1,7 +1,7 @@
 import {createArtifact,readSatireIssueArtifact,findSatireIssuePublication,indexSatireIssuePublications,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX,evaluateGitHubSourceArchivePredicate,GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR} from './artifacts.mjs';
 import {COMBAT_EVENT_TYPES, projectCombatHistory, resolveCombatMove} from './combat.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
-import {SOURCE_OBSERVATION_SOURCE_KINDS,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor,hasSourcePredicatePublicRetentionAcknowledgement,stripCompleteResponseHistoryPositions,isValidSourceObservationBinding} from './research-records.mjs';
+import {SOURCE_OBSERVATION_SOURCE_KINDS,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor,hasSourcePredicatePublicRetentionAcknowledgement,stripCompleteResponseHistoryPositions,isValidSourceObservationBinding,isValidSourceFailureEventId} from './research-records.mjs';
 import {projectCollaboratorPackets,isExactCollaboratorSourceRecord} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateCollaboratorResponseSnapshot} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS,MAX_FIELD_INVENTORY_ITEMS} from './character-sheet.mjs';
@@ -150,6 +150,21 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const publicationPosition=world.events.indexOf(publicationEvents[0])+1;
       if(publicationPosition<1||sourceSnapshotRevision<publicationPosition)
         fail('SOURCE_SNAPSHOT_PREDATES_PUBLICATION','The declared snapshot prefix does not include the exact selected Observatory publication.',409);
+      const originFailureEventId = action.originFailureEventId === undefined
+        ? undefined : text(action.originFailureEventId,128,'Source Archive failure event ID');
+      if (originFailureEventId !== undefined) {
+        if (!isValidSourceFailureEventId(originFailureEventId)) {
+          fail('INVALID_SOURCE_FAILURE_ORIGIN','The failure origin must be one exact retained event identifier.',409);
+        }
+        const originMatches = world.events.filter(item => item.id === originFailureEventId);
+        if (originMatches.length !== 1 || originMatches[0].type !== 'source-archive-attempt-failed') {
+          fail('INVALID_SOURCE_FAILURE_ORIGIN','The failure origin must resolve to one exact retained Source Archive failure event.',409);
+        }
+        const originPosition = world.events.indexOf(originMatches[0]) + 1;
+        if (sourceSnapshotRevision < originPosition) {
+          fail('SOURCE_FAILURE_ORIGIN_PREDATES_SNAPSHOT','The declared source snapshot prefix does not include the exact failure event.',409);
+        }
+      }
       const observationId=text(action.observationId,128,'Source observation identity');
       if(!/^source-observation-[a-f0-9]{64}$/.test(observationId))fail('INVALID_SOURCE_OBSERVATION_ID','Source observation identity must be a normalized SHA-256 identifier.');
       if(requestMeta?.requestId&&requestMeta.requestId!==observationId)fail('INVALID_SOURCE_OBSERVATION_ID','The transport request ID must match the normalized observation identity.');
@@ -160,7 +175,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const optional=value=>value===undefined||value===null?null:text(value,500,'Optional source observation field');
       const falsifier=optional(action.falsifier),uncertainty=optional(action.uncertainty),nextTest=optional(action.nextTest);
       if(!globalThis.crypto?.subtle)fail('CRYPTO_UNAVAILABLE','Web Crypto SHA-256 is required to record a Source Observation.');
-      const identityMaterial=sourceObservationRequestMaterial({actorId:who.id,actorRole:who.role,creationId,version:action.version,claim,sourceKind,source,falsifier,uncertainty,nextTest,sourceSnapshotRevision});
+      const identityMaterial=sourceObservationRequestMaterial({actorId:who.id,actorRole:who.role,creationId,version:action.version,claim,sourceKind,source,falsifier,uncertainty,nextTest,sourceSnapshotRevision,originFailureEventId});
       const identityBytes=await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(identityMaterial));
       const identityDigest=Array.from(new Uint8Array(identityBytes),value=>value.toString(16).padStart(2,'0')).join('');
       if(observationId!=='source-observation-'+identityDigest)fail('INVALID_SOURCE_OBSERVATION_ID','Source observation identity does not match the authenticated actor, selected version and normalized note content.');
@@ -173,6 +188,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
           previous.sourceKind===sourceKind&&previous.source===source&&previous.falsifier===falsifier&&
           previous.uncertainty===uncertainty&&previous.nextTest===nextTest&&
           previous.sourceSnapshotRevision===sourceSnapshotRevision&&
+          previous.originFailureEventId===originFailureEventId&&
           previous.normalizedRecordDigest===normalizedRecordDigest;
         if(!same)fail('SOURCE_OBSERVATION_ID_CONFLICT','This normalized observation identity is already bound to different actor or note content.',409);
         return {world:original,result:{observationId,duplicate:true}};
@@ -184,6 +200,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
         : null;
       recordEvent('source-observation-recorded',{
         observationId,creationId,version:action.version,sourceSnapshotRevision,claim,sourceKind,source,falsifier,uncertainty,nextTest,
+        ...(originFailureEventId ? {originFailureEventId} : {}),
         originSchema:'ngl.source-observatory.v2',
         bindingMode:receiptDigest?'SERVER_SESSION_RECEIPT':'USER_SELECTED',
         ...(receiptDigest?{sourceSnapshotReceiptDigest:receiptDigest}:{}),
@@ -959,8 +976,10 @@ export async function validateWorld(raw) {
       invalid('Source Archive predicate outcome does not match the exact retained bytes.');
   }
   const sourceObservationIds=new Set(),sourceObservationById=new Map(),sourceObservationChallengeIds=new Set(),sourceObservationChallengeById=new Map();
-  const allowedSourceObservationKeys=new Set(['id','type','actor','at','semantics','observationId','creationId','version','claim','sourceKind','source','falsifier','uncertainty','nextTest','sourceSnapshotRevision','originSchema','bindingMode','sourceSnapshotReceiptDigest','sourceRetrieval','independentVerification','modelAssertions','execution','normalizedRecordDigest','requestId','actionFingerprint','actionResult']);
+  const allowedSourceObservationKeys=new Set(['id','type','actor','at','semantics','observationId','creationId','version','claim','sourceKind','source','falsifier','uncertainty','nextTest','sourceSnapshotRevision','originFailureEventId','originSchema','bindingMode','sourceSnapshotReceiptDigest','sourceRetrieval','independentVerification','modelAssertions','execution','normalizedRecordDigest','requestId','actionFingerprint','actionResult']);
   for(const e of raw.events)if(e.type==='source-observation-recorded'){
+    const failureOriginEvent = e.originFailureEventId === undefined ? null : eventById.get(e.originFailureEventId);
+    const failureOriginPosition = failureOriginEvent ? eventPositions.get(failureOriginEvent) : -1;
     if(Object.keys(e).some(key=>!allowedSourceObservationKeys.has(key)))invalid('Source observation contains unsupported canonical fields.');
     unique(e.observationId);
     const digest=typeof e.observationId==='string'&&e.observationId.startsWith('source-observation-')?e.observationId.slice('source-observation-'.length):'';
@@ -970,6 +989,10 @@ export async function validateWorld(raw) {
        !SOURCE_OBSERVATION_SOURCE_KINDS.includes(e.sourceKind)||typeof e.source!=='string'||!e.source.trim()||Array.from(e.source).length>500||
        ![e.falsifier,e.uncertainty,e.nextTest].every(value=>value===null||(typeof value==='string'&&value.trim()&&Array.from(value).length<=500))||
        (e.sourceSnapshotRevision!==undefined&&(!Number.isSafeInteger(e.sourceSnapshotRevision)||e.sourceSnapshotRevision<0||!Number.isSafeInteger(eventPositions.get(e))||e.sourceSnapshotRevision>=eventPositions.get(e)+1))||
+       (e.originFailureEventId!==undefined&&(!isValidSourceFailureEventId(e.originFailureEventId)||
+         !Number.isSafeInteger(e.sourceSnapshotRevision)||!failureOriginEvent||
+         failureOriginEvent.type!=='source-archive-attempt-failed'||!Number.isSafeInteger(failureOriginPosition)||
+         failureOriginPosition>=eventPositions.get(e)||e.sourceSnapshotRevision<failureOriginPosition+1))||
        e.originSchema!=='ngl.source-observatory.v2'||
        !isValidSourceObservationBinding(e)||
        e.sourceRetrieval!=='NOT_PERFORMED'||e.independentVerification!=='NOT_PERFORMED'||e.modelAssertions!=='LEADS_ONLY'||e.execution!=='NOT_EXECUTED'||
@@ -983,7 +1006,8 @@ export async function validateWorld(raw) {
     const identityMaterial=sourceObservationRequestMaterial({
       actorId:e.actor.id,actorRole:e.actor.role,creationId:e.creationId,version:e.version,
       claim:e.claim,sourceKind:e.sourceKind,source:e.source,
-      falsifier:e.falsifier,uncertainty:e.uncertainty,nextTest:e.nextTest,sourceSnapshotRevision:e.sourceSnapshotRevision
+      falsifier:e.falsifier,uncertainty:e.uncertainty,nextTest:e.nextTest,sourceSnapshotRevision:e.sourceSnapshotRevision,
+      originFailureEventId:e.originFailureEventId
     });
     const identityBytes=await globalThis.crypto.subtle.digest('SHA-256',encoder.encode(identityMaterial));
     const identityDigest=Array.from(new Uint8Array(identityBytes),value=>value.toString(16).padStart(2,'0')).join('');

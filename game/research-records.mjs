@@ -23,6 +23,12 @@ export function sameResearchActor(left, right) {
     ['founder', 'witness'].includes(left.role) && left.role === right.role && left.id === right.id;
 }
 
+export function isValidSourceFailureEventId(value) {
+  return typeof value === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) &&
+    !['constructor', 'prototype', '__proto__'].includes(value);
+}
+
 /**
  * Validate the provenance mode for a retained Source Observation.
  * A server-session binding must carry both the exact accepted snapshot revision
@@ -879,7 +885,8 @@ export function parseSourceObservatoryExport(input) {
 // does not prove that its contents originated from the selected artifact.
 export function sourceObservationRequestMaterial({
   actorId, actorRole, creationId, version, claim, sourceKind, source,
-  falsifier = null, uncertainty = null, nextTest = null, sourceSnapshotRevision
+  falsifier = null, uncertainty = null, nextTest = null, sourceSnapshotRevision,
+  originFailureEventId
 }) {
   const required = (value, label) => {
     if (typeof value !== 'string' || !value.trim()) throw new TypeError(label + ' is required.');
@@ -897,8 +904,13 @@ export function sourceObservationRequestMaterial({
   if (snapshotBound && (!Number.isSafeInteger(sourceSnapshotRevision) || sourceSnapshotRevision < 0)) {
     throw new TypeError('Source snapshot revision must be a nonnegative safe integer.');
   }
+  const failureOriginBound = originFailureEventId !== undefined;
+  if (failureOriginBound && (!snapshotBound || !isValidSourceFailureEventId(originFailureEventId))) {
+    throw new TypeError('Failure event ID must be a valid retained event identifier and requires a source snapshot revision.');
+  }
   const material = {
-    protocol: snapshotBound ? 'ngl.source-observation-id.v2' : 'ngl.source-observation-id.v1',
+    protocol: failureOriginBound ? 'ngl.source-observation-id.v3' :
+      snapshotBound ? 'ngl.source-observation-id.v2' : 'ngl.source-observation-id.v1',
     actorId: required(actorId, 'Actor ID'),
     actorRole: required(actorRole, 'Actor role'),
     creationId: required(creationId, 'Creation ID'),
@@ -911,6 +923,7 @@ export function sourceObservationRequestMaterial({
     nextTest: optional(nextTest, 'Next test')
   };
   if (snapshotBound) material.sourceSnapshotRevision = sourceSnapshotRevision;
+  if (failureOriginBound) material.originFailureEventId = originFailureEventId;
   return JSON.stringify(material);
 }
 
@@ -933,6 +946,13 @@ export function projectSourceObservationRecords(eventsInput, creationsInput, {
     if (!entry.safe && entry.value && typeof entry.value === 'object') unsafeCreations.add(entry.value);
   });
   const eventIdCounts = countBy(events, 'id', hasText);
+  const eventsById = new Map();
+  events.forEach((candidate, index) => {
+    if (!hasText(candidate?.id)) return;
+    const matches = eventsById.get(candidate.id) || [];
+    matches.push({ event: candidate, index });
+    eventsById.set(candidate.id, matches);
+  });
   const observationEvents = events.filter(event => event?.type === 'source-observation-recorded');
   const observationIdCounts = countBy(observationEvents, 'observationId', hasText);
   const sourceObservationChallengeEvents = events.filter(event => event?.type === 'source-observation-challenged');
@@ -991,6 +1011,9 @@ export function projectSourceObservationRecords(eventsInput, creationsInput, {
       (event.sourceSnapshotRevision === undefined ||
         (Number.isSafeInteger(event.sourceSnapshotRevision) && event.sourceSnapshotRevision >= 0 &&
          Number.isSafeInteger(historyPositions[index]) && event.sourceSnapshotRevision < historyPositions[index])) &&
+      (event.originFailureEventId === undefined ||
+        (isValidSourceFailureEventId(event.originFailureEventId) &&
+         Number.isSafeInteger(event.sourceSnapshotRevision))) &&
       typeof event.claim === 'string' && event.claim.trim() && Array.from(event.claim).length <= 500 &&
       sourceObservationSourceKinds.has(event.sourceKind) &&
       typeof event.source === 'string' && event.source.trim() && Array.from(event.source).length <= 500 &&
@@ -1016,6 +1039,39 @@ export function projectSourceObservationRecords(eventsInput, creationsInput, {
       projectionStatus = 'ambiguous';
       projectionReason = 'The event or normalized note identity is repeated.';
     }
+    let failureOriginStatus = 'not-linked';
+    let failureOriginReason = null;
+    if (event.originFailureEventId !== undefined) {
+      if (!isValidSourceFailureEventId(event.originFailureEventId) ||
+          !Number.isSafeInteger(event.sourceSnapshotRevision)) {
+        failureOriginStatus = 'malformed';
+        failureOriginReason = 'The failure-origin link is not a valid snapshot-bound event identifier.';
+      } else {
+        const matches = eventsById.get(event.originFailureEventId) || [];
+        if (matches.length === 0) {
+          failureOriginStatus = 'missing';
+          failureOriginReason = 'The referenced Source Archive failure event is not present in this retained snapshot.';
+        } else if (matches.length !== 1) {
+          failureOriginStatus = 'ambiguous';
+          failureOriginReason = 'The referenced event identifier is repeated in retained history.';
+        } else if (unsafeEvents.has(matches[0].event)) {
+          failureOriginStatus = 'malformed';
+          failureOriginReason = 'The referenced failure event cannot be safely inspected.';
+        } else if (matches[0].event?.type !== 'source-archive-attempt-failed') {
+          failureOriginStatus = 'wrong-type';
+          failureOriginReason = 'The referenced event is not a Source Archive retrieval failure.';
+        } else if (matches[0].index >= index) {
+          failureOriginStatus = 'not-earlier';
+          failureOriginReason = 'The referenced Source Archive failure does not precede this observation in retained event order.';
+        } else if (!Number.isSafeInteger(historyPositions[matches[0].index]) ||
+                   event.sourceSnapshotRevision < historyPositions[matches[0].index]) {
+          failureOriginStatus = 'snapshot-excluded';
+          failureOriginReason = 'The declared source snapshot prefix does not include the exact failure event.';
+        } else {
+          failureOriginStatus = 'linked';
+        }
+      }
+    }
     const key = JSON.stringify([event.creationId, event.version]);
     const target = versions.get(key);
     const publicationRows = publications.get(key) || [];
@@ -1038,6 +1094,12 @@ export function projectSourceObservationRecords(eventsInput, creationsInput, {
        publicationRows[0].event.at !== target.version.publishedAt)) {
       projectionStatus = 'unavailable';
       projectionReason = 'The source publication does not precede this note in retained history or its timestamp does not match the retained version.';
+    }
+    if (projectionStatus === 'linked' && event.originFailureEventId !== undefined &&
+        failureOriginStatus !== 'linked') {
+      projectionStatus = failureOriginStatus === 'ambiguous' ? 'ambiguous' :
+        failureOriginStatus === 'malformed' ? 'malformed' : 'unavailable';
+      projectionReason = failureOriginReason || 'The exact Source Archive failure origin is not linked.';
     }
     // The retained event index is the canonical sequence. Strict timestamps remain metadata;
     // a wall-clock regression must not hide later appended dissent or an author response.
@@ -1087,6 +1149,9 @@ export function projectSourceObservationRecords(eventsInput, creationsInput, {
       creationId: event.creationId,
       version: event.version,
       sourceSnapshotRevision: event.sourceSnapshotRevision ?? null,
+      originFailureEventId: event.originFailureEventId ?? null,
+      failureOriginStatus,
+      failureOriginReason,
       claim: event.claim,
       sourceKind: event.sourceKind,
       source: event.source,

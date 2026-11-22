@@ -22,7 +22,7 @@ import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
 import { COMBAT_EVENT_TYPES } from './combat.mjs';
-import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, hasSourcePredicatePublicRetentionAcknowledgement, stripCompleteResponseHistoryPositions, isValidSourceObservationBinding } from './research-records.mjs';
+import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, hasSourcePredicatePublicRetentionAcknowledgement, stripCompleteResponseHistoryPositions, isValidSourceObservationBinding, isValidSourceFailureEventId } from './research-records.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
 import { PLACES, PLAYER_MOVE_SPEED, findRoute, isWalkable , COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
@@ -111,7 +111,7 @@ const actionFields = {
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'respond-experiment-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
-  'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'sourceSnapshotRevision', 'sourceSnapshotReceipt', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId'],
+  'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'sourceSnapshotRevision', 'sourceSnapshotReceipt', 'originFailureEventId', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId'],
   'challenge-source-observation': ['type', 'observationId', 'challengeType', 'challengeText', 'requestId'],
   'respond-source-observation-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'post-message': ['type', 'text', 'requestId'],
@@ -227,6 +227,9 @@ function preflightAction(input) {
       requiredId(input.observationId, 'Source observation identity');
       if (!/^source-observation-[a-f0-9]{64}$/.test(input.observationId) || input.requestId !== input.observationId) fail('INVALID_SOURCE_OBSERVATION_ID', 'Observation and request IDs must match the normalized SHA-256 identity.');
       if (input.sourceSnapshotReceipt !== undefined && (typeof input.sourceSnapshotReceipt !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(input.sourceSnapshotReceipt))) fail('INVALID_SOURCE_SNAPSHOT_RECEIPT', 'A server-issued snapshot receipt must be a bounded opaque token.');
+      if (input.originFailureEventId !== undefined && !isValidSourceFailureEventId(input.originFailureEventId)) {
+        fail('INVALID_SOURCE_FAILURE_ORIGIN', 'The failure origin must be one exact retained event identifier.', 409);
+      }
       preflightText(input.claim, 500, 'Claim', { required: true });
       if (!SOURCE_OBSERVATION_SOURCE_KINDS.includes(input.sourceKind)) fail('INVALID_SOURCE_KIND', 'Choose a known self-classified source kind.');
       preflightText(input.source, 500, 'Source or attribution', { required: true });
@@ -804,11 +807,25 @@ function validateHistory(world) {
     }
     if (event.type === 'source-observation-recorded') {
       const index = eventPositions.get(event);
+      const failureOriginMatches = event.originFailureEventId === undefined ? [] :
+        world.events.filter(candidate => candidate.id === event.originFailureEventId);
+      const failureOriginEvent = failureOriginMatches[0];
+      const failureOriginPosition = failureOriginEvent ? eventPositions.get(failureOriginEvent) : -1;
+      const failureOriginValid = event.originFailureEventId === undefined || (
+        isValidSourceFailureEventId(event.originFailureEventId) &&
+        failureOriginMatches.length === 1 &&
+        failureOriginEvent.type === 'source-archive-attempt-failed' &&
+        Number.isSafeInteger(event.sourceSnapshotRevision) &&
+        Number.isSafeInteger(failureOriginPosition) &&
+        failureOriginPosition < index &&
+        event.sourceSnapshotRevision >= failureOriginPosition + 1
+      );
       const digest = artifactReceipt(sourceObservationRequestMaterial({
         actorId: event.actor?.id, actorRole: event.actor?.role, creationId: event.creationId, version: event.version,
         claim: event.claim, sourceKind: event.sourceKind, source: event.source,
         falsifier: event.falsifier, uncertainty: event.uncertainty, nextTest: event.nextTest,
-        sourceSnapshotRevision: event.sourceSnapshotRevision
+        sourceSnapshotRevision: event.sourceSnapshotRevision,
+        originFailureEventId: event.originFailureEventId
       })).digest;
       const key = historyKey(event.creationId, event.version);
       const source = world.creations.find(creation => creation.id === event.creationId);
@@ -825,7 +842,7 @@ function validateHistory(world) {
           !source || source.kind !== 'observatory' || versions.length !== 1 || (versions[0].kind ?? source.kind) !== 'observatory' ||
           !isStrictTimestamp(versions[0].publishedAt) || publicationsForVersion.length !== 1 ||
           publicationsForVersion[0].at !== versions[0].publishedAt || eventPositions.get(publicationsForVersion[0]) >= index ||
-          !snapshotRevisionValid ||
+          !snapshotRevisionValid || !failureOriginValid ||
           !SOURCE_OBSERVATION_SOURCE_KINDS.includes(event.sourceKind) ||
           event.originSchema !== 'ngl.source-observatory.v2' || !isValidSourceObservationBinding(event) ||
           event.sourceRetrieval !== 'NOT_PERFORMED' || event.independentVerification !== 'NOT_PERFORMED' ||
@@ -1872,7 +1889,8 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
               actorId: actor.id, actorRole: actor.role, creationId: action.creationId, version: action.version,
               claim: action.claim, sourceKind: action.sourceKind, source: action.source,
               falsifier: action.falsifier, uncertainty: action.uncertainty, nextTest: action.nextTest,
-              sourceSnapshotRevision: action.sourceSnapshotRevision
+              sourceSnapshotRevision: action.sourceSnapshotRevision,
+              originFailureEventId: action.originFailureEventId
             })).digest;
             const expectedObservationId = 'source-observation-' + digest;
             if (action.observationId !== expectedObservationId || requestId !== expectedObservationId) {

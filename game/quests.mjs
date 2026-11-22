@@ -6,6 +6,7 @@ import { isValidMoonshotProposal, projectResearchRecords, projectSourceArchivePr
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
+import { projectSourceArchiveFailureObjects } from './world-view.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -1067,6 +1068,29 @@ export function getQuestTrail(world, viewer, options = {}) {
     .filter(record => record.projectionStatus === 'linked');
   const sourceObservationRecords = linkedSourceObservationRecords
     .filter(record => record.actor?.id === actorId && record.actor?.role === actorRole);
+  let sourceArchiveFailureProjection = null;
+  try { sourceArchiveFailureProjection = projectSourceArchiveFailureObjects(world); } catch {}
+  const failureOriginObservationRecords = sourceObservationRecords.filter(record =>
+    record.failureOriginStatus === 'linked' && typeof record.originFailureEventId === 'string'
+  );
+  const failureOriginObservationEvents = failureOriginObservationRecords
+    .map(record => events.find(event => event?.id === record.id))
+    .filter(Boolean);
+  const sourceArchiveFailureInvestigationMilestones = sourceArchiveFailureProjection?.total > 0
+    ? [Object.freeze({
+        ...trailMilestone(
+          actorRole + '-source-archive-failure-investigation',
+          'Investigate a retained Source Archive failure',
+          1,
+          failureOriginObservationEvents.map(event => event.id),
+          failureOriginObservationEvents,
+          { type: 'location', id: 'moonshot_field' },
+          null,
+          'Free text does not count. Only an exact retained originFailureEventId link to one earlier service-observed Source Archive failure included in the declared snapshot prefix counts; this is provenance only. Source retrieval and independent verification remain NOT_PERFORMED, model assertions remain LEADS_ONLY, execution remains NOT_EXECUTED, and no XP is awarded. This is not a truth verdict or evidence certification.'
+        ),
+        countsForQuestkeeper: false
+      })]
+    : [];
   const unlinkedSourceObservationHistory = allSourceObservationRecords.some(record =>
     record.actor?.id === actorId && record.actor?.role === actorRole &&
     record.projectionStatus !== 'linked'
@@ -2002,6 +2026,7 @@ export function getQuestTrail(world, viewer, options = {}) {
         !hasPublishedObservatory ? 'Publish a Source Observatory first; observations are recorded against one exact retained version.' : null,
         'This is an actor-attributed research note against one exact retained version. Source retrieval, independent verification and execution remain NOT_PERFORMED; the note is not a truth verdict.'
       ),
+      ...sourceArchiveFailureInvestigationMilestones,
       trailMilestone(
         'founder-source-observation-challenge', 'Challenge another actor’s source observation', 1,
         sourceObservationChallenges.map(event => event.id), sourceObservationChallenges,
@@ -2255,6 +2280,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       !hasPublishedObservatory ? 'Wait for a retained Source Observatory publication before recording an observation.' : null,
       'This is an actor-attributed research note against one exact retained version. Source retrieval, independent verification and execution remain NOT_PERFORMED; the note is not a truth verdict.'
     ),
+    ...sourceArchiveFailureInvestigationMilestones,
     trailMilestone(
       'witness-source-observation-challenge', 'Challenge another actor’s source observation', 1,
       sourceObservationChallenges.map(event => event.id), sourceObservationChallenges,
