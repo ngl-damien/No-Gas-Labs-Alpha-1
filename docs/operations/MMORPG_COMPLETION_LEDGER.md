@@ -1,3 +1,16 @@
+## Run 303 — Armor Bearer four-step multiplayer/restart acceptance — 2026-11-22
+
+- **Evidence added:** `test/game-armor-bearer-multiplayer-restart.test.mjs` exercises two separately authenticated sessions through River discovery → Forge → bearer equip/unequip → designated offer/accept → recipient equip → server restart → exact request replay.
+- **Objective boundary:** the initiating Witness remains 3/4 until the designated Founder equips the exact transferred item, then becomes 4/4. The Founder is 2/4 and does not inherit the Witness’s completed chain. Creator/owner, Forger/Armorer/Armor Bearer skill projections persist by actor. No handoff step changes XP.
+- **Persistence evidence:** same data directory reopens with identical world revision and event IDs; Witness identity restores, Founder re-authentication rotates its cookie, inventory ownership and actor-scoped skills persist, and the exact equip replay is idempotent with no duplicate event.
+- **Exact-head verification:** Full Verify [44993497836](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44993497836) PASS; hosted preflight ready; Node tests, Python inspector, PWA build and institutional exercise exit 0; `passed=true`. New test path included in preflight.
+- **Mobile:** Quest Board [44993497809](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44993497809) and Synthesis Clerk [44993497800](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44993497800) PASS at 320px/390px. Genesis, PWA build, Live Source Archive, Combat, Academy and Council also PASS.
+- **Open blockers:** Browser [44993497819](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44993497819) fails Worker A’s stale hidden Guild Hall entry locator; Android [44993497847](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44993497847) remains in progress after APK assembly; no terminal JUnit/device acceptance.
+- **Scope:** two sessions are not proof of two distinct humans. No source truth, consensus, approval, authority or external execution is established. No runtime code changed in this run; this is an end-to-end acceptance addition for existing behavior.
+- **Gate status:** G6/G7 IN_PROGRESS; G9 NOT_STARTED; Founder trust NOT_ENROLLED. #718 draft/unmerged, 310 ahead / 0 behind main, 41 paths; #722 remains a docs-only draft child. No merge/release/deployment/Founder approval.
+
+---
+
 ## Run 299 — renderer-local offline preview and reconnect reconciliation — 2026-11-22
 
 - **Newly evidenced G7 slice:** PWA offline movement preview is now observable as renderer-local state and can be reconciled to the last accepted shared position without persisting offline movement.
