@@ -626,6 +626,117 @@ test('AOTA Codex projects all twelve charter stages without awarding progress or
   assert.deepEqual(world, before);
 }));
 
+test('AOTA Codex exposes actor-scoped snapshot-cited lead activity without calling it engineering acceptance', async () => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const witness = { id: 'snapshot-witness', name: 'Snapshot Witness', role: 'witness' };
+  let world = createWorld({
+    id: 'codex-project-snapshot-lead',
+    founderName: 'Neophyte Founder',
+    now: '2026-11-22T13:59:57.000Z'
+  });
+  const draft = await applyAction(world, {
+    type: 'draft',
+    kind: 'observatory',
+    title: 'Source Observatory',
+    intent: 'Retain an attributed note with a falsifier and next test.'
+  }, founder, { now: '2026-11-22T13:59:58.000Z' });
+  const published = await applyAction(draft.world, {
+    type: 'publish',
+    draftId: draft.result.draftId,
+    expectedVersion: 0
+  }, founder, { now: '2026-11-22T13:59:59.000Z' });
+  world = published.world;
+  const creationId = published.result.creationId;
+  const capturedAt = '2026-11-22T13:00:00.000Z';
+  const headSha = 'a'.repeat(40);
+  const baseSha = 'b'.repeat(40);
+
+  async function retainLead(actor, { claimAt = capturedAt, sourceAt = capturedAt, sourceKind = 'tool-output', digest = 'c'.repeat(64) }, at) {
+    const note = {
+      claim: 'Build snapshot ' + claimAt + ' reports PR #718 · Runtime as open at ' + claimAt +
+        ' with head commit ' + headSha + ' · exact-head checks waiting.',
+      sourceKind,
+      source: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718 · captured head ' + headSha +
+        ' · captured base ' + baseSha + ' · exact-head checks waiting · snapshot captured ' + sourceAt +
+        ' · sha256 ' + digest,
+      falsifier: 'A fresh GitHub read shows a different head or state.',
+      uncertainty: 'Build-time snapshot only; not live or independently verified.',
+      nextTest: 'Open the exact PR and compare a fresh check-run and commit-status inventory for the same head.'
+    };
+    const sourceSnapshotRevision = world.revision;
+    const observationId = 'source-observation-' + createHash('sha256').update(sourceObservationRequestMaterial({
+      actorId: actor.id,
+      actorRole: actor.role,
+      creationId,
+      version: 1,
+      sourceSnapshotRevision,
+      ...note
+    })).digest('hex');
+    const result = await applyAction(world, {
+      type: 'record-source-observation',
+      creationId,
+      version: 1,
+      sourceSnapshotRevision,
+      observationId,
+      ...note
+    }, actor, {
+      now: at,
+      requestId: observationId,
+      actionFingerprint: createHash('sha256').update('request:' + observationId).digest('hex')
+    });
+    world = result.world;
+    return world.events.at(-1).id;
+  }
+
+  const validLeadEventId = await retainLead(founder, {}, '2026-11-22T14:00:01.000Z');
+  const mismatchedTimestampEventId = await retainLead(founder, {
+    claimAt: '2026-11-22T13:30:00.000Z',
+    sourceAt: '2026-11-22T13:00:00.000Z'
+  }, '2026-11-22T14:00:02.000Z');
+  const modelAssertionEventId = await retainLead(founder, {
+    sourceKind: 'model-assertion'
+  }, '2026-11-22T14:00:03.000Z');
+  const witnessLeadEventId = await retainLead(witness, {}, '2026-11-22T14:00:04.000Z');
+
+  const beforeProjection = structuredClone(world);
+  const projection = projectCharterCodex(world, founder);
+  const stage = projection.stages.find(item => item.id === 'engineer-for-use');
+  const deploy = projection.stages.find(item => item.id === 'deploy-share-commercialize');
+
+  assert.equal(stage.status, 'SNAPSHOT-CITED LEAD(S) RETAINED · SELF-REPORTED · NOT ENGINEERING ACCEPTANCE');
+  assert.deepEqual(stage.evidenceIds, [validLeadEventId]);
+  assert.equal(stage.evidenceLabel, 'Retained actor-authored Source Observation event IDs');
+  assert.match(stage.activitySummary, /AUTHOR-DECLARED BUILD SNAPSHOT LEADS 1/);
+  assert.match(stage.activitySummary, /not server-validated/i);
+  assert.match(stage.boundary, /does not prove the snapshot was read/i);
+  assert.match(stage.boundary, /not engineering acceptance/i);
+  assert.equal(stage.relatedOnly, true);
+  assert.equal(stage.locationId, 'guild_hall');
+  assert.equal(deploy.status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.deepEqual(deploy.evidenceIds, []);
+  assert.equal(projection.readOnly, true);
+  assert.equal(projection.xpDelta, 0);
+  assert.equal(projection.worldMutation, false);
+  assert.deepEqual(world, beforeProjection);
+
+  for (const excludedId of [mismatchedTimestampEventId, modelAssertionEventId, witnessLeadEventId]) {
+    assert.ok(!stage.evidenceIds.includes(excludedId));
+  }
+
+  withDocument(() => {
+    const root = element('div');
+    renderCharterCodex(root, { world, viewer: founder });
+    const card = walk(root).find(item => item.dataset?.charterStage === 'engineer-for-use');
+    assert.ok(card);
+    assert.match(card.textContent, /SNAPSHOT-CITED LEAD/);
+    assert.match(card.textContent, /not server-validated/i);
+    assert.ok(card.textContent.includes(validLeadEventId));
+    assert.ok(!card.textContent.includes(mismatchedTimestampEventId));
+    assert.ok(!card.textContent.includes(modelAssertionEventId));
+    assert.ok(!card.textContent.includes(witnessLeadEventId));
+  });
+});
+
 test('AOTA Codex distinguishes same-version Source Observatory follow-up from unrelated experiment evidence', async () => {
   const founder = { id: 'damien', name: 'Damien', role: 'founder' };
   const witness = { id: 'codex-witness', name: 'Codex Witness', role: 'witness' };
