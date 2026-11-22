@@ -3172,9 +3172,20 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
                 'recipientEquipEventId': recipient_equip_event_id,
                 'questCreditStayedWithChallenger': True
             },
+            'contradictionWardCarryForward': {
+                'offerId': second_transfer_offer['offerId'],
+                'offeredBy': founder_before['viewerId'],
+                'acceptedBy': silent_before['viewerId'],
+                'secondTransferEventId': second_transfer_event_id,
+                'thirdRecipientEquipEventId': silent_equip_event_id,
+                'originalCreatorPreserved': True,
+                'dissentDossierPreserved': silent_transfer_dossier['readOnly'],
+                'recipientHasOnlyTwoOfFourSteps': True,
+                'recipientReceivesNoCarryForwardCredit': silent_character['armorBearerTransfers'] == 0
+            },
             'armorBearerDeliveryQuestProgress': {
-                'founder': '2/4', 'witnessCurrentItem': '1/4',
-                'witnessCompletedHandoff': '4/4', 'silentMember': '0/4'
+                'founder': '4/4', 'witnessCurrentItem': '1/4',
+                'witnessCompletedHandoff': '4/4', 'silentMember': '2/4'
             },
             'secondFieldItem': {
                 'contributionEventId': contribution_event_id,
@@ -3188,7 +3199,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'witnessQuestProgress': '4/4',
             'silentMemberQuestProgress': '4/4',
             'carryForwardQuestProgress': {
-                'founder': '0/1', 'witness': '1/1', 'silentMember': '0/1'
+                'founder': '1/1', 'witness': '1/1', 'silentMember': '0/1'
             },
             'armorBearerSkillCounts': {
                 'founder': founder_character['armorBearerTransfers'],
@@ -3211,7 +3222,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'founderCharacterRecord': founder_character,
             'witnessCharacterRecord': witness_character,
             'silentMemberCharacterRecord': silent_character,
-            'silentMemberReceivesNoParticipationCredit': silent_character['deliberatorRounds'] == 0,
+            'silentMemberReceivesNoDissentCredit': silent_character['deliberatorRounds'] == 0,
             'handoffHistoryPagination': {
                 'participantOfferCount': len(expected_history_ids),
                 'pageSize': 12,
@@ -3241,6 +3252,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'screenshots': [
                 founder_screenshot.name, witness_screenshot.name, silent_screenshot.name,
                 ward_dossier['screenshot'], founder_transfer_dossier['screenshot'],
+                silent_transfer_dossier['screenshot'],
                 founder_character['screenshot'], witness_character['screenshot'],
                 silent_character['screenshot'], handoff_history_screenshot.name,
                 item_history_chronicle_screenshot.name
