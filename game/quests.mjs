@@ -1437,6 +1437,15 @@ export function getQuestTrail(world, viewer, options = {}) {
   const projectedResearchByEventId = new Map(projectResearchRecords(events, rows(world?.creations), retainedWorldEventHistoryOptions(world, events))
     .filter(record => record?._projection?.recordSafe && record._projection.eventIdUnique)
     .map(record => [record.id, record]));
+  // Quest Board and Character Sheet consume the same fail-closed R&D projection.
+  // Keep one retained-order source for proposals, reports, challenges and responses.
+  const projectedExperimentRecords = [...projectedResearchByEventId.values()]
+    .sort((left, right) => left._projection.index - right._projection.index);
+  const validMoonshotProposals = projectedExperimentRecords.filter(record =>
+    record?.type === 'moonshot-proposed' && record?._projection?.proposalStatus === 'unique'
+  );
+  const validMoonshotIds = new Set(validMoonshotProposals.map(record => record.moonshotId));
+  const hasAnyMoonshotProposal = validMoonshotIds.size >= 1;
   // Source Archives become usable research objects only through an exact,
   // earlier, uniquely retained publication. Client-reported and server-rechecked
   // retrieval labels are provenance distinctions, not truth or authorship verdicts.
@@ -1604,101 +1613,30 @@ export function getQuestTrail(world, viewer, options = {}) {
       : !nextSynthesisPacket
         ? 'No bounded multi-source Synthesis Clerk packet is currently available.'
         : null;
-  const moonshotProposals = events.filter(event =>
-    isValidMoonshotProposal(event) && typeof event.id === 'string' &&
-    uniqueMoonshotEventIds.has(event.id) && event.actor?.id === actorId && event.actor?.role === actorRole
+  const moonshotProposals = validMoonshotProposals.filter(record =>
+    sameResearchActor(record.actor, viewer)
   );
-  const moonshotIdCounts = new Map();
-  const reportIdCounts = new Map();
-  for (const event of events) {
-    if (event?.type === 'moonshot-proposed' && typeof event.moonshotId === 'string') moonshotIdCounts.set(event.moonshotId, (moonshotIdCounts.get(event.moonshotId) || 0) + 1);
-    if (event?.type === 'experiment-reported' && typeof event.reportId === 'string') reportIdCounts.set(event.reportId, (reportIdCounts.get(event.reportId) || 0) + 1);
-  }
-  const proposalPositionById = new Map();
-  trailRows(events).forEach((event, index) => {
-    if (isValidMoonshotProposal(event) && moonshotIdCounts.get(event.moonshotId) === 1 &&
-        uniqueMoonshotEventIds.has(event.id)) {
-      proposalPositionById.set(event.moonshotId, index);
-    }
-  });
-  const validMoonshotIds = new Set(proposalPositionById.keys());
-  const hasAnyMoonshotProposal = validMoonshotIds.size >= 1;
-  // R&D links are causal by retained append position. Strict UTC timestamps remain
-  // mandatory metadata, but a wall-clock regression cannot invalidate a later event.
-  const allExperimentReports = events.filter(event => {
-    const eventPosition = eventPositionByReference.get(event);
-    const proposalPosition = proposalPositionById.get(event?.moonshotId);
-    return event?.type === 'experiment-reported' && typeof event.id === 'string' &&
-      uniqueMoonshotEventIds.has(event.id) && typeof event.reportId === 'string' &&
-      reportIdCounts.get(event.reportId) === 1 && validMoonshotIds.has(event.moonshotId) &&
-      Number.isInteger(eventPosition) && proposalPosition < eventPosition &&
-      isStrictTimestamp(events[proposalPosition]?.at) &&
-      isStrictTimestamp(event.at) &&
-      typeof event.actor?.id === 'string' && ['founder', 'witness'].includes(event.actor?.role) &&
-      typeof event.procedure === 'string' && event.procedure.trim() &&
-      typeof event.observation === 'string' && event.observation.trim() &&
-      ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome);
-  });
-  const experimentReports = allExperimentReports.filter(event =>
-    event.actor?.id === actorId && event.actor?.role === actorRole
+  const allExperimentReports = projectedExperimentRecords.filter(record =>
+    record?.type === 'experiment-reported' &&
+    record?._projection?.proposalStatus === 'linked' &&
+    record?._projection?.reportIdUnique === true
   );
-  // A separate objective requires a report to reference one unambiguous,
-  // retained publication that existed earlier in the append-only event history.
-  // This proves artifact linkage only; it does not verify the reported procedure,
-  // observation, outcome, or truth of the hypothesis.
-  // The exact publication must precede this report in the retained stream; its
-  // timestamp/version binding is already checked by retainedPublicationEvents.
-  const experimentEvidenceReports = experimentReports.filter(event => {
-    if (typeof event.evidenceCreationId !== 'string' || !event.evidenceCreationId ||
-        !Number.isSafeInteger(event.evidenceVersion) || event.evidenceVersion < 1) return false;
-    return hasUniqueEarlierPublicationByAppendPosition(
-      event.evidenceCreationId, event.evidenceVersion, eventPositionByReference.get(event)
-    );
-  });
-  const challengeIdCounts = new Map();
-  for (const event of events) {
-    if (event?.type === 'experiment-challenged' && typeof event.challengeId === 'string') {
-      challengeIdCounts.set(event.challengeId, (challengeIdCounts.get(event.challengeId) || 0) + 1);
-    }
-  }
-  const reportById = new Map(allExperimentReports.map(event => [event.reportId, event]));
-  // Challenge evidence is linked by append position, never by wall-clock ordering.
-  const validChallengeEvidence = event => {
-    const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
-    const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
-    if (hasEvidenceId !== hasEvidenceVersion) return false;
-    if (!hasEvidenceId) return (
-      (event.evidenceCreationId === undefined || event.evidenceCreationId === null) &&
-      (event.evidenceVersion === undefined || event.evidenceVersion === null)
-    );
-    const creation = creationById.get(event.evidenceCreationId);
-    const versions = retainedVersionsByCreationAndVersion.get(
-      JSON.stringify([event.evidenceCreationId, event.evidenceVersion])
-    ) || [];
-    const version = versions.length === 1 ? versions[0] : null;
-    const eventPosition = eventPositionByReference.get(event);
-    return Boolean(creation && version && version.id === creation.id &&
-      isStrictTimestamp(version.publishedAt) && isStrictTimestamp(event.at) &&
-      hasUniqueEarlierPublicationByAppendPosition(event.evidenceCreationId, event.evidenceVersion, eventPosition));
-  };
-  const experimentChallenges = events.filter(event => {
-    const report = reportById.get(event?.reportId);
-    const reportPosition = report ? (eventPositionByReference.get(report) ?? -1) : -1;
-    const challengePosition = eventPositionByReference.get(event) ?? -1;
-    return event?.type === 'experiment-challenged' && typeof event.id === 'string' &&
-      uniqueMoonshotEventIds.has(event.id) &&
-      typeof event.challengeId === 'string' && challengeIdCounts.get(event.challengeId) === 1 &&
-      typeof event.reportId === 'string' && Boolean(report) &&
-      !sameResearchActor(report.actor, viewer) && report.moonshotId === event.moonshotId &&
-      event.actor?.id === actorId && event.actor?.role === actorRole &&
-      ['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'].includes(event.challengeType) &&
-      typeof event.challengeText === 'string' && Boolean(event.challengeText.trim()) &&
-      Array.from(event.challengeText).length <= 1000 &&
-      reportPosition >= 0 && challengePosition > reportPosition &&
-      isStrictTimestamp(event.at) &&
-      isStrictTimestamp(report.at) &&
-      validChallengeEvidence(event);
-  });
+  const experimentReports = allExperimentReports.filter(record =>
+    sameResearchActor(record.actor, viewer)
+  );
+  // The defensive research projection binds the exact earlier publication by
+  // retained event position and exact version receipt. This is artifact linkage,
+  // not proof of the reported procedure, observation, outcome, or hypothesis.
+  const experimentEvidenceReports = experimentReports.filter(record =>
+    record?._projection?.evidenceStatus === 'linked'
+  );
+  const experimentChallenges = projectedExperimentRecords.filter(record =>
+    record?.type === 'experiment-challenged' &&
+    record?._projection?.proposalStatus === 'linked' &&
+    record?._projection?.targetReportStatus === 'linked' &&
+    ['linked', 'not-applicable'].includes(record?._projection?.evidenceStatus) &&
+    sameResearchActor(record.actor, viewer)
+  );
   // Reuse the defensive full-history linker for author responses. A quest counts
   // only uniquely linked responses from the original report author; a retained
   // but invalid/duplicate response blocks retry rather than inviting a second reply.
@@ -1731,7 +1669,6 @@ export function getQuestTrail(world, viewer, options = {}) {
     guildChallengeEventIds.has(event.id) && guildExperimentReportIds.has(event.reportId)
   );
 
-  const projectedExperimentRecords = projectResearchRecords(events, rows(world?.creations), retainedWorldEventHistoryOptions(world, events));
   const sourceArchiveChallenges = projectedExperimentRecords
     .filter(record => record?.type === 'experiment-challenged' &&
       record?._projection?.recordSafe === true &&
