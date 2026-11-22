@@ -2428,6 +2428,12 @@ def assert_offline_cached_shared_snapshot_recovery(page, width):
         page.locator("#sheet-close").tap()
     before = wait_for_stable_world_snapshot(page)
     server_before = authoritative_position(page)
+    viewer_before = page.evaluate("""async () => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Shared identity read failed: ' + response.status);
+      const dto = await response.json();
+      return { id: dto.viewer.id, role: dto.viewer.role };
+    }""")
     page.wait_for_function(
         "() => Boolean(navigator.serviceWorker?.controller)",
         timeout=20000
@@ -2441,8 +2447,8 @@ def assert_offline_cached_shared_snapshot_recovery(page, width):
     }""")
     assert cached_before is not None, "Accepted shared state must be cached before offline reload."
     assert cached_before["revision"] == before["revision"]
-    assert cached_before["actorId"] == before["viewer"]["id"]
-    assert cached_before["actorRole"] == before["viewer"]["role"]
+    assert cached_before["actorId"] == viewer_before["id"]
+    assert cached_before["actorRole"] == viewer_before["role"]
     assert cached_before["scope"] == "public-witness-projection"
 
     write_attempts = []
@@ -2487,8 +2493,8 @@ def assert_offline_cached_shared_snapshot_recovery(page, width):
       };
     }""")
     assert cached["revision"] == before["revision"]
-    assert cached["actorId"] == before["viewer"]["id"]
-    assert cached["actorRole"] == before["viewer"]["role"]
+    assert cached["actorId"] == viewer_before["id"]
+    assert cached["actorRole"] == viewer_before["role"]
     assert cached["drafts"] == 0
     assert cached["privateEvents"] == 0
     assert not cached["hasPresence"]
