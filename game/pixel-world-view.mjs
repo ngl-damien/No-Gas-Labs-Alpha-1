@@ -1904,7 +1904,7 @@ export class PixelWorldView extends WorldView {
   setWorld(world, institutionSummary = this.institutionSummary, viewer = null) {
     const previousWorld = this.world;
     const previousRouteObstacleSignature = this.routeObstacleSignature;
-    const groundRouteDestination = this.route.length > 0 &&
+    const groundRouteDestination = Array.isArray(this.route) && this.route.length > 0 &&
       !this.navigationTarget && !this.playerApproach && !this.target
       ? this.route[this.route.length - 1] : null;
     super.setWorld(world, institutionSummary, viewer);
@@ -1914,7 +1914,7 @@ export class PixelWorldView extends WorldView {
       this.updateResearchAccessibility();
     }
     if (this.routeObstacleSignature !== previousRouteObstacleSignature) {
-      if (this.navigationTarget && this.route.length > 0) {
+      if (this.navigationTarget && Array.isArray(this.route) && this.route.length > 0) {
         this.goTo(this.navigationTarget.id, this.navigationTarget.type);
       } else if (groundRouteDestination &&
           Number.isFinite(groundRouteDestination.x) && Number.isFinite(groundRouteDestination.y)) {
