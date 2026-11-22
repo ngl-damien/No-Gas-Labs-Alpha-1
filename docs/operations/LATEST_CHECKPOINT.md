@@ -13,7 +13,7 @@
 - **Process:** Both authorized Desktop Commander devices are Offline. No local preflight, Node, Playwright, Gradle or local pre-edit receipt was possible. Hosted preflight is post-edit evidence; procedural compliance remains `PARTIAL`. Root instructions, shared protocol and charter were read; no nested AGENTS files exist under the touched `game/` and `test/` paths.
 - **Continuity:** The existing docs child PR [#722](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/722) was synchronized to exact runtime head `5af51d8294a8660d416bf83064e50d5c3deebfe1` by two-parent commit [ae3f93d](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/ae3f93d8b5b443c69751c26a498766c255ef958c), with runtime head first parent and prior docs head `faa5dee` second parent. No rebase or force update.
 - **Gate state:** G0-G8 remain `IN_PROGRESS`; G9 `NOT_STARTED`; Founder trust `NOT_ENROLLED`. No merge, release, deployment, Founder approval, truth verdict or authority transition.
-- **Next:** obtain terminal Quest Board/Synthesis mobile receipts and Android JUnit/emulator result; preserve Worker A ownership while repairing Browser acceptance; then reconcile the 375-commit #718 stack path-by-path against main before any integration decision.
+- **Next:** retain the Quest Board/Synthesis mobile receipts as synthetic-browser acceptance only; obtain terminal Android JUnit/emulator evidence; preserve Worker A ownership while repairing Browser acceptance; then reconcile the 375-commit #718 stack path-by-path against main before any integration decision.
 
 ---
 
