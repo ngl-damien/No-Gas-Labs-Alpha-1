@@ -668,6 +668,9 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     )
     form = page.locator('[data-source-observation-form]')
     expect(form).to_have_attribute("data-source-observation-prefill-origin", "source-archive-failure")
+    expect(form).to_have_attribute(
+        "data-source-observation-origin-failure-event-id", failure["eventId"]
+    )
     claim = page.locator("#source-observation-claim").input_value()
     source = page.locator("#source-observation-source").input_value()
     source_kind = page.locator("#source-observation-kind").input_value()
@@ -2267,6 +2270,9 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out)
     )
     expect(observation_form).to_have_attribute(
         "data-source-observation-prefill-origin", "source-archive-failure"
+    )
+    expect(observation_form).to_have_attribute(
+        "data-source-observation-origin-failure-event-id", failure_event_id
     )
     expect(observation_form).to_have_attribute("data-source-snapshot-complete", "false")
     expect(observation_form).to_have_attribute(

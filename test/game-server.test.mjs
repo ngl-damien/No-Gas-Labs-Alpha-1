@@ -15,7 +15,7 @@ import { createWorld, applyAction, publicWorld, validateWorld } from '../game/mo
 import { GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR, buildGitHubSourceArchiveBody } from '../game/artifacts.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
-import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from '../game/research-records.mjs';
+import { sourceObservationRequestMaterial, projectSourceObservationRecords, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from '../game/research-records.mjs';
 import { projectPlayerGuilds } from '../game/social.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
 import { projectChronicle } from '../game/chronicle.mjs';
@@ -2167,6 +2167,118 @@ test('Source Observatory HTTP observations are hash-bound, actor-attributed, rep
   assert.equal(mismatch.response.status, 400);
   const finalState = await founder.request('/api/state');
   assert.equal(finalState.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
+});
+
+test('failure-derived Source Observation retains an exact server-validated Source Archive event link', async t => {
+  const capture = sourceArchiveCaptureFixture('export const FAILURE_ORIGIN_FIXTURE = true;\\n', {
+    fetchImpl: async () => { throw new Error('temporary upstream unavailable'); }
+  });
+  const f = await fixture(t, undefined, { githubSourceFetch: capture.fetchImpl });
+  const founder = f.client();
+  await founder.login();
+  const draft = await founder.request('/api/action', {
+    type: 'draft', kind: 'observatory', title: 'Failure-origin Source Observatory',
+    intent: 'Record attributed leads with exact retained failure provenance.'
+  });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const published = await founder.request('/api/action', {
+    type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0
+  });
+  assert.equal(published.response.status, 200, JSON.stringify(published.body));
+  const failed = await founder.request('/api/action', {
+    ...capture.action, requestId: 'source-failure-origin-attempt-1'
+  });
+  assert.equal(failed.response.status, 502);
+  assert.equal(failed.body.error.code, 'GITHUB_SOURCE_UNAVAILABLE');
+  const afterFailure = await founder.request('/api/state');
+  const failureEvent = afterFailure.body.world.events.find(event =>
+    event.type === 'source-archive-attempt-failed'
+  );
+  assert.ok(failureEvent);
+  const sourceSnapshotRevision = afterFailure.body.world.revision;
+  const sourceSnapshotReceipt = afterFailure.body.sourceSnapshotReceipt;
+  assert.equal(sourceSnapshotReceipt.revision, sourceSnapshotRevision);
+  const note = {
+    claim: 'One retained Source Archive retrieval attempt failed.',
+    sourceKind: 'tool-output',
+    source: 'Service-observed failure event ' + failureEvent.id,
+    falsifier: 'A new explicit capture succeeds and returns matching bytes.',
+    uncertainty: 'This attempt does not establish source availability beyond itself, authorship, claim accuracy, independent verification, or truth.',
+    nextTest: 'Start a new explicit capture with a new request ID and retain that attempt separately.'
+  };
+  const base = {
+    actorId: afterFailure.body.viewer.id,
+    actorRole: afterFailure.body.viewer.role,
+    creationId: published.body.result.creationId,
+    version: 1,
+    sourceSnapshotRevision,
+    ...note
+  };
+  const unknownOrigin = 'missing-source-archive-failure-event';
+  const unknownDigest = artifactReceipt(sourceObservationRequestMaterial({
+    ...base, originFailureEventId: unknownOrigin
+  })).digest;
+  const rejected = await founder.request('/api/action', {
+    type: 'record-source-observation',
+    requestId: 'source-observation-' + unknownDigest,
+    observationId: 'source-observation-' + unknownDigest,
+    creationId: published.body.result.creationId,
+    version: 1,
+    sourceSnapshotRevision,
+    sourceSnapshotReceipt: sourceSnapshotReceipt.token,
+    originFailureEventId: unknownOrigin,
+    ...note
+  });
+  assert.equal(rejected.response.status, 409);
+  assert.equal(rejected.body.error.code, 'INVALID_SOURCE_FAILURE_ORIGIN');
+  const afterRejected = await founder.request('/api/state');
+  assert.equal(afterRejected.body.world.revision, sourceSnapshotRevision);
+  const digest = artifactReceipt(sourceObservationRequestMaterial({
+    ...base, originFailureEventId: failureEvent.id
+  })).digest;
+  const observationId = 'source-observation-' + digest;
+  const action = {
+    type: 'record-source-observation',
+    requestId: observationId,
+    observationId,
+    creationId: published.body.result.creationId,
+    version: 1,
+    sourceSnapshotRevision,
+    sourceSnapshotReceipt: sourceSnapshotReceipt.token,
+    originFailureEventId: failureEvent.id,
+    ...note
+  };
+  const recorded = await founder.request('/api/action', action);
+  assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
+  const after = await founder.request('/api/state');
+  const observation = after.body.world.events.find(event =>
+    event.type === 'source-observation-recorded' && event.observationId === observationId
+  );
+  assert.ok(observation);
+  assert.equal(observation.originFailureEventId, failureEvent.id);
+  assert.ok(sourceSnapshotRevision >= after.body.world.events.indexOf(failureEvent) + 1);
+  assert.equal(observation.sourceRetrieval, 'NOT_PERFORMED');
+  assert.equal(observation.independentVerification, 'NOT_PERFORMED');
+  assert.equal(observation.modelAssertions, 'LEADS_ONLY');
+  assert.equal(observation.execution, 'NOT_EXECUTED');
+  assert.equal(after.body.world.xp, afterFailure.body.world.xp);
+  const projected = projectSourceObservationRecords(
+    after.body.world.events,
+    after.body.world.creations,
+    { revision: after.body.world.revision, revisionPresent: true }
+  );
+  const linked = projected.find(record => record.observationId === observationId);
+  assert.ok(linked);
+  assert.equal(linked.originFailureEventId, failureEvent.id);
+  assert.equal(linked.failureOriginStatus, 'linked');
+  assert.equal(linked.projectionStatus, 'linked');
+  const quest = getQuestTrail(after.body.world, after.body.viewer).find(item =>
+    item.id === 'founder-source-archive-failure-investigation'
+  );
+  assert.ok(quest);
+  assert.equal(quest.complete, true);
+  assert.deepEqual(quest.evidenceIds, [observation.id]);
+  assert.equal(after.body.world.xp, afterFailure.body.world.xp);
 });
 
 test('Source Observation challenges are actor-separated, append-only, replay-safe, and non-rewarding', async t => {
