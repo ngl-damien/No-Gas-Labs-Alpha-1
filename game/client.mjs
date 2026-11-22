@@ -2524,6 +2524,38 @@ function appendCouncilReviewStatements(details,label,values){
   if(values.length>4)list.append(node('li',{text:(values.length-4)+' additional statements; inspect the exact retained response.'}));
   details.append(node('section',{class:'council-review-field'},[node('h4',{text:label}),list]));
 }
+const MAX_COUNCIL_SOURCE_EVENT_LINKS=8;
+function appendCouncilSourceEventLinks(card,eventIds,snapshot,role){
+  if(!Array.isArray(eventIds)||!eventIds.length||!snapshot||typeof snapshot!=='object'||Array.isArray(snapshot))return;
+  const uniqueIds=[...new Set(eventIds.filter(eventId=>
+    typeof eventId==='string'&&eventId.length>0&&eventId.length<=128&&eventId.trim()===eventId
+  ))];
+  if(!uniqueIds.length)return;
+  const retainedEvents=Array.isArray(snapshot.events)?snapshot.events:[];
+  const section=node('section',{class:'council-review-field','data-council-source-events':'true'});
+  section.append(node('h4',{text:'RETAINED SOURCE EVENTS · READ ONLY'}));
+  for(const eventId of uniqueIds.slice(0,MAX_COUNCIL_SOURCE_EVENT_LINKS)){
+    const matches=retainedEvents.filter(event=>event?.id===eventId);
+    if(matches.length!==1){
+      section.append(node('small',{text:'Source event '+eventId+' is not uniquely retained in this snapshot; no navigation link was created.'}));
+      continue;
+    }
+    const link=node('button',{
+      type:'button',
+      class:'secondary-button',
+      'data-council-source-event-id':eventId,
+      'data-council-source-event-role':role,
+      'data-council-source-event-snapshot-revision':Number.isSafeInteger(snapshot.revision)?String(snapshot.revision):'unavailable'
+    });
+    link.textContent='Open exact source event →';
+    link.setAttribute('aria-label','Open exact retained world event '+eventId+' in World Chronicle');
+    link.onclick=()=>openWorldChronicle(eventId,{snapshot});
+    section.append(link);
+  }
+  if(uniqueIds.length>MAX_COUNCIL_SOURCE_EVENT_LINKS)
+    section.append(node('small',{text:(uniqueIds.length-MAX_COUNCIL_SOURCE_EVENT_LINKS)+' additional source event IDs remain in the exact retained response.'}));
+  card.append(section);
+}
 function appendCouncilReviewSummary(card,response,review=validateRetainedCollaboratorResponse(world,response.id,viewer)){
   if(review.status==='unavailable'){
     card.append(paragraph('Review notes withheld: the retained packet/response could not be revalidated from this snapshot ('+review.reason+'). Inspect the exact archive entry; no summary is inferred.','empty-note'));
@@ -2591,8 +2623,9 @@ function appendCouncilReviewSummary(card,response,review=validateRetainedCollabo
 }
 
 function openCouncilChamber(){
+  const councilSnapshot=world;
   const coverageId=viewer.role==='founder'?'founder-guild-council-coverage':'witness-guild-council-coverage';
-  const coverage=getQuestTrail(world,viewer).find(item=>item.id===coverageId);
+  const coverage=getQuestTrail(councilSnapshot,viewer).find(item=>item.id===coverageId);
   const content=showSheet('Council Chamber','GUILD HALL · ROLE COVERAGE · DELIBERATION ONLY');
   content.dataset.councilChamber='true';
   content.append(paragraph(
@@ -2612,7 +2645,7 @@ function openCouncilChamber(){
     if(typeof item?.collaboratorRole==='string'&&!evidenceByRole.has(item.collaboratorRole))
       evidenceByRole.set(item.collaboratorRole,item);
   }
-  const events=Array.isArray(world?.events)?world.events:[];
+  const events=Array.isArray(councilSnapshot?.events)?councilSnapshot.events:[];
   content.append(node('article',{class:'field-card','data-council-coverage-progress':progress+'/'+target},[
     node('h3',{text:progress+'/'+target+' role attempts retained'}),
     paragraph('The four roles are bounded work categories, not four independent humans, votes, or endorsements.','form-help')
@@ -2634,7 +2667,7 @@ function openCouncilChamber(){
       event?.validationStatus===item.validationStatus&&event?.validationReason===item.validationReason&&
       sameSourceIds(event?.sourceEventIds,item.sourceEventIds)) : [];
     const response=matches.length===1?matches[0]:null;
-    const review=response?validateRetainedCollaboratorResponse(world,response.id,viewer):null;
+    const review=response?validateRetainedCollaboratorResponse(councilSnapshot,response.id,viewer):null;
     const status=!item?'awaiting':!response||review?.status==='unavailable'?'link-unavailable':
       review?.status==='rejected'?'rejected':'human-review';
     const labels={
@@ -2658,9 +2691,10 @@ function openCouncilChamber(){
     ]);
     if(response){
       card.append(paragraph('Source events: '+(Array.isArray(response.sourceEventIds)?response.sourceEventIds.join(' · '):'unavailable'),'form-help'));
+      appendCouncilSourceEventLinks(card,response.sourceEventIds,councilSnapshot,npc.roleId);
       appendCouncilReviewSummary(card,response,review);
       if(response.validationReason)card.append(paragraph('Structural validator note: '+response.validationReason,'form-help'));
-      card.append(button('Inspect exact retained response →',()=>openEvidenceArchive(npc.roleId,response.responseId),{
+      card.append(button('Inspect exact retained response →',()=>openEvidenceArchive(npc.roleId,response.responseId,{snapshot:councilSnapshot}),{
         class:'list-button','data-council-inspect-response':npc.roleId
       }));
     }
