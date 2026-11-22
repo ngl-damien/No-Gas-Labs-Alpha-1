@@ -1400,6 +1400,60 @@ test('Combat Yard clock regressions preserve retained append order and the world
 });
 
 
+test('Polymath Academy study and review preserve append order through clock regression', async () => {
+  const founderActor = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const base = Date.parse('2026-11-22T12:00:00.000Z');
+  const at = seconds => new Date(base + seconds * 1000).toISOString();
+  const original = createWorld({ id: 'academy-clock-regression-world', now: at(0) });
+  const draft = await applyAction(original, {
+    type: 'draft', kind: 'observatory', title: 'Academy source',
+    intent: 'A retained source for repeatable study practice.'
+  }, founderActor, { now: at(1) });
+  const published = await applyAction(draft.world, {
+    type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
+  }, founderActor, { now: at(10) });
+  const xpAfterPublication = published.world.xp;
+  const studied = await applyAction(published.world, {
+    type: 'study', creationId: published.result.creationId, version: 1,
+    question: 'What does this retained version establish?',
+    attempt: 'It establishes retained bytes, not the truth of every claim.',
+    nextCheck: 'Compare one claim with an independent source.'
+  }, founderActor, { now: at(5) });
+  const studyEvent = studied.world.events.at(-1);
+  const reviewed = await applyAction(studied.world, {
+    type: 'review-study', studyId: studyEvent.studyId,
+    response: 'The source records the claim but does not independently establish it.',
+    reflection: 'The next check remains open.'
+  }, founderActor, { now: at(3) });
+
+  const academyEvents = reviewed.world.events.filter(event =>
+    ['publish', 'study', 'study-reviewed'].includes(event.type)
+  );
+  assert.deepEqual(academyEvents.map(event => event.type), [
+    'publish', 'study', 'study-reviewed'
+  ]);
+  assert.deepEqual(academyEvents.map(event => event.at), [at(10), at(5), at(3)]);
+  assert.equal(reviewed.world.updatedAt, at(10), 'world updatedAt remains the wall-clock high-water mark');
+  assert.equal(reviewed.world.xp, xpAfterPublication, 'study and retrieval review grant no XP');
+  await validateWorld(reviewed.world);
+  assert.doesNotThrow(() => validateStoredWorldHistory(reviewed.world));
+
+  await assert.rejects(applyAction(reviewed.world, {
+    type: 'discover', locationId: 'overlook'
+  }, founderActor, { now: at(9) }), error => error.code === 'INVALID_CHRONOLOGY',
+  'the exception is limited to the Academy study/review sequence and existing append-ordered families');
+
+  const reversed = structuredClone(reviewed.world);
+  const reviewIndex = reversed.events.findIndex(event => event.type === 'study-reviewed');
+  const [reviewEvent] = reversed.events.splice(reviewIndex, 1);
+  const studyIndex = reversed.events.findIndex(event => event.type === 'study');
+  reversed.events.splice(studyIndex, 0, reviewEvent);
+  await assert.rejects(validateWorld(reversed), error => error.code === 'INVALID_WORLD');
+  assert.throws(() => validateStoredWorldHistory(reversed), /Stored Academy study review must follow/,
+    'persisted history rejects a review that precedes its source note even when both timestamps are valid');
+});
+
+
 test('private report text is bound to its exact retained Chronicle event', async () => {
   const published = await publish(createWorld({ id: 'report-text-binding-world', now }));
   const creation = published.world.creations[0];

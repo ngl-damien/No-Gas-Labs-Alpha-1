@@ -1682,6 +1682,31 @@ test('Academy study and review objectives require the publication event to prece
 
 
 
+test('Academy study and review objectives follow retained append order when timestamps regress', () => {
+  const world = academyQuestWorld(true);
+  world.events[1].at = '2026-10-28T16:59:00.000Z';
+  world.events[2].at = '2026-10-28T16:58:00.000Z';
+
+  const trail = getQuestTrail(world, founder);
+  const study = trail.find(item => item.id === 'founder-academy-study-note');
+  const review = trail.find(item => item.id === 'founder-academy-study-review');
+  assert.equal(study.complete, true, 'a retained publication precedes the study note in the event stream');
+  assert.equal(review.complete, true, 'a retained study note precedes its review despite wall-clock regression');
+  assert.equal(findStudyReview(world.events[1], world.events)?.id, 'academy-review-event');
+
+  const reversed = structuredClone(world);
+  const [reviewEvent] = reversed.events.splice(2, 1);
+  reversed.events.splice(1, 0, reviewEvent);
+  const reversedTrail = getQuestTrail(reversed, founder);
+  const reversedReview = reversedTrail.find(item => item.id === 'founder-academy-study-review');
+  assert.equal(reversedTrail.find(item => item.id === 'founder-academy-study-note').complete, true);
+  assert.equal(reversedReview.complete, false, 'a later timestamp cannot make a review precede its source note');
+  assert.equal(reversedReview.progress, 0);
+  assert.deepEqual(reversedReview.evidenceIds, []);
+  assert.equal(findStudyReview(reversed.events[2], reversed.events), null);
+});
+
+
 test('main quest stops repeating the generic task when every current objective has a retained record', () => {
   const founderWorld = {
     creations: [{ id: 'first' }, { id: 'second' }],
