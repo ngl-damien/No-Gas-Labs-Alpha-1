@@ -1004,6 +1004,10 @@ def return_to_founder(page, founder_id):
 
 
 def assert_world_visible_behind_sheet(page, label):
+    # Shared-position assertions are meaningful only after the EventSource has
+    # recovered. Offline preview deliberately keeps travel local and must not
+    # be mistaken for a failed shared-position write.
+    wait_for_shared_connection(page, label + " world-canvas movement")
     metrics = page.evaluate("""() => {
         const world = document.querySelector('#world')
         const sheet = document.querySelector('#sheet')
@@ -1015,12 +1019,12 @@ def assert_world_visible_behind_sheet(page, label):
         const sheetRect = sheet.getBoundingClientRect()
         const worldStyle = getComputedStyle(world)
         const backdropStyle = getComputedStyle(backdrop)
-        // Keep the tap on open grass east of the player and below the
-        // Synthesis Clerk. The camera places the avatar near the left third;
-        // x=20% tapped the avatar itself, while y=280 stayed in its tile.
-        // Stay 24px above the sheet and cap the target at 330px.
-        const targetX = Math.max(36, Math.round(window.innerWidth * 0.85))
-        const targetY = Math.min(330, Math.floor(sheetRect.top - 24))
+        // Tap clear ground below the Council Chamber footprint and above
+        // the drawn "NEXT" compass. The former x=85%, y=330 point landed on
+        // the compass arrow at 320px and was not a ground-navigation target.
+        // Stay 24px above the sheet and cap the target at 260px.
+        const targetX = Math.max(36, Math.round(window.innerWidth * 0.9))
+        const targetY = Math.min(260, Math.floor(sheetRect.top - 24))
         const target = document.elementFromPoint(targetX, targetY)
         return {
             sheetHidden: sheet.hidden,
@@ -1037,6 +1041,8 @@ def assert_world_visible_behind_sheet(page, label):
             bodyModalOpen: document.body.classList.contains('modal-open'),
             worldPanelOpen: document.body.classList.contains('world-panel-open'),
             movementEnabled: world.dataset.movementEnabled,
+            connectionState: document.querySelector('#connection-dot')?.dataset.connectionState || 'unknown',
+            modeLabel: document.querySelector('#mode-label')?.textContent || '',
             questCardDisplay: getComputedStyle(questCard).display,
             worldStatsDisplay: getComputedStyle(worldStats).display,
             worldHitTarget: target?.id || target?.tagName?.toLowerCase() || null,
@@ -1064,6 +1070,9 @@ def assert_world_visible_behind_sheet(page, label):
     )
     assert metrics["worldPanelOpen"] is True, f"{label}: the modeless world panel state must be explicit: {metrics}"
     assert metrics["movementEnabled"] == "true", f"{label}: shared movement must be enabled: {metrics}"
+    assert metrics["connectionState"] == "online", (
+        f"{label}: shared movement must not be asserted against an offline-preview snapshot: {metrics}"
+    )
     assert metrics["questCardDisplay"] == "none" and metrics["worldStatsDisplay"] == "none", (
         f"{label}: mobile world overlays must not cover the visible map context: {metrics}"
     )
@@ -1134,7 +1143,9 @@ def assert_world_visible_behind_sheet(page, label):
             "after": position_after,
             "movementDelta": movement_delta,
             "target": {"x": metrics["targetX"], "y": metrics["targetY"]},
-            "worldHitTarget": metrics["worldHitTarget"]
+            "worldHitTarget": metrics["worldHitTarget"],
+             "connectionState": metrics["connectionState"],
+             "modeLabel": metrics["modeLabel"]
         })
     )
     assert after["revision"] == before["revision"] and after["xp"] == before["xp"] and after["eventIds"] == before["eventIds"], (
