@@ -10,7 +10,7 @@ import {
 import {
   isWalkable, findRoute, advanceRoute, COMBAT_YARD_ACTION_RADIUS, PLACES, WORLD_WIDTH, WORLD_HEIGHT,
   PLAYER_MOVE_SPEED, MAX_FRAME_DELTA_SECONDS, boundedFrameDeltaSeconds,
-  institutionActivityCount
+  institutionActivityCount, WorldView
 } from '../game/world-view.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { createHash } from 'node:crypto';
@@ -3215,4 +3215,37 @@ test('a server position epoch rotation clears the old route even when the presen
   assert.deepEqual([...view.keys],[]);
   assert.deepEqual(view.input,{x:0,y:0});
   assert.equal(view.moving,false);
+});
+
+
+test('world canvas publishes renderer-local player, camera and route telemetry without changing canonical state', () => {
+  const view = Object.create(WorldView.prototype);
+  view.canvas = { dataset: {} };
+  view.player = { id: 'founder-session', x: 160, y: 243 };
+  view.camera = { x: 262, y: 541.5 };
+  view.zoom = 0.78;
+  view.width = 320;
+  view.height = 845;
+  view.route = [{ x: 380, y: 323 }];
+  view.world = { revision: 7, events: [{ id: 'retained-event' }] };
+  const before = JSON.stringify(view.world);
+
+  view.syncCanvasState();
+
+  assert.deepEqual(view.canvas.dataset, {
+    playerX: '160',
+    playerY: '243',
+    cameraX: '262',
+    cameraY: '541.5',
+    zoom: '0.78',
+    viewportWidth: '320',
+    viewportHeight: '845',
+    routeActive: 'true'
+  });
+  assert.equal(JSON.stringify(view.world), before,
+    'renderer telemetry must never mutate the canonical world projection');
+
+  view.route = [];
+  view.syncCanvasState();
+  assert.equal(view.canvas.dataset.routeActive, 'false');
 });

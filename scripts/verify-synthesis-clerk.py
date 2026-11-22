@@ -1004,10 +1004,7 @@ def return_to_founder(page, founder_id):
 
 
 def assert_world_visible_behind_sheet(page, label):
-    # Shared-position assertions are meaningful only after the EventSource has
-    # recovered. Offline preview deliberately keeps travel local and must not
-    # be mistaken for a failed shared-position write.
-    wait_for_shared_connection(page, label + " world-canvas movement")
+    wait_for_shared_connection(page, label + " world-canvas readiness")
     metrics = page.evaluate("""() => {
         const world = document.querySelector('#world')
         const sheet = document.querySelector('#sheet')
@@ -1019,13 +1016,6 @@ def assert_world_visible_behind_sheet(page, label):
         const sheetRect = sheet.getBoundingClientRect()
         const worldStyle = getComputedStyle(world)
         const backdropStyle = getComputedStyle(backdrop)
-        // Tap clear ground below the Council Chamber footprint and above
-        // the drawn "NEXT" compass. The former x=85%, y=330 point landed on
-        // the compass arrow at 320px and was not a ground-navigation target.
-        // Stay 24px above the sheet and cap the target at 260px.
-        const targetX = Math.max(36, Math.round(window.innerWidth * 0.9))
-        const targetY = Math.min(260, Math.floor(sheetRect.top - 24))
-        const target = document.elementFromPoint(targetX, targetY)
         return {
             sheetHidden: sheet.hidden,
             sheetRole: sheet.getAttribute('role'),
@@ -1044,10 +1034,7 @@ def assert_world_visible_behind_sheet(page, label):
             connectionState: document.querySelector('#connection-dot')?.dataset.connectionState || 'unknown',
             modeLabel: document.querySelector('#mode-label')?.textContent || '',
             questCardDisplay: getComputedStyle(questCard).display,
-            worldStatsDisplay: getComputedStyle(worldStats).display,
-            worldHitTarget: target?.id || target?.tagName?.toLowerCase() || null,
-            targetX,
-            targetY
+            worldStatsDisplay: getComputedStyle(worldStats).display
         }
     }""")
     assert metrics is not None, f"{label}: world/sheet/backdrop elements must exist"
@@ -1056,7 +1043,9 @@ def assert_world_visible_behind_sheet(page, label):
         f"{label}: an in-world institution panel must remain modeless: {metrics}"
     )
     assert metrics["worldVisible"], f"{label}: world canvas must remain visible behind the panel"
-    assert metrics["sheetTop"] >= metrics["viewportHeight"] * 0.33, f"{label}: mobile panel must leave at least one-third of the viewport for the world: {metrics}"
+    assert metrics["sheetTop"] >= metrics["viewportHeight"] * 0.33, (
+        f"{label}: mobile panel must leave at least one-third of the viewport for the world: {metrics}"
+    )
     assert metrics["sheetHeight"] <= metrics["viewportHeight"] * 0.67, (
         f"{label}: institution panel must not consume the world viewport: {metrics}"
     )
@@ -1069,15 +1058,12 @@ def assert_world_visible_behind_sheet(page, label):
         f"{label}: opening an institution panel must not pause the playable world: {metrics}"
     )
     assert metrics["worldPanelOpen"] is True, f"{label}: the modeless world panel state must be explicit: {metrics}"
-    assert metrics["movementEnabled"] == "true", f"{label}: shared movement must be enabled: {metrics}"
+    assert metrics["movementEnabled"] == "true", f"{label}: local world movement must be enabled: {metrics}"
     assert metrics["connectionState"] == "online", (
-        f"{label}: shared movement must not be asserted against an offline-preview snapshot: {metrics}"
+        f"{label}: the shared snapshot must be fresh before the offline-preview exercise: {metrics}"
     )
     assert metrics["questCardDisplay"] == "none" and metrics["worldStatsDisplay"] == "none", (
         f"{label}: mobile world overlays must not cover the visible map context: {metrics}"
-    )
-    assert metrics["worldHitTarget"] == "world", (
-        f"{label}: a tap above the panel must target the world canvas, not an overlay: {metrics}"
     )
 
     page.locator("#sheet-close").focus()
@@ -1093,70 +1079,147 @@ def assert_world_visible_behind_sheet(page, label):
     assert position_after_key == position_before_key, (
         f"{label}: keyboard navigation inside the institution panel must not move the player."
     )
+    expect(page.locator("#sheet")).to_be_visible()
+    return metrics
 
+
+def assert_offline_preview_keeps_local_route(page, label):
+    # The offline/online events are synthetic browser signals. This verifies the
+    # client contract, not a real carrier outage: local travel is allowed, shared
+    # writes are paused, and reconnect restores the last accepted server position.
+    wait_for_shared_connection(page, label + " before offline preview")
     before = authoritative_snapshot(page)
-    # The NPC approach route can finish a final step after the sheet opens.
-    # Capture a stable baseline so that residual approach motion cannot satisfy
-    # the independent world-canvas movement assertion.
-    previous_position = authoritative_position(page)
-    stable_samples = 0
-    for _ in range(10):
-        page.wait_for_timeout(200)
-        current_position = authoritative_position(page)
-        if math.hypot(
-            current_position["x"] - previous_position["x"],
-            current_position["y"] - previous_position["y"]
-        ) < 1:
-            stable_samples += 1
-            if stable_samples >= 2:
-                previous_position = current_position
-                break
-        else:
-            stable_samples = 0
-        previous_position = current_position
-    position_before = previous_position
-    page.touchscreen.tap(metrics["targetX"], metrics["targetY"])
-    assert page.evaluate("() => document.activeElement?.id === 'world'"), (
-        f"{label}: selecting the visible map should transfer keyboard control to the world canvas."
-    )
-    page.wait_for_function("""async before => {
-        const response = await fetch('/api/state', {
+    server_before = authoritative_position(page)
+    target = page.evaluate("""async () => {
+        const [worldModule, pixelModule] = await Promise.all([
+            import('/game/world-view.mjs'),
+            import('/game/pixel-world-view.mjs')
+        ])
+        const canvas = document.querySelector('#world')
+        const sheet = document.querySelector('#sheet')
+        if (!canvas || !sheet) throw new Error('World canvas and institution sheet are required.')
+        const dtoResponse = await fetch('/api/state', {
             cache: 'no-store',
             credentials: 'same-origin'
         })
-        if (!response.ok) return false
-        const dto = await response.json()
-        const position = dto?.viewer?.position
-        return position && Number.isFinite(position.x) && Number.isFinite(position.y) &&
-            Math.hypot(position.x - before.x, position.y - before.y) > 16
-    }""", arg=position_before, timeout=15000)
-    position_after = authoritative_position(page)
+        if (!dtoResponse.ok) throw new Error('Shared state read failed: ' + dtoResponse.status)
+        const dto = await dtoResponse.json()
+        if (!dto?.world || !Array.isArray(dto.world.creations)) {
+            throw new Error('A complete world creation projection is required to select ground.')
+        }
+        const data = canvas.dataset
+        const player = { x: Number(data.playerX), y: Number(data.playerY) }
+        const camera = { x: Number(data.cameraX), y: Number(data.cameraY) }
+        const zoom = Number(data.zoom)
+        const width = Number(data.viewportWidth)
+        const height = Number(data.viewportHeight)
+        if ([player.x, player.y, camera.x, camera.y, zoom, width, height].some(value => !Number.isFinite(value))) {
+            throw new Error('World renderer position/camera telemetry is unavailable.')
+        }
+        const rect = canvas.getBoundingClientRect()
+        const sheetRect = sheet.getBoundingClientRect()
+        const presence = Array.isArray(dto.presence) ? dto.presence : []
+        const selfPresenceId = String(dto.viewer?.presenceId || dto.viewer?.id || '__self__')
+        const offsets = [
+            [220, 80], [200, 140], [220, -80], [180, 100], [180, -120],
+            [-160, 100], [-180, -80], [0, 220], [0, -220], [160, 160], [160, -160]
+        ]
+        for (const [dx, dy] of offsets) {
+            const destination = { x: player.x + dx, y: player.y + dy }
+            if (Math.hypot(dx, dy) < 80 ||
+                !worldModule.isWalkable(destination.x, destination.y, dto.world.creations)) continue
+            const route = worldModule.findRoute(player, destination, dto.world.creations)
+            if (!Array.isArray(route) || route.length < 2) continue
+            const point = {
+                x: width / 2 + (destination.x - camera.x) * zoom,
+                y: height / 2 + (destination.y - camera.y) * zoom
+            }
+            const clientX = rect.left + point.x
+            const clientY = rect.top + point.y
+            if (point.x < 8 || point.y < 8 || point.x > width - 8 || point.y > height - 8 ||
+                clientY >= sheetRect.top - 24) continue
+            if (pixelModule.projectGuildNpcPointerTarget(point, camera, zoom, width, height) ||
+                pixelModule.projectInstitutionPointerTarget(point, camera, zoom, width, height) ||
+                pixelModule.projectPlayerPointerTarget(
+                    point, presence, selfPresenceId, camera, zoom, width, height
+                )) continue
+            if (document.elementFromPoint(clientX, clientY) !== canvas) continue
+            return {
+                x: clientX,
+                y: clientY,
+                world: destination,
+                routeLength: route.length,
+                playerBefore: player
+            }
+        }
+        throw new Error('No visible, walkable ground point without an NPC, player or institution hit target.')
+    }""")
+    page.evaluate("() => window.dispatchEvent(new Event('offline'))")
+    page.wait_for_function("""() => {
+        const world = document.querySelector('#world')
+        const dot = document.querySelector('#connection-dot')
+        const label = document.querySelector('#mode-label')?.textContent || ''
+        return world?.dataset.sharedOfflinePreview === 'true' &&
+            world?.dataset.movementEnabled === 'true' &&
+            dot?.dataset.connectionState === 'offline' &&
+            label.includes('offline preview')
+    }""", timeout=10000)
+    page.touchscreen.tap(target["x"], target["y"])
+    assert page.evaluate("() => document.activeElement?.id === 'world'"), (
+        f"{label}: selecting the visible map should transfer keyboard control to the world canvas."
+    )
+    page.wait_for_function("""before => {
+        const world = document.querySelector('#world')
+        const x = Number(world?.dataset.playerX)
+        const y = Number(world?.dataset.playerY)
+        return Number.isFinite(x) && Number.isFinite(y) &&
+            Math.hypot(x - before.x, y - before.y) > 16
+    }""", arg=target["playerBefore"], timeout=15000)
+    local_after = page.evaluate("""() => {
+        const world = document.querySelector('#world')
+        return {
+            x: Number(world.dataset.playerX),
+            y: Number(world.dataset.playerY),
+            routeActive: world.dataset.routeActive === 'true'
+        }
+    }""")
+    local_delta = math.hypot(
+        local_after["x"] - target["playerBefore"]["x"],
+        local_after["y"] - target["playerBefore"]["y"]
+    )
+    assert local_delta > 16, f"{label}: offline preview must permit local-only travel: {local_after}"
+    server_during = authoritative_position(page)
+    assert server_during == server_before, (
+        f"{label}: offline preview must not persist local coordinates: "
+        + json.dumps({"before": server_before, "during": server_during, "local": local_after})
+    )
     after = authoritative_snapshot(page)
-    movement_delta = math.hypot(
-        position_after["x"] - position_before["x"],
-        position_after["y"] - position_before["y"]
-    )
-    assert movement_delta > 16, (
-        f"{label}: the player must be able to walk while the institution panel remains open: "
-        + json.dumps({
-            "before": position_before,
-            "after": position_after,
-            "movementDelta": movement_delta,
-            "target": {"x": metrics["targetX"], "y": metrics["targetY"]},
-            "worldHitTarget": metrics["worldHitTarget"],
-             "connectionState": metrics["connectionState"],
-             "modeLabel": metrics["modeLabel"]
-        })
-    )
-    assert after["revision"] == before["revision"] and after["xp"] == before["xp"] and after["eventIds"] == before["eventIds"], (
-        f"{label}: walking behind an open institution panel must update only session position, not canonical world state."
-    )
-    expect(page.locator("#sheet")).to_be_visible()
-    metrics["positionBefore"] = position_before
-    metrics["positionAfter"] = position_after
-    metrics["playerMovedWhilePanelOpen"] = True
-    metrics["worldStateUnchanged"] = True
-    return metrics
+    assert_canonical_state_unchanged(before, after, label + " offline-preview travel")
+
+    page.evaluate("() => window.dispatchEvent(new Event('online'))")
+    wait_for_shared_connection(page, label + " after offline-preview recovery")
+    page.wait_for_function("""expected => {
+        const world = document.querySelector('#world')
+        const x = Number(world?.dataset.playerX)
+        const y = Number(world?.dataset.playerY)
+        return Number.isFinite(x) && Number.isFinite(y) &&
+            Math.hypot(x - expected.x, y - expected.y) < 1 &&
+            world.dataset.routeActive === 'false'
+    }""", arg=server_before, timeout=20000)
+    final = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(before, final, label + " offline-preview reconciliation")
+    return {
+        "transport": "synthetic navigator offline/online events",
+        "targetWorld": target["world"],
+        "routeLength": target["routeLength"],
+        "localMovementDelta": local_delta,
+        "localRouteActiveAtCapture": local_after["routeActive"],
+        "sharedPositionBefore": server_before,
+        "sharedPositionDuringOffline": server_during,
+        "sharedPositionAfterReconnect": authoritative_position(page),
+        "canonicalStateUnchanged": True,
+        "reconciledToLastAcceptedPosition": True
+    }
 
 
 def open_synthesis_clerk(page, packet, inspect_source_events=False):
@@ -2386,6 +2449,7 @@ def run_viewport(browser, width, out):
                 assert founder_state["xp"] == fixture["baselineXp"]
 
                 card, before_open = open_synthesis_clerk(page, witness["packet"])
+                offline_preview = assert_offline_preview_keeps_local_route(page, "Synthesis Clerk")
                 assert before_open["viewer"]["id"] == founder["id"]
                 snapshot = page.locator('#sheet-content [data-project-state-snapshot="true"]')
                 project_state_snapshot = {
@@ -2496,6 +2560,7 @@ def run_viewport(browser, width, out):
                     "proposalOnlyPacketUnavailable": True,
                     "synthesisNpcVisitedAndOpened": True,
                     "projectStateSnapshot": project_state_snapshot,
+                    "offlinePreview": offline_preview,
                     "sourceObservatory": observatory,
                     "sourceArchiveFailure": source_archive_failure,
                     "sourceArchiveFailureLedger": failure_ledger,
