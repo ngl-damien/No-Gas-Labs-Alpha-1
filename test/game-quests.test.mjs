@@ -4482,3 +4482,55 @@ test('Quest evidence Chronicle links require one exact retained world-event iden
   );
   assert.deepEqual(world, before, 'resolving a quest evidence link must not mutate retained world history');
 });
+
+
+test('Source Archive investigation remains visible but blocked when failure history is partial or unavailable', () => {
+  const partial = createWorld({
+    id: 'partial-source-archive-world',
+    now: '2026-11-22T00:00:00.000Z'
+  });
+  // One accepted world revision is not represented in this actor-visible event
+  // prefix. There are no visible failure records, but absence is not established.
+  partial.revision = 1;
+
+  for (const actor of [founder, witness]) {
+    const before = structuredClone(partial);
+    const objective = getQuestTrail(partial, actor).find(item =>
+      item.id === actor.role + '-source-archive-failure-investigation'
+    );
+    assert.ok(objective, actor.role + ' must not lose the investigation objective on a partial snapshot');
+    assert.equal(objective.progress, 0);
+    assert.equal(objective.complete, false);
+    assert.equal(objective.action, null);
+    assert.match(objective.blockedReason, /partial/i);
+    assert.match(objective.blockedReason, /1 unseen event/i);
+    assert.equal(objective.countsForQuestkeeper, false);
+    assert.deepEqual(partial, before, 'projecting a blocked objective must not mutate the world');
+  }
+
+  const unavailable = createWorld({
+    id: 'unavailable-source-archive-world',
+    now: '2026-11-22T00:00:00.000Z'
+  });
+  unavailable.schema = 'ngl.world.unrecognized';
+  const unavailableObjective = getQuestTrail(unavailable, witness).find(item =>
+    item.id === 'witness-source-archive-failure-investigation'
+  );
+  assert.ok(unavailableObjective, 'an unavailable failure projection must remain visible as a blocked objective');
+  assert.equal(unavailableObjective.progress, 0);
+  assert.equal(unavailableObjective.action, null);
+  assert.match(unavailableObjective.blockedReason, /unavailable|unclassifiable/i);
+  assert.equal(unavailableObjective.countsForQuestkeeper, false);
+
+  const completeEmpty = createWorld({
+    id: 'complete-empty-source-archive-world',
+    now: '2026-11-22T00:00:00.000Z'
+  });
+  assert.equal(
+    getQuestTrail(completeEmpty, founder).some(item =>
+      item.id === 'founder-source-archive-failure-investigation'
+    ),
+    false,
+    'a complete, valid empty history should not invent a failure-investigation objective'
+  );
+});
