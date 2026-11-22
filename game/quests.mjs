@@ -1634,7 +1634,10 @@ export function getQuestTrail(world, viewer, options = {}) {
     record?.type === 'experiment-challenged' &&
     record?._projection?.proposalStatus === 'linked' &&
     record?._projection?.targetReportStatus === 'linked' &&
-    ['linked', 'not-applicable'].includes(record?._projection?.evidenceStatus) &&
+    (record?._projection?.evidenceStatus === 'linked' ||
+      (record?._projection?.evidenceStatus === 'not-provided' &&
+        (record.evidenceCreationId === undefined || record.evidenceCreationId === null) &&
+        (record.evidenceVersion === undefined || record.evidenceVersion === null))) &&
     sameResearchActor(record.actor, viewer)
   );
   // Reuse the defensive full-history linker for author responses. A quest counts
