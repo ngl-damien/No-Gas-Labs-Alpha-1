@@ -21,6 +21,8 @@
 
 **Open blockers:** Browser 45063577714 fails on parent head 9e6451f in Worker A-owned scripts/verify-browser.py (visible Guild Hall Interact vs stale hidden Forge locator). Android 45063577753 was CANCELLED during the offline-world emulator journey after debug APK assembly; no terminal JUnit/instrumentation or physical-device acceptance. No merge or release.
 
+**Documentation sync:** Run 318 checkpoint commit 10b93e4 is on docs child PR #722; its base was refreshed to runtime head 8c5c73f and its current diff is four documentation-only paths, draft/unmerged.
+
 ---
 
 ## Run 317 — partial Source Archive history remains visible and scoped — 2026-11-22
