@@ -2783,10 +2783,9 @@ def assert_private_import_shared_reentry(page, width, out):
         page.unroute("**/api/state", fail_shared_join)
 
     assert failed_join_status == 503
-    assert failed_join_requests == [{
-        "method": "GET",
-        "path": page.url.split("/", 3)[0] + "/api/state"
-    }], failed_join_requests
+    assert len(failed_join_requests) == 1, failed_join_requests
+    assert failed_join_requests[0]["method"] == "GET", failed_join_requests
+    assert failed_join_requests[0]["path"].endswith("/api/state"), failed_join_requests
 
     restored_private = page.evaluate("""() => {
       const world = JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
