@@ -98,7 +98,7 @@ test('service-worker installation rotates the offline shell and precaches Charac
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261122-aota-codex-npc-navigation-55');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261122-pwa-project-state-snapshot-56');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'),
     'Character Sheet to exact World Chronicle navigation must remain available in the offline shell');
   assert.ok(precachedUrls.includes('https://ngl.test/character-sheet.mjs'),
@@ -119,6 +119,8 @@ test('service-worker installation rotates the offline shell and precaches Charac
   assert.ok(precachedUrls.includes('https://ngl.test/github-decision-gate.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/artifacts.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/collaborator-contracts.mjs'));
+  assert.ok(!precachedUrls.includes('https://ngl.test/project-state.json'),
+    'the dated project-state snapshot must remain optional so its absence cannot block PWA installation');
 });
 
 test('installation rejects when the current shell cache cannot be opened', async () => {
@@ -167,7 +169,7 @@ test('installation remains bounded when Cache Storage open or shell precache sta
 });
 
 test('activation deletes only stale NGL shell caches and claims clients', async () => {
-  const current='ngl-common-ground-shell-20261122-aota-codex-npc-navigation-55';
+  const current='ngl-common-ground-shell-20261122-pwa-project-state-snapshot-56';
   const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
   const deleted=[];
   let claimed=false;
@@ -187,7 +189,7 @@ test('activation deletes only stale NGL shell caches and claims clients', async 
 });
 
 test('activation preserves allowlisted optional artwork before deleting prior NGL shell caches', async () => {
-  const current='ngl-common-ground-shell-20261122-aota-codex-npc-navigation-55';
+  const current='ngl-common-ground-shell-20261122-pwa-project-state-snapshot-56';
   const previous='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-20';
   const older='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-16';
   const coverUrl='https://ngl.test/assets/comic/cover_a.jpg';
@@ -232,7 +234,7 @@ test('activation preserves allowlisted optional artwork before deleting prior NG
 });
 
 test('activation remains bounded and claims clients when optional-asset migration stalls', async () => {
-  const current='ngl-common-ground-shell-20261122-aota-codex-npc-navigation-55';
+  const current='ngl-common-ground-shell-20261122-pwa-project-state-snapshot-56';
   const previous='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-20';
   const fastTimeout=(callback,milliseconds,...args)=>setTimeout(callback,Math.min(milliseconds,20),...args);
   let claimed=false;
@@ -656,7 +658,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/shared-snapshot\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261122-aota-codex-npc-navigation-55/);
+  assert.match(source, /20261122-pwa-project-state-snapshot-56/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
@@ -823,4 +825,73 @@ test('artifact detail fails closed for unavailable exact versions and guards sta
   const entry = client.slice(enterStart, enterEnd);
   assert.match(entry, /prepareContradictionReview\(c,versionNumber\)/,
     'entering an artifact must revalidate the exact requested version');
+});
+
+
+test('phone PWA captures and publishes a bounded public project-state snapshot', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/publish-phone-pwa.yml', import.meta.url), 'utf8');
+  const capture = workflow.indexOf('node scripts/capture-project-state.mjs --out _site/project-state.json');
+  const artifact = workflow.indexOf('uses: actions/upload-pages-artifact@v3');
+  assert.ok(capture >= 0, 'the PWA build must capture the dated project-state snapshot');
+  assert.ok(capture < artifact, 'snapshot capture must finish before the Pages artifact is preserved');
+  assert.match(workflow, /GITHUB_TOKEN:\\s*\\$\\{\\{\\s*github\\.token\\s*\\}\\}/);
+  for (const permission of ['contents', 'pull-requests', 'issues', 'actions', 'checks', 'statuses']) {
+    assert.match(workflow, new RegExp('^\\\\s*' + permission + ': read$', 'm'));
+  }
+  assert.match(workflow, /test -s _site\\/project-state\\.json/);
+  assert.match(workflow, /path:\\s*_site/);
+  for (const target of ['scripts/capture-project-state.mjs', 'src/institution/kernel.mjs', 'test/project-state-snapshot.test.mjs']) {
+    assert.ok(workflow.includes("'" + target + "'"), 'PWA build must rerun when snapshot producer changes: ' + target);
+  }
+});
+
+test('the dated project-state snapshot is optional and its cached copy remains readable offline', async () => {
+  const source = await readFile(new URL('../game/sw.js', import.meta.url), 'utf8');
+  const core = /const CORE_SHELL = \\[([\\s\\S]*?)\\];/.exec(source)?.[1] || '';
+  const optional = /const OPTIONAL_SHELL = \\[([\\s\\S]*?)\\];/.exec(source)?.[1] || '';
+  assert.ok(!core.includes('/project-state.json'), 'snapshot absence must not block shell installation');
+  assert.ok(optional.includes('/project-state.json'), 'the dated snapshot must use the optional public-asset cache path');
+
+  const cached = serviceResponse('dated-snapshot-envelope');
+  const handlers = await serviceWorkerHarness({
+    fetchImpl: async () => { throw new Error('offline'); },
+    openCache: async () => ({
+      match: async request => request.url === 'https://ngl.test/project-state.json' ? cached : null
+    })
+  });
+  const response = await serviceWorkerResponseWithin(
+    handlers.get('fetch'),
+    shellRequest('/project-state.json')
+  );
+  assert.equal(response.body, 'dated-snapshot-envelope');
+});
+
+test('activation carries the optional dated project-state snapshot forward without copying private APIs', async () => {
+  const current = 'ngl-common-ground-shell-20261122-pwa-project-state-snapshot-56';
+  const previous = 'ngl-common-ground-shell-previous';
+  const snapshotUrl = 'https://ngl.test/project-state.json';
+  const privateUrl = 'https://ngl.test/api/state';
+  const currentEntries = new Map();
+  const previousEntries = new Map([
+    [snapshotUrl, serviceResponse('dated-snapshot-from-previous-build')],
+    [privateUrl, serviceResponse('private-state-must-not-copy')]
+  ]);
+  const makeCache = entries => ({
+    match: async request => entries.get(typeof request === 'string' ? request : request.url) || null,
+    put: async (request, response) => { entries.set(typeof request === 'string' ? request : request.url, response); }
+  });
+  const cachesByName = new Map([
+    [current, makeCache(currentEntries)],
+    [previous, makeCache(previousEntries)]
+  ]);
+  const handlers = await serviceWorkerHarness({
+    fetchImpl: async () => serviceResponse('unused'),
+    openCache: async name => cachesByName.get(name) || makeCache(new Map()),
+    listCaches: async () => [current, previous]
+  });
+  let activation;
+  handlers.get('activate')({ waitUntil(value) { activation = Promise.resolve(value); } });
+  await activation;
+  assert.equal(currentEntries.get(snapshotUrl)?.body, 'dated-snapshot-from-previous-build');
+  assert.equal(currentEntries.has(privateUrl), false);
 });
