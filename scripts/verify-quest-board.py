@@ -125,11 +125,12 @@ const server=await createGameServer({
   founderKey:'fake-browser-fixture-key-not-a-secret',
   githubSourceFetch
 });
-server.listen(0,'127.0.0.1',()=>console.log(JSON.stringify({port:server.address().port})));
+const requestedPort=Number(process.argv[3]||0);
+server.listen(requestedPort,'127.0.0.1',()=>console.log(JSON.stringify({port:server.address().port})));
 process.once('SIGTERM',()=>server.closeGame());"""
 
 
-def launch_server(data_dir, retry_attempts_path):
+def launch_server(data_dir, retry_attempts_path, port=0):
     fixture = json.dumps({
         'apiUrl': SOURCE_FIXTURE_API_URL,
         'failureApiUrl': SOURCE_FAILURE_API_URL,
@@ -139,7 +140,7 @@ def launch_server(data_dir, retry_attempts_path):
         'retryAttemptsPath': str(retry_attempts_path)
     }, separators=(',', ':'))
     process = subprocess.Popen(
-        ['node', '--input-type=module', '-e', SERVER, str(data_dir), fixture],
+        ['node', '--input-type=module', '-e', SERVER, str(data_dir), fixture, str(port)],
         cwd=ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -173,6 +174,21 @@ def stop_server(process):
     if process.returncode != 0:
         detail = process.stderr.read()
         raise AssertionError('Disposable game server exited ' + str(process.returncode) + ': ' + detail)
+
+
+def restart_server(server_state):
+    """Restart the disposable world service on the same origin and durable data directory."""
+    original_url = server_state['url']
+    port = int(original_url.rsplit(':', 1)[1].rstrip('/'))
+    stop_server(server_state['process'])
+    process, restarted_url = launch_server(
+        server_state['data_dir'], server_state['retry_attempts_path'], port=port
+    )
+    assert restarted_url == original_url, (
+        'The restart must preserve the browser origin so its session cookies remain scoped to the same world.'
+    )
+    server_state['process'] = process
+    return {'url': restarted_url, 'port': port, 'sameOrigin': True}
 
 
 def authoritative_snapshot(page):
@@ -263,6 +279,48 @@ def wait_for_shared_world_ready(page, timeout=30000):
             'Shared session did not complete EventSource connection and authoritative position reconciliation before world interaction: ' +
             json.dumps(diagnostics, sort_keys=True)
         ) from error
+
+def rejoin_shared_session(page, url, expected_role, expected_actor_id):
+    """Re-enter the same shared session after a server restart; never accept a replacement actor silently."""
+    page.goto(url, wait_until='networkidle')
+    page.locator('#start-shared').tap()
+    page.locator('#world').wait_for(state='visible')
+    page.wait_for_function(
+        "() => ['Founder', 'Witness'].some(role => document.querySelector('#mode-label')?.textContent.includes(role))"
+    )
+    label = page.locator('#mode-label').text_content() or ''
+    if expected_role == 'founder' and 'Founder' not in label:
+        expect(page.locator('#login-button')).to_be_visible()
+        page.locator('#login-button').tap()
+        page.locator('#founder-name').fill('Damien')
+        page.locator('#founder-key').fill('fake-browser-fixture-key-not-a-secret')
+        page.locator('#verify-founder').tap()
+    page.wait_for_function(
+        "role => document.querySelector('#mode-label')?.textContent.includes(role === 'founder' ? 'Founder' : 'Witness')",
+        arg=expected_role
+    )
+    wait_for_shared_world_ready(page)
+    snapshot = authoritative_snapshot(page)
+    assert snapshot['viewerId'] == expected_actor_id, (
+        'Server restart must preserve the existing pseudonymous session identity, not silently mint a replacement actor.'
+    )
+    assert snapshot['viewerRole'] == expected_role
+    return snapshot
+
+
+def wait_for_presence_actor_ids(page, actor_ids, timeout=15000):
+    page.wait_for_function(
+        """expected => fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'})
+          .then(response => response.ok ? response.json() : Promise.reject())
+          .then(dto => {
+            const ids = new Set((Array.isArray(dto?.presence) ? dto.presence : [])
+              .map(player => player?.actorId));
+            return expected.every(id => ids.has(id));
+          }).catch(() => false)""",
+        arg=actor_ids,
+        timeout=timeout
+    )
+
 
 def publish_fixture(page):
     return page.evaluate("""async () => {
@@ -1834,7 +1892,7 @@ def assert_deliberator_character_record(page, role, expected_rounds, screenshot,
     }
 
 
-def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, out):
+def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, out, server_state):
     witness_context = browser.new_context(
         viewport={'width': 390, 'height': 844},
         is_mobile=True,
@@ -2032,13 +2090,70 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert transfer_offer['recipientRole'] == 'founder'
         assert transfer_offer['offerId']
 
-        founder_page.reload(wait_until='networkidle')
-        founder_page.locator('#start-shared').tap()
-        founder_page.locator('#world').wait_for(state='visible')
-        founder_page.wait_for_function(
-            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+        pending_before_restart = authoritative_snapshot(founder_page)
+        assert transfer_offer['eventId'] in pending_before_restart['eventIds']
+        assert pending_before_restart['xp'] == authoritative_snapshot(witness_page)['xp']
+
+        # Restart the actual disposable shared-world service after the offer is
+        # retained but before its designated recipient accepts it. Reuse the
+        # same data directory and TCP port so browser cookies remain same-origin.
+        server_restart = restart_server(server_state)
+        assert server_restart['sameOrigin'] and server_restart['url'] == url
+
+        witness_after_restart = rejoin_shared_session(
+            witness_page, url, 'witness', witness_before['viewerId']
         )
-        wait_for_shared_world_ready(founder_page)
+        silent_after_restart = rejoin_shared_session(
+            silent_page, url, 'witness', silent_before['viewerId']
+        )
+        founder_after_restart = rejoin_shared_session(
+            founder_page, url, 'founder', founder_before['viewerId']
+        )
+        for snapshot in (
+            witness_after_restart, silent_after_restart, founder_after_restart
+        ):
+            assert shared_world_snapshot(snapshot) == shared_world_snapshot(pending_before_restart), (
+                'Rejoining after restart must preserve the exact retained shared revision, events, creations, and XP.'
+            )
+        wait_for_presence_actor_ids(founder_page, [
+            founder_before['viewerId'], witness_before['viewerId'], silent_before['viewerId']
+        ])
+
+        # The original sender sees the still-pending offer after rejoining, but
+        # cannot accept their own offer.
+        witness_page.locator('#character-button').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
+        sender_ward = witness_page.locator('#sheet-content [data-field-item-id]').filter(
+            has_text='Contradiction Ward'
+        )
+        expect(sender_ward).to_have_count(1)
+        expect(sender_ward.locator('[data-cancel-field-item-transfer]')).to_have_count(1)
+        assert sender_ward.locator('[data-accept-field-item-transfer]').count() == 0
+        sender_after_inspection = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(sender_after_inspection) == shared_world_snapshot(pending_before_restart)
+        assert sender_after_inspection['xp'] == pending_before_restart['xp']
+        witness_page.locator('#sheet-close').tap()
+
+        # A third, unrelated member must not receive the private offer or its
+        # participant handoff history after the service reconstructs the world.
+        silent_page.locator('#character-button').tap()
+        silent_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
+        assert silent_page.locator(
+            '#sheet-content [data-field-transfer-offer="' + transfer_offer['offerId'] + '"]'
+        ).count() == 0
+        assert silent_page.locator('#sheet-content [data-incoming-field-transfers]').count() == 0
+        assert silent_page.locator('#sheet-content [data-field-item-participant-history]').count() == 0
+        silent_after_inspection = authoritative_snapshot(silent_page)
+        assert shared_world_snapshot(silent_after_inspection) == shared_world_snapshot(pending_before_restart)
+        assert silent_after_inspection['xp'] == pending_before_restart['xp']
+        silent_page.locator('#sheet-close').tap()
+
         founder_page.locator('#character-button').tap()
         founder_page.wait_for_function(
             "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
@@ -3277,6 +3392,25 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         return {
             'passed': True,
             'threeSeparateBrowserContexts': True,
+            'pendingOfferRestartRecovery': {
+                'sameOriginRestart': server_restart['sameOrigin'],
+                'restartPort': server_restart['port'],
+                'offerId': transfer_offer['offerId'],
+                'offerEventId': transfer_offer['eventId'],
+                'recipientActorIdPreserved': founder_after_restart['viewerId'] == founder_before['viewerId'],
+                'senderActorIdPreserved': witness_after_restart['viewerId'] == witness_before['viewerId'],
+                'unrelatedActorIdPreserved': silent_after_restart['viewerId'] == silent_before['viewerId'],
+                'presenceRejoinedThreeSessions': True,
+                'senderStillOwnsPendingItem': True,
+                'senderCannotAcceptOwnOffer': True,
+                'recipientSeesAndCanAcceptExactOffer': True,
+                'unrelatedMemberCannotSeeOfferOrHistory': True,
+                'sharedRevisionPreservedBeforeAcceptance': founder_after_restart['revision'] == pending_before_restart['revision'],
+                'eventHistoryPreservedBeforeAcceptance': founder_after_restart['eventIds'] == pending_before_restart['eventIds'],
+                'rejoinAndInspectionXpDelta': founder_after_restart['xp'] - pending_before_restart['xp'],
+                'acceptanceEventId': transfer_event_id,
+                'acceptanceXpDelta': 0
+            },
             'founderActorId': founder_before['viewerId'],
             'witnessActorId': witness_before['viewerId'],
             'silentMemberActorId': silent_before['viewerId'],
@@ -5458,7 +5592,7 @@ def run_evidence_archive_activity_streams_mobile(browser, url, out, width):
         context.close()
 
 
-def run_viewport(browser, url, out, width, source_archive_fixture=None, source_archive_failure=None):
+def run_viewport(browser, url, out, width, source_archive_fixture=None, source_archive_failure=None, server_state=None):
     context = browser.new_context(
         viewport={'width': width, 'height': 844},
         is_mobile=True,
@@ -5514,7 +5648,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
                 'The two existing publication rewards must add exactly 200 XP relative to the shared baseline.'
             )
             guild_circuit_result = run_guild_dissent_circuit(
-                browser, page, url, observatory_fixture, out
+                browser, page, url, observatory_fixture, out, server_state
             )
             publication_chronicle_result = assert_publication_chronicle_navigation(
                 page, fixture, out, width
@@ -7298,6 +7432,12 @@ def main():
         data_dir.mkdir(mode=0o700)
         retry_attempts_path = temporary_root / 'source-retry-attempts.txt'
         process, url = launch_server(data_dir, retry_attempts_path)
+        server_state = {
+            'process': process,
+            'url': url,
+            'data_dir': data_dir,
+            'retry_attempts_path': retry_attempts_path
+        }
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch(args=['--no-sandbox'])
@@ -7307,7 +7447,7 @@ def main():
                     observatory_fixture = None
                     for width in (320, 390):
                         result = run_viewport(
-                            browser, url, out, width, source_archive_fixture, source_archive_failure
+                            browser, url, out, width, source_archive_fixture, source_archive_failure, server_state
                         )
                         results.append(result)
                         if width == 320:
@@ -7333,7 +7473,7 @@ def main():
                 finally:
                     browser.close()
         finally:
-            stop_server(process)
+            stop_server(server_state['process'])
     print(json.dumps(results))
 
 
