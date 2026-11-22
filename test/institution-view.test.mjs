@@ -696,7 +696,10 @@ test('AOTA Codex exposes actor-scoped snapshot-cited lead activity without calli
   const modelAssertionEventId = await retainLead(founder, {
     sourceKind: 'model-assertion'
   }, '2026-11-22T14:00:03.000Z');
-  const witnessLeadEventId = await retainLead(witness, {}, '2026-11-22T14:00:04.000Z');
+  const malformedDigestEventId = await retainLead(founder, {
+    digest: 'd'.repeat(63)
+  }, '2026-11-22T14:00:04.000Z');
+  const witnessLeadEventId = await retainLead(witness, {}, '2026-11-22T14:00:05.000Z');
 
   const beforeProjection = structuredClone(world);
   const projection = projectCharterCodex(world, founder);
@@ -719,7 +722,7 @@ test('AOTA Codex exposes actor-scoped snapshot-cited lead activity without calli
   assert.equal(projection.worldMutation, false);
   assert.deepEqual(world, beforeProjection);
 
-  for (const excludedId of [mismatchedTimestampEventId, modelAssertionEventId, witnessLeadEventId]) {
+  for (const excludedId of [mismatchedTimestampEventId, modelAssertionEventId, malformedDigestEventId, witnessLeadEventId]) {
     assert.ok(!stage.evidenceIds.includes(excludedId));
   }
 
