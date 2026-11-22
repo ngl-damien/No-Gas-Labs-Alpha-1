@@ -45,6 +45,24 @@ function validWorldProjection(world) {
   }
   return true;
 }
+function validWorldRevisionIdentity(world) {
+  return isRecord(world) &&
+    typeof world.id === 'string' && world.id.length > 0 && world.id.length <= 128 &&
+    Number.isSafeInteger(world.revision) && world.revision >= 0;
+}
+
+/**
+ * Shared world revisions are ordered within a world, not within a viewer session.
+ * A delayed HTTP, action, or SSE DTO must not roll the live projection backward
+ * after another actor's newer snapshot has already been accepted.
+ */
+export function isNonRegressingSharedWorldSnapshot(currentWorld, incomingWorld) {
+  if (!validWorldRevisionIdentity(incomingWorld)) return false;
+  if (currentWorld === null || currentWorld === undefined) return true;
+  if (!validWorldRevisionIdentity(currentWorld)) return false;
+  return currentWorld.id !== incomingWorld.id ||
+    incomingWorld.revision >= currentWorld.revision;
+}
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
