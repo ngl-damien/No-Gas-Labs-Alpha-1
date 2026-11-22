@@ -3,7 +3,7 @@ import { publicWorld } from './model.mjs';
 export const SHARED_SNAPSHOT_CACHE_KEY = 'ngl.common-ground.shared-snapshot.v1';
 export const SHARED_POSITION_CACHE_KEY = 'ngl.common-ground.shared-position.v1';
 export const SHARED_SNAPSHOT_CACHE_SCHEMA = 'ngl.shared-public-snapshot.v1';
-export const SHARED_POSITION_CACHE_SCHEMA = 'ngl.shared-accepted-position.v1';
+export const SHARED_POSITION_CACHE_SCHEMA = 'ngl.shared-accepted-position.v2';
 export const MAX_SHARED_SNAPSHOT_CACHE_BYTES = 2 * 1024 * 1024;
 const MAX_SHARED_POSITION_CACHE_BYTES = 1024;
 
@@ -122,8 +122,7 @@ export function writeSharedSnapshotCache(storage, dto, { now = Date.now() } = {}
     }
     const existing = readSharedSnapshotCache(storage);
     if (existing &&
-        existing.viewer.id === envelope.viewer.id &&
-        existing.viewer.role === envelope.viewer.role &&
+        existing.world.id === envelope.world.id &&
         existing.world.revision > envelope.world.revision) {
       return {
         stored: false,
@@ -145,10 +144,11 @@ export function writeSharedSnapshotCache(storage, dto, { now = Date.now() } = {}
   }
 }
 
-export function writeSharedPositionCache(storage, viewer, worldRevision, position, { now = Date.now() } = {}) {
+export function writeSharedPositionCache(storage, viewer, worldId, worldRevision, position, { now = Date.now() } = {}) {
   if (!Number.isSafeInteger(now) || now < 0 ||
       !isRecord(viewer) || typeof viewer.id !== 'string' || !viewer.id ||
       !['founder', 'witness'].includes(viewer.role) ||
+      typeof worldId !== 'string' || worldId.length === 0 || worldId.length > 128 ||
       !Number.isSafeInteger(worldRevision) || worldRevision < 0 ||
       !validPosition(position)) return false;
   const envelope = {
@@ -156,6 +156,7 @@ export function writeSharedPositionCache(storage, viewer, worldRevision, positio
     cachedAt: now,
     actorId: viewer.id,
     actorRole: viewer.role,
+    worldId,
     worldRevision,
     position: { x: position.x, y: position.y }
   };
@@ -177,11 +178,12 @@ export function readSharedPositionCache(storage, snapshot) {
     if (typeof raw !== 'string' || byteLength(raw) > MAX_SHARED_POSITION_CACHE_BYTES) return null;
     const envelope = JSON.parse(raw);
     if (!isRecord(envelope) ||
-        Object.keys(envelope).sort().join(',') !== 'actorId,actorRole,cachedAt,position,schema,worldRevision' ||
+        Object.keys(envelope).sort().join(',') !== 'actorId,actorRole,cachedAt,position,schema,worldId,worldRevision' ||
         envelope.schema !== SHARED_POSITION_CACHE_SCHEMA ||
         !Number.isSafeInteger(envelope.cachedAt) || envelope.cachedAt < 0 ||
         envelope.actorId !== snapshot.viewer.id ||
         envelope.actorRole !== snapshot.viewer.role ||
+        envelope.worldId !== snapshot.world.id ||
         envelope.worldRevision !== snapshot.world.revision ||
         !isRecord(envelope.position) ||
         Object.keys(envelope.position).sort().join(',') !== 'x,y' ||
