@@ -1,0 +1,122 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createWorld, publicWorld } from '../game/model.mjs';
+import {
+  createSharedSnapshotEnvelope,
+  parseSharedSnapshotEnvelope,
+  readSharedPositionCache,
+  readSharedSnapshotCache,
+  writeSharedPositionCache,
+  writeSharedSnapshotCache,
+  MAX_SHARED_SNAPSHOT_CACHE_BYTES
+} from '../game/shared-snapshot.mjs';
+
+const now = '2026-11-21T21:00:00.000Z';
+const founder = { id: 'damien', name: 'Damien', role: 'founder', position: { x: 180, y: 640 },
+  presenceId: 'session-only-presence-id', positionEpoch: '123e4567-e89b-42d3-a456-426614174000',
+  positionRevision: 9 };
+function fixture(role = 'founder') {
+  const world = createWorld({ id: 'offline-snapshot-world', now });
+  world.revision = 4;
+  world.events = [
+    { id: 'draft-event', type: 'draft', actor: founder, at: now, semantics: 'private draft' },
+    { id: 'repair-event', type: 'repair', actor: founder, at: now, semantics: 'private repair' },
+    { id: 'report-event', type: 'message-reported', actor: founder, at: now, semantics: 'private report' },
+    { id: 'contribution-event', type: 'contribute', actor: { id: 'witness-1', role: 'witness' }, at: now, semantics: 'public contribution' }
+  ];
+  world.drafts = [{ id: 'private-draft', title: 'Do not cache' }];
+  const viewer = { ...founder, role, position: { x: 180, y: 640 } };
+  const dtoWorld = role === 'witness' ? publicWorld(world, viewer) : world;
+  return {
+    world: dtoWorld,
+    viewer,
+    presence: [{ id: 'session-only-presence-id' }],
+    institution: { authority: 'not-for-cache' },
+    sourceSnapshotReceipt: { token: 'session-only-source-receipt' }
+  };
+}
+function memoryStorage() {
+  const values = new Map();
+  return {
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    setItem(key, value) { values.set(key, String(value)); },
+    removeItem(key) { values.delete(key); },
+    values
+  };
+}
+
+test('shared cache is a redacted public projection, never a session, receipt, presence or authority cache', () => {
+  const dto = fixture('founder');
+  const envelope = createSharedSnapshotEnvelope(dto, { now: 1000 });
+  assert.ok(envelope);
+  assert.equal(envelope.schema, 'ngl.shared-public-snapshot.v1');
+  assert.equal(envelope.scope, 'public-witness-projection');
+  assert.equal(envelope.world.revision, 4);
+  assert.equal(envelope.world.drafts.length, 0);
+  assert.deepEqual(envelope.world.events.map(event => [event.id, event.historyPosition]), [
+    ['contribution-event', 4]
+  ]);
+  assert.deepEqual(envelope.viewer.position, { x: 180, y: 640 });
+  assert.deepEqual(Object.keys(envelope.viewer).sort(), ['id', 'name', 'position', 'role']);
+  assert.deepEqual(Object.keys(envelope).sort(), ['cachedAt', 'schema', 'scope', 'viewer', 'world']);
+  const serialized = JSON.stringify(envelope);
+  assert.doesNotMatch(serialized, /session-only-presence-id|session-only-source-receipt|private-draft|private report/);
+  assert.doesNotMatch(serialized, /presenceId|positionEpoch|positionRevision|sourceSnapshotReceipt|institution/);
+});
+
+test('Witness DTO history gaps remain original positions instead of being renumbered', () => {
+  const dto = fixture('witness');
+  const envelope = createSharedSnapshotEnvelope(dto, { now: 1000 });
+  assert.ok(envelope);
+  assert.deepEqual(envelope.world.events.map(event => [event.id, event.historyPosition]), [
+    ['contribution-event', 4]
+  ]);
+  assert.equal(envelope.world.revision, 4);
+  assert.equal(envelope.world.events.length, 1);
+});
+
+test('snapshot round-trip and accepted position cache are actor- and revision-bound', () => {
+  const storage = memoryStorage();
+  const dto = fixture('founder');
+  const written = writeSharedSnapshotCache(storage, dto, { now: 1000 });
+  assert.deepEqual(written, { stored: true, revision: 4, viewerId: 'damien', viewerRole: 'founder' });
+  assert.equal(writeSharedPositionCache(storage, dto.viewer, 4, { x: 300, y: 650 }, { now: 1100 }), true);
+  const snapshot = readSharedSnapshotCache(storage);
+  assert.ok(snapshot);
+  assert.equal(parseSharedSnapshotEnvelope(JSON.stringify(snapshot)).world.revision, 4);
+  assert.deepEqual(readSharedPositionCache(storage, snapshot), { x: 300, y: 650 });
+  assert.equal(readSharedPositionCache(storage, {
+    ...snapshot,
+    viewer: { ...snapshot.viewer, id: 'different-actor' }
+  }), null);
+  assert.equal(readSharedPositionCache(storage, {
+    ...snapshot,
+    world: { ...snapshot.world, revision: 5 }
+  }), null);
+});
+
+test('older accepted snapshots cannot overwrite a newer public cache', () => {
+  const storage = memoryStorage();
+  const newer = fixture('founder');
+  newer.world.revision = 5;
+  newer.world.events.push({
+    id: 'newer-event', type: 'contribute', actor: { id: 'witness-2', role: 'witness' },
+    at: now, semantics: 'newer contribution'
+  });
+  assert.equal(writeSharedSnapshotCache(storage, newer, { now: 2000 }).stored, true);
+  const older = fixture('founder');
+  const result = writeSharedSnapshotCache(storage, older, { now: 3000 });
+  assert.equal(result.reason, 'newer-cache-preserved');
+  assert.equal(readSharedSnapshotCache(storage).world.revision, 5);
+});
+
+test('malformed, oversized and unavailable storage fails closed without manufacturing a snapshot', () => {
+  assert.equal(parseSharedSnapshotEnvelope('{bad json'), null);
+  assert.equal(parseSharedSnapshotEnvelope('x'.repeat(MAX_SHARED_SNAPSHOT_CACHE_BYTES + 1)), null);
+  const oversized = fixture('founder');
+  oversized.world.creations = [{ id: 'large', html: 'x'.repeat(MAX_SHARED_SNAPSHOT_CACHE_BYTES + 1) }];
+  assert.equal(createSharedSnapshotEnvelope(oversized, { now: 1000 }), null);
+  assert.equal(readSharedSnapshotCache({ getItem() { throw new Error('denied'); } }), null);
+  assert.equal(writeSharedSnapshotCache({ setItem() { throw new Error('quota'); } }, fixture(), { now: 1000 }).stored, false);
+  assert.equal(writeSharedPositionCache({ setItem() { throw new Error('quota'); } }, founder, 4, { x: 180, y: 640 }), false);
+});
