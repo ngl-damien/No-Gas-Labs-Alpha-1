@@ -33,6 +33,7 @@ Replay is idempotent by `event_id`.
 - An accepted-position cache binds the exact viewer actor ID and role, world ID, and world revision. A position from another actor, world, or revision is rejected rather than applied.
 - Position-cache schema v2 includes the world ID. Legacy v1 position entries without world identity are rejected.
 - A cache hit is local display only. It does not prove a live session, current identity, canonical position, source truth, or permission to mutate. Shared cache-only mode remains read-only until the live server revalidates the session.
+- The live revision guard begins only after the client accepts a shared server snapshot or an accepted read-only public cache. A private import is not a previously accepted shared snapshot, even if it preserves the shared world ID and has a higher local revision; the first shared join validates the incoming world identity without comparing against that private revision. Entering a private world or importing a private save resets this acceptance boundary. Once a shared snapshot is accepted, lower revisions for the same world remain rejected.
 
 ## Chronology and replay
 
