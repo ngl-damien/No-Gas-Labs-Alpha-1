@@ -113,17 +113,26 @@
 .sheet label.predicate-acknowledgement{display:flex;align-items:flex-start;gap:10px;margin:10px 0 4px;padding:8px 0;min-height:44px;font:10px/1.6 system-ui;text-transform:none;letter-spacing:0;color:#6f7c5e}.sheet label.predicate-acknowledgement input[type=checkbox]{width:20px;min-width:20px;height:20px;flex:0 0 20px;margin:1px 0 0;padding:0;accent-color:#315e52}.sheet label.predicate-acknowledgement span{flex:1;overflow-wrap:anywhere}
 
 
-/* Keep the playable world visible while an institution sheet is open. */
+/* Institution panels are modeless world docks; the map remains visible and interactive. */
 .sheet-backdrop{
-  background:#293d3108;
+  background:transparent;
   backdrop-filter:none;
+  pointer-events:none;
+}
+.sheet-world-hint{
+  margin:0 0 8px;
+  font:8px/1.5 system-ui,sans-serif;
+  letter-spacing:.45px;
+  color:#7b8265;
 }
 @media(max-width:600px){
+  body.world-panel-open #quest-card,
+  body.world-panel-open .world-stats{display:none}
   .sheet{
     top:auto;
     bottom:max(9px,env(safe-area-inset-bottom));
-    height:min(76dvh,640px);
-    max-height:calc(100dvh - 120px);
+    height:min(56dvh,640px);
+    max-height:calc(100dvh - 180px);
     border-radius:14px 14px 7px 7px;
   }
 }
