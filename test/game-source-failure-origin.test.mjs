@@ -131,6 +131,7 @@ test('a failure-derived Source Observation links one exact earlier event and unl
     candidate.id === 'founder-source-archive-failure-investigation'
   );
   assert.ok(founderQuest);
+  assert.equal(founderQuest.title, 'Link a Source Archive failure to a retained observation');
   assert.equal(founderQuest.complete, true);
   assert.deepEqual(founderQuest.evidenceIds, [event.id]);
   assert.equal(founderQuest.countsForQuestkeeper, false);
