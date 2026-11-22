@@ -44,7 +44,7 @@ function snapshotCitedSourceObservation(record) {
   return Object.freeze({ eventId: record.id, capturedAt: claimMatch[1] });
 }
 
-function charterStage(id, title, status, description, boundary, locationId, locationName, evidenceIds = [], relatedOnly = false, evidenceLabel = 'Retained activity IDs', activitySummary = null) {
+function charterStage(id, title, status, description, boundary, locationId, locationName, evidenceIds = [], relatedOnly = false, evidenceLabel = 'Retained activity IDs', activitySummary = null, navigationTargetId = null) {
   const retainedEvidenceIds = [...new Set(Array.isArray(evidenceIds) ? evidenceIds : [])]
     .filter(id => typeof id === 'string' && id.trim());
   const evidenceIdPreview = Object.freeze(retainedEvidenceIds.slice(0, MAX_CODEX_EVIDENCE_ID_PREVIEW));
@@ -55,7 +55,10 @@ function charterStage(id, title, status, description, boundary, locationId, loca
     evidenceIdsOmittedCount: Math.max(0, retainedEvidenceIds.length - evidenceIdPreview.length),
     relatedOnly,
     evidenceLabel,
-    activitySummary: typeof activitySummary === 'string' && activitySummary.trim() ? activitySummary : null
+    activitySummary: typeof activitySummary === 'string' && activitySummary.trim() ? activitySummary : null,
+    navigationTargetId: typeof navigationTargetId === 'string' && navigationTargetId.trim()
+      ? navigationTargetId
+      : null
   });
 }
 
@@ -524,7 +527,8 @@ export function projectCharterCodex(world, viewer) {
       'The Guild Hall Synthesis Clerk exposes a dated public project-state snapshot and can prepare a Source Observatory lead. An explicitly submitted, uniquely linked, falsifiable note with an author-declared snapshot citation appears here as research activity.',
       'The URL, capture time, and SHA-256 are actor-entered note text and are not server-validated against the bundled snapshot. This does not prove the snapshot was read. A retained lead is not engineering acceptance, source retrieval, independent verification, current CI, safety, security, accessibility, operational acceptance, or release readiness.',
       'guild_hall', 'Guild Hall · Synthesis Clerk', projectSnapshotLeadEventIds, true,
-      'Retained actor-authored Source Observation event IDs', projectSnapshotLeadSummary
+      'Retained actor-authored Source Observation event IDs', projectSnapshotLeadSummary,
+      'guild-npc-synthesizer'
     ),
     charterStage(
       'deploy-share-commercialize', '11. Deploy, share, and commercialize',
@@ -688,7 +692,10 @@ export function renderCharterCodex(container, { world = {}, viewer = null, onOpe
       action.type = 'button';
       action.dataset.charterStageAction = stage.id;
       action.setAttribute('aria-label', label + stage.locationName + ' for charter stage ' + stage.id);
-      action.onclick = () => onOpenAction({ type: 'location', id: stage.locationId });
+      action.onclick = () => onOpenAction({
+        type: 'location',
+        id: stage.navigationTargetId || stage.locationId
+      });
       card.append(action);
     }
     codex.append(card);
