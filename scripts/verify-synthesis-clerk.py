@@ -1015,11 +1015,11 @@ def assert_world_visible_behind_sheet(page, label):
         const sheetRect = sheet.getBoundingClientRect()
         const worldStyle = getComputedStyle(world)
         const backdropStyle = getComputedStyle(backdrop)
-        // Keep the tap on open grass below the Synthesis Clerk sprite and
-        // far enough from the player's current tile to prove real movement.
-        // y=200 hits the Clerk; y=280 avoids it but moves only one short step.
+        // Keep the tap on open grass east of the player and below the
+        // Synthesis Clerk. The camera places the avatar near the left third;
+        // x=20% tapped the avatar itself, while y=280 stayed in its tile.
         // Stay 24px above the sheet and cap the target at 330px.
-        const targetX = Math.max(36, Math.round(window.innerWidth * 0.2))
+        const targetX = Math.max(36, Math.round(window.innerWidth * 0.85))
         const targetY = Math.min(330, Math.floor(sheetRect.top - 24))
         const target = document.elementFromPoint(targetX, targetY)
         return {
