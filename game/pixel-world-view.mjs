@@ -1250,7 +1250,8 @@ const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
 
 const PLAYER_APPROACH_REPLAN_DISTANCE = 24;
 
-const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet-backdrop, #sheet, #portal, #toast';
+// The sheet backdrop is pointer-transparent; only the actual sheet blocks map hit-testing.
+const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet, #portal, #toast';
 
 export class PixelWorldView extends WorldView {
   constructor(canvas, options = {}) {
