@@ -504,6 +504,10 @@ test('one source-bound field item can pass through three sessions with actor-sco
       'each independent stream must observe all three active session actors'
     );
   }
+  const beforeMovement = await founder.request('/api/state');
+  assert.equal(beforeMovement.response.status, 200);
+  const beforeMovementRevision = beforeMovement.body.world.revision;
+  const beforeMovementEventIds = beforeMovement.body.world.events.map(event => event.id);
 
   // A movement accepted for the third session must appear in the other clients' live presence.
   advanceMovementTime(2000);
@@ -527,7 +531,8 @@ test('one source-bound field item can pass through three sessions with actor-sco
     );
   }
   const afterMovement = await founder.request('/api/state');
-  assert.equal(afterMovement.body.world.revision, baselineXp === null ? -1 : discovered.body.world.revision);
+  assert.equal(afterMovement.body.world.revision, beforeMovementRevision);
+  assert.deepEqual(afterMovement.body.world.events.map(event => event.id), beforeMovementEventIds);
   assert.equal(afterMovement.body.world.xp, baselineXp,
     'shared movement is a session projection, not a world event or XP reward');
 
