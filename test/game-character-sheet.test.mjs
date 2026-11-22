@@ -411,6 +411,46 @@ test('Study Cards are actor-scoped collectibles derived only from uniquely linke
   assert.deepEqual(world, before, 'Study Cards are read-only projections, not new world events');
 });
 
+test('Study Cards and Scholar/Retriever skills follow retained append order through clock regression', () => {
+  const world = {
+    xp: 999,
+    creations: [publishedCreation('study-source', [t1])],
+    events: [
+      publication('study-publication', founder, 'study-source', 1, t1),
+      event('study-founder', 'study', founder, '2026-10-25T11:59:00.000Z', {
+        studyId: 'study-1', creationId: 'study-source', version: 1,
+        question: 'What does the retained source establish?',
+        attempt: 'It records a claim, not independent confirmation.',
+        nextCheck: 'Compare a separate source.'
+      }),
+      event('study-review', 'study-reviewed', founder, '2026-10-25T11:58:00.000Z', {
+        reviewId: 'review-1', studyId: 'study-1', creationId: 'study-source', version: 1,
+        response: 'The source supports only its narrow wording.',
+        reflection: 'The independent check remains open.'
+      })
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+
+  const founderRecord = projectCharacter(world, founder);
+  assert.equal(founderRecord.studyCardTotal, 1);
+  assert.equal(founderRecord.studyCards[0].reviewStatus, 'reflection-recorded');
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'scholar').count, 1);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'retriever').count, 1);
+  assert.equal(founderRecord.xp, 100, 'study and review remain practice records, not XP');
+
+  const reversed = structuredClone(world);
+  const [reviewEvent] = reversed.events.splice(2, 1);
+  reversed.events.splice(1, 0, reviewEvent);
+  const reversedRecord = projectCharacter(reversed, founder);
+  assert.equal(reversedRecord.studyCardTotal, 1, 'the source-bound study note remains visible');
+  assert.equal(reversedRecord.studyCards[0].reviewStatus, 'attempt-recorded');
+  assert.equal(reversedRecord.studyCards[0].reviewEventId, null);
+  assert.equal(reversedRecord.skills.find(skill => skill.id === 'retriever').count, 0,
+    'a review that precedes its source note in retained history cannot count as retrieval practice');
+});
+
+
 test('duplicate event identities cannot mint Study Cards or mark reflection recorded', () => {
   const duplicateStudy = (studyId, attempt) => event('duplicate-study-event', 'study', founder, t2, {
     studyId, creationId: 'study-source', version: 1,
