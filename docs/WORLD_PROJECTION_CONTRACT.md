@@ -26,13 +26,16 @@ Failures, refutations, and rejected candidates remain in history.
 
 Replay is idempotent by `event_id`.
 
-## Offline shared snapshot cache
+## Snapshot identity and navigation/inspection
 
-- A shared snapshot cache is a read-only public projection, never an accepted server write, private draft store, source receipt, or authority source.
-- Within one world ID, a cached snapshot with a higher accepted world revision is monotonic: a lower-revision snapshot cannot replace it, even when the incoming viewer actor or role differs. A different world ID begins a separate revision sequence.
-- An accepted-position cache binds the exact viewer actor ID and role, world ID, and world revision. A position from another actor, world, or revision is rejected rather than applied.
-- Position-cache schema v2 includes the world ID. Legacy v1 position entries without world identity are rejected.
-- A cache hit is local display only. It does not prove a live session, current identity, canonical position, source truth, or permission to mutate. Shared cache-only mode remains read-only until the live server revalidates the session.
+- Opening World Chronicle with an explicit accepted snapshot pins the view to that snapshot's revision and retained event set. A newer accepted world snapshot does not silently replace an explicitly pinned view; it is reported as `revision-mismatch` until the player explicitly refreshes.
+- Explicit Chronicle refresh adopts only the already accepted in-memory world snapshot. The refresh action is a read-only re-projection: it does not fetch shared state, append a world event, award XP, create evidence, grant approval, or change authority.
+- Disconnected, unavailable, or regressed snapshot state remains stale and fails closed; refresh is not offered until a newer accepted snapshot is available.
+- Bounded projections such as Moonshot Field must disclose partial scope and unseen-event count. A visible subset is not a global total and does not establish newest-order completeness. Evidence Archive remains the complete paginated owner.
+- Route arrival may append legitimate `discover` events. Preserve those events in history. After the post-arrival snapshot is captured, opening or reading an NPC card and inspecting its linked Chronicle event is read-only. Acceptance tests must separate route-discovery effects from the subsequent read-only NPC interaction rather than comparing against a pre-route snapshot.
+- Selecting/tapping a map landmark is navigation, not institution entry. The explicit nearby Interact action opens the institutional sheet. Acceptance tests must assert that the sheet is visible before inspecting its contents; a retained title in hidden DOM is not proof of entry.
+- **Runtime enforcement (Run 297):** `PixelWorldView.handlePointer` now routes every institution landmark tap, including taps made while already nearby; it never opens the room from the map click. Only the explicit nearby `#interact-button` performs entry. Unit and 320px/390px Council acceptance exercise the distinction.
+- **Council response source navigation (Run 298):** opening Council Chamber captures the exact accepted `councilSnapshot`. A bounded collaborator response's source-event links are emitted only when each referenced ID resolves to exactly one event in that snapshot. Opening a link passes that same snapshot to World Chronicle; opening the exact retained response passes it to Evidence Archive. A newer accepted world cannot silently substitute a different event set. Missing or ambiguous IDs remain unlinked. These controls are read-only and award no XP or world mutation; `valid-for-human-review` remains a structural review status, not truth, endorsement, consensus, approval, or authority.
 
 ## Chronology and replay
 
@@ -43,6 +46,21 @@ Replay is idempotent by `event_id`.
 - This exception changes neither actor authorization nor the admission/evidence requirements above. It does not create XP, truth, authority, approval, or a successful outcome.
 
 Verified revocations are replayed in event order. They block later executions using the revoked grant, and the quest projector applies the same boundary as the world reducer. A revocation does not silently erase earlier verified outcomes; the original event and its consequence remain auditable in history.
+
+## Renderer-local offline preview
+
+- `WorldView.syncCanvasState()` exposes local renderer diagnostics on the world canvas dataset: player/camera coordinates, zoom, viewport dimensions, route-active state, and `positionSource=renderer-local`. The values are updated after resize, route changes/cancellation, and movement updates. Non-finite coordinates clear stale numeric fields.
+- These values are not a server receipt, accepted shared position, canonical world state, event, evidence, progress, XP, approval, or authority. They exist to make the mobile PWA's local preview and reconnect behavior independently observable.
+- During shared disconnect, `game/client.mjs` pauses shared position submission while allowing the renderer-local preview path. Reconnection fetches the accepted shared snapshot and reprojects that position into the renderer. The Synthesis mobile acceptance at 320px/390px observed a local route of 17 steps and local movement deltas of approximately 17.48/17.51 while the shared position remained identical before, during and after offline preview; the canonical state remained unchanged and the renderer reconciled to the last accepted position.
+- The acceptance uses synthetic browser `offline`/`online` events, not a physical network outage or Android device. Any publication XP in the fixture is a separate publication action; local movement itself awards zero XP and appends no canonical event.
+
+## Offline shared snapshot cache
+
+- A shared snapshot cache is a read-only public projection, never an accepted server write, private draft store, source receipt, or authority source.
+- Within one world ID, a cached snapshot with a higher accepted world revision is monotonic: a lower-revision snapshot cannot replace it, even when the incoming viewer actor or role differs. A different world ID begins a separate revision sequence.
+- An accepted-position cache binds the exact viewer actor ID and role, world ID, and world revision. A position from another actor, world, or revision is rejected rather than applied.
+- Position-cache schema v2 includes the world ID. Legacy v1 position entries without world identity are rejected.
+- A cache hit is local display only. It does not prove a live session, current identity, canonical position, source truth, or permission to mutate. Shared cache-only mode remains read-only until the live server revalidates the session.
 
 ## Donor alignment
 
