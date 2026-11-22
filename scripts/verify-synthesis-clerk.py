@@ -13,6 +13,7 @@ read-only NPC, Quest Board, and character inspection.
 import argparse
 import hashlib
 import json
+import math
 import select
 import subprocess
 import tempfile
@@ -1045,8 +1046,8 @@ def assert_world_visible_behind_sheet(page, label):
         f"{label}: an in-world institution panel must remain modeless: {metrics}"
     )
     assert metrics["worldVisible"], f"{label}: world canvas must remain visible behind the panel"
-    assert metrics["sheetTop"] >= 180, f"{label}: mobile panel must leave a substantial world viewport: {metrics}"
-    assert metrics["sheetHeight"] <= metrics["viewportHeight"] - 180, (
+    assert metrics["sheetTop"] >= metrics["viewportHeight"] * 0.33, f"{label}: mobile panel must leave at least one-third of the viewport for the world: {metrics}"
+    assert metrics["sheetHeight"] <= metrics["viewportHeight"] * 0.67, (
         f"{label}: institution panel must not consume the world viewport: {metrics}"
     )
     assert metrics["backdropFilter"] == "none", f"{label}: backdrop must not blur the world: {metrics}"
@@ -1066,9 +1067,26 @@ def assert_world_visible_behind_sheet(page, label):
         f"{label}: a tap above the panel must target the world canvas, not an overlay: {metrics}"
     )
 
+    page.locator("#sheet-close").focus()
+    assert page.evaluate("() => Boolean(document.activeElement?.closest('#sheet'))"), (
+        f"{label}: keyboard focus should remain inside the modeless institution panel until the player selects the map."
+    )
+    position_before_key = authoritative_position(page)
+    page.keyboard.down("w")
+    page.wait_for_timeout(350)
+    page.keyboard.up("w")
+    page.wait_for_timeout(800)
+    position_after_key = authoritative_position(page)
+    assert position_after_key == position_before_key, (
+        f"{label}: keyboard navigation inside the institution panel must not move the player."
+    )
+
     before = authoritative_snapshot(page)
     position_before = authoritative_position(page)
     page.touchscreen.tap(metrics["targetX"], metrics["targetY"])
+    assert page.evaluate("() => document.activeElement?.id === 'world'"), (
+        f"{label}: selecting the visible map should transfer keyboard control to the world canvas."
+    )
     page.wait_for_function("""async before => {
         const response = await fetch('/api/state', {
             cache: 'no-store',
