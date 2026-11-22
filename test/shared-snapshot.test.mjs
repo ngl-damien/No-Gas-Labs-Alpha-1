@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import * as sharedSnapshot from '../game/shared-snapshot.mjs';
 import { createWorld, publicWorld } from '../game/model.mjs';
 import {
   createSharedSnapshotEnvelope,
@@ -196,4 +198,80 @@ test('accepted position cache is bound to world identity as well as actor and re
     ...snapshot,
     world: { ...snapshot.world, id: 'different-world' }
   }), null);
+});
+
+
+test('live shared snapshot acceptance is monotonic per world across viewer changes', () => {
+  const accepts = sharedSnapshot.isNonRegressingSharedWorldSnapshot;
+  assert.equal(typeof accepts, 'function', 'the live client needs a shared-world revision guard');
+
+  const current = { id: 'world-a', revision: 8 };
+  assert.equal(accepts(current, { id: 'world-a', revision: 7 }), false,
+    'a delayed lower revision must not replace the current world');
+  assert.equal(accepts(current, { id: 'world-a', revision: 8 }), true,
+    'same-revision session refreshes remain admissible');
+  assert.equal(accepts(current, { id: 'world-a', revision: 9 }), true,
+    'a newer same-world snapshot remains admissible');
+  assert.equal(accepts(current, { id: 'world-b', revision: 1 }), true,
+    'a different world begins an independent revision sequence');
+  assert.equal(accepts(null, { id: 'world-a', revision: 0 }), true,
+    'the first valid snapshot is admissible');
+  assert.equal(accepts(current, { id: 'world-a', revision: -1 }), false,
+    'negative revisions fail closed');
+  assert.equal(accepts(current, { id: '', revision: 9 }), false,
+    'missing world identity fails closed');
+});
+
+
+test('first live shared snapshot is not compared against a higher-revision private import', () => {
+  const createGuard = sharedSnapshot.createSharedSnapshotAcceptanceGuard;
+  assert.equal(typeof createGuard, 'function', 'shared acceptance needs an explicit provenance guard');
+  const guard = createGuard();
+  const importedPrivateWorld = { id: 'same-world', revision: 500 };
+  const firstServerWorld = { id: 'same-world', revision: 7 };
+
+  assert.equal(guard.hasAcceptedSnapshot, false);
+  assert.equal(guard.accept(importedPrivateWorld, firstServerWorld), true,
+    'a private import with a matching ID and higher local revision is not a previously accepted shared snapshot');
+  assert.equal(guard.hasAcceptedSnapshot, true);
+  assert.equal(guard.accept(firstServerWorld, { id: 'same-world', revision: 6 }), false,
+    'after the first server snapshot, a delayed lower revision must be rejected');
+  assert.equal(guard.accept(firstServerWorld, { id: 'same-world', revision: 8 }), true);
+  assert.equal(guard.accept(firstServerWorld, { id: 'replacement-world', revision: 1 }), true,
+    'a different world begins an independent revision sequence');
+
+  guard.reset();
+  assert.equal(guard.hasAcceptedSnapshot, false);
+  assert.equal(guard.accept(importedPrivateWorld, { id: 'same-world', revision: 1 }), true,
+    'returning to private mode resets the shared acceptance boundary');
+});
+
+test('client resets and establishes shared-snapshot acceptance only at explicit trust boundaries', async () => {
+  const client = await readFile(new URL('../game/client.mjs', import.meta.url), 'utf8');
+  const startPrivateAt = client.indexOf('async function startPrivate()');
+  const connectStreamAt = client.indexOf('function connectSharedStream()', startPrivateAt);
+  assert.ok(startPrivateAt >= 0 && connectStreamAt > startPrivateAt);
+  assert.match(client.slice(startPrivateAt, connectStreamAt), /sharedSnapshotAcceptance\.reset\(\)/,
+    'entering a private world must clear shared-snapshot provenance');
+
+  const importAt = client.indexOf("const file=node('input',{id:'import-world'");
+  const exportAt = client.indexOf("content.append(node('div',{class:'button-row'},[button('↓ Export world JSON'", importAt);
+  assert.ok(importAt >= 0 && exportAt > importAt);
+  assert.match(client.slice(importAt, exportAt), /sharedSnapshotAcceptance\.reset\(\)/,
+    'importing a save must not inherit a previous shared acceptance');
+
+  const acceptAt = client.indexOf('function acceptState(dto,');
+  const actAt = client.indexOf('async function act(action)', acceptAt);
+  const acceptState = client.slice(acceptAt, actAt);
+  assert.match(acceptState, /sharedSnapshotAcceptance\.accept\(world,dto\.world\)/);
+  assert.ok(acceptState.indexOf('incomingEpoch') < acceptState.indexOf('sharedSnapshotAcceptance.accept'),
+    'invalid session-position metadata must not establish shared acceptance');
+  assert.ok(acceptState.indexOf('sharedSnapshotAcceptance.accept') < acceptState.indexOf('world=dto.world'),
+    'the revision guard must run before replacing the current world');
+
+  const startSharedAt = client.indexOf('async function startShared()');
+  const showSheetAt = client.indexOf('function showSheet(', startSharedAt);
+  const startShared = client.slice(startSharedAt, showSheetAt);
+  assert.match(startShared, /sharedSnapshotAcceptance\.accept\(world,cached\.world\)/,
+    'a cached public snapshot must pass through the same acceptance boundary');
 });

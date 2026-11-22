@@ -45,6 +45,24 @@ function validWorldProjection(world) {
   }
   return true;
 }
+function validWorldRevisionIdentity(world) {
+  return isRecord(world) &&
+    typeof world.id === 'string' && world.id.length > 0 && world.id.length <= 128 &&
+    Number.isSafeInteger(world.revision) && world.revision >= 0;
+}
+
+/**
+ * Shared world revisions are ordered within a world, not within a viewer session.
+ * A delayed HTTP, action, or SSE DTO must not roll the live projection backward
+ * after another actor's newer snapshot has already been accepted.
+ */
+export function isNonRegressingSharedWorldSnapshot(currentWorld, incomingWorld) {
+  if (!validWorldRevisionIdentity(incomingWorld)) return false;
+  if (currentWorld === null || currentWorld === undefined) return true;
+  if (!validWorldRevisionIdentity(currentWorld)) return false;
+  return currentWorld.id !== incomingWorld.id ||
+    incomingWorld.revision >= currentWorld.revision;
+}
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -192,4 +210,34 @@ export function readSharedPositionCache(storage, snapshot) {
   } catch {
     return null;
   }
+}
+
+
+/**
+ * Tracks whether the in-memory world has actually been accepted from the
+ * shared server or from the read-only public shared-snapshot cache.
+ *
+ * A private import can preserve the same world ID and locally advance its
+ * revision. That local revision is not evidence that the client has ever
+ * accepted a shared snapshot, so it must not participate in the first-join
+ * monotonicity comparison.
+ */
+export function createSharedSnapshotAcceptanceGuard() {
+  let accepted = false;
+  return {
+    get hasAcceptedSnapshot() {
+      return accepted;
+    },
+    accept(currentWorld, incomingWorld) {
+      const allowed = isNonRegressingSharedWorldSnapshot(
+        accepted ? currentWorld : null,
+        incomingWorld
+      );
+      if (allowed) accepted = true;
+      return allowed;
+    },
+    reset() {
+      accepted = false;
+    }
+  };
 }
