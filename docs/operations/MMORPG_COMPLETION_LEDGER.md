@@ -7,7 +7,7 @@
 | G0 Product definition | IN_PROGRESS | No supported-device baseline, declared player scale, server model or other Founder product decision was settled by this run. |
 | G1 Coherent playable loop | IN_PROGRESS | The Source Archive failure projection now fails closed on unclassifiable retained event slots. This hardens one research/evidence object path; it is not a complete Founder-accepted game loop. |
 | G2 Persistent character/world | IN_PROGRESS | The change is a deterministic read-only projection guard. It creates no event and makes no persistence, backup/restore or production-scale durability claim. |
-| G3 Authoritative multiplayer | IN_PROGRESS | No new multiplayer claim. Quest Board mobile journey remains in progress; three synthetic sessions in earlier acceptance are not proof of three independent humans. |
+| G3 Authoritative multiplayer | IN_PROGRESS | Quest Board mobile acceptance passes with three synthetic browser sessions, actor identity/presence rejoin, recipient-only item offer acceptance and privacy boundaries. This is not proof of three independent humans or a scale test. |
 | G4 Core RPG | IN_PROGRESS | No new XP, inventory, skill or combat behavior. Unclassifiable failure history cannot be treated as absent; the guard awards no progress. |
 | G5 Social/economic | IN_PROGRESS | No new social/economic mechanic. No marketplace, pricing, moderation or abuse-control capability is claimed. |
 | G6 Persistent world/content | IN_PROGRESS | Evidence Archive/Moonshot Field Source Archive failure objects now require every retained event slot to be safely classifiable before a failure-history projection is available. Missing/unreadable events are not silently treated as non-failures. |
