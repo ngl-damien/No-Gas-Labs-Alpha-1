@@ -350,7 +350,7 @@ def run_viewport(browser, url, out, width):
         # Guild Hall landmark. Arrival still requires the player's explicit Interact.
         stage10_action = codex.locator('[data-charter-stage-action="engineer-for-use"]')
         expect(stage10_action).to_be_visible()
-        expect(stage10_action).to_contain_text('Route to collaborator · Guild Hall · Synthesis Clerk')
+        expect(stage10_action).to_contain_text('Inspect related room · Guild Hall · Synthesis Clerk')
         stage10_action.tap()
         page.wait_for_function("""() => {
           const world = document.querySelector('#world');
