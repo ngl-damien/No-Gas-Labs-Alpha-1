@@ -1092,8 +1092,8 @@ def assert_offline_preview_keeps_local_route(page, label):
     server_before = authoritative_position(page)
     target = page.evaluate("""async () => {
         const [worldModule, pixelModule] = await Promise.all([
-            import('/game/world-view.mjs'),
-            import('/game/pixel-world-view.mjs')
+            import('/world-view.mjs'),
+            import('/pixel-world-view.mjs')
         ])
         const canvas = document.querySelector('#world')
         const sheet = document.querySelector('#sheet')
