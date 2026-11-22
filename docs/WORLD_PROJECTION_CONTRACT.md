@@ -26,6 +26,14 @@ Failures, refutations, and rejected candidates remain in history.
 
 Replay is idempotent by `event_id`.
 
+## Offline shared snapshot cache
+
+- A shared snapshot cache is a read-only public projection, never an accepted server write, private draft store, source receipt, or authority source.
+- Within one world ID, a cached snapshot with a higher accepted world revision is monotonic: a lower-revision snapshot cannot replace it, even when the incoming viewer actor or role differs. A different world ID begins a separate revision sequence.
+- An accepted-position cache binds the exact viewer actor ID and role, world ID, and world revision. A position from another actor, world, or revision is rejected rather than applied.
+- Position-cache schema v2 includes the world ID. Legacy v1 position entries without world identity are rejected.
+- A cache hit is local display only. It does not prove a live session, current identity, canonical position, source truth, or permission to mutate. Shared cache-only mode remains read-only until the live server revalidates the session.
+
 ## Chronology and replay
 
 - The retained event array position defines sequence. Replay must not sort events by wall-clock timestamp.
