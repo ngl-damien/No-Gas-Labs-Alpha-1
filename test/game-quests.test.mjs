@@ -1075,6 +1075,7 @@ test('R&D Quest Trail links publication, proposal, report, challenge and respons
   const [publication, proposal, report] = retained.events;
   publication.at = '2026-10-28T17:00:00.000Z';
   retained.creations[0].publishedAt = publication.at;
+  retained.creations[0].receipt.algorithm = 'sha256';
   proposal.at = '2026-10-28T16:59:00.000Z';
   report.at = '2026-10-28T16:58:00.000Z';
 
