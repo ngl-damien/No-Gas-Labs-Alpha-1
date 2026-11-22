@@ -1,7 +1,6 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { PLACES, institutionActivityCount, institutionSummaryFromState, projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
+import { createWorld } from '../game/model.mjs';
+import { projectCharterCodex, renderCharterCodex } from '../game/institution-view.mjs';utionActivityCount, institutionSummaryFromState, projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
 
 function sourceArchiveFailureEvent(overrides={}) {
   return {
@@ -582,4 +581,90 @@ test('Combat Yard map count reflects retained encounter and move events, not inv
   ] };
   assert.equal(institutionActivityCount('combat_yard', world), 2);
   assert.equal(world.xp, 0, 'map activity counts do not award XP or mutate world state');
+});
+
+
+function charterElement(tag) {
+  return {
+    tagName: tag,
+    children: [],
+    dataset: {},
+    attributes: {},
+    textContent: '',
+    append(...children) { this.children.push(...children); },
+    setAttribute(name, value) { this.attributes[name] = value; }
+  };
+}
+
+function walkCharterTree(root) {
+  return [root, ...(Array.isArray(root?.children) ? root.children.flatMap(walkCharterTree) : [])];
+}
+
+function withCharterDocument(run) {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    writable: true,
+    value: { createElement: charterElement }
+  });
+  try { return run(); }
+  finally {
+    if (previous) Object.defineProperty(globalThis, 'document', previous);
+    else delete globalThis.document;
+  }
+}
+
+test('AOTA Codex routes engineering handoff to Guild Hall and external deployment decisions to Founder Gate', () => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const world = createWorld({
+    id: 'codex-institution-routing',
+    founderName: 'Neophyte Founder',
+    now: '2026-11-22T08:00:00.000Z'
+  });
+  const before = structuredClone(world);
+  const projection = projectCharterCodex(world, founder);
+  const engineer = projection.stages.find(stage => stage.id === 'engineer-for-use');
+  const deploy = projection.stages.find(stage => stage.id === 'deploy-share-commercialize');
+
+  assert.equal(projection.available, true);
+  assert.equal(engineer.locationId, 'guild_hall');
+  assert.equal(engineer.locationName, 'Guild Hall · Synthesis Clerk');
+  assert.equal(engineer.status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.equal(engineer.relatedOnly, true);
+  assert.deepEqual(engineer.evidenceIds, []);
+  assert.equal(deploy.locationId, 'decision_chamber');
+  assert.equal(deploy.locationName, 'Founder Gate · Decision Chamber');
+  assert.equal(deploy.status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.equal(deploy.relatedOnly, true);
+  assert.deepEqual(deploy.evidenceIds, []);
+  assert.equal(projection.xpDelta, 0);
+  assert.equal(projection.worldMutation, false);
+
+  const place = id => PLACES.find(candidate => candidate.id === id);
+  assert.match(place('forge')?.purpose || '', /not.*engineering acceptance/i);
+  assert.match(place('guild_hall')?.purpose || '', /Synthesis Clerk.*dated.*snapshot.*evidence lead/i);
+  assert.match(place('decision_chamber')?.purpose || '', /human-gated.*external deployment/i);
+  assert.match(place('publication_house')?.purpose || '', /in-world circulation only/i);
+  assert.match(place('publication_house')?.purpose || '', /not external deployment/i);
+
+  const actions = [];
+  withCharterDocument(() => {
+    const root = charterElement('div');
+    renderCharterCodex(root, {
+      world,
+      viewer: founder,
+      onOpenAction: action => actions.push(action)
+    });
+    const routeButtons = walkCharterTree(root).filter(node =>
+      ['engineer-for-use', 'deploy-share-commercialize'].includes(node.dataset?.charterStageAction)
+    );
+    assert.equal(routeButtons.length, 2);
+    for (const button of routeButtons) button.onclick();
+  });
+
+  assert.deepEqual(actions, [
+    { type: 'location', id: 'guild_hall' },
+    { type: 'location', id: 'decision_chamber' }
+  ]);
+  assert.deepEqual(world, before, 'Codex routing remains read-only and awards no progress');
 });
