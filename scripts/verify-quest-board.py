@@ -3126,17 +3126,21 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
 def open_source_analyst_workbench(page, baseline, expected_progress='0/2'):
     control = page.locator('[data-guild-npc-control="source-analyst"]')
     expect(control).to_have_count(1)
-    control.evaluate('(button) => button.focus()')
-    expect(control).to_be_visible()
+    # The explicit Talk control stays hidden/disabled while the approach route is pending.
+    # Wait for arrival and the enabled action before asserting that it is visible.
     page.wait_for_function(
         """() => {
           const world = document.querySelector('#world');
           const control = document.querySelector('[data-guild-npc-control="source-analyst"]');
           return world?.dataset.nearbyNpcRole === 'source-analyst' &&
-            control?.dataset.guildNpcAction === 'talk';
+            control?.dataset.guildNpcAction === 'talk' &&
+            control.disabled === false &&
+            !control.closest('[hidden]');
         }""",
         timeout=45000
     )
+    expect(control).to_be_visible()
+    control.evaluate('(button) => button.focus()')
     routed = authoritative_snapshot(page)
     route_read_only = (
         routed['eventIds'] == baseline['eventIds'] and

@@ -1962,6 +1962,9 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
             ? 'Source snapshot REVISION MISMATCH: world '+packet.sourceSnapshot.worldId+' · declared revision '+packet.sourceSnapshot.revision+' · '+packet.sourceSnapshot.suppliedEventCount+' event records supplied to this view; inspect retained history before using this packet.'
             : 'Source snapshot marker (not independent evidence): world '+packet.sourceSnapshot.worldId+' · revision '+packet.sourceSnapshot.revision+' · '+packet.sourceSnapshot.suppliedEventCount+' event records supplied to this view.','form-help')
     ]);
+    if(packet.available) appendRetainedSourceEventLinks(card,packet.inputRefs,sourceWorld,{
+      context:'collaborator-packet',role:packet.id,heading:'PACKET INPUT EVENTS · READ ONLY'
+    });
     if(packet.id==='archivist'&&packet.available){
       let scopePayload=null;
       try { scopePayload=JSON.parse(packet.packetJson); } catch {}
@@ -2524,37 +2527,56 @@ function appendCouncilReviewStatements(details,label,values){
   if(values.length>4)list.append(node('li',{text:(values.length-4)+' additional statements; inspect the exact retained response.'}));
   details.append(node('section',{class:'council-review-field'},[node('h4',{text:label}),list]));
 }
-const MAX_COUNCIL_SOURCE_EVENT_LINKS=8;
-function appendCouncilSourceEventLinks(card,eventIds,snapshot,role){
+const MAX_RETAINED_SOURCE_EVENT_LINKS=8;
+function appendRetainedSourceEventLinks(card,eventIds,snapshot,{context='collaborator-packet',role='unknown',heading='RETAINED SOURCE EVENTS · READ ONLY'}={}){
   if(!Array.isArray(eventIds)||!eventIds.length||!snapshot||typeof snapshot!=='object'||Array.isArray(snapshot))return;
   const uniqueIds=[...new Set(eventIds.filter(eventId=>
     typeof eventId==='string'&&eventId.length>0&&eventId.length<=128&&eventId.trim()===eventId
   ))];
   if(!uniqueIds.length)return;
   const retainedEvents=Array.isArray(snapshot.events)?snapshot.events:[];
-  const section=node('section',{class:'council-review-field','data-council-source-events':'true'});
-  section.append(node('h4',{text:'RETAINED SOURCE EVENTS · READ ONLY'}));
-  for(const eventId of uniqueIds.slice(0,MAX_COUNCIL_SOURCE_EVENT_LINKS)){
+  const section=node('section',{class:'council-review-field','data-retained-source-events':context});
+  section.append(node('h4',{text:heading}));
+  for(const eventId of uniqueIds.slice(0,MAX_RETAINED_SOURCE_EVENT_LINKS)){
     const matches=retainedEvents.filter(event=>event?.id===eventId);
     if(matches.length!==1){
       section.append(node('small',{text:'Source event '+eventId+' is not uniquely retained in this snapshot; no navigation link was created.'}));
       continue;
     }
-    const link=node('button',{
+    const revision=Number.isSafeInteger(snapshot.revision)?String(snapshot.revision):'unavailable';
+    const attributes={
       type:'button',
       class:'secondary-button',
-      'data-council-source-event-id':eventId,
-      'data-council-source-event-role':role,
-      'data-council-source-event-snapshot-revision':Number.isSafeInteger(snapshot.revision)?String(snapshot.revision):'unavailable'
-    });
+      'data-source-event-id':eventId,
+      'data-source-event-context':context,
+      'data-source-event-role':role,
+      'data-source-event-snapshot-revision':revision
+    };
+    if(context==='council-response'){
+      attributes['data-council-source-event-id']=eventId;
+      attributes['data-council-source-event-role']=role;
+      attributes['data-council-source-event-snapshot-revision']=revision;
+    }
+    if(context==='collaborator-packet'){
+      attributes['data-collaborator-source-event-id']=eventId;
+      attributes['data-collaborator-source-event-role']=role;
+      attributes['data-collaborator-source-event-snapshot-revision']=revision;
+    }
+    const link=node('button',attributes);
     link.textContent='Open exact source event →';
     link.setAttribute('aria-label','Open exact retained world event '+eventId+' in World Chronicle');
     link.onclick=()=>openWorldChronicle(eventId,{snapshot});
     section.append(link);
   }
-  if(uniqueIds.length>MAX_COUNCIL_SOURCE_EVENT_LINKS)
-    section.append(node('small',{text:(uniqueIds.length-MAX_COUNCIL_SOURCE_EVENT_LINKS)+' additional source event IDs remain in the exact retained response.'}));
+  if(uniqueIds.length>MAX_RETAINED_SOURCE_EVENT_LINKS)
+    section.append(node('small',{text:(uniqueIds.length-MAX_RETAINED_SOURCE_EVENT_LINKS)+' additional source event IDs remain in the exact retained packet.'}));
+  section.append(paragraph('Event navigation preserves this snapshot; it does not verify claims or award progress.','form-help'));
   card.append(section);
+}
+function appendCouncilSourceEventLinks(card,eventIds,snapshot,role){
+  appendRetainedSourceEventLinks(card,eventIds,snapshot,{
+    context:'council-response',role,heading:'RETAINED SOURCE EVENTS · READ ONLY'
+  });
 }
 function appendCouncilReviewSummary(card,response,review=validateRetainedCollaboratorResponse(world,response.id,viewer)){
   if(review.status==='unavailable'){
