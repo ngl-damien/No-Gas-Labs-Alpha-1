@@ -2142,12 +2142,17 @@ def append_witness_moonshot_revision(page, width, suffix):
     return after
 
 
-def open_witness_moonshot_field(page, stage):
+def open_witness_moonshot_field(page, stage, quest_action=None):
     before_route = authoritative_snapshot(page)
-    page.locator("#places-button").tap()
-    route = page.get_by_role("button", name="Walk to Moonshot Field", exact=True)
-    expect(route).to_be_visible()
-    route.tap()
+    if quest_action is not None:
+        expect(quest_action).to_have_text("Walk to Moonshot Field →")
+        expect(quest_action).to_be_visible()
+        quest_action.tap()
+    else:
+        page.locator("#places-button").tap()
+        route = page.get_by_role("button", name="Walk to Moonshot Field", exact=True)
+        expect(route).to_be_visible()
+        route.tap()
     enter_nearby_institution(page, "moonshot_field", "Moonshot Field", "Moonshot Field")
     arrival = authoritative_snapshot(page)
     route_events = assert_route_travel_records_only_discoveries(
@@ -2160,9 +2165,9 @@ def open_witness_moonshot_field(page, stage):
     return opened, route_events
 
 
-def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out):
+def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out, quest_action=None):
     opened, route_discoveries = open_witness_moonshot_field(
-        page, "Walking from the Witness Quest Board to Moonshot Field"
+        page, "Walking from the Witness Quest Board to Moonshot Field", quest_action
     )
     section = page.locator(
         '#sheet-content [data-moonshot-source-archive-failure-ledger="true"]'
@@ -2404,6 +2409,8 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out)
         "sourceObservatoryPinnedRevision": opened_source_observatory["revision"],
         "sourceObservationFormSnapshotRevision": opened_source_observatory["revision"],
         "failureLeadNotSubmitted": True,
+        "questActionUsed": quest_action is not None,
+        "questActionLabel": "Walk to Moonshot Field →" if quest_action is not None else "Places menu",
         "routeDiscoveries": route_discoveries,
         "layout": layout
     }
@@ -2490,7 +2497,12 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
     assert_canonical_state_unchanged(after_arrival, after_board, "Reading the Witness Quest Board")
     page.screenshot(path=str(out / ("synthesis-witness-quest-" + str(width) + ".png")), full_page=True)
 
-    page.locator("#sheet-close").tap()
+    failure_action = witness_failure_investigation_row.locator(".quest-action")
+    moonshot_failure_history = inspect_witness_moonshot_failure_history(
+        page, source_archive_failure_event_id, width, out, failure_action
+    )
+    after_moonshot = authoritative_snapshot(page)
+
     page.locator("#character-button").tap()
     expect(page.locator("#sheet-title")).to_have_text("Character & field record")
     skill_heading = page.get_by_role("heading", name="Synthesis", exact=True)
@@ -2498,12 +2510,9 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
     skill_card = skill_heading.locator("xpath=..")
     expect(skill_card).to_contain_text("0 recorded multi-source Synthesis Clerk attempts")
     after_character = authoritative_snapshot(page)
-    assert_canonical_state_unchanged(after_board, after_character, "Reading the Witness character record")
+    assert_canonical_state_unchanged(after_moonshot, after_character, "Reading the Witness character record")
 
     page.locator("#sheet-close").tap()
-    moonshot_failure_history = inspect_witness_moonshot_failure_history(
-        page, source_archive_failure_event_id, width, out
-    )
     witness_packet = project_synthesis_packet(page)
     assert witness_packet["available"] is True
     witness_card, after_npc = open_synthesis_clerk(page, witness_packet)
@@ -2530,6 +2539,8 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
         "witnessFailureInvestigationPartialScopeDisclosed": True,
         "witnessFailureInvestigationUnseenEventCount": witness_failure_projection["unseenEventCount"],
         "witnessFailureInvestigationAction": "moonshot_field",
+        "witnessFailureInvestigationActionLabel": moonshot_failure_history["questActionLabel"],
+        "witnessFailureInvestigationActionRouteVerified": moonshot_failure_history["questActionUsed"],
         "witnessSynthesisSkillCount": 0,
         "founderResponseVisibleInSharedHistory": True,
         "founderRejectedAttemptVisibleInSharedHistory": True,
