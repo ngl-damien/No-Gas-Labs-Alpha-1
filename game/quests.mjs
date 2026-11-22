@@ -75,7 +75,7 @@ export function findStudyReview(note, events) {
     event.studyId === note.studyId && unique('studyId', note.studyId) &&
     event.creationId === note.creationId && event.version === note.version &&
     event.actor?.id === note.actor.id && event.actor?.role === note.actor.role &&
-    isStrictTimestamp(event.at) && Date.parse(event.at) > Date.parse(note.at) &&
+    isStrictTimestamp(event.at) &&
     typeof event.response === 'string' && event.response.trim() &&
     Array.from(event.response).length <= 1000 &&
     typeof event.reflection === 'string' && event.reflection.trim() &&
@@ -1002,6 +1002,13 @@ export function getQuestTrail(world, viewer, options = {}) {
     }
     return timestampMatches === 1 && earlierMatches === 1;
   };
+  // Academy practice is append-ordered: the exact publication must precede the note/review in the retained stream, regardless of wall-clock regression.
+  const hasUniqueEarlierPublicationByAppendPosition = (creationId, version, eventPosition) => {
+    if (!Number.isInteger(eventPosition)) return false;
+    const candidates = publicationCandidatesByVersion.get(JSON.stringify([creationId, version])) || [];
+    return candidates.length === 1 && Number.isFinite(candidates[0].at) &&
+      Number.isInteger(candidates[0].index) && candidates[0].index < eventPosition;
+  };
   const creationById = new Map(trailRows(world?.creations)
     .filter(creation => creation && typeof creation.id === 'string')
     .map(creation => [creation.id, creation]));
@@ -1386,7 +1393,7 @@ export function getQuestTrail(world, viewer, options = {}) {
         typeof event.question !== 'string' || !event.question.trim() || Array.from(event.question).length > 500 ||
         typeof event.attempt !== 'string' || !event.attempt.trim() || Array.from(event.attempt).length > 1000 ||
         typeof event.nextCheck !== 'string' || !event.nextCheck.trim() || Array.from(event.nextCheck).length > 500) return false;
-    return hasUniqueEarlierPublication(event.creationId, event.version, event.at, eventPositionByReference.get(event));
+    return hasUniqueEarlierPublicationByAppendPosition(event.creationId, event.version, eventPositionByReference.get(event));
   });
   const studies = allStudyEvents.filter(event => event.actor.id === actorId && event.actor.role === actorRole);
   const reviewIdCounts = new Map(), reviewedStudyCounts = new Map();
@@ -1406,10 +1413,9 @@ export function getQuestTrail(world, viewer, options = {}) {
         event.creationId !== source.creationId || event.version !== source.version ||
         sourceIndex < 0 || reviewIndex <= sourceIndex ||
         !isStrictTimestamp(event.at) || !isStrictTimestamp(source.at) ||
-        Date.parse(source.at) >= Date.parse(event.at) ||
         typeof event.response !== 'string' || !event.response.trim() || Array.from(event.response).length > 1000 ||
         typeof event.reflection !== 'string' || !event.reflection.trim() || Array.from(event.reflection).length > 1000) return false;
-    return hasUniqueEarlierPublication(event.creationId, event.version, event.at, reviewIndex);
+    return hasUniqueEarlierPublicationByAppendPosition(event.creationId, event.version, reviewIndex);
   });
   const studyReviews = allStudyReviews.filter(event => event.actor.id === actorId && event.actor.role === actorRole);
   const hasStudyReview = studyReviews.length > 0;

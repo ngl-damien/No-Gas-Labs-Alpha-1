@@ -7,7 +7,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { performance } from 'node:perf_hooks';
 import { gzip, constants as zlibConstants } from 'node:zlib';
 import { promisify } from 'node:util';
-import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
+import { createWorld, applyAction, publicWorld, validateWorld, isAppendOrderedWorldEventType } from './model.mjs';
 import { recordSourceArchiveAttemptFailure } from './source-archive-failures.mjs';
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
 import { MAX_GITHUB_SOURCE_BYTES, loadGitHubSourceFile, parseGitHubBlobUrl } from './github-decision-gate.mjs';
@@ -21,7 +21,6 @@ import { createLoginRateLimiter } from './login-rate-limit.mjs';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
-import { COMBAT_EVENT_TYPES } from './combat.mjs';
 import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, hasSourcePredicatePublicRetentionAcknowledgement, stripCompleteResponseHistoryPositions, isValidSourceObservationBinding, isValidSourceFailureEventId } from './research-records.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
@@ -44,7 +43,6 @@ const MAX_SOURCE_SNAPSHOT_RECEIPTS_PER_SESSION = 32;
 const SESSION_POSITION_STORE_SCHEMA = 'ngl.session-position-store.v1';
 const SESSION_POSITION_TTL = 7 * 24 * 60 * 60 * 1000;
 const MAX_SESSION_POSITION_RECORDS = 512;
-const SOURCE_OBSERVATION_EVENT_TYPES = new Set(['source-observation-recorded', 'source-observation-challenged', 'source-observation-challenge-responded']);
 const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allow-downloads; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; font-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'self' about:";
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -602,7 +600,7 @@ function validateHistory(world) {
       throw new Error('Stored guild leadership source identity is malformed.');
     }
     const eventAt = Date.parse(event.at);
-    const appendOrderedEvent = SOURCE_OBSERVATION_EVENT_TYPES.has(event.type) || COMBAT_EVENT_TYPES.includes(event.type);
+    const appendOrderedEvent = isAppendOrderedWorldEventType(event.type);
     if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || (!appendOrderedEvent && eventAt < previousAt) || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
     if (event.type === 'source-archive-attempt-failed') {
       const retryable = event.failureCode === 'SOURCE_CAPTURE_MISMATCH' ? false
@@ -644,8 +642,16 @@ function validateHistory(world) {
       }
       studyIds.add(event.studyId);
       studyById.set(event.studyId, event);
-      const matches = published.filter(item => item.id === event.creationId && item.version === event.version && Date.parse(item.publishedAt) <= eventAt);
-      if (matches.length !== 1) throw new Error('Stored Academy study note does not bind to one earlier retained published version');
+      const key = historyKey(event.creationId, event.version);
+      const matches = publishedByVersion.get(key) || [];
+      const publications = publicationEventsByVersion.get(key) || [];
+      const publication = publications[0];
+      const studyIndex = eventPositions.get(event) ?? -1;
+      const publicationIndex = publication ? (eventPositions.get(publication) ?? -1) : -1;
+      if (matches.length !== 1 || publications.length !== 1 || studyIndex < 0 ||
+          publicationIndex < 0 || publicationIndex >= studyIndex || publication.at !== matches[0].publishedAt) {
+        throw new Error('Stored Academy study note does not bind to one earlier retained published version');
+      }
     }
     if (event.type === 'study-reviewed') {
       if (typeof event.reviewId !== 'string' || !event.reviewId || reviewIds.has(event.reviewId) ||
@@ -657,10 +663,20 @@ function validateHistory(world) {
         throw new Error('Stored Academy study review is malformed or repeated');
       }
       const source = studyById.get(event.studyId);
-      if (!source || source.actor.id !== event.actor.id || source.actor.role !== event.actor.role ||
+      const sourceIndex = source ? (eventPositions.get(source) ?? -1) : -1;
+      const reviewIndex = eventPositions.get(event) ?? -1;
+      if (!source || sourceIndex < 0 || sourceIndex >= reviewIndex ||
+          source.actor.id !== event.actor.id || source.actor.role !== event.actor.role ||
           source.creationId !== event.creationId || source.version !== event.version ||
-          Date.parse(source.at) >= eventAt) throw new Error('Stored Academy study review must follow its author’s matching source note');
-      if (!(publishedByVersion.get(historyKey(event.creationId, event.version)) || []).some(item => Date.parse(item.publishedAt) <= eventAt)) {
+          !isStrictTimestamp(source.at)) throw new Error('Stored Academy study review must follow its author’s matching source note');
+      const key = historyKey(event.creationId, event.version);
+      const versions = publishedByVersion.get(key) || [];
+      const publications = publicationEventsByVersion.get(key) || [];
+      const publication = publications[0];
+      const publicationIndex = publication ? (eventPositions.get(publication) ?? -1) : -1;
+      if (versions.length !== 1 || publications.length !== 1 ||
+          publicationIndex < 0 || publicationIndex >= sourceIndex ||
+          publication.at !== versions[0].publishedAt) {
         throw new Error('Stored Academy study review does not bind to an earlier retained published version');
       }
       reviewIds.add(event.reviewId);

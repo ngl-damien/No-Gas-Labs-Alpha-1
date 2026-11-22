@@ -42,8 +42,8 @@ Replay is idempotent by `event_id`.
 - The retained event array position defines sequence. Replay must not sort events by wall-clock timestamp.
 - Every event timestamp remains individually validated as strict normalized UTC metadata. A valid clock correction does not reorder an already appended event.
 - `world.updatedAt` is a wall-clock high-water mark: it never moves backward when a later appended event carries an earlier timestamp.
-- Only explicitly append-ordered action/event families may be appended below the current high-water mark: Source Observatory observation/challenge/response actions and Combat Yard encounter-start/move actions. All other world actions/events remain chronology-gated and reject timestamp regression.
-- This exception changes neither actor authorization nor the admission/evidence requirements above. It does not create XP, truth, authority, approval, or a successful outcome.
+- Only explicitly append-ordered action/event families may be appended below the current high-water mark: Source Observatory observation/challenge/response actions, Combat Yard encounter-start/move actions, and Polymath Academy study/review actions. For Academy practice, the exact retained publication event must precede the study note, and the note must precede its one author-bound retrieval review; strict per-event UTC timestamps remain metadata and need not increase across that sequence. All other world actions/events remain chronology-gated and reject timestamp regression.
+- This exception changes neither actor authorization nor the admission/evidence requirements above. Academy study and retrieval review remain self-reported practice, grant no XP or mastery, and cannot establish correctness. No chronology exception creates truth, authority, approval, or a successful outcome.
 
 Verified revocations are replayed in event order. They block later executions using the revoked grant, and the quest projector applies the same boundary as the world reducer. A revocation does not silently erase earlier verified outcomes; the original event and its consequence remain auditable in history.
 

@@ -396,6 +396,13 @@ export function projectCharacter(world, viewer, options = {}) {
       isStrictTimestamp(publication.at) && isStrictTimestamp(event.at) &&
       Date.parse(publication.at) <= Date.parse(event.at);
   };
+  const hasEarlierPublicationByAppendPosition = event => {
+    const publication = retainedPublicationByVersion.get(versionKey(event.creationId, event.version));
+    const publicationPosition = publication ? (positionByEvent.get(publication) ?? -1) : -1;
+    const activityPosition = positionByEvent.get(event) ?? -1;
+    return publicationPosition >= 0 && activityPosition > publicationPosition &&
+      isStrictTimestamp(publication.at) && isStrictTimestamp(event.at);
+  };
   const matchedDiscoveries = matchedActivityRecords(
     'discover', world?.discoveries, allEvents, ['locationId'], viewer,
     event => event.repeat !== true && getLocationAction(event.locationId, world, viewer) !== null
@@ -477,7 +484,7 @@ export function projectCharacter(world, viewer, options = {}) {
         typeof event.nextCheck !== 'string' || !event.nextCheck.trim() || Array.from(event.nextCheck).length > 500 ||
         !isStrictTimestamp(event.at)) return false;
     const key = versionKey(event.creationId, event.version), version = retainedVersions.get(key);
-    return Boolean(version && publishedStudyVersions.has(key) && isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
+    return Boolean(version && publishedStudyVersions.has(key) && isStrictTimestamp(version.publishedAt) && hasEarlierPublicationByAppendPosition(event));
   });
   const reviewIdCounts = new Map(), reviewedStudyCounts = new Map();
   for (const event of allEvents) if (event?.type === 'study-reviewed') {
@@ -495,12 +502,11 @@ export function projectCharacter(world, viewer, options = {}) {
         source.creationId !== event.creationId || source.version !== event.version ||
         sourceIndex < 0 || reviewIndex <= sourceIndex ||
         !isStrictTimestamp(event.at) || !isStrictTimestamp(source.at) ||
-        Date.parse(source.at) >= Date.parse(event.at) ||
         typeof event.response !== 'string' || !event.response.trim() || Array.from(event.response).length > 1000 ||
         typeof event.reflection !== 'string' || !event.reflection.trim() || Array.from(event.reflection).length > 1000) return false;
     const version = retainedVersions.get(versionKey(event.creationId, event.version));
     return Boolean(version && publishedStudyVersions.has(versionKey(event.creationId, event.version)) &&
-      isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
+      isStrictTimestamp(version.publishedAt) && hasEarlierPublicationByAppendPosition(event));
   });
   const studyReviewById = new Map(studyReviews.map(event => [event.studyId, event]));
   const studyCardEntries = studyEvents
