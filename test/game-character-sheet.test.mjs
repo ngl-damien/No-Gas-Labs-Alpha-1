@@ -857,6 +857,51 @@ test('Adversary skill counts unique challenges to another actor’s earlier vali
   assert.equal(selfRecord.skills.find(skill => skill.id === 'adversary').count, 0);
 });
 
+test('Researcher and Adversary skills follow retained experiment append order through clock regression', () => {
+  const proposal = event('clock-regression-proposal', 'moonshot-proposed', founder, t3, {
+    moonshotId: 'clock-regression-moonshot',
+    title: 'A falsifiable clock-regression question',
+    hypothesis: 'The recorded attempt follows the retained proposal.',
+    falsifier: 'The attempt is appended before the proposal.',
+    evidenceNeeded: 'An independently observed result.'
+  });
+  const report = event('clock-regression-report', 'experiment-reported', founder, t2, {
+    reportId: 'clock-regression-report-id',
+    moonshotId: 'clock-regression-moonshot',
+    procedure: 'Run one bounded attempt.',
+    observation: 'The expected result was not independently reproduced.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const challenge = event('clock-regression-challenge', 'experiment-challenged', witness, t1, {
+    challengeId: 'clock-regression-challenge-id',
+    reportId: 'clock-regression-report-id',
+    moonshotId: 'clock-regression-moonshot',
+    challengeType: 'missing-evidence',
+    challengeText: 'The report does not include an independently observed result.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const world = {
+    xp: 999,
+    creations: [],
+    events: [proposal, report, challenge],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+  const founderRecord = projectCharacter(world, founder);
+  const witnessRecord = projectCharacter(world, witness);
+
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'researcher').count, 1);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'adversary').count, 1);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'adversary').count, 0);
+  assert.deepEqual([founderRecord.xp, witnessRecord.xp], [0, 0],
+    'proposal, self-reported attempt and cross-actor dissent do not award XP');
+});
+
 test('Adversary skill distinguishes the same pseudonymous ID across different session roles', () => {
   const sharedId = 'reused-research-actor-id';
   const reportActor = { id: sharedId, role: 'witness' };

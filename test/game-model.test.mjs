@@ -7,10 +7,10 @@ import {validateStoredWorldHistory} from '../game/server.mjs';
 import * as browserModel from '../game/model.mjs';
 import {recordSourceArchiveAttemptFailure} from '../game/source-archive-failures.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
-import {sourceObservationRequestMaterial,projectSourceObservationRecords,projectResearchRecords} from '../game/research-records.mjs';
+import {sourceObservationRequestMaterial,projectSourceObservationRecords,projectResearchRecords,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION} from '../game/research-records.mjs';
 import {projectCollaboratorPackets} from '../game/collaborator-contracts.mjs';
 import {projectCharacter} from '../game/character-sheet.mjs';
-import {buildGitHubSourceArchiveBody} from '../game/artifacts.mjs';
+import {buildGitHubSourceArchiveBody,GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX} from '../game/artifacts.mjs';
 
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
@@ -1342,6 +1342,22 @@ test('server-observed Source Archive failures are retained as bounded non-progre
     'the operational failure is visible in shared history without exposing a draft');
   await validateWorld(recorded.world);
 
+  const later = await applyAction(world, {
+    type: 'discover', locationId: 'river'
+  }, founderActor, { now: '2026-10-17T12:02:00.000Z' });
+  const regressedFailure = recordSourceArchiveAttemptFailure(later.world, founderActor, {
+    ...details,
+    requestIdDigest: 'c'.repeat(64),
+    actionDigest: 'd'.repeat(64)
+  }, { now: '2026-10-17T12:01:00.000Z' });
+  assert.equal(regressedFailure.world.events.at(-1).type, 'source-archive-attempt-failed');
+  assert.equal(regressedFailure.world.events.at(-1).at, '2026-10-17T12:01:00.000Z');
+  assert.equal(regressedFailure.world.updatedAt, '2026-10-17T12:02:00.000Z',
+    'a server-observed failure appends after the prior event without lowering the world clock high-water mark');
+  assert.equal(regressedFailure.world.xp, later.world.xp);
+  await validateWorld(regressedFailure.world);
+  assert.doesNotThrow(() => validateStoredWorldHistory(regressedFailure.world));
+
   assert.throws(
     () => recordSourceArchiveAttemptFailure(world, witness, details, { now: '2026-10-17T12:01:00.000Z' }),
     error => error.code === 'FORBIDDEN' && error.status === 403
@@ -1399,6 +1415,195 @@ test('Combat Yard clock regressions preserve retained append order and the world
   'the clock-regression exception is limited to Source Observatory and Combat Yard actions');
 });
 
+
+test('R&D, Source Archive predicates and bounded collaborator responses preserve retained append order through clock regression', async () => {
+  const founderActor = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const witnessActor = { id: 'clock-skew-witness', name: 'Clock-skew witness', role: 'witness' };
+  const base = Date.parse('2026-11-22T13:00:00.000Z');
+  const at = seconds => new Date(base + seconds * 1000).toISOString();
+  const sourceText = 'export const archivedSource = "retained-byte-predicate";\\n';
+  const bytes = Buffer.from(sourceText, 'utf8');
+  const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
+  const commitSha = 'd'.repeat(40);
+  const path = 'game/research-records.mjs';
+  const gitBlobSha = createHash('sha1')
+    .update('blob ' + bytes.length + String.fromCharCode(0))
+    .update(bytes)
+    .digest('hex');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const capture = {
+    schema: 'ngl.github-source-capture.v1',
+    captureId: JSON.stringify([repository, commitSha, path, sha256]),
+    repository,
+    commitSha,
+    path,
+    permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
+    gitBlobSha,
+    sha256,
+    size: bytes.length,
+    bytesBase64: bytes.toString('base64'),
+    fetchedAt: at(0),
+    capturedAt: at(0),
+    text: sourceText,
+    integrityStatus: 'hashes-match',
+    retrievalMode: 'server-rechecked'
+  };
+  const html = await buildGitHubSourceArchiveBody(capture);
+  const original = createWorld({ id: 'research-clock-regression-world', now: at(0) });
+  const drafted = await applyAction(original, {
+    type: 'draft',
+    kind: 'custom',
+    title: 'Source Archive · research clock',
+    intent: GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' · Server-rechecked bytes; claims remain unverified.',
+    html
+  }, founderActor, { now: at(1) });
+  const published = await applyAction(drafted.world, {
+    type: 'publish', draftId: drafted.result.draftId, expectedVersion: 0
+  }, founderActor, { now: at(2) });
+  const predicate = await applyAction(published.world, {
+    type: 'evaluate-source-archive-predicate',
+    creationId: published.result.creationId,
+    version: 1,
+    publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,
+    predicateKind: 'contains-literal',
+    literal: 'retained-byte-predicate'
+  }, founderActor, { now: at(1.5), allowSourceArchivePredicate: true });
+  const predicateEvent = predicate.world.events.at(-1);
+  assert.equal(predicateEvent.type, 'source-archive-predicate-evaluated');
+  assert.equal(predicateEvent.outcome, 'MATCH');
+  assert.equal(predicateEvent.sourceTruth, 'NOT_ASSESSED');
+  assert.equal(predicateEvent.independentVerification, 'NOT_PERFORMED');
+  assert.equal(predicateEvent.modelAssertions, 'LEADS_ONLY');
+
+  const proposal = await applyAction(predicate.world, {
+    type: 'propose-moonshot',
+    title: 'Clock-skew R&D chain',
+    hypothesis: 'The retained source bytes contain the specified literal.',
+    falsifier: 'The exact retained bytes do not contain the literal.',
+    evidenceNeeded: 'An independent source check is still required for any substantive claim.',
+    sourceCreationId: published.result.creationId,
+    sourceVersion: 1
+  }, founderActor, { now: at(10) });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Inspect the retained source bytes for the exact literal.',
+    observation: 'The literal was present in the retained bytes; the substantive claim remains unassessed.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: published.result.creationId,
+    evidenceVersion: 1
+  }, founderActor, { now: at(8) });
+
+  const packet = projectCollaboratorPackets(publicWorld(report.world, founderActor)).find(candidate =>
+    candidate.id === 'adversary' && candidate.available === true
+  );
+  assert.ok(packet, 'the bounded adversary packet is available from the exact retained proposal/report prefix');
+  const reportEvent = report.world.events.at(-1);
+  const responseText = JSON.stringify({
+    targetEventId: reportEvent.id,
+    challengeType: 'missing-evidence',
+    challengeDraft: 'The byte predicate does not establish the substantive claim.',
+    distinctnessAssessment: 'No earlier challenge is included in this packet.',
+    duplicateOfEventIds: [],
+    counterexample: 'A primary-source check could contradict the claim.',
+    evidenceNeeded: ['An independent primary-source observation.'],
+    unknowns: ['No independent verification is attached.']
+  });
+  const collaborated = await applyAction(report.world, {
+    type: 'record-collaborator-response',
+    role: 'adversary',
+    moonshotId: proposal.result.moonshotId,
+    packetJson: packet.packetJson,
+    sourceEventIds: packet.inputRefs,
+    responseText
+  }, founderActor, { now: at(6) });
+  const collaboratorEvent = collaborated.world.events.at(-1);
+  assert.equal(collaboratorEvent.type, 'collaborator-response-recorded');
+  assert.equal(collaboratorEvent.validationStatus, 'valid-for-human-review');
+  assert.equal(JSON.parse(collaboratorEvent.packetJson).authority, 'advisory-only');
+  assert.equal(JSON.parse(collaboratorEvent.packetJson).mayGrantAuthority, false);
+
+  const challenged = await applyAction(collaborated.world, {
+    type: 'challenge-experiment-report',
+    reportId: report.result.reportId,
+    challengeType: 'missing-evidence',
+    challengeText: 'A byte predicate is not an independent observation of the claim.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, witnessActor, { now: at(4) });
+  const challengeEvent = challenged.world.events.at(-1);
+  const answered = await applyAction(challenged.world, {
+    type: 'respond-experiment-challenge',
+    challengeId: challengeEvent.challengeId,
+    responseText: 'The limitation is accepted; independent observation remains outstanding.'
+  }, founderActor, { now: at(3) });
+  const beforeFailureXp = answered.world.xp;
+  const failed = recordSourceArchiveAttemptFailure(answered.world, founderActor, {
+    requestIdDigest: 'a'.repeat(64),
+    actionDigest: 'b'.repeat(64),
+    repository,
+    commitSha,
+    path,
+    failureCode: 'GITHUB_SOURCE_UNAVAILABLE'
+  }, { now: at(1) });
+  const world = failed.world;
+
+  assert.deepEqual(world.events.map(event => event.type), [
+    'draft', 'publish', 'source-archive-predicate-evaluated', 'moonshot-proposed',
+    'experiment-reported', 'collaborator-response-recorded', 'experiment-challenged',
+    'experiment-challenge-responded', 'source-archive-attempt-failed'
+  ]);
+  assert.deepEqual(world.events.slice(2).map(event => event.at), [
+    at(1.5), at(10), at(8), at(6), at(4), at(3), at(1)
+  ]);
+  assert.equal(world.updatedAt, at(10), 'updatedAt remains the maximum retained wall-clock timestamp');
+  assert.equal(world.revision, world.events.length);
+  assert.equal(world.xp, beforeFailureXp);
+  assert.equal(world.xp, 100, 'only the explicit publication earns XP');
+  assert.equal(world.events.at(-1).failureCode, 'GITHUB_SOURCE_UNAVAILABLE');
+  assert.equal(world.events.at(-2).status, undefined, 'an author response is not an adjudication');
+  await validateWorld(world);
+  assert.doesNotThrow(() => validateStoredWorldHistory(world));
+
+  const research = projectResearchRecords(world.events, world.creations);
+  const reportRecord = research.find(record => record.type === 'experiment-reported' && record.reportId === report.result.reportId);
+  const challengeRecord = research.find(record => record.type === 'experiment-challenged' && record.challengeId === challengeEvent.challengeId);
+  const responseRecord = research.find(record => record.type === 'experiment-challenge-responded' && record.responseId === answered.result.responseId);
+  const predicateRecord = research.find(record => record.type === 'source-archive-predicate-evaluated');
+  assert.equal(reportRecord?._projection.proposalStatus, 'linked');
+  assert.equal(reportRecord?._projection.evidenceStatus, 'linked');
+  assert.equal(challengeRecord?._projection.targetReportStatus, 'linked');
+  assert.equal(responseRecord?._projection.targetChallengeStatus, 'linked');
+  assert.equal(predicateRecord?._projection.predicateStatus, 'linked');
+
+  const founderRecord = projectCharacter(world, founderActor);
+  const witnessRecord = projectCharacter(world, witnessActor);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'researcher').count, 1);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'experiment-responder').count, 1);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'collaborator').count, 1);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'adversary').count, 1);
+  assert.equal(founderRecord.xp, 100);
+  assert.equal(witnessRecord.xp, 0);
+
+  await assert.rejects(
+    applyAction(world, { type: 'discover', locationId: 'overlook' }, founderActor, { now: at(9) }),
+    error => error.code === 'INVALID_CHRONOLOGY',
+    'ordinary actions remain subject to the world timestamp high-water mark'
+  );
+
+  const responseBeforeChallenge = structuredClone(world);
+  const responseIndex = responseBeforeChallenge.events.findIndex(event => event.type === 'experiment-challenge-responded');
+  const [responseEvent] = responseBeforeChallenge.events.splice(responseIndex, 1);
+  const challengeIndex = responseBeforeChallenge.events.findIndex(event => event.type === 'experiment-challenged');
+  responseEvent.at = at(11);
+  responseBeforeChallenge.events.splice(challengeIndex, 0, responseEvent);
+  responseBeforeChallenge.updatedAt = at(11);
+  await assert.rejects(
+    validateWorld(responseBeforeChallenge),
+    error => error.code === 'INVALID_WORLD',
+    'a later timestamp cannot rescue a response appended before its exact challenge'
+  );
+});
 
 test('Polymath Academy study and review preserve append order through clock regression', async () => {
   const founderActor = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
