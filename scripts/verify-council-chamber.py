@@ -618,6 +618,31 @@ def run_viewport(browser, url, out, width):
                 'Opening and expanding all four Council summaries must remain read-only.'
             )
 
+            # The Synthesis Clerk's retained dissent must be directly inspectable
+            # as the exact world event, pinned to the Council's source snapshot.
+            synthesizer = page.locator('[data-council-role="synthesizer"]')
+            synthesizer.locator(
+                'details[data-council-review-summary="synthesizer"] summary'
+            ).tap()
+            source_event = synthesizer.locator(
+                '[data-council-source-event-id="' + fixture['challengeEventId'] + '"]'
+            )
+            expect(source_event).to_have_count(1)
+            expect(source_event).to_be_visible()
+            source_event.tap()
+            expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
+            chronicle = page.locator('#sheet-content')
+            expect(chronicle).to_have_attribute(
+                'data-chronicle-snapshot-revision', str(populated_before['revision'])
+            )
+            expect(chronicle.locator(
+                '[data-event-id="world:' + fixture['challengeEventId'] + '"]'
+            )).to_be_visible()
+            chronicle_after = authoritative_snapshot(page)
+            assert chronicle_after == populated_before, (
+                'Opening a Council source-event link must remain pinned and read-only.'
+            )
+
         layout = page.evaluate("""() => ({
           viewportWidth: window.innerWidth,
           documentWidth: document.documentElement.scrollWidth,
