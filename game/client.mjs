@@ -1,7 +1,7 @@
 import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,isDifferentPositionSession,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {registerOfflineShell} from './offline-shell.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {createSharedSnapshotAcceptanceGuard,readSharedSnapshotCache,readSharedPositionCache,writeSharedSnapshotCache,writeSharedPositionCache} from './shared-snapshot.mjs';
+import {createSharedSnapshotAcceptanceGuard,createSharedSessionGenerationGuard,readSharedSnapshotCache,readSharedPositionCache,writeSharedSnapshotCache,writeSharedPositionCache} from './shared-snapshot.mjs';
 import {buildSatireIssueBody,readSatireIssueArtifact,findSatireIssuePublication,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX,buildGitHubSourceArchiveBody,GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX,GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL,readGitHubSourceArchiveMetadata} from './artifacts.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,isQuestObjectiveActionable,findStudyReview,hasStudyReviewRecord,createQuestEvidenceEventLinkResolver} from './quests.mjs';
@@ -23,14 +23,19 @@ import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_M
 
 registerOfflineShell();
 const sharedSnapshotAcceptance=createSharedSnapshotAcceptanceGuard();
+const sharedSessionGeneration=createSharedSessionGenerationGuard();
+function isCurrentSharedSession(generation){return mode==='shared'&&sharedSessionGeneration.isCurrent(generation);}
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0,positionConflictNoticeKey=null,sharedMovementPaused=false,sharedOfflinePreview=false,sharedStreamOpen=false,sharedConnectionRecovery=null,activeWorldChronicleRefresh=null,activeWorldChronicleSnapshot=null,activeWorldChroniclePinned=false,sharedSnapshotCacheOnly=false;let commonsDraftText='';
 const sourceSnapshotReceiptsByRevision = new Map();
 const timedSharedPositionWrite=createPositionWriteDeadline((position,{signal})=>{
+  const generation=sharedSessionGeneration.capture();
+  if(!isCurrentSharedSession(generation))throw new Error('The shared session ended before the position write started.');
   const expectedEpoch=positionEpoch;
   const expectedRevision=positionWriteRevision;
   if(typeof expectedEpoch!=='string'||!Number.isSafeInteger(expectedRevision)||expectedRevision<0||expectedRevision>=Number.MAX_SAFE_INTEGER)
     throw new Error('The shared session position version is unavailable. Reconcile before moving again.');
   return request('/api/presence',{...position,positionEpoch:expectedEpoch,positionRevision:expectedRevision},{signal}).then(result=>{
+    if(!isCurrentSharedSession(generation))return {discarded:true};
     if(result.positionEpoch!==expectedEpoch||result.positionRevision!==expectedRevision+1)
       throw new Error('The shared service returned an inconsistent position revision. Reconcile before moving again.');
     if(positionEpoch===expectedEpoch)positionWriteRevision=Math.max(positionWriteRevision,result.positionRevision);
@@ -599,38 +604,48 @@ function readPendingSharedAction(){let raw;try{raw=localStorage.getItem(PENDING_
 function savePendingSharedAction(pending){try{localStorage.setItem(PENDING_SHARED_ACTION,JSON.stringify(pending))}catch{throw new Error('Device storage could not preserve the retry receipt. The shared action was not sent.')}}
 function clearPendingSharedAction(requestId){try{const current=readPendingSharedAction();if(current?.requestId===requestId)localStorage.removeItem(PENDING_SHARED_ACTION);return true}catch{throw new Error('The server result was received, but this device could not clear its retry receipt. Retry only that same action until storage is available.')}}
 async function submitPendingSharedAction(pending){
+  const generation=sharedSessionGeneration.capture();
+  if(!isCurrentSharedSession(generation))return {discarded:true};
   if(pendingSharedActionInFlight===pending.requestId)throw new Error('This exact shared action is already being submitted. Wait for its result before retrying.');
   pendingSharedActionInFlight=pending.requestId;
   try{
     let dto;
-    try{dto=await request('/api/action',{...pending.action,requestId:pending.requestId})}
-    catch(error){
+    try{
+      dto=await request('/api/action',{...pending.action,requestId:pending.requestId});
+    }catch(error){
+      if(!isCurrentSharedSession(generation))return {discarded:true};
       if(error.code!=='PUBLIC_RETENTION_ACK_REQUIRED'&&error.status&&error.status<500&&error.status!==401&&error.status!==403&&error.code!=='IDEMPOTENCY_CONFLICT')clearPendingSharedAction(pending.requestId);
       throw error;
     }
-    acceptState(dto);
+    if(!isCurrentSharedSession(generation))return {discarded:true};
+    acceptState(dto,{generation});
+    if(!isCurrentSharedSession(generation))return {discarded:true};
     clearPendingSharedAction(pending.requestId);
     const result=dto.result||{};
-     return dto.idempotentReplay===true?{...result,idempotentReplay:true}:result;
+    return dto.idempotentReplay===true?{...result,idempotentReplay:true}:result;
   }finally{
-    if(pendingSharedActionInFlight===pending.requestId)pendingSharedActionInFlight=null;
-    refreshRelayRecovery();
+    if(isCurrentSharedSession(generation)&&pendingSharedActionInFlight===pending.requestId)pendingSharedActionInFlight=null;
+    if(isCurrentSharedSession(generation))refreshRelayRecovery();
   }
 }
 async function recoverPendingSharedAction(){
   if(mode!=='shared'||sharedSnapshotCacheOnly||pendingSharedActionInFlight)return false;
+  const generation=sharedSessionGeneration.capture();
+  if(!isCurrentSharedSession(generation))return false;
   let pending;
   try{pending=readPendingSharedAction()}catch(error){handleError(error);return false}
   if(!pending||pending.actorId!==viewer.id||pending.actorRole!==viewer.role||pendingPredicateNeedsRetentionAcknowledgement(pending))return false;
   try{
-    await submitPendingSharedAction(pending);
+    const result=await submitPendingSharedAction(pending);
+    if(!isCurrentSharedSession(generation)||result?.discarded)return false;
     toast('The Relay recovered the exact pending action after reconnection.');
     return true;
   }catch(error){
-    handleError(error);
+    if(isCurrentSharedSession(generation))handleError(error);
     return false;
   }
 }
+
 function clearSharedPresence(){
   if(mode!=='shared')return;
   // A failed Relay stream cannot keep presenting or following its last remote snapshot.
@@ -724,7 +739,8 @@ function isPortablePosition(value){
 function persist(next,backupPosition=readPrivatePlayerPosition()||{x:180,y:640}){try{const existing=localStorage.getItem(STORAGE);if(existing){let previousWorld=null;try{previousWorld=JSON.parse(existing)}catch{/* Preserve the last known-good backup when the current save is unreadable. */}if(previousWorld&&typeof previousWorld==='object'&&!Array.isArray(previousWorld))localStorage.setItem(BACKUP,JSON.stringify({schema:BACKUP_SCHEMA,world:previousWorld,playerPosition:backupPosition}))}localStorage.setItem(STORAGE,JSON.stringify(next));savingError=false}catch{savingError=true;throw new Error('Device storage is full or unavailable. The change was not saved. Export your world from the Journal before clearing space.')}}
 async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=localStorage.getItem(key)}catch{toast('Device storage is unavailable. Export a copy to keep this session.',true);return createWorld()}if(!raw)continue;try{const parsed=JSON.parse(raw);const backupEnvelope=key===BACKUP&&parsed?.schema===BACKUP_SCHEMA;const candidate=await validateWorld(backupEnvelope?parsed.world:parsed);if(key===BACKUP){const restoredPosition=backupEnvelope?parsed.playerPosition:{x:180,y:640};if(!isPortablePosition(restoredPosition)||!writePrivatePlayerPosition(restoredPosition)){toast('The backup world is valid, but its character position could not be restored. The backup was not opened.',true);continue}try{localStorage.setItem(STORAGE,JSON.stringify(candidate))}catch{toast('The backup is valid but device storage could not restore it. Export a copy.',true)}toast('Recovered the last valid world and character position. Export a copy from the Journal.')}return candidate}catch{toast('The saved copy did not pass its byte checks. Checking the backup.',true)}}return createWorld()}
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
-function acceptState(dto,{forcePosition=false}={}){
+function acceptState(dto,{forcePosition=false,generation=sharedSessionGeneration.capture()}={}){
+  if(!isCurrentSharedSession(generation))return false;
   if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');
   const incomingEpoch=dto.viewer.positionEpoch;
   const incomingRevision=dto.viewer.positionRevision;
@@ -779,14 +795,17 @@ function acceptState(dto,{forcePosition=false}={}){
   render();if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels();
   return true;
 }
-async function act(action){if(mode==='shared'&&sharedSnapshotCacheOnly)throw new Error('The cached shared snapshot is read-only until the live server revalidates this session.');const {requestId:suppliedRequestId,...payload}=action;const normalized=JSON.parse(JSON.stringify(payload));if(mode==='shared'){let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');if(suppliedRequestId&&pending.requestId!==suppliedRequestId)throw new Error('The pending Relay receipt uses a different stable request ID; resolve it before importing again.');}else{pending={requestId:suppliedRequestId||crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,normalized,viewer);persist(next.world);world=next.world;render();return next.result;}
+async function act(action){if(mode==='shared'&&sharedSnapshotCacheOnly)throw new Error('The cached shared snapshot is read-only until the live server revalidates this session.');const {requestId:suppliedRequestId,...payload}=action;const normalized=JSON.parse(JSON.stringify(payload));if(mode==='shared'){let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');if(suppliedRequestId&&pending.requestId!==suppliedRequestId)throw new Error('The pending Relay receipt uses a different stable request ID; resolve it before importing again.');}else{pending={requestId:suppliedRequestId||crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const generation=sharedSessionGeneration.capture();const next=await applyAction(world,normalized,viewer);if(mode!=='private'||!sharedSessionGeneration.isCurrent(generation))return {discarded:true};persist(next.world);world=next.world;render();return next.result;}
 const view=new PixelWorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='player')openPlayerProfile(interaction.player);else if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>typeof interaction.npcRoleId==='string'
   ? openGuildNpcInteraction(interaction)
-  : openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;if(mode==='shared'){try{const positionResult=await submitSharedPosition(view.getPlayer());if(positionResult?.resynchronized)return}catch(error){await recoverSharedPositionError(error);return}}const result=await act({type:'discover',locationId:id});if(result.discovered)toast(guides[id].name+' discovered · a new field note, no XP.')}),onPosition:guarded(async p=>{if(mode==='shared'){try{await submitSharedPosition(p)}catch(error){await recoverSharedPositionError(error)}}else if(mode==='private')writePrivatePlayerPosition(p)})});
+  : openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const generation=mode==='shared'?sharedSessionGeneration.capture():null;if(mode==='shared'){try{const positionResult=await submitSharedPosition(view.getPlayer());if(generation&&!isCurrentSharedSession(generation))return;if(positionResult?.resynchronized||positionResult?.discarded)return}catch(error){await recoverSharedPositionError(error);return}}const result=await act({type:'discover',locationId:id});if(result.discarded)return;if(result.discovered)toast(guides[id].name+' discovered · a new field note, no XP.')}),onPosition:guarded(async p=>{if(mode==='shared'){try{await submitSharedPosition(p)}catch(error){await recoverSharedPositionError(error)}}else if(mode==='private')writePrivatePlayerPosition(p)})});
 async function submitSharedPosition(position){
+  if(mode!=='shared')return {discarded:true};
+  const generation=sharedSessionGeneration.capture();
   if(sharedMovementPaused)return {resynchronized:true,position:view.getPlayer()};
   if(positionReconciliation){
     await positionReconciliation;
+    if(!sharedSessionGeneration.isCurrent(generation)||mode!=='shared')return {discarded:true,resynchronized:true,position:view.getPlayer()};
     // This callback was queued against the old accepted-position revision.
     // Do not turn it into a second write after reconciliation; the next fresh
     // movement frame may submit a new coordinate from the accepted position.
@@ -794,6 +813,7 @@ async function submitSharedPosition(position){
   }
   const sequence=++positionWriteSequence;
   const result=await orderedSharedPositionWriter(position);
+  if(!isCurrentSharedSession(generation))return {discarded:true};
   if(sequence===positionWriteSequence&&result.position)writeSharedPositionCache(localStorage,viewer,world.id,world.revision,result.position);
   // Older accepted responses must not pull the renderer backwards while a
   // newer coordinate is already queued.
@@ -801,8 +821,11 @@ async function submitSharedPosition(position){
     view.setPlayer({id:viewer.presenceId||viewer.id,x:result.position.x,y:result.position.y});
   return result;
 }
+
 async function reconcileSharedPosition(){
   if(mode!=='shared')return;
+  const generation=sharedSessionGeneration.capture();
+  if(!isCurrentSharedSession(generation))return null;
   if(positionReconciliation)return positionReconciliation;
   // Stop local movement and discard queued snapshots before reading. Waiting
   // for the in-flight write prevents a late accepted coordinate from landing
@@ -814,8 +837,10 @@ async function reconcileSharedPosition(){
   reconciliation=(async()=>{
     try{
       await orderedSharedPositionWriter.whenIdle();
+      if(!isCurrentSharedSession(generation))return null;
       const dto=await request('/api/state');
-      if(!acceptState(dto,{forcePosition:true}))
+      if(!isCurrentSharedSession(generation))return null;
+      if(!acceptState(dto,{forcePosition:true,generation}))
         throw new Error('Shared world reconciliation returned an older snapshot; retaining the newer accepted revision.');
       reconciled=true;
       return dto;
@@ -824,7 +849,7 @@ async function reconcileSharedPosition(){
       // movement callback can observe an online stream but be discarded as
       // belonging to the still-running reconciliation.
       if(positionReconciliation===reconciliation)positionReconciliation=null;
-      if(mode==='shared'){
+      if(isCurrentSharedSession(generation)){
         sharedMovementPaused=!reconciled||globalThis.navigator?.onLine===false||!sharedStreamOpen;
         const keepCachedPreview=sharedSnapshotCacheOnly&&sharedOfflinePreview;
         view.setMovementEnabled(keepCachedPreview||!sharedMovementPaused);
@@ -835,8 +860,11 @@ async function reconcileSharedPosition(){
   positionReconciliation=reconciliation;
   return reconciliation;
 }
+
 async function recoverSharedPositionError(error){
+  const generation=sharedSessionGeneration.capture();
   await reconcileSharedPosition();
+  if(!isCurrentSharedSession(generation))return false;
   if(!isPositionRevisionConflict(error))throw error;
   const noticeKey=positionEpoch+':'+positionWriteRevision;
   if(positionConflictNoticeKey!==noticeKey){
@@ -847,14 +875,22 @@ async function recoverSharedPositionError(error){
 }
 async function recoverSharedConnection(){
   if(mode!=='shared')return false;
+  const generation=sharedSessionGeneration.capture();
+  if(!isCurrentSharedSession(generation))return false;
   if(sharedConnectionRecovery)return sharedConnectionRecovery;
   const recovery=(async()=>{
     if(sharedSnapshotCacheOnly){
       await reconcileSharedPosition();
-      if(!sharedSnapshotCacheOnly)await recoverPendingSharedAction();
+      if(!isCurrentSharedSession(generation))return false;
+      if(!sharedSnapshotCacheOnly){
+        await recoverPendingSharedAction();
+        if(!isCurrentSharedSession(generation))return false;
+      }
     }else{
       await recoverPendingSharedAction();
+      if(!isCurrentSharedSession(generation))return false;
       await reconcileSharedPosition();
+      if(!isCurrentSharedSession(generation))return false;
     }
     return !sharedMovementPaused;
   })();
@@ -862,6 +898,7 @@ async function recoverSharedConnection(){
   try{return await recovery;}
   finally{if(sharedConnectionRecovery===recovery)sharedConnectionRecovery=null;}
 }
+
 view.setWorld(world);
 function appendStudyCardCollection(target,record,{heading='PERSONAL COLLECTION · STUDY CARDS',maxItems=20}={}){
   const cards=Array.isArray(record.studyCards)?record.studyCards:[];
@@ -1202,27 +1239,123 @@ function render(){
   refreshMoonshotFieldSnapshotFreshnessNotice();
   refreshSourceObservatorySnapshotFreshnessNotice();
 }
-async function startPrivate(){sharedSnapshotAcceptance.reset();pendingSourceObservatoryLead=null;sourceSnapshotReceiptsByRevision.clear();stream?.close();stream=null;sharedStreamOpen=false;sharedMovementPaused=false;sharedOfflinePreview=false;sharedSnapshotCacheOnly=false;view.setMovementEnabled(true);mode='private';viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
+function resetSharedSessionForPrivateMode(){
+  mode='private';
+  const generation=sharedSessionGeneration.invalidate();
+  positionWriteSequence+=1;
+  orderedSharedPositionWriter.cancelPending();
+  positionReconciliation=null;
+  sharedConnectionRecovery=null;
+  pendingSharedActionInFlight=null;
+  positionEpoch=null;
+  positionWriteRevision=0;
+  positionConflictNoticeKey=null;
+  sharedSnapshotAcceptance.reset();
+  pendingSourceObservatoryLead=null;
+  sourceSnapshotReceiptsByRevision.clear();
+  stream?.close();stream=null;
+  sharedStreamOpen=false;
+  sharedMovementPaused=false;
+  sharedOfflinePreview=false;
+  sharedSnapshotCacheOnly=false;
+  presence=[];
+  view.setPresence([]);
+  view.clearManualInput();
+  view.cancelRoute();
+  view.setMovementEnabled(false);
+  institution=null;
+  selectedDraft=null;
+  return generation;
+}
+async function startPrivate(){
+  const generation=resetSharedSessionForPrivateMode();
+  viewer=privateActor();
+  const privateWorld=await loadPrivate();
+  if(!sharedSessionGeneration.isCurrent(generation)||mode!=='private')return;
+  world=privateWorld;
+  const savedPosition=readPrivatePlayerPosition();
+  view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});
+  presence=[];
+  institution=null;
+  selectedDraft=null;
+  view.setMovementEnabled(true);
+  $('doorway').hidden=true;
+  $('play-ui').hidden=false;
+  setConnection(true);
+  render();
+  view.canvas.focus({preventScroll:true});
+}
 function connectSharedStream(){
+  const generation=sharedSessionGeneration.capture();
+  if(!isCurrentSharedSession(generation))return;
   stream=new EventSource('/api/events');
-  stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});
-  stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels()}catch{}});
-  stream.onerror=handleSharedDisconnect;
-  stream.onopen=()=>{sharedStreamOpen=true;void recoverSharedConnection().catch(handleError)};
+  stream.addEventListener('world',e=>{
+    if(!isCurrentSharedSession(generation))return;
+    try{acceptState(JSON.parse(e.data),{generation})}catch(error){handleError(error)}
+  });
+  stream.addEventListener('presence',e=>{
+    if(!isCurrentSharedSession(generation))return;
+    try{
+      presence=JSON.parse(e.data);
+      view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));
+      if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels();
+    }catch{}
+  });
+  stream.onerror=()=>{
+    if(!isCurrentSharedSession(generation))return;
+    handleSharedDisconnect();
+  };
+  stream.onopen=()=>{
+    if(!isCurrentSharedSession(generation))return;
+    sharedStreamOpen=true;
+    void recoverSharedConnection().catch(handleError);
+  };
 }
 async function startShared(){
+  const previousMode=mode;
+  sharedSessionGeneration.invalidate();
+  const generation=sharedSessionGeneration.capture();
+  const restorePrivateWorld=()=>{
+    if(previousMode==='private'){
+      sharedMovementPaused=false;
+      sharedOfflinePreview=false;
+      sharedSnapshotCacheOnly=false;
+      view.setMovementEnabled(true);
+      setConnection(true);
+    }
+  };
+  stream?.close();stream=null;
+  sharedStreamOpen=false;
+  sharedMovementPaused=true;
+  sharedOfflinePreview=false;
+  sharedSnapshotCacheOnly=false;
+  positionWriteSequence+=1;
+  orderedSharedPositionWriter.cancelPending();
+  positionReconciliation=null;
+  sharedConnectionRecovery=null;
+  pendingSharedActionInFlight=null;
+  positionEpoch=null;
+  positionWriteRevision=0;
+  positionConflictNoticeKey=null;
+  presence=[];
+  view.setPresence([]);
+  view.setMovementEnabled(false);
+  sourceSnapshotReceiptsByRevision.clear();
   pendingSourceObservatoryLead=null;
   let dto;
   try{
     dto=await request('/api/state');
+    if(!sharedSessionGeneration.isCurrent(generation))return;
   }catch(error){
+    if(!sharedSessionGeneration.isCurrent(generation))return;
     const cacheableFailure=error?.status===undefined||error.status>=500;
     const cached=cacheableFailure?readSharedSnapshotCache(localStorage):null;
-    if(!cached)throw error;
-    if(!sharedSnapshotAcceptance.accept(world,cached.world))
+    if(!sharedSessionGeneration.isCurrent(generation))return;
+    if(!cached){restorePrivateWorld();if(previousMode==='private')throw new Error('The shared world could not be opened. Your private world remains active and playable on this device.',{cause:error});throw error;}
+    if(!sharedSnapshotAcceptance.accept(world,cached.world)){
+      restorePrivateWorld();
       throw new Error('The cached shared snapshot is older than the last accepted shared world; the current accepted view was kept.');
-    stream?.close();
-    stream=null;
+    }
     mode='shared';
     sharedStreamOpen=false;
     sharedMovementPaused=true;
@@ -1249,15 +1382,15 @@ async function startShared(){
     connectSharedStream();
     toast('Opened the last accepted public snapshot. It is read-only until the live server revalidates this session.');
     view.canvas.focus({preventScroll:true});
-    return;
+    return true;
   }
-  stream?.close();
-  stream=null;
+  if(!sharedSessionGeneration.isCurrent(generation))return;
+  stream?.close();stream=null;
   mode='shared';
   sharedStreamOpen=false;
   sharedMovementPaused=true;
   view.setMovementEnabled(false);
-  const accepted=acceptState(dto,{forcePosition:true});
+  const accepted=acceptState(dto,{forcePosition:true,generation});
   if(!accepted)setConnection(false);
   $('doorway').hidden=true;
   $('play-ui').hidden=false;
@@ -1266,8 +1399,11 @@ async function startShared(){
   if(accepted)toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));
   else toast('A delayed shared-world snapshot was ignored. The newer accepted view remains in place while the client waits for a current update.',true);
   await recoverPendingSharedAction();
+  if(!isCurrentSharedSession(generation))return;
   view.canvas.focus({preventScroll:true});
+  return accepted;
 }
+
 function showSheet(title,kicker='FIELD NOTES'){
   institutionRequestGeneration++;
   activeNoteRenderer=null;
@@ -5337,17 +5473,49 @@ function openJournal(){const content=showSheet('Keep the trail.','THE FIELD JOUR
   if(world.drafts.length&&viewer.role==='founder'){content.append(node('h3',{class:'section-title',text:'PRIVATE DRAFTS'}));for(const d of world.drafts)content.append(button(d.title+` · draft v${d.version} →`,()=>openWorkshop(d.kind,d.id),{class:'list-button'}));}
   let pendingAction=null;try{pendingAction=readPendingSharedAction()}catch(error){content.append(node('h3',{class:'section-title',text:'SHARED ACTION RECOVERY'}),paragraph(error.message,'evidence-warning'))}if(pendingAction){content.append(node('h3',{class:'section-title',text:'SHARED ACTION RECOVERY'}),paragraph('A shared write may have committed even if its response was lost. The request ID and exact action are saved on this device; retrying reuses that ID so the server can return the original result without creating a duplicate.','form-help'),node('article',{class:'field-card'},[node('h3',{text:'Pending action · '+pendingAction.action.type.toUpperCase()}),paragraph('Request ID · '+pendingAction.requestId),paragraph('Original actor · '+pendingAction.actorId+' ('+pendingAction.actorRole+')')]));if(mode==='shared'&&pendingAction.actorId===viewer.id&&pendingAction.actorRole===viewer.role){
     if(pendingPredicateNeedsRetentionAcknowledgement(pendingAction))content.append(button('Review retention notice and acknowledge',()=>openPendingPredicateAcknowledgement(pendingAction),{class:'primary-button',id:'journal-acknowledge-pending-predicate'}));
-    else content.append(button('Retry the exact pending action safely',guarded(async()=>{const result=await submitPendingSharedAction(pendingAction);closeSheet();toast('Shared action outcome recovered. The same request ID was reused; no duplicate was created.') }),{class:'primary-button',id:'retry-pending-shared-action'}));
+    else content.append(button('Retry the exact pending action safely',guarded(async()=>{const result=await submitPendingSharedAction(pendingAction);if(result?.discarded)return;closeSheet();toast('Shared action outcome recovered. The same request ID was reused; no duplicate was created.') }),{class:'primary-button',id:'retry-pending-shared-action'}));
   }else content.append(paragraph('This session does not match the original actor. The action will not be replayed under a different identity or role.','evidence-warning'))}  content.append(node('h3',{class:'section-title',text:'YOUR DISCOVERIES'}));const discoveries=world.discoveries.filter(d=>d.actor.id===viewer.id);if(!discoveries.length)content.append(paragraph('Four authored field notes wait across the grounds.','empty-note'));for(const d of discoveries)content.append(button(guides[d.locationId].name+' →',()=>openGuide(d.locationId),{class:'list-button'}));
   content.append(node('h3',{class:'section-title',text:'METHODS EARNED BY REPAIR'}));if(!world.methods.length)content.append(paragraph('Publish a checked second version and preserve the first to earn a game method.','empty-note'));for(const method of world.methods)content.append(node('article',{class:'field-card'},[node('h3',{text:method.title}),paragraph(method.description),paragraph('An earned game practice, not a claim of external validation.','attribution')]));
   content.append(node('h3',{class:'section-title',text:'PRESERVE YOUR WORLD'}),paragraph(mode==='private'?'A successful save retains the previous copy as a backup. Private exports include drafts and the character’s last map position. Imports validate both the world and any included position, then replace only your private world.':'Shared exports are filtered to your current role. Imports can only open a private world; they never grant shared authority.','form-help'));
-  const file=node('input',{id:'import-world',type:'file',accept:'.json,application/json'});file.onchange=guarded(async()=>{if(!file.files[0])return;if(file.files[0].size>32*1024*1024)throw new Error('World import exceeds 32 MiB.');const raw=JSON.parse(await file.files[0].text());const imported=await validateWorld(raw.world||raw);const playerPosition=raw?.schema==='ngl.private-save.v1'?raw.playerPosition:{x:180,y:640};const previousPosition=readPrivatePlayerPosition()||{x:180,y:640};if(!isPortablePosition(playerPosition)||!writePrivatePlayerPosition(playerPosition))throw new Error('The save has an invalid character position or this device cannot store it. The world was not imported.');try{persist(imported,previousPosition)}catch(error){writePrivatePlayerPosition(previousPosition);throw error}pendingSourceObservatoryLead=null;stream?.close();stream=null;sharedSnapshotAcceptance.reset();mode='private';viewer=privateActor();world=imported;view.setPlayer({id:viewer.id,...playerPosition});presence=[];selectedDraft=null;closeSheet();render();toast('Verified world and character position imported privately. Shared authority was not changed.');});content.append(node('div',{class:'button-row'},[button('↓ Export world JSON',guarded(async()=>{const player=view.getPlayer();const dto=mode==='shared'?await request('/api/export'):{schema:'ngl.private-save.v1',world,playerPosition:{x:player.x,y:player.y}};download('no-gas-labs-world.json',JSON.stringify(mode==='shared'?(dto.world||dto):dto,null,2),'application/json');toast('World export prepared with your current role’s visibility.')}),{id:'export-world',class:'secondary-button'})]),field('Import a saved world · opens privately','import-world',file));
+  const file=node('input',{id:'import-world',type:'file',accept:'.json,application/json'});file.onchange=guarded(async()=>{
+    const selectedFile=file.files[0];
+    if(!selectedFile)return;
+    if(selectedFile.size>32*1024*1024)throw new Error('World import exceeds 32 MiB.');
+    const generation=resetSharedSessionForPrivateMode();
+    viewer=privateActor();
+    const privateWorld=await loadPrivate();
+    if(!sharedSessionGeneration.isCurrent(generation)||mode!=='private')return;
+    world=privateWorld;
+    const privatePosition=readPrivatePlayerPosition();
+    view.setPlayer({id:viewer.id,...(privatePosition||{x:180,y:640})});
+    view.setMovementEnabled(true);
+    $('doorway').hidden=true;
+    $('play-ui').hidden=false;
+    setConnection(true);
+    render();
+    const rawText=await selectedFile.text();
+    if(!sharedSessionGeneration.isCurrent(generation)||mode!=='private')return;
+    const raw=JSON.parse(rawText);
+    const imported=await validateWorld(raw.world||raw);
+    if(!sharedSessionGeneration.isCurrent(generation)||mode!=='private')return;
+    const playerPosition=raw?.schema==='ngl.private-save.v1'?raw.playerPosition:{x:180,y:640};
+    const previousPosition=readPrivatePlayerPosition()||{x:180,y:640};
+    if(!isPortablePosition(playerPosition)||!writePrivatePlayerPosition(playerPosition))throw new Error('The save has an invalid character position or this device cannot store it. The world was not imported.');
+    try{persist(imported,previousPosition)}catch(error){writePrivatePlayerPosition(previousPosition);throw error}
+    world=imported;
+    view.setPlayer({id:viewer.id,...playerPosition});
+    presence=[];
+    institution=null;
+    selectedDraft=null;
+    closeSheet();setConnection(true);render();
+    toast('Verified world and character position imported privately. Shared authority was not changed.');
+  });content.append(node('div',{class:'button-row'},[button('↓ Export world JSON',guarded(async()=>{const player=view.getPlayer();const generation=mode==='shared'?sharedSessionGeneration.capture():null;const sharedExport=mode==='shared'?await request('/api/export'):null;if(generation&&!isCurrentSharedSession(generation))return;const dto=mode==='shared'?sharedExport:{schema:'ngl.private-save.v1',world,playerPosition:{x:player.x,y:player.y}};download('no-gas-labs-world.json',JSON.stringify(mode==='shared'?(dto.world||dto):dto,null,2),'application/json');toast('World export prepared with your current role’s visibility.')}),{id:'export-world',class:'secondary-button'})]),field('Import a saved world · opens privately','import-world',file));
   if(mode==='private')content.append(node('div',{class:'button-row'},[button('Recover previous local backup',guarded(async()=>{const raw=JSON.parse(localStorage.getItem(BACKUP));if(!raw)throw new Error('There is no saved backup yet.');const backupEnvelope=raw?.schema===BACKUP_SCHEMA;const recovered=await validateWorld(backupEnvelope?raw.world:raw);const recoveredPosition=backupEnvelope?raw.playerPosition:{x:180,y:640};const previousPosition=readPrivatePlayerPosition()||{x:180,y:640};if(!isPortablePosition(recoveredPosition)||!writePrivatePlayerPosition(recoveredPosition))throw new Error('The backup character position could not be restored. The current world was not changed.');try{persist(recovered,previousPosition)}catch(error){writePrivatePlayerPosition(previousPosition);throw error}world=recovered;view.setPlayer({id:viewer.id,...recoveredPosition});render();openJournal();toast('Recovered the previous private world and character position. The current save is now the backup.')}),{id:'recover-backup',class:'secondary-button'})]));
   content.append(button('Projects, evidence and Founder Gate →',guarded(openInstitution),{id:'institution-projects',class:'list-button'}));
   if(institution){const details=node('details',{class:'institution-details'},[node('summary',{text:'Actual institutional instruments · kernel / courier / Forge'}),paragraph('Read-only capability evidence reported by the local service. This does not turn world XP into canonical authority.','form-help'),node('pre',{text:JSON.stringify(institution,null,2)})]);content.append(node('h3',{class:'section-title',text:'INSTITUTIONAL INSTRUMENTS'}),details)}
   content.append(node('h3',{class:'section-title',text:'CHANGE YOUR VIEW'}),node('div',{class:'button-row'},[button(mode==='shared'?'Open private world':'Enter shared world',guarded(async()=>{closeSheet();if(mode==='shared')await startPrivate();else await startShared()}),{class:'secondary-button'})]));
 }
-function openLogin(){const content=showSheet('Founder access.','SHARED WORLD · AUTHENTICATED SESSION');content.append(paragraph('Use the Founder key configured for this local service. It stays out of world exports and is never saved by this client.'));const key=node('input',{id:'founder-key',type:'password',autocomplete:'off',placeholder:'Local Founder key'});const name=node('input',{id:'founder-name',value:'Damien',maxlength:'80',autocomplete:'nickname'});const form=node('form',{},[field('Founder name','founder-name',name),field('Founder key','founder-key',key),node('div',{class:'button-row'},[node('button',{id:'verify-founder',type:'submit',class:'primary-button',text:'Verify Founder access'})])]);form.onsubmit=guarded(async e=>{e.preventDefault();const dto=await request('/api/login',{key:key.value,name:name.value});key.value='';if(mode!=='shared'){mode='shared';$('doorway').hidden=true;$('play-ui').hidden=false;}acceptState(dto);closeSheet();await startShared();toast('Founder session verified by the local service.');});content.append(form,paragraph('Opening a private save or changing browser data cannot authorize shared publication.','form-help'));key.focus({preventScroll:true});}
+function openLogin(){const content=showSheet('Founder access.','SHARED WORLD · AUTHENTICATED SESSION');content.append(paragraph('Use the Founder key configured for this local service. It stays out of world exports and is never saved by this client.'));const key=node('input',{id:'founder-key',type:'password',autocomplete:'off',placeholder:'Local Founder key'});const name=node('input',{id:'founder-name',value:'Damien',maxlength:'80',autocomplete:'nickname'});const form=node('form',{},[field('Founder name','founder-name',name),field('Founder key','founder-key',key),node('div',{class:'button-row'},[node('button',{id:'verify-founder',type:'submit',class:'primary-button',text:'Verify Founder access'})])]);form.onsubmit=guarded(async e=>{e.preventDefault();sharedSessionGeneration.invalidate();const generation=sharedSessionGeneration.capture();const dto=await request('/api/login',{key:key.value,name:name.value});if(!sharedSessionGeneration.isCurrent(generation))return;key.value='';mode='shared';$('doorway').hidden=true;$('play-ui').hidden=false;if(!acceptState(dto,{generation}))return;closeSheet();await startShared();if(mode==='shared')toast('Founder session verified by the local service.');});content.append(form,paragraph('Opening a private save or changing browser data cannot authorize shared publication.','form-help'));key.focus({preventScroll:true});}
 async function launch(){if(busy)return;busy=true;const launchButton=$('caveman-launch');launchButton.disabled=true;try{if(!mode)await startPrivate();if(!requireFounder())return;const content=showSheet('Making the stage.','CAVEMAN LAUNCHPAD · LOCAL REHEARSAL');content.append(paragraph('Preparing real playable creations and checking the public exhibition bytes. This can take a moment for the recovered artwork.','status-line'));
     if(!world.creations.length){for(const kind of ['comic','loom','observatory']){const r=recipes[kind];content.append(paragraph(`Making ${r.title}…`,'form-help'));const drafted=await act({type:'draft',kind,title:r.title,intent:r.intent});await act({type:'publish',draftId:drafted.draftId,expectedVersion:0});}}
     launchReport=mode==='shared'?await request('/api/launch',{}):await rehearseLaunch(world,{title:'A world worth making.',tagline:'A small local exhibition from No_Gas_Labs™.'});launchReport=launchReport.report||launchReport;launchHTML=makeLaunchPage(world,launchReport);showLaunchReport();openStage();toast(`${launchReport.checks.filter(c=>c.passed).length}/${launchReport.checks.length} actual rehearsal checks passed. No external posting occurred.`);
@@ -5356,7 +5524,7 @@ function announcement(){return launchReport?.announcement||`I made a small playa
 function showLaunchReport(){const content=showSheet(launchReport.ready?'The stage is ready.':'A stage worth checking.','CAVEMAN LAUNCHPAD · REHEARSAL');content.append(paragraph(`${launchReport.artifactCount} real published creations. ${launchReport.checks.filter(c=>c.passed).length}/${launchReport.checks.length} checks passed. No external posting has occurred.`),node('ul',{class:'check-list'},launchReport.checks.map(check=>node('li',{class:check.passed?'':'failed'},[node('span',{class:'check-symbol',text:check.passed?'✓':'!'}),node('span',{},[node('span',{text:check.label}),node('small',{text:typeof check.detail==='string'?check.detail:JSON.stringify(check.detail??'')})])]))),node('div',{class:'button-row'},[button('Open the exhibition ↗',openStage,{id:'open-stage',class:'primary-button'}),button('↓ Download stage HTML',()=>download('no-gas-labs-exhibition.html',launchHTML),{id:'download-launch',class:'secondary-button'})]));const copy=node('textarea',{id:'launch-announcement',class:'announcement',readonly:'',rows:'6',value:announcement()});content.append(field('A fact-based announcement · copy and share by choice','launch-announcement',copy),node('div',{class:'button-row'},[button('Copy announcement',guarded(async()=>{try{await navigator.clipboard.writeText(copy.value);toast('Announcement copied. No message was posted.')}catch{copy.focus();copy.select();toast('Announcement selected. Use your device’s Copy action.')}}),{id:'copy-announcement',class:'secondary-button'})]));for(const limitation of launchReport.limitations||[])content.append(paragraph(limitation,'launch-claim'));}
 function openStage(){openPortal({title:'Your local exhibition.',html:launchHTML,stage:true,kicker:'CAVEMAN LAUNCHPAD · REHEARSAL STAGE',footer:[paragraph(`${launchReport.artifactCount} playable creations · checked local artifact · you choose when and where to share.`),button('↓ Download stage',()=>download('no-gas-labs-exhibition.html',launchHTML),{id:'download-stage',class:'primary-button'}),button('View actual checks',()=>{closePortal();showLaunchReport()},{class:'secondary-button'})]})}
 
-$('start-private').onclick=guarded(startPrivate);$('start-shared').onclick=guarded(startShared);$('caveman-launch').onclick=guarded(launch);$('launch-shortcut').onclick=guarded(launch);$('make-button').onclick=()=>openWorkshop();$('places-button').onclick=openPlaces;$('journal-button').onclick=openJournal;$('home-button').onclick=e=>{e.preventDefault();if(mode)openJournal()};$('quest-button').onclick=()=>{const quest=getActiveQuest(world,viewer);if(quest.nextAction){followQuestAction(quest.nextAction);return}if(quest.action==='trail'){$('quest-trail')?.scrollIntoView({behavior:'smooth',block:'nearest'});return}if(quest.action==='workbench')view.goTo('workbench');else openPlaces()};$('character-button').onclick=openCharacterSheet;$('interact-button').onclick=()=>view.interact();$('enter-institution-button').onclick=()=>{const id=$('enter-institution-button').dataset.institutionId;if(typeof id==='string'&&id!=='none')view.interact(id,'institution')};$('sheet-close').onclick=closeSheet;$('portal-close').onclick=closePortal;$('login-button').onclick=openLogin;$('logout-button').onclick=guarded(async()=>{const dto=await request('/api/logout',{});pendingSourceObservatoryLead=null;closePortal();closeSheet();selectedDraft=null;acceptState(dto);await startShared();toast('Logged out. The shared world is now shown as Witness.');});
+$('start-private').onclick=guarded(startPrivate);$('start-shared').onclick=guarded(startShared);$('caveman-launch').onclick=guarded(launch);$('launch-shortcut').onclick=guarded(launch);$('make-button').onclick=()=>openWorkshop();$('places-button').onclick=openPlaces;$('journal-button').onclick=openJournal;$('home-button').onclick=e=>{e.preventDefault();if(mode)openJournal()};$('quest-button').onclick=()=>{const quest=getActiveQuest(world,viewer);if(quest.nextAction){followQuestAction(quest.nextAction);return}if(quest.action==='trail'){$('quest-trail')?.scrollIntoView({behavior:'smooth',block:'nearest'});return}if(quest.action==='workbench')view.goTo('workbench');else openPlaces()};$('character-button').onclick=openCharacterSheet;$('interact-button').onclick=()=>view.interact();$('enter-institution-button').onclick=()=>{const id=$('enter-institution-button').dataset.institutionId;if(typeof id==='string'&&id!=='none')view.interact(id,'institution')};$('sheet-close').onclick=closeSheet;$('portal-close').onclick=closePortal;$('login-button').onclick=openLogin;$('logout-button').onclick=guarded(async()=>{const generation=sharedSessionGeneration.capture();if(!isCurrentSharedSession(generation))return;const dto=await request('/api/logout',{});if(!isCurrentSharedSession(generation))return;pendingSourceObservatoryLead=null;closePortal();closeSheet();selectedDraft=null;acceptState(dto,{generation});await startShared();if(mode==='shared')toast('Logged out. The shared world is now shown as Witness.');});
 for(const pad of document.querySelectorAll('#movement-pad button')){const stop=()=>view.setInput({x:0,y:0});pad.addEventListener('pointerdown',e=>{e.preventDefault();pad.setPointerCapture(e.pointerId);view.setInput({x:Number(pad.dataset.dx||0),y:Number(pad.dataset.dy||0)})});pad.addEventListener('pointerup',stop);pad.addEventListener('pointercancel',stop);pad.addEventListener('lostpointercapture',stop)}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!$('portal').hidden){e.preventDefault();closePortal()}else if(!$('sheet').hidden){e.preventDefault();closeSheet()}}if(e.key==='Tab'&&document.body.classList.contains('modal-open')){const modal=!$('portal').hidden?$('portal'):$('sheet');const elements=[...modal.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],iframe,[tabindex="0"]')].filter(el=>!el.hidden&&el.getClientRects().length);const first=elements[0],last=elements.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}}});
 addEventListener('pagehide',()=>{if(mode==='private')writePrivatePlayerPosition(view.getPlayer());stream?.close()});

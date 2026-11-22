@@ -2459,7 +2459,7 @@ def assert_offline_cached_shared_snapshot_recovery(page, width):
 
     write_attempts = []
     def capture_write(request):
-        if request.method == "POST" and "/api/" in request.url:
+        if request.method == "POST" and request.url.split("?", 1)[0].endswith("/api/action"):
             write_attempts.append({"method": request.method, "url": request.url})
     page.on("request", capture_write)
     page.context.set_offline(True)
@@ -2553,6 +2553,380 @@ def assert_offline_cached_shared_snapshot_recovery(page, width):
         "sharedPositionAfter": authoritative_position(page),
         "canonicalStateUnchanged": True,
         "revalidatedToServer": True
+    }
+
+
+def assert_private_import_shared_reentry(page, width, out):
+    # Importing while offline cache-only must create a real private boundary,
+    # not leave the cached shared-session affordances attached to the private world.
+    wait_for_shared_connection(page, "before private-import export")
+    if page.locator("#sheet").is_visible():
+        page.locator("#sheet-close").tap()
+    shared_before = authoritative_snapshot(page)
+    shared_position_before = authoritative_position(page)
+    exported_world = page.evaluate("""async () => {
+      const response = await fetch('/api/export', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Shared export failed: ' + response.status);
+      const payload = await response.json();
+      const world = payload && payload.world ? payload.world : payload;
+      if (!world || typeof world.id !== 'string' || !Number.isSafeInteger(world.revision)) {
+        throw new Error('Shared export omitted world identity or revision.');
+      }
+      return world;
+    }""")
+    assert exported_world["revision"] == shared_before["revision"], (
+        "The export and authoritative shared snapshot must identify the same revision."
+    )
+
+    private_fixture = page.evaluate("""async exportedWorld => {
+      const { validateWorld, applyAction } = await import('/model.mjs');
+      const base = await validateWorld(exportedWorld);
+      const actorId = crypto.randomUUID();
+      localStorage.setItem('ngl.common-ground.v2.actor', actorId);
+      const actor = { id: actorId, name: 'Damien', role: 'founder' };
+      const result = await applyAction(
+        base,
+        { type: 'discover', locationId: 'river' },
+        actor
+      );
+      const privateWorld = result?.world;
+      if (!privateWorld || privateWorld.id !== base.id ||
+          !Number.isSafeInteger(privateWorld.revision) ||
+          privateWorld.revision <= base.revision) {
+        throw new Error('Private fixture did not advance the same world identity.');
+      }
+      const privateEvent = privateWorld.events.at(-1);
+      if (!privateEvent?.id) throw new Error('Private fixture did not retain its discovery event.');
+      return {
+        save: {
+          schema: 'ngl.private-save.v1',
+          world: privateWorld,
+          playerPosition: { x: 180, y: 640 }
+        },
+        meta: {
+          worldId: base.id,
+          baseRevision: base.revision,
+          privateRevision: privateWorld.revision,
+          privateEventId: privateEvent.id,
+          baseXp: base.xp,
+          privateXp: privateWorld.xp
+        }
+      };
+    }""", exported_world)
+    meta = private_fixture["meta"]
+    assert meta["worldId"] == exported_world["id"]
+    assert meta["baseRevision"] == shared_before["revision"]
+    assert meta["privateRevision"] > meta["baseRevision"]
+    assert meta["privateXp"] == meta["baseXp"], (
+        "A private discovery is not a publication or a source-truth reward."
+    )
+    assert meta["privateEventId"] not in shared_before["eventIds"]
+
+    page.wait_for_function(
+        "() => Boolean(navigator.serviceWorker?.controller)",
+        timeout=20000
+    )
+    page.context.set_offline(True)
+    page.reload(wait_until="domcontentloaded")
+    page.locator("#start-shared").wait_for(state="visible")
+    page.locator("#start-shared").tap()
+    page.locator("#world").wait_for(state="visible")
+    page.wait_for_function("""() => {
+      const world = document.querySelector('#world');
+      const dot = document.querySelector('#connection-dot');
+      return world?.dataset.sharedSnapshotCacheOnly === 'true' &&
+        world?.dataset.sharedSnapshotSource === 'local-cache' &&
+        world?.dataset.sharedOfflinePreview === 'true' &&
+        dot?.dataset.connectionState === 'offline';
+    }""", timeout=20000)
+    cached_revision = page.locator("#world").get_attribute("data-shared-snapshot-revision")
+    assert cached_revision == str(meta["baseRevision"])
+
+    page.locator("#journal-button").tap()
+    page.locator("#import-world").wait_for(state="attached")
+    write_attempts = []
+
+    def capture_write(request):
+        if request.method == "POST" and "/api/" in request.url:
+            write_attempts.append({"method": request.method, "url": request.url})
+
+    page.on("request", capture_write)
+    private_save_bytes = json.dumps(
+        private_fixture["save"], separators=(",", ":")
+    ).encode("utf-8")
+    page.locator("#import-world").set_input_files({
+        "name": "ngl-private-import-regression.json",
+        "mimeType": "application/json",
+        "buffer": private_save_bytes
+    })
+    page.wait_for_function("""() => {
+      const mode = document.querySelector('#mode-label')?.textContent || '';
+      return mode.includes('Private world') &&
+        document.querySelector('#sheet')?.hidden === true;
+    }""", timeout=20000)
+
+    imported = page.evaluate("""() => {
+      const raw = localStorage.getItem('ngl.common-ground.v2');
+      const world = raw ? JSON.parse(raw) : null;
+      const canvas = document.querySelector('#world');
+      const dot = document.querySelector('#connection-dot');
+      return {
+        worldId: world?.id,
+        revision: world?.revision,
+        xp: world?.xp,
+        modeLabel: document.querySelector('#mode-label')?.textContent || '',
+        sharedSnapshotSource: canvas?.dataset.sharedSnapshotSource,
+        sharedSnapshotCacheOnly: canvas?.dataset.sharedSnapshotCacheOnly,
+        sharedOfflinePreview: canvas?.dataset.sharedOfflinePreview,
+        sharedSnapshotRevision: canvas?.dataset.sharedSnapshotRevision,
+        worldRevision: canvas?.dataset.worldRevision,
+        movementEnabled: canvas?.dataset.movementEnabled,
+        connectionState: dot?.dataset.connectionState,
+        connectionTitle: dot?.title || '',
+        makeButton: document.querySelector('#make-button')?.textContent || ''
+      };
+    }""")
+    # The private event ID is checked separately from the stored event array;
+    # it is not exposed on window or accepted as canonical state.
+    imported_event_ids = page.evaluate("""() => {
+      const world = JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+      return Array.isArray(world?.events) ? world.events.map(event => event.id) : [];
+    }""")
+    assert imported["worldId"] == meta["worldId"]
+    assert imported["revision"] == meta["privateRevision"]
+    assert imported["xp"] == meta["privateXp"]
+    assert meta["privateEventId"] in imported_event_ids
+    assert imported["modeLabel"].startswith("Private world")
+    assert imported["sharedSnapshotSource"] == "private", imported
+    assert imported["sharedSnapshotCacheOnly"] == "false", imported
+    assert imported["sharedOfflinePreview"] == "false", imported
+    assert imported["sharedSnapshotRevision"] == str(meta["privateRevision"]), imported
+    assert imported["worldRevision"] == str(meta["privateRevision"]), imported
+    assert imported["movementEnabled"] == "true", imported
+    assert imported["connectionState"] == "offline", imported
+    assert "private work remains on this device" in imported["connectionTitle"], imported
+    assert "Read-only snapshot" not in imported["makeButton"], imported
+    assert write_attempts == [], (
+        "Importing a private save while cache-only must not submit a shared write."
+    )
+    page.screenshot(
+        path=str(out / ("private-import-offline-" + str(width) + ".png")),
+        full_page=True
+    )
+
+    # A failed attempt to rejoin the shared world must restore the still-loaded
+    # private world. Remove the public cache so the only safe fallback is private.
+    page.evaluate("""() => {
+      localStorage.removeItem('ngl.common-ground.shared-snapshot.v1');
+      localStorage.removeItem('ngl.common-ground.shared-position.v1');
+    }""")
+    private_before_failed_join = page.evaluate("""() => {
+      const world = JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+      const canvas = document.querySelector('#world');
+      return {
+        worldId: world?.id,
+        revision: world?.revision,
+        xp: world?.xp,
+        eventIds: Array.isArray(world?.events) ? world.events.map(event => event.id) : [],
+        playerX: Number(canvas?.dataset.playerX),
+        playerY: Number(canvas?.dataset.playerY)
+      };
+    }""")
+    assert private_before_failed_join["worldId"] == meta["worldId"]
+    assert private_before_failed_join["revision"] == meta["privateRevision"]
+    assert math.isfinite(private_before_failed_join["playerX"])
+    assert math.isfinite(private_before_failed_join["playerY"])
+
+    failed_join_requests = []
+
+    def fail_shared_join(route):
+        request = route.request
+        failed_join_requests.append({
+            "method": request.method,
+            "path": request.url.split("?", 1)[0]
+        })
+        route.fulfill(
+            status=503,
+            content_type="application/json",
+            body='{"error":"synthetic shared join unavailable"}'
+        )
+
+    page.route("**/api/state", fail_shared_join)
+    try:
+        page.locator("#journal-button").tap()
+        enter_shared_while_offline = page.locator("#sheet-content button").filter(
+            has_text="Enter shared world"
+        )
+        expect(enter_shared_while_offline).to_be_visible()
+        with page.expect_response(
+            lambda response: response.url.split("?", 1)[0].endswith("/api/state")
+            and response.status == 503,
+            timeout=10000
+        ) as failed_join_response:
+            enter_shared_while_offline.tap()
+        failed_join_status = failed_join_response.value.status
+        page.wait_for_function("""() => {
+          const canvas = document.querySelector('#world');
+          const dot = document.querySelector('#connection-dot');
+          const label = document.querySelector('#mode-label')?.textContent || '';
+          return label.startsWith('Private world') &&
+            canvas?.dataset.sharedSnapshotSource === 'private' &&
+            canvas?.dataset.sharedSnapshotCacheOnly === 'false' &&
+            canvas?.dataset.sharedOfflinePreview === 'false' &&
+            canvas?.dataset.movementEnabled === 'true' &&
+            dot?.dataset.connectionState === 'offline';
+        }""", timeout=10000)
+        page.wait_for_function(
+            "() => document.querySelector('#toast')?.textContent.includes('private world remains active and playable')",
+            timeout=5000
+        )
+    finally:
+        page.unroute("**/api/state", fail_shared_join)
+
+    assert failed_join_status == 503
+    assert len(failed_join_requests) == 1, failed_join_requests
+    assert failed_join_requests[0]["method"] == "GET", failed_join_requests
+    assert failed_join_requests[0]["path"].endswith("/api/state"), failed_join_requests
+
+    restored_private = page.evaluate("""() => {
+      const world = JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+      const canvas = document.querySelector('#world');
+      const dot = document.querySelector('#connection-dot');
+      return {
+        worldId: world?.id,
+        revision: world?.revision,
+        xp: world?.xp,
+        eventIds: Array.isArray(world?.events) ? world.events.map(event => event.id) : [],
+        playerX: Number(canvas?.dataset.playerX),
+        playerY: Number(canvas?.dataset.playerY),
+        modeLabel: document.querySelector('#mode-label')?.textContent || '',
+        movementEnabled: canvas?.dataset.movementEnabled,
+        sharedSnapshotSource: canvas?.dataset.sharedSnapshotSource,
+        sharedSnapshotCacheOnly: canvas?.dataset.sharedSnapshotCacheOnly,
+        sharedOfflinePreview: canvas?.dataset.sharedOfflinePreview,
+        connectionState: dot?.dataset.connectionState
+      };
+    }""")
+    assert restored_private["worldId"] == private_before_failed_join["worldId"]
+    assert restored_private["revision"] == private_before_failed_join["revision"]
+    assert restored_private["xp"] == private_before_failed_join["xp"]
+    assert restored_private["eventIds"] == private_before_failed_join["eventIds"]
+    assert restored_private["modeLabel"].startswith("Private world")
+    assert restored_private["movementEnabled"] == "true"
+    assert restored_private["sharedSnapshotSource"] == "private"
+    assert restored_private["sharedSnapshotCacheOnly"] == "false"
+    assert restored_private["sharedOfflinePreview"] == "false"
+    assert restored_private["connectionState"] == "offline"
+
+    # Prove that the restored control state is playable, not just a DOM flag.
+    page.locator("#world").focus()
+    page.keyboard.down("ArrowRight")
+    page.wait_for_timeout(300)
+    page.keyboard.up("ArrowRight")
+    page.wait_for_function(
+        "x => Number(document.querySelector('#world')?.dataset.playerX) > x + 8",
+        arg=private_before_failed_join["playerX"],
+        timeout=5000
+    )
+    private_after_movement = page.evaluate("""() => {
+      const world = JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+      const canvas = document.querySelector('#world');
+      return {
+        worldId: world?.id,
+        revision: world?.revision,
+        xp: world?.xp,
+        eventIds: Array.isArray(world?.events) ? world.events.map(event => event.id) : [],
+        playerX: Number(canvas?.dataset.playerX),
+        playerY: Number(canvas?.dataset.playerY)
+      };
+    }""")
+    private_movement_delta = private_after_movement["playerX"] - private_before_failed_join["playerX"]
+    assert private_movement_delta > 8, private_after_movement
+    assert private_after_movement["worldId"] == private_before_failed_join["worldId"]
+    assert private_after_movement["revision"] == private_before_failed_join["revision"]
+    assert private_after_movement["xp"] == private_before_failed_join["xp"]
+    assert private_after_movement["eventIds"] == private_before_failed_join["eventIds"]
+    assert write_attempts == [], (
+        "A failed shared join and private movement must not submit shared writes."
+    )
+
+    page.context.set_offline(False)
+    page.evaluate("() => window.dispatchEvent(new Event('online'))")
+    wait_for_shared_connection(page, "after private import network restoration")
+    page.locator("#journal-button").tap()
+    enter_shared = page.locator("#sheet-content button").filter(has_text="Enter shared world")
+    expect(enter_shared).to_be_visible()
+    enter_shared.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')",
+        timeout=20000
+    )
+    wait_for_shared_connection(page, "after private-import shared re-entry")
+
+    after = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        shared_before, after, "Private-import shared-snapshot re-entry"
+    )
+    assert after["revision"] == meta["baseRevision"]
+    assert after["revision"] < meta["privateRevision"]
+    assert authoritative_position(page) == shared_position_before, (
+        "Private import must not move the shared character position."
+    )
+    assert meta["privateEventId"] not in after["eventIds"], (
+        "The imported private discovery must never enter shared history."
+    )
+    live = page.evaluate("""() => {
+      const canvas = document.querySelector('#world');
+      return {
+        source: canvas?.dataset.sharedSnapshotSource,
+        cacheOnly: canvas?.dataset.sharedSnapshotCacheOnly,
+        offlinePreview: canvas?.dataset.sharedOfflinePreview,
+        sharedRevision: canvas?.dataset.sharedSnapshotRevision,
+        worldRevision: canvas?.dataset.worldRevision,
+        modeLabel: document.querySelector('#mode-label')?.textContent || '',
+        makeButton: document.querySelector('#make-button')?.textContent || ''
+      };
+    }""")
+    assert live["source"] == "server", live
+    assert live["cacheOnly"] == "false", live
+    assert live["offlinePreview"] == "false", live
+    assert live["sharedRevision"] == str(after["revision"]), live
+    assert live["worldRevision"] == str(after["revision"]), live
+    assert live["modeLabel"].startswith("Shared world"), live
+    assert "Read-only snapshot" not in live["makeButton"], live
+    assert write_attempts == [], (
+        "Private import and shared re-entry must not manufacture a shared mutation."
+    )
+    assert_mobile_layout(page, width)
+    return {
+        "transport": "synthetic browser offline cache-only import and live re-entry",
+        "worldId": meta["worldId"],
+        "sharedRevisionBefore": meta["baseRevision"],
+        "privateRevision": meta["privateRevision"],
+        "sharedRevisionAfter": after["revision"],
+        "privateEventId": meta["privateEventId"],
+        "privateEventNotShared": True,
+        "privateModeFlagsReset": True,
+        "failedSharedJoinRecovery": {
+            "status": failed_join_status,
+            "requestCount": len(failed_join_requests),
+            "privateMovementRestored": restored_private["movementEnabled"] == "true",
+            "offlineStatePreserved": restored_private["connectionState"] == "offline",
+            "movementDelta": private_movement_delta,
+            "privateWorldUnchanged": (
+                private_after_movement["worldId"] == private_before_failed_join["worldId"]
+                and private_after_movement["revision"] == private_before_failed_join["revision"]
+                and private_after_movement["xp"] == private_before_failed_join["xp"]
+                and private_after_movement["eventIds"] == private_before_failed_join["eventIds"]
+            ),
+            "sharedWritesAttempted": write_attempts
+        },
+        "firstLowerRevisionServerSnapshotAccepted": True,
+        "canonicalSharedStateUnchanged": True,
+        "sharedWritesAttempted": write_attempts
     }
 
 
@@ -2685,6 +3059,7 @@ def run_viewport(browser, width, out):
                 )
                 return_to_founder(page, founder["id"])
                 offline_snapshot_reentry = assert_offline_cached_shared_snapshot_recovery(page, width)
+                private_import_reentry = assert_private_import_shared_reentry(page, width, out)
                 layout = assert_mobile_layout(page, width)
                 assert not errors, "Browser page errors: " + json.dumps(errors)
 
@@ -2706,6 +3081,7 @@ def run_viewport(browser, width, out):
                     "projectStateSnapshot": project_state_snapshot,
                     "offlinePreview": offline_preview,
                     "offlineSnapshotReentry": offline_snapshot_reentry,
+                    "privateImportReentry": private_import_reentry,
                     "sourceObservatory": observatory,
                     "sourceArchiveFailure": source_archive_failure,
                     "sourceArchiveFailureLedger": failure_ledger,
@@ -2756,7 +3132,7 @@ def main():
     summary = {
         "journeys": results,
         "passed": len(results) == 2 and all(result["passed"] for result in results),
-        "evidenceBoundary": "The disposable shared-server fixture injects 13 initial 503 GitHub responses and a 14th while the Founder is viewing the older failure page. The service appends 14 Founder-attributed source-archive-attempt-failed events, each bound to a distinct request ID; no client-authored failure, draft, publication, XP, truth verdict, or authority is created. The Evidence Archive renders bounded pages of 12, and its local cursor resets to the newest page when the shared world revision changes. The acceptance compares page revision against the post-arrival snapshot so legitimate location discovery remains retained. Pagination and cursor rebinding create no canonical event or XP. The Witness can see the latest failure in shared history. These are simulated upstream outages, not live GitHub outages. The fixture also explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. The offline shared-snapshot re-entry journey reloads a redacted public projection under synthetic browser offline conditions, blocks shared writes and resumes only after fresh server state is accepted. It is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
+        "evidenceBoundary": "The disposable shared-server fixture injects 13 initial 503 GitHub responses and a 14th while the Founder is viewing the older failure page. The service appends 14 Founder-attributed source-archive-attempt-failed events, each bound to a distinct request ID; no client-authored failure, draft, publication, XP, truth verdict, or authority is created. The Evidence Archive renders bounded pages of 12, and its local cursor resets to the newest page when the shared world revision changes. The acceptance compares page revision against the post-arrival snapshot so legitimate location discovery remains retained. Pagination and cursor rebinding create no canonical event or XP. The Witness can see the latest failure in shared history. These are simulated upstream outages, not live GitHub outages. The fixture also explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. The offline shared-snapshot re-entry journey reloads a redacted public projection under synthetic browser offline conditions, blocks shared writes and resumes only after fresh server state is accepted. A separate private-import journey imports a same-world save whose local revision is higher while the client is in cache-only mode, verifies private provenance/controls reset, then injects a synthetic HTTP 503 while no public cache is available. The client must restore private movement and the offline indicator, permit real local keyboard travel without changing the private world revision/XP/event history or issuing shared writes, then re-enter the live server at its lower accepted revision without leaking the private event or changing shared history. Both connectivity transitions and the 503 are synthetic browser fixtures, not physical network or Android-device tests; no truth, execution, approval, mastery, or authority is established."
     }
     (args.out / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",

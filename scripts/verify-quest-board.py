@@ -223,6 +223,47 @@ def authoritative_player_position(page):
     }""")
 
 
+
+def wait_for_shared_world_ready(page, timeout=30000):
+    """Wait for a live, server-backed shared session before attempting world travel."""
+    try:
+        page.wait_for_function(
+            """() => {
+                const dot = document.querySelector('#connection-dot');
+                const world = document.querySelector('#world');
+                return navigator.onLine === true &&
+                    dot?.dataset.connectionState === 'online' &&
+                    world?.dataset.sharedSnapshotSource === 'server' &&
+                    world?.dataset.sharedSnapshotCacheOnly === 'false' &&
+                    world?.dataset.sharedOfflinePreview === 'false' &&
+                    world?.dataset.movementEnabled === 'true';
+            }""",
+            timeout=timeout
+        )
+    except Exception as error:
+        diagnostics = page.evaluate("""() => {
+            const dot = document.querySelector('#connection-dot');
+            const world = document.querySelector('#world');
+            return {
+                navigatorOnLine: navigator.onLine,
+                modeLabel: document.querySelector('#mode-label')?.textContent ?? null,
+                connectionState: dot?.dataset.connectionState ?? null,
+                connectionLabel: dot?.getAttribute('aria-label') ?? null,
+                movementEnabled: world?.dataset.movementEnabled ?? null,
+                sharedOfflinePreview: world?.dataset.sharedOfflinePreview ?? null,
+                sharedSnapshotCacheOnly: world?.dataset.sharedSnapshotCacheOnly ?? null,
+                sharedSnapshotSource: world?.dataset.sharedSnapshotSource ?? null,
+                worldRevision: world?.dataset.worldRevision ?? null,
+                navigationState: world?.dataset.navigationState ?? null,
+                navigationTargetId: world?.dataset.navigationTargetId ?? null,
+                nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null
+            };
+        }""")
+        raise AssertionError(
+            'Shared session did not complete EventSource connection and authoritative position reconciliation before world interaction: ' +
+            json.dumps(diagnostics, sort_keys=True)
+        ) from error
+
 def publish_fixture(page):
     return page.evaluate("""async () => {
       const post = async action => {
@@ -396,6 +437,7 @@ def enter_nearby_institution(page, place_id, accessible_name, title, timeout=300
 
 def open_quest_board(page):
     page.bring_to_front()
+    wait_for_shared_world_ready(page)
     page.locator('#places-button').tap()
     route = page.get_by_role('button', name='Walk to Quest Board', exact=True)
     expect(route).to_be_visible()
@@ -481,6 +523,7 @@ def assert_publication_chronicle_navigation(page, publication, out, width):
         page.locator('#sheet-close').tap()
         expect(page.locator('#sheet')).to_be_hidden()
     page.bring_to_front()
+    wait_for_shared_world_ready(page)
     page.locator('#places-button').tap()
     route = page.get_by_role('button', name='Walk to Publication House', exact=True)
     expect(route).to_be_visible()
@@ -915,6 +958,7 @@ def record_source_archive_failure(page):
 
 def open_evidence_archive(page):
     page.bring_to_front()
+    wait_for_shared_world_ready(page)
     page.locator('#places-button').tap()
     route = page.get_by_role('button', name='Walk to Evidence Archive', exact=True)
     expect(route).to_be_visible()
@@ -1041,6 +1085,7 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').tap()
 
+    wait_for_shared_world_ready(page)
     page.locator('#places-button').tap()
     guild_route = page.get_by_role('button', name='Walk to Guild Hall', exact=True)
     expect(guild_route).to_be_visible()
@@ -1671,6 +1716,71 @@ def assert_contradiction_ward_dossier(page, expected_text, expected_claim, expec
     }
 
 
+
+def assert_previous_bearer_handoff_history(page, item_title, first_offer_id, first_transfer_event_id,
+                                           second_offer_id, second_transfer_event_id, declined_offer_id,
+                                           decline_event_id, current_owner_id, screenshot):
+    before = authoritative_snapshot(page)
+    character_button = page.locator('#character-button')
+    expect(character_button).to_be_visible()
+    character_button.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+        "!document.querySelector('#sheet').hidden"
+    )
+
+    inventory_item = page.locator('#sheet-content [data-field-item-id]').filter(has_text=item_title)
+    expect(inventory_item).to_have_count(0)
+
+    history = page.locator('#sheet-content [data-field-item-participant-history="true"]')
+    expect(history).to_have_count(1)
+    expect(history).to_have_attribute('data-history-total', '3')
+
+    def history_entry(offer_id, status):
+        row = history.locator('[data-field-item-participant-history-entry="' + offer_id + '"]')
+        expect(row).to_have_count(1)
+        expect(row).to_have_attribute('data-transfer-status', status)
+        return row
+
+    first = history_entry(first_offer_id, 'accepted')
+    expect(first).to_contain_text(item_title)
+    expect(first).to_contain_text('Current in-game owner ' + current_owner_id + ' (witness).')
+    first_acceptance = first.locator('[data-field-item-history-event-link="accepted"]')
+    expect(first_acceptance).to_have_count(1)
+    expect(first_acceptance).to_have_attribute('data-chronicle-event-id', first_transfer_event_id)
+    expect(first_acceptance).to_have_attribute('data-chronicle-source', 'world')
+
+    second = history_entry(second_offer_id, 'accepted')
+    expect(second).to_contain_text(item_title)
+    expect(second).to_contain_text('Current in-game owner ' + current_owner_id + ' (witness).')
+    second_acceptance = second.locator('[data-field-item-history-event-link="accepted"]')
+    expect(second_acceptance).to_have_count(1)
+    expect(second_acceptance).to_have_attribute('data-chronicle-event-id', second_transfer_event_id)
+    expect(second_acceptance).to_have_attribute('data-chronicle-source', 'world')
+
+    declined = history_entry(declined_offer_id, 'declined')
+    decline_link = declined.locator('[data-field-item-history-event-link="declined"]')
+    expect(decline_link).to_have_count(1)
+    expect(decline_link).to_have_attribute('data-chronicle-event-id', decline_event_id)
+    expect(decline_link).to_have_attribute('data-chronicle-source', 'world')
+
+    after = authoritative_snapshot(page)
+    assert after == before, 'Inspecting prior-bearer handoff history must not mutate world state or XP.'
+    screenshot = Path(screenshot)
+    page.screenshot(path=str(screenshot), full_page=True)
+    page.locator('#sheet-close').tap()
+    return {
+        'itemNoLongerInInventory': True,
+        'handoffHistoryRetained': True,
+        'firstAcceptanceEventId': first_transfer_event_id,
+        'secondAcceptanceEventId': second_transfer_event_id,
+        'declineEventId': decline_event_id,
+        'currentOwnerId': current_owner_id,
+        'readOnly': after == before,
+        'screenshot': screenshot.name
+    }
+
+
 def assert_deliberator_character_record(page, role, expected_rounds, screenshot, require_320px=False,
                                         expected_armor_bearer=0):
     before = authoritative_snapshot(page)
@@ -1743,18 +1853,21 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
     silent_errors = []
     silent_page.on('pageerror', lambda error: silent_errors.append(str(error)))
     try:
+        wait_for_shared_world_ready(founder_page)
         witness_page.goto(url, wait_until='networkidle')
         witness_page.locator('#start-shared').tap()
         witness_page.locator('#world').wait_for(state='visible')
         witness_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        wait_for_shared_world_ready(witness_page)
         silent_page.goto(url, wait_until='networkidle')
         silent_page.locator('#start-shared').tap()
         silent_page.locator('#world').wait_for(state='visible')
         silent_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        wait_for_shared_world_ready(silent_page)
 
         founder_before = authoritative_snapshot(founder_page)
         witness_before = authoritative_snapshot(witness_page)
@@ -1925,6 +2038,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         founder_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
         )
+        wait_for_shared_world_ready(founder_page)
         founder_page.locator('#character-button').tap()
         founder_page.wait_for_function(
             "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
@@ -2030,6 +2144,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         founder_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
         )
+        wait_for_shared_world_ready(founder_page)
         founder_page.locator('#character-button').tap()
         founder_page.wait_for_function(
             "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
@@ -2248,6 +2363,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         witness_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        wait_for_shared_world_ready(witness_page)
         witness_page.locator('#character-button').tap()
         witness_page.wait_for_function(
             "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
@@ -2463,16 +2579,93 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             forge_event_id, founder_before['viewerId'], founder_before['viewerRole'], timeout=15000
         )
         assert recipient_equip_event_id
-        founder_page.locator('#sheet-close').tap()
 
-        founder_page.reload(wait_until='networkidle')
-        founder_page.locator('#start-shared').tap()
-        founder_page.locator('#world').wait_for(state='visible')
+        # The Founder becomes the next bearer: equip, unequip, then explicitly
+        # offer the same retained item to the third active session.
+        founder_page.locator(
+            '#sheet-content [data-equipment-slot="adversarial"] [data-unequip-field-item="adversarial"]'
+        ).tap()
+        founder_ward = founder_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Contradiction Ward')
+        next_recipient_selector = founder_ward.locator('[data-transfer-recipient]')
         founder_page.wait_for_function(
-            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+            "actorId => { const select = document.querySelector('#sheet-content [data-transfer-recipient]'); "
+            "return Boolean(select && Array.from(select.options).some(option => "
+            "option.value === actorId && option.getAttribute('data-role') === 'witness')); }",
+            arg=silent_before['viewerId']
         )
-        founder_transfer_dossier = assert_contradiction_ward_dossier(
-            founder_page,
+        next_recipient_selector.select_option(value=silent_before['viewerId'])
+        founder_ward.locator('[data-offer-field-item]').tap()
+        expect(founder_ward.locator('[data-cancel-field-item-transfer]')).to_be_visible()
+        second_transfer_offer = founder_page.evaluate("""async expected => {
+          const response = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
+          if (!response.ok) throw new Error('Could not inspect the second retained Armor Bearer offer.');
+          const dto = await response.json();
+          const matches = dto.world.events.filter(event =>
+            event.type === 'field-item-transfer-offered' &&
+            event.itemEventId === expected.itemEventId &&
+            event.actor?.id === expected.actorId &&
+            event.recipientId === expected.recipientId &&
+            event.recipientRole === 'witness'
+          );
+          if (matches.length !== 1) throw new Error('Expected one Founder-to-Witness carry-forward offer, found ' + matches.length);
+          const event = matches[0];
+          return {eventId: event.id, offerId: event.offerId,
+            recipientId: event.recipientId, recipientRole: event.recipientRole};
+        }""", {
+            'itemEventId': forge_event_id,
+            'actorId': founder_before['viewerId'],
+            'recipientId': silent_before['viewerId']
+        })
+        assert second_transfer_offer['recipientId'] == silent_before['viewerId']
+        assert second_transfer_offer['recipientRole'] == 'witness'
+        assert second_transfer_offer['offerId']
+
+        if silent_page.locator('#sheet').is_visible():
+            silent_page.locator('#sheet-close').tap()
+        silent_page.locator('#character-button').tap()
+        silent_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
+        second_incoming_offer = silent_page.locator(
+            '#sheet-content [data-field-transfer-offer="' + second_transfer_offer['offerId'] + '"]'
+        )
+        expect(second_incoming_offer).to_have_count(1)
+        expect(second_incoming_offer).to_contain_text('Original creator ' + witness_before['viewerId'])
+        expect(second_incoming_offer.locator('[data-field-item-transfer-history]')).to_have_attribute(
+            'data-history-total', '2'
+        )
+        second_accept_button = second_incoming_offer.locator('[data-accept-field-item-transfer]')
+        expect(second_accept_button).to_have_count(1)
+        second_accept_button.tap()
+        silent_ward = silent_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Contradiction Ward')
+        expect(silent_ward).to_have_count(1)
+        expect(silent_ward).to_contain_text('current owner ' + silent_before['viewerId'])
+        expect(silent_ward).to_contain_text('Original creator ' + witness_before['viewerId'])
+        second_transfer_event_id = wait_for_retained_event_id(
+            silent_page, 'field-item-transferred', 'offerId',
+            second_transfer_offer['offerId'], silent_before['viewerId'], 'witness', timeout=15000
+        )
+        assert second_transfer_event_id
+        silent_ward.locator('[data-equip-forged-item]').tap()
+        silent_equip_event_id = wait_for_retained_event_id(
+            silent_page, 'field-item-equipped', 'sourceEventId',
+            forge_event_id, silent_before['viewerId'], 'witness', timeout=15000
+        )
+        assert silent_equip_event_id
+        expect(silent_page.locator(
+            '#sheet-content [data-equipment-slot="adversarial"] [data-unequip-field-item="adversarial"]'
+        )).to_be_visible()
+
+        # The same source-bound dissent dossier must travel with the exact item
+        # through the second handoff without becoming evidence or adjudication.
+        silent_page.locator('#sheet-close').tap()
+        silent_transfer_dossier = assert_contradiction_ward_dossier(
+            silent_page,
             'The model assertion has no retrieved primary source. Literal <img> text remains text.',
             'Founder fixture claim: the model assertion is not verified.',
             'Agreed: this remains a lead until the primary source is retrieved.',
@@ -2481,7 +2674,42 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             source_observation_event_id,
             challenge_event_id,
             response_event_id,
-            out / 'contradiction-ward-dossier-recipient-founder-390.png'
+            out / 'contradiction-ward-dossier-recipient-silent-320.png'
+        )
+
+        after_chain_founder = authoritative_snapshot(founder_page)
+        after_chain_witness = authoritative_snapshot(witness_page)
+        after_chain_silent = authoritative_snapshot(silent_page)
+        assert shared_world_snapshot(after_chain_founder) == shared_world_snapshot(after_chain_witness)
+        assert shared_world_snapshot(after_chain_founder) == shared_world_snapshot(after_chain_silent)
+        assert after_chain_founder['xp'] == founder_before['xp']
+        assert after_chain_witness['xp'] == witness_before['xp']
+        assert after_chain_silent['xp'] == silent_before['xp'], (
+            'A second accepted handoff and recipient equipment are progression records, not XP.'
+        )
+        founder_page.locator('#sheet-close').tap()
+
+        founder_page.reload(wait_until='networkidle')
+        founder_page.locator('#start-shared').tap()
+        founder_page.locator('#world').wait_for(state='visible')
+        founder_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+        )
+        wait_for_shared_world_ready(founder_page)
+        # Founder has now carried the Ward forward to Silent. The item must leave
+        # Founder's inventory while the exact accepted/declined handoff history
+        # remains visible and linked to its canonical Chronicle events.
+        founder_handoff_history = assert_previous_bearer_handoff_history(
+            founder_page,
+            'Contradiction Ward',
+            transfer_offer['offerId'],
+            transfer_event_id,
+            second_transfer_offer['offerId'],
+            second_transfer_event_id,
+            decline_offer_id,
+            decline_event_id,
+            silent_before['viewerId'],
+            out / 'contradiction-ward-handoff-history-previous-founder-390.png'
         )
 
         witness_page.reload(wait_until='networkidle')
@@ -2490,6 +2718,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         witness_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        wait_for_shared_world_ready(witness_page)
         witness_before_empty_inventory = authoritative_snapshot(witness_page)
         witness_page.locator('#character-button').tap()
         witness_page.wait_for_function(
@@ -2513,10 +2742,10 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'All three independent contexts must observe the same retained shared world.'
         )
         assert after_founder['xp'] == founder_before['xp'] == after_silent['xp'], (
-            'Guild membership, observations, dissent and response award no XP.'
+            'Guild participation, dissent, responses, and both Armor Bearer handoffs award no XP.'
         )
-        assert after_founder['revision'] == founder_before['revision'] + 17, (
-            'Exactly seventeen canonical actions should be retained: the original nine, four transfer/equipment actions, the second contribution plus Forge, and one recipient offer plus decline.'
+        assert after_founder['revision'] == founder_before['revision'] + 21, (
+            'Exactly twenty-one canonical actions should be retained: the original seventeen plus the Founder unequip, second offer, second acceptance, and third-player equip.'
         )
         assert after_witness['xp'] == witness_before['xp'] == after_silent['xp']
         event_summary = founder_page.evaluate("""async () => {
@@ -2589,9 +2818,9 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert second_forge['id'] == second_forge_event_id
         assert second_forge['actorId'] == witness_before['viewerId']
         assert second_forge['slotId'] == 'observation'
-        assert len(event_summary['equips']) == 2
+        assert len(event_summary['equips']) == 3
         assert {item['actorId'] for item in event_summary['equips']} == {
-            witness_before['viewerId'], founder_before['viewerId']
+            witness_before['viewerId'], founder_before['viewerId'], silent_before['viewerId']
         }
         assert all(item['slotId'] == 'adversarial' and item['sourceEventId'] == forge_event_id
                    for item in event_summary['equips'])
@@ -2601,18 +2830,32 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         ]
         assert len(recipient_equip_events) == 1
         assert recipient_equip_events[0]['id'] == recipient_equip_event_id
-        assert len(event_summary['unequips']) == 1
-        assert event_summary['unequips'][0]['actorId'] == witness_before['viewerId']
-        assert event_summary['unequips'][0]['slotId'] == 'adversarial'
-        assert len(event_summary['transferOffers']) == 2
+        third_player_equip_events = [
+            item for item in event_summary['equips']
+            if item['actorId'] == silent_before['viewerId']
+        ]
+        assert len(third_player_equip_events) == 1
+        assert third_player_equip_events[0]['id'] == silent_equip_event_id
+        assert len(event_summary['unequips']) == 2
+        assert {item['actorId'] for item in event_summary['unequips']} == {
+            witness_before['viewerId'], founder_before['viewerId']
+        }
+        assert all(item['slotId'] == 'adversarial' for item in event_summary['unequips'])
+        assert len(event_summary['transferOffers']) == 3
         accepted_offer = next(item for item in event_summary['transferOffers']
-                              if item['itemEventId'] == forge_event_id)
+                              if item['itemEventId'] == forge_event_id and item['actorId'] == witness_before['viewerId'])
+        carried_offer = next(item for item in event_summary['transferOffers']
+                             if item['itemEventId'] == forge_event_id and item['actorId'] == founder_before['viewerId'])
         declined_offer = next(item for item in event_summary['transferOffers']
                               if item['itemEventId'] == second_forge_event_id)
         assert accepted_offer['actorId'] == witness_before['viewerId']
         assert accepted_offer['offerId'] == transfer_offer['offerId']
         assert accepted_offer['recipientId'] == founder_before['viewerId']
         assert accepted_offer['recipientRole'] == 'founder'
+        assert carried_offer['actorId'] == founder_before['viewerId']
+        assert carried_offer['offerId'] == second_transfer_offer['offerId']
+        assert carried_offer['recipientId'] == silent_before['viewerId']
+        assert carried_offer['recipientRole'] == 'witness'
         assert declined_offer['actorId'] == witness_before['viewerId']
         assert declined_offer['offerId'] == decline_offer_id
         assert declined_offer['recipientId'] == founder_before['viewerId']
@@ -2621,13 +2864,19 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert event_summary['declines'][0]['id'] == decline_event_id
         assert event_summary['declines'][0]['actorId'] == founder_before['viewerId']
         assert event_summary['declines'][0]['offerId'] == decline_offer_id
-        assert len(event_summary['transfers']) == 1
-        assert event_summary['transfers'][0]['actorId'] == founder_before['viewerId']
-        assert event_summary['transfers'][0]['itemEventId'] == forge_event_id
-        assert event_summary['transfers'][0]['id'] == transfer_event_id
-        assert event_summary['transfers'][0]['offerId'] == transfer_offer['offerId']
-        assert event_summary['transfers'][0]['fromActorId'] == witness_before['viewerId']
-        assert event_summary['transfers'][0]['fromActorRole'] == 'witness'
+        assert len(event_summary['transfers']) == 2
+        first_transfer = next(item for item in event_summary['transfers'] if item['offerId'] == transfer_offer['offerId'])
+        assert first_transfer['actorId'] == founder_before['viewerId']
+        assert first_transfer['itemEventId'] == forge_event_id
+        assert first_transfer['id'] == transfer_event_id
+        assert first_transfer['fromActorId'] == witness_before['viewerId']
+        assert first_transfer['fromActorRole'] == 'witness'
+        second_transfer = next(item for item in event_summary['transfers'] if item['offerId'] == second_transfer_offer['offerId'])
+        assert second_transfer['actorId'] == silent_before['viewerId']
+        assert second_transfer['itemEventId'] == forge_event_id
+        assert second_transfer['id'] == second_transfer_event_id
+        assert second_transfer['fromActorId'] == founder_before['viewerId']
+        assert second_transfer['fromActorRole'] == 'founder'
         assert all(item['sourceRetrieval'] == 'NOT_PERFORMED' for item in event_summary['observations'])
         assert all(item['independentVerification'] == 'NOT_PERFORMED' for item in event_summary['observations'])
         assert all(item['modelAssertions'] == 'LEADS_ONLY' for item in event_summary['observations'])
@@ -2751,18 +3000,21 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         founder_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
         )
+        wait_for_shared_world_ready(founder_page)
         witness_page.reload(wait_until='networkidle')
         witness_page.locator('#start-shared').tap()
         witness_page.locator('#world').wait_for(state='visible')
         witness_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        wait_for_shared_world_ready(witness_page)
         silent_page.reload(wait_until='networkidle')
         silent_page.locator('#start-shared').tap()
         silent_page.locator('#world').wait_for(state='visible')
         silent_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        wait_for_shared_world_ready(silent_page)
         founder_persisted = authoritative_snapshot(founder_page)
         witness_persisted = authoritative_snapshot(witness_page)
         silent_persisted = authoritative_snapshot(silent_page)
@@ -2777,8 +3029,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         open_quest_board(founder_page)
         assert_board(founder_page, 'founder')
         assert_contradiction_ward_objectives(founder_page, 'founder', '0/1')
-        assert_carry_forward_objective(founder_page, 'founder', '0/1')
-        assert_armor_bearer_delivery_objective(founder_page, 'founder', '2/4', complete=False)
+        assert_carry_forward_objective(founder_page, 'founder', '1/1')
+        assert_armor_bearer_delivery_objective(founder_page, 'founder', '4/4', complete=True)
         assert_circuit_progress(founder_page, 'founder', '4/4', complete=True)
         assert_circuit_round_progress(founder_page, 'founder', 2, '4/4', complete=True)
         assert_circuit_round_progress(founder_page, 'founder', 3, '0/4', complete=False)
@@ -2810,7 +3062,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert_board(silent_page, 'witness')
         assert_contradiction_ward_objectives(silent_page, 'witness', '0/1')
         assert_carry_forward_objective(silent_page, 'witness', '0/1')
-        assert_armor_bearer_delivery_objective(silent_page, 'witness', '0/4', complete=False)
+        assert_armor_bearer_delivery_objective(silent_page, 'witness', '2/4', complete=False)
         assert_circuit_progress(silent_page, 'witness', '4/4', complete=True)
         assert_circuit_round_progress(silent_page, 'witness', 2, '4/4', complete=True)
         assert_circuit_round_progress(silent_page, 'witness', 3, '0/4', complete=False)
@@ -2844,7 +3096,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         # records, while a current member who authored none receives zero.
         founder_character = assert_deliberator_character_record(
             founder_page, 'founder', 2, out / 'deliberator-founder-390.png',
-            expected_armor_bearer=0
+            expected_armor_bearer=1
         )
         witness_character = assert_deliberator_character_record(
             witness_page, 'witness', 2, out / 'deliberator-witness-390.png',
@@ -2855,7 +3107,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             require_320px=True, expected_armor_bearer=0
         )
         assert founder_character['deliberatorRounds'] == witness_character['deliberatorRounds'] == 2
-        assert founder_character['armorBearerTransfers'] == 0
+        assert founder_character['armorBearerTransfers'] == 1
         assert witness_character['armorBearerTransfers'] == 1
         assert silent_character['armorBearerTransfers'] == 0
         assert silent_character['deliberatorRounds'] == 0
@@ -2867,7 +3119,10 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         # they are not evidence of distinct humans and award no XP.
         history_action_before = authoritative_snapshot(founder_page)
         history_offer_ids = []
-        for index in range(11):
+        # The three-session Ward chain adds one accepted offer; keep 13 total
+        # participant offers so the 12-entry newest page and one-entry older
+        # page still exercise the intended bounded pagination boundary.
+        for index in range(10):
             offer_payload = post_action(witness_page, {
                 'type': 'offer-field-item-transfer',
                 'itemEventId': second_forge_event_id,
@@ -2885,7 +3140,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             assert decline_payload.get('ok') is not False
             history_offer_ids.append(offer_id)
         history_action_after = authoritative_snapshot(founder_page)
-        assert history_action_after['revision'] == history_action_before['revision'] + 22
+        assert history_action_after['revision'] == history_action_before['revision'] + 20
         assert history_action_after['xp'] == history_action_before['xp'], (
             'Repeated retained offers and refusals must not award XP.'
         )
@@ -3038,15 +3293,28 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
                 'offeredBy': witness_before['viewerId'],
                 'acceptedBy': founder_before['viewerId'],
                 'creatorPreserved': True,
-                'dossierPreservedAfterReload': founder_transfer_dossier['readOnly'],
+                'previousBearerNoLongerOwnsItem': founder_handoff_history['itemNoLongerInInventory'],
+                'handoffHistoryPreservedAfterReload': founder_handoff_history['handoffHistoryRetained'],
+                'handoffHistoryReadOnly': founder_handoff_history['readOnly'],
                 'senderNoLongerOwnsItem': True,
                 'recipientEquippedExactItem': True,
                 'recipientEquipEventId': recipient_equip_event_id,
                 'questCreditStayedWithChallenger': True
             },
+            'contradictionWardCarryForward': {
+                'offerId': second_transfer_offer['offerId'],
+                'offeredBy': founder_before['viewerId'],
+                'acceptedBy': silent_before['viewerId'],
+                'secondTransferEventId': second_transfer_event_id,
+                'thirdRecipientEquipEventId': silent_equip_event_id,
+                'originalCreatorPreserved': True,
+                'dissentDossierPreserved': silent_transfer_dossier['readOnly'],
+                'recipientHasOnlyTwoOfFourSteps': True,
+                'recipientReceivesNoCarryForwardCredit': silent_character['armorBearerTransfers'] == 0
+            },
             'armorBearerDeliveryQuestProgress': {
-                'founder': '2/4', 'witnessCurrentItem': '1/4',
-                'witnessCompletedHandoff': '4/4', 'silentMember': '0/4'
+                'founder': '4/4', 'witnessCurrentItem': '1/4',
+                'witnessCompletedHandoff': '4/4', 'silentMember': '2/4'
             },
             'secondFieldItem': {
                 'contributionEventId': contribution_event_id,
@@ -3060,7 +3328,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'witnessQuestProgress': '4/4',
             'silentMemberQuestProgress': '4/4',
             'carryForwardQuestProgress': {
-                'founder': '0/1', 'witness': '1/1', 'silentMember': '0/1'
+                'founder': '1/1', 'witness': '1/1', 'silentMember': '0/1'
             },
             'armorBearerSkillCounts': {
                 'founder': founder_character['armorBearerTransfers'],
@@ -3083,7 +3351,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'founderCharacterRecord': founder_character,
             'witnessCharacterRecord': witness_character,
             'silentMemberCharacterRecord': silent_character,
-            'silentMemberReceivesNoParticipationCredit': silent_character['deliberatorRounds'] == 0,
+            'silentMemberReceivesNoDissentCredit': silent_character['deliberatorRounds'] == 0,
             'handoffHistoryPagination': {
                 'participantOfferCount': len(expected_history_ids),
                 'pageSize': 12,
@@ -3112,7 +3380,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'pageErrors': witness_errors + silent_errors,
             'screenshots': [
                 founder_screenshot.name, witness_screenshot.name, silent_screenshot.name,
-                ward_dossier['screenshot'], founder_transfer_dossier['screenshot'],
+                ward_dossier['screenshot'], founder_handoff_history['screenshot'],
+                silent_transfer_dossier['screenshot'],
                 founder_character['screenshot'], witness_character['screenshot'],
                 silent_character['screenshot'], handoff_history_screenshot.name,
                 item_history_chronicle_screenshot.name
@@ -5218,6 +5487,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
         page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
         )
+        wait_for_shared_world_ready(page)
 
         if width == 390:
             # The 320px viewport has already published the shared Source Archive.

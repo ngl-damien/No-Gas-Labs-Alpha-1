@@ -1,3 +1,45 @@
+## Run 309 — gate evidence update — 2026-11-22
+
+**Candidate:** draft runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), exact head \`9ec09334d965875b0165776c44b6375200010b97\`, main base \`0d950c501cf128d828ae4f263cc05a9013d7e8c1\`. Hosted-verified proposed-branch changes are not integrated into main.
+
+| Gate | Status | Run 309 evidence and limit |
+|---|---|---|
+| G0 Product definition | IN_PROGRESS | No new supported-device baseline, server-scale target, or unresolved product decision was settled. |
+| G1 Coherent playable loop | IN_PROGRESS | AOTA Codex stages 10/11 now route to Guild Hall/Synthesis Clerk and Founder Gate/Decision Chamber. The route callback and read-only projection are tested; this is not a complete end-to-end player loop. |
+| G2 Persistent character/world | IN_PROGRESS | Full Verify passes on the exact proposed head. This run adds no persistence or restart claim. |
+| G3 Authoritative multiplayer | IN_PROGRESS | No new independent-human or scale claim. The shared-session and offline recovery fixtures remain synthetic where documented. |
+| G4 Core RPG | IN_PROGRESS | The new Codex routes award zero XP and mutate no world state. No new inventory, combat, or skill progression is claimed. |
+| G5 Social/economic | IN_PROGRESS | No new exchange, public-economy, or moderation capability. |
+| G6 Persistent world/content | IN_PROGRESS | Forge, Guild Hall, Founder Gate/Decision Chamber, and Publication House now state distinct institutional responsibilities and non-equivalences. The two charter stages remain unrepresented; navigation is related context only, not quest completion. |
+| G7 Android-first | IN_PROGRESS | Synthesis Clerk mobile acceptance passes at 320px and 390px; Quest Board and Android emulator journeys remain in progress at capture. Browser acceptance fails on Worker A's stale hidden locator. No physical-device acceptance or release. |
+| G8 Operational readiness | IN_PROGRESS | Hosted preflight and Full Verify pass on the exact head. No new scale, backup/restore, or production operations claim. |
+| G9 Release and Founder acceptance | NOT_STARTED | PR #718 remains draft/unmerged; no integrated candidate, authorized release, or Founder acceptance. |
+
+Founder trust remains **NOT_ENROLLED**. Do not promote any gate from this UI routing change alone.
+
+---
+
+## Run 308 — gate evidence update — 2026-11-22
+
+**Candidate:** draft PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), runtime/test head `39f39a321f19db49ebc442ebcbfc4081616b389b`, main base `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. The capability is hosted-verified on a proposed branch only; it is not integrated into main.
+
+| Gate | Status | Run 308 evidence and limit |
+|---|---|---|
+| G0 Product definition | IN_PROGRESS | Contract remains authoritative; supported physical-device baseline and initial player scale are not established by this run. |
+| G1 Coherent playable loop | IN_PROGRESS | Quest Board and Synthesis Clerk journeys pass at 320px/390px; not yet one integrated, Founder-accepted product journey. |
+| G2 Persistent character/world | IN_PROGRESS | Full Verify [45025874268](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874268) passes on code/test head. The new restart test reconstructs a pending Armor Bearer offer from retained events after server restart, rejects wrong-recipient acceptance without mutation, and verifies one valid acceptance/replay idempotency. Synthesis [45025874260](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874260) verifies failed shared join preserves private state and later accepts the first valid shared snapshot. Both are proposed-branch evidence, not mainline integration. |
+| G3 Authoritative multiplayer | IN_PROGRESS | Separate session clients exercise server-side recipient binding, presence rejoin, live streams, 409 rejection and idempotent acceptance. Session IDs do not prove distinct humans; no scale claim. |
+| G4 Core RPG | IN_PROGRESS | Field-item inventory and Armor Bearer progression are derived from accepted transfer events; offer/receipt/inspection alone awards zero XP. This is one bounded mechanic, not complete RPG systems. |
+| G5 Social/economic | IN_PROGRESS | Incoming offer UI and handoff history are exercised by Quest Board mobile acceptance; unauthorized recipient and duplicate/replay behavior are tested. No broader public-economy or moderation release claim. |
+| G6 Persistent world/content | IN_PROGRESS | Quest Board [45025874273](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874273), Synthesis, Council, Academy and Combat Yard mobile checks pass; not feature-complete or integrated. |
+| G7 Android-first | IN_PROGRESS | PWA mobile journeys pass; native debug APK assembles, but Android emulator [45025874376](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874376) fails 2 tests and aborts after 8/15. No physical-device verification. |
+| G8 Operational readiness | IN_PROGRESS | Hosted preflight is ready with zero warnings/failures; authentication hardening, backup/restore, abuse controls, concurrency and declared-scale performance remain incomplete. |
+| G9 Release / Founder acceptance | NOT_STARTED | PR #718 remains draft/unmerged; Founder trust NOT_ENROLLED. No release candidate, approval, deployment or distribution. |
+
+**Exact-head checks:** Genesis [45025874402](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874402), live Source Archive [45025874285](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874285), Academy [45025874283](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874283), Council [45025874331](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874331), Combat Yard [45025874449](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874449), Quest Board [45025874273](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874273), Synthesis Clerk [45025874260](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874260), Full Verify [45025874268](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874268) all PASS. The phone PWA build [45025874501](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874501) preserved a Pages artifact; deploy job SKIPPED. Browser [45025874284](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874284) FAILS on Worker A's obsolete hidden Guild Hall locator. Android [45025874376](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874376) FAILS as described in the latest checkpoint; one failure is a test baseline taken before legitimate `discover(overlook)` navigation, while the renderer-process test has an empty XML failure body and unclassified emulator/process crash. Handoffs: [#472 comment 7079948940](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7079948940), [#533 comment 7079948533](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7079948533).
+
+**Process:** Desktop Commander devices are Offline; no local preflight, Node, Playwright, Gradle or pre-edit local receipt is claimed. Hosted preflight is post-edit evidence; procedural compliance PARTIAL. No source retrieval or independent truth verification is claimed from model assertions or mocked fixtures. No merge, release, deployment, physical-device acceptance, Founder approval, truth verdict or authority transition occurred.
+
 ## Run 303 — Armor Bearer four-step multiplayer/restart acceptance — 2026-11-22
 
 - **Evidence added:** `test/game-armor-bearer-multiplayer-restart.test.mjs` exercises two separately authenticated sessions through River discovery → Forge → bearer equip/unequip → designated offer/accept → recipient equip → server restart → exact request replay.

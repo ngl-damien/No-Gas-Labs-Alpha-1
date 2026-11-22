@@ -478,16 +478,16 @@ export function projectCharterCodex(world, viewer) {
     charterStage(
       'engineer-for-use', '10. Engineer for use',
       'NOT REPRESENTED IN PLAYER-WORLD STATE',
-      'This stage requires a real engineering acceptance path beyond crafting an in-game item.',
-      'Build, safety, security, accessibility, interoperability, operations, scale, and recovery acceptance are not inferred from the Forge or from browser/emulator checks.',
-      'forge', 'Forge', [], true
+      'The Guild Hall Synthesis Clerk can inspect the dated public project-state snapshot bundled with this build and prepare an unsubmitted evidence lead for the Source Observatory.',
+      'This is a lead handoff only: the snapshot is dated, not live, and not an independent truth check. It does not establish current CI, source verification, safety, security, accessibility, operational acceptance, or release readiness.',
+      'guild_hall', 'Guild Hall · Synthesis Clerk', [], true
     ),
     charterStage(
       'deploy-share-commercialize', '11. Deploy, share, and commercialize',
       'NOT REPRESENTED IN PLAYER-WORLD STATE',
-      'Publication House represents in-world publication and circulation only.',
-      'External deployment, adoption, public impact, contracts, licensing, and revenue require separate evidence and authorization; none is inferred from an in-game publication.',
-      'publication_house', 'Publication House', [], true
+      'Founder Gate / Decision Chamber is the human-gated room for scoped decisions about consequential external deployment; a decision record remains separate from evidence and execution.',
+      'Publication House is in-world circulation only. External deployment, adoption, public impact, contracts, licensing, and revenue require separate observable evidence and applicable human authorization; none is inferred from a publication or an NPC/model assertion.',
+      'decision_chamber', 'Founder Gate · Decision Chamber', [], true
     ),
     charterStage(
       'preserve-transfer', '12. Preserve and transfer',
