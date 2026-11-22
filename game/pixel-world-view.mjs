@@ -2459,10 +2459,15 @@ export class PixelWorldView extends WorldView {
       ? ` A separate Enter control is available for ${nearbyInstitution.name}.`
       : '';
     if (navigationWaiting && navigationTarget) {
-      const destinationName = PLACES.find(place => place.id === navigationTarget.id)?.name ||
-        'the selected institution';
+      const destination = navigationTarget.type === 'npc'
+        ? WORLD_NPCS.find(npc => npc.id === navigationTarget.id)
+        : PLACES.find(place => place.id === navigationTarget.id);
+      const destinationName = destination?.name || 'the selected destination';
+      const navigationBoundary = navigationTarget.type === 'npc'
+        ? 'navigation alone does not open the interaction.'
+        : 'navigation alone does not enter the institution.';
       this.canvas.setAttribute('aria-description', navigationPending
-        ? `Walking to ${destinationName}. Nearby interaction prompts are paused until arrival; navigation alone does not enter the institution.`
+        ? `Walking to ${destinationName}. Nearby interaction prompts are paused until arrival; ${navigationBoundary}`
         : `The selected destination ${destinationName} is not within interaction range. Move closer or choose another destination.`);
     } else if (nearbyNpc) {
       const npcDescription = nearbyNpc.protocol === 'fixed-local'
