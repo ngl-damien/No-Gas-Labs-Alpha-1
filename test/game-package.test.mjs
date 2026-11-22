@@ -833,7 +833,7 @@ test('phone PWA captures and publishes a bounded public project-state snapshot',
   const capture = workflow.indexOf('node scripts/capture-project-state.mjs --out _site/project-state.json');
   const setupNode = workflow.indexOf('uses: actions/setup-node@v4');
   const artifact = workflow.indexOf('uses: actions/upload-pages-artifact@v3');
-  assert.ok(setupNode >= 0 && setupNode < capture, 'the snapshot producer must run on the repository's supported Node version');
+  assert.ok(setupNode >= 0 && setupNode < capture, "the snapshot producer must run on the repository's supported Node version");
   assert.ok(workflow.includes('node-version: 24'));
   assert.ok(capture >= 0, 'the PWA build must capture the dated project-state snapshot');
   assert.ok(capture < artifact, 'snapshot capture must finish before the Pages artifact is preserved');
