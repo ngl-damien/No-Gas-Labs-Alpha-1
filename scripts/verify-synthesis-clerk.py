@@ -2556,7 +2556,7 @@ def assert_offline_cached_shared_snapshot_recovery(page, width):
     }
 
 
-def assert_private_import_shared_reentry(page, width):
+def assert_private_import_shared_reentry(page, width, out):
     # Importing while offline cache-only must create a real private boundary,
     # not leave the cached shared-session affordances attached to the private world.
     wait_for_shared_connection(page, "before private-import export")
@@ -2676,8 +2676,6 @@ def assert_private_import_shared_reentry(page, width):
         worldId: world?.id,
         revision: world?.revision,
         xp: world?.xp,
-        privateEventPresent: Boolean(world?.events?.some(event =>
-          event.id === window.__nglPrivateImportEventId)),
         modeLabel: document.querySelector('#mode-label')?.textContent || '',
         sharedSnapshotSource: canvas?.dataset.sharedSnapshotSource,
         sharedSnapshotCacheOnly: canvas?.dataset.sharedSnapshotCacheOnly,
@@ -2714,7 +2712,7 @@ def assert_private_import_shared_reentry(page, width):
         "Importing a private save while cache-only must not submit a shared write."
     )
     page.screenshot(
-        path="artifacts/synthesis-clerk-mobile/private-import-offline-" + str(width) + ".png",
+        path=str(out / ("private-import-offline-" + str(width) + ".png")),
         full_page=True
     )
 
@@ -2907,7 +2905,7 @@ def run_viewport(browser, width, out):
                 )
                 return_to_founder(page, founder["id"])
                 offline_snapshot_reentry = assert_offline_cached_shared_snapshot_recovery(page, width)
-                private_import_reentry = assert_private_import_shared_reentry(page, width)
+                private_import_reentry = assert_private_import_shared_reentry(page, width, out)
                 layout = assert_mobile_layout(page, width)
                 assert not errors, "Browser page errors: " + json.dumps(errors)
 
