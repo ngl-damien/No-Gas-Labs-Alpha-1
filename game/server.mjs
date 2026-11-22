@@ -691,9 +691,18 @@ function validateHistory(world) {
         throw new Error('Stored moonshot proposal is malformed');
       }
       if (!(event.sourceCreationId === null && event.sourceVersion === null)) {
+        const key = historyKey(event.sourceCreationId, event.sourceVersion);
+        const versions = publishedByVersion.get(key) || [];
+        const publications = publicationEventsByVersion.get(key) || [];
+        const publication = publications[0];
+        const publicationIndex = publication ? (eventPositions.get(publication) ?? -1) : -1;
+        const proposalIndex = eventPositions.get(event) ?? -1;
         if (typeof event.sourceCreationId !== 'string' || !event.sourceCreationId.trim() ||
             !Number.isSafeInteger(event.sourceVersion) || event.sourceVersion < 1 ||
-            !(publishedByVersion.get(historyKey(event.sourceCreationId, event.sourceVersion)) || []).some(p => Date.parse(p.publishedAt) <= Date.parse(event.at))) {
+            versions.length !== 1 || publications.length !== 1 ||
+            publicationIndex < 0 || publicationIndex >= proposalIndex ||
+            publication.actor?.id !== CONFIG.founderId || publication.actor?.role !== 'founder' ||
+            publication.at !== versions[0].publishedAt) {
           throw new Error('Stored moonshot source reference is invalid');
         }
       }
@@ -708,15 +717,28 @@ function validateHistory(world) {
       }
       reportIds.add(event.reportId);
       experimentReports.set(event.reportId, event);
-      if ((proposalsByMoonshot.get(event.moonshotId) || []).filter(proposal => proposal.index < eventPositions.get(event) && Date.parse(proposal.event.at) <= Date.parse(event.at)).length !== 1) {
+      if ((proposalsByMoonshot.get(event.moonshotId) || []).filter(proposal => proposal.index < eventPositions.get(event)).length !== 1) {
         throw new Error('Stored experiment report does not bind to one earlier moonshot proposal');
       }
       const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
       const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
       if (hasEvidenceId !== hasEvidenceVersion ||
-          (!hasEvidenceId && (event.evidenceCreationId !== null || event.evidenceVersion !== null)) ||
-          (hasEvidenceId && !(publishedByVersion.get(historyKey(event.evidenceCreationId, event.evidenceVersion)) || []).some(p => Date.parse(p.publishedAt) <= Date.parse(event.at)))) {
+          (!hasEvidenceId && (event.evidenceCreationId !== null || event.evidenceVersion !== null))) {
         throw new Error('Stored experiment evidence reference is invalid');
+      }
+      if (hasEvidenceId) {
+        const key = historyKey(event.evidenceCreationId, event.evidenceVersion);
+        const versions = publishedByVersion.get(key) || [];
+        const publications = publicationEventsByVersion.get(key) || [];
+        const publication = publications[0];
+        const publicationIndex = publication ? (eventPositions.get(publication) ?? -1) : -1;
+        const reportIndex = eventPositions.get(event) ?? -1;
+        if (versions.length !== 1 || publications.length !== 1 ||
+            publicationIndex < 0 || publicationIndex >= reportIndex ||
+            publication.actor?.id !== CONFIG.founderId || publication.actor?.role !== 'founder' ||
+            publication.at !== versions[0].publishedAt) {
+          throw new Error('Stored experiment evidence reference is invalid');
+        }
       }
     }
     if (event.type === 'experiment-challenged') {
@@ -724,7 +746,8 @@ function validateHistory(world) {
       if (typeof event.challengeId !== 'string' || !event.challengeId || challengeIds.has(event.challengeId) ||
           typeof event.reportId !== 'string' || !event.reportId || typeof event.moonshotId !== 'string' || !event.moonshotId ||
           !challengeTypes.has(event.challengeType) || typeof event.challengeText !== 'string' || !event.challengeText.trim() || Array.from(event.challengeText).length > 1000 ||
-          !report || report.moonshotId !== event.moonshotId || sameResearchActor(report.actor, event.actor) || Date.parse(report.at) > Date.parse(event.at)) {
+          !report || report.moonshotId !== event.moonshotId || sameResearchActor(report.actor, event.actor) ||
+          (eventPositions.get(report) ?? -1) >= (eventPositions.get(event) ?? -1)) {
         throw new Error('Stored experiment challenge is malformed or does not target an earlier report from a different actor');
       }
       const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
@@ -734,10 +757,17 @@ function validateHistory(world) {
         if (event.evidenceCreationId !== undefined && event.evidenceCreationId !== null) throw new Error('Stored unlinked challenge evidence must be null');
         if (event.evidenceVersion !== undefined && event.evidenceVersion !== null) throw new Error('Stored unlinked challenge evidence version must be null');
       } else {
-        const source = world.creations.find(creation => creation.id === event.evidenceCreationId);
-        const version = source && (source.version === event.evidenceVersion ? source : source.versions.find(item => item.version === event.evidenceVersion));
-        if (!version || !isStrictTimestamp(version.publishedAt) || Date.parse(version.publishedAt) > Date.parse(event.at)) {
-          throw new Error('Stored experiment challenge evidence version is not retained at the challenge time');
+        const key = historyKey(event.evidenceCreationId, event.evidenceVersion);
+        const versions = publishedByVersion.get(key) || [];
+        const publications = publicationEventsByVersion.get(key) || [];
+        const publication = publications[0];
+        const publicationIndex = publication ? (eventPositions.get(publication) ?? -1) : -1;
+        const challengeIndex = eventPositions.get(event) ?? -1;
+        if (versions.length !== 1 || publications.length !== 1 ||
+            publicationIndex < 0 || publicationIndex >= challengeIndex ||
+            publication.actor?.id !== CONFIG.founderId || publication.actor?.role !== 'founder' ||
+            publication.at !== versions[0].publishedAt) {
+          throw new Error('Stored experiment challenge evidence version is not bound to one earlier retained publication');
         }
       }
       challengeIds.add(event.challengeId);
@@ -756,7 +786,7 @@ function validateHistory(world) {
           !sameResearchActor(report.actor, event.actor) ||
           typeof event.responseText !== 'string' || !event.responseText.trim() || Array.from(event.responseText).length > 1000 ||
           reportIndex < 0 || challengeIndex <= reportIndex || responseIndex <= challengeIndex ||
-          !isStrictTimestamp(event.at) || Date.parse(challenge.at) >= Date.parse(event.at) || Date.parse(report.at) >= Date.parse(event.at)) {
+          !isStrictTimestamp(event.at)) {
         throw new Error('Stored experiment challenge response is malformed or not authored by the original report author after the exact challenge');
       }
       experimentResponseIds.add(event.responseId);
@@ -778,7 +808,7 @@ function validateHistory(world) {
           retainedVersions.length !== 1 || publicationsForVersion.length !== 1 ||
           eventPositions.get(publicationsForVersion[0]) >= index ||
           publicationsForVersion[0].actor?.id !== CONFIG.founderId || publicationsForVersion[0].actor?.role !== 'founder' ||
-          publicationsForVersion[0].at !== versions[0].publishedAt || Date.parse(publicationsForVersion[0].at) > Date.parse(event.at) ||
+          publicationsForVersion[0].at !== versions[0].publishedAt ||
           !hasSourcePredicatePublicRetentionAcknowledgement(event) ||
           !['contains-literal', 'does-not-contain-literal'].includes(event.predicateKind) ||
           typeof event.literal !== 'string' || !event.literal.trim() || event.literal !== event.literal.trim() ||

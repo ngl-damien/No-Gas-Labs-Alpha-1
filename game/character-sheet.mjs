@@ -363,7 +363,7 @@ export function projectCharacter(world, viewer, options = {}) {
       typeof event.reportId === 'string' && reportCounts.get(event.reportId) === 1 &&
       proposalIds.has(event.moonshotId) && Number.isInteger(proposalIndex) &&
       (positionByEvent.get(event) ?? -1) > proposalIndex && isStrictTimestamp(event.at) &&
-      isStrictTimestamp(proposal.at) && Date.parse(proposal.at) <= Date.parse(event.at) &&
+      isStrictTimestamp(proposal.at) &&
       typeof event.actor?.id === 'string' && event.actor.id.trim() &&
       ['founder', 'witness'].includes(event.actor.role) &&
       typeof event.procedure === 'string' && event.procedure.trim() &&
@@ -383,6 +383,11 @@ export function projectCharacter(world, viewer, options = {}) {
   const retainedPublicationByVersion = new Map(retainedPublications.map(event => [
     versionKey(event.creationId, event.version), event
   ]));
+  const retainedPublicationCountsByVersion = new Map();
+  for (const publication of retainedPublications) {
+    const key = versionKey(publication.creationId, publication.version);
+    retainedPublicationCountsByVersion.set(key, (retainedPublicationCountsByVersion.get(key) || 0) + 1);
+  }
   const retainedPublicationIds = new Set(retainedPublications.map(event => event.id));
   const retainedPublishedVersionKeys = new Set(retainedPublications.map(event =>
     versionKey(event.creationId, event.version)
@@ -397,11 +402,25 @@ export function projectCharacter(world, viewer, options = {}) {
       Date.parse(publication.at) <= Date.parse(event.at);
   };
   const hasEarlierPublicationByAppendPosition = event => {
-    const publication = retainedPublicationByVersion.get(versionKey(event.creationId, event.version));
+    const key = versionKey(event.creationId, event.version);
+    const publication = retainedPublicationByVersion.get(key);
     const publicationPosition = publication ? (positionByEvent.get(publication) ?? -1) : -1;
     const activityPosition = positionByEvent.get(event) ?? -1;
-    return publicationPosition >= 0 && activityPosition > publicationPosition &&
+    return retainedPublicationCountsByVersion.get(key) === 1 &&
+      publicationPosition >= 0 && activityPosition > publicationPosition &&
       isStrictTimestamp(publication.at) && isStrictTimestamp(event.at);
+  };
+  const hasEarlierPublishedVersionForEvent = (creationId, versionNumber, event) => {
+    const key = versionKey(creationId, versionNumber);
+    const publication = retainedPublicationByVersion.get(key);
+    const publicationPosition = publication ? (positionByEvent.get(publication) ?? -1) : -1;
+    const activityPosition = positionByEvent.get(event) ?? -1;
+    const version = retainedVersions.get(key);
+    return retainedPublicationCountsByVersion.get(key) === 1 &&
+      !!version && retainedPublishedVersionKeys.has(key) &&
+      publicationPosition >= 0 && activityPosition > publicationPosition &&
+      isStrictTimestamp(publication.at) && isStrictTimestamp(version.publishedAt) &&
+      publication.at === version.publishedAt;
   };
   const matchedDiscoveries = matchedActivityRecords(
     'discover', world?.discoveries, allEvents, ['locationId'], viewer,
@@ -455,8 +474,7 @@ export function projectCharacter(world, viewer, options = {}) {
         typeof event.challengeText !== 'string' || !event.challengeText.trim() ||
         Array.from(event.challengeText).length > 1000 ||
         reportPosition < 0 || challengePosition <= reportPosition ||
-        !isStrictTimestamp(event.at) || !isStrictTimestamp(report.at) ||
-        Date.parse(report.at) > Date.parse(event.at)) return false;
+        !isStrictTimestamp(event.at) || !isStrictTimestamp(report.at)) return false;
 
     const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
     const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
@@ -466,10 +484,7 @@ export function projectCharacter(world, viewer, options = {}) {
       (event.evidenceVersion !== undefined && event.evidenceVersion !== null)
     )) return false;
     if (hasEvidenceId) {
-      const evidenceKey = versionKey(event.evidenceCreationId, event.evidenceVersion);
-      const version = retainedVersions.get(evidenceKey);
-      if (!version || !retainedPublishedVersionKeys.has(evidenceKey) ||
-          !isStrictTimestamp(version.publishedAt) || Date.parse(version.publishedAt) > Date.parse(event.at)) return false;
+      if (!hasEarlierPublishedVersionForEvent(event.evidenceCreationId, event.evidenceVersion, event)) return false;
     }
     return true;
   });

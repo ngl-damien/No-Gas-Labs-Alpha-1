@@ -14,9 +14,19 @@ const COMBAT_ACTION_TYPES=new Set(['start-combat-encounter','combat-move']);
 const SOURCE_OBSERVATION_EVENT_TYPES=new Set(['source-observation-recorded','source-observation-challenged','source-observation-challenge-responded']);
 const ACADEMY_ACTION_TYPES=new Set(['study','review-study']);
 const ACADEMY_EVENT_TYPES=new Set(['study','study-reviewed']);
+const R_AND_D_ACTION_TYPES=new Set([
+  'propose-moonshot','report-experiment','challenge-experiment-report',
+  'respond-experiment-challenge','evaluate-source-archive-predicate',
+  'record-collaborator-response'
+]);
+const R_AND_D_EVENT_TYPES=new Set([
+  'moonshot-proposed','experiment-reported','experiment-challenged',
+  'experiment-challenge-responded','source-archive-predicate-evaluated',
+  'collaborator-response-recorded','source-archive-attempt-failed'
+]);
 // These families use retained event position as sequence authority. Timestamps remain strict metadata and world.updatedAt remains a high-water mark.
-export function isAppendOrderedWorldActionType(type){return SOURCE_OBSERVATION_ACTION_TYPES.has(type)||COMBAT_ACTION_TYPES.has(type)||ACADEMY_ACTION_TYPES.has(type)}
-export function isAppendOrderedWorldEventType(type){return SOURCE_OBSERVATION_EVENT_TYPES.has(type)||COMBAT_EVENT_TYPES.includes(type)||ACADEMY_EVENT_TYPES.has(type)}
+export function isAppendOrderedWorldActionType(type){return SOURCE_OBSERVATION_ACTION_TYPES.has(type)||COMBAT_ACTION_TYPES.has(type)||ACADEMY_ACTION_TYPES.has(type)||R_AND_D_ACTION_TYPES.has(type)}
+export function isAppendOrderedWorldEventType(type){return SOURCE_OBSERVATION_EVENT_TYPES.has(type)||COMBAT_EVENT_TYPES.includes(type)||ACADEMY_EVENT_TYPES.has(type)||R_AND_D_EVENT_TYPES.has(type)}
 const knownPlaces=new Set(['relay','river','overlook','ruins']);
 const slots=[{x:540,y:610},{x:480,y:395},{x:1120,y:560},{x:1190,y:390},{x:1050,y:830},{x:380,y:800},{x:650,y:825},{x:1450,y:590},{x:270,y:310},{x:1400,y:180},{x:1100,y:190},{x:530,y:180}];
 const clone=value=>structuredClone(value);
@@ -25,6 +35,15 @@ const fail=(code,message,status=400)=>{throw Object.assign(new Error(message),{c
 const date=now=>new Date(now??Date.now()).toISOString();
 function text(value,max,label,{empty=false}={}){if(typeof value!=='string'||(!empty&&!value.trim()))fail('INVALID_INPUT',`${label} is required.`);if(Array.from(value).length>max)fail('TOO_LARGE',`${label} exceeds ${max} characters.`,413);return value.trim();}
 function actorFor(actor){if(!actor||typeof actor.id!=='string'||!actor.id||!['founder','witness'].includes(actor.role))fail('INVALID_ACTOR','A valid actor is required.',403);return {id:actor.id,name:text(actor.name||'Witness',80,'Name'),role:actor.role};}
+function earlierPublishedVersion(world,creationId,versionNumber){
+  const source=world.creations.find(item=>item.id===creationId);
+  const version=source&&(source.version===versionNumber?source:source.versions.find(item=>item.version===versionNumber));
+  const publications=world.events.filter(item=>item.type==='publish'&&item.creationId===creationId&&item.version===versionNumber);
+  if(!source||!version||!isStrictTimestamp(version.publishedAt)||publications.length!==1||
+     publications[0].actor?.role!=='founder'||publications[0].at!==version.publishedAt||
+     world.events.indexOf(publications[0])<0)return null;
+  return {source,version,publication:publications[0]};
+}
 function validateSatireIssueArtifact(world,artifact,eventPosition,at){
   const intent=typeof artifact?.intent==='string'?artifact.intent:'';
   const claimsIssue=[SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX].some(prefix=>intent.startsWith(prefix));
@@ -279,12 +298,9 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       let sourceCreationId=null,sourceVersion=null;
       if(hasSourceId){
         if(typeof action.sourceCreationId!=='string'||!action.sourceCreationId.trim()||!Number.isSafeInteger(action.sourceVersion)||action.sourceVersion<1)fail('INVALID_SOURCE','Source artifact and version must be valid.');
-        const source=world.creations.find(c=>c.id===action.sourceCreationId);
-        if(!source)fail('NOT_FOUND','Source artifact not found.',404);
-        const version=source.version===action.sourceVersion?source:source.versions.find(v=>v.version===action.sourceVersion);
-        if(!version)fail('STALE_VERSION','That source version is not retained.',409);
-        if(!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(at))fail('STALE_VERSION','That source version was not published at the proposal time.',409);
-        sourceCreationId=source.id;sourceVersion=action.sourceVersion;
+        const retained=earlierPublishedVersion(world,action.sourceCreationId,action.sourceVersion);
+        if(!retained)fail('STALE_VERSION','That source version must have one earlier retained Founder publication.',409);
+        sourceCreationId=retained.source.id;sourceVersion=action.sourceVersion;
       }
       const moonshotId=uid('moonshot');
       result={moonshotId};
@@ -294,7 +310,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
     case 'report-experiment':{
       const moonshotId=text(action.moonshotId,128,'Moonshot ID');
       const proposals=world.events.filter(e=>e.type==='moonshot-proposed'&&e.moonshotId===moonshotId);
-      if(proposals.length!==1||!isStrictTimestamp(proposals[0].at)||Date.parse(proposals[0].at)>Date.parse(at))fail('NOT_FOUND','A unique earlier retained moonshot proposal is required before reporting an attempt.',404);
+      if(proposals.length!==1||!isStrictTimestamp(proposals[0].at)||world.events.indexOf(proposals[0])<0)fail('NOT_FOUND','A unique earlier retained moonshot proposal is required before reporting an attempt.',404);
       const procedure=text(action.procedure,1000,'Procedure');
       const observation=text(action.observation,1000,'Observation');
       const reportedOutcome=action.reportedOutcome;
@@ -305,11 +321,9 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       let evidenceCreationId=null,evidenceVersion=null;
       if(hasEvidenceId){
         if(typeof action.evidenceCreationId!=='string'||!action.evidenceCreationId.trim()||!Number.isSafeInteger(action.evidenceVersion)||action.evidenceVersion<1)fail('INVALID_EVIDENCE','Evidence artifact and version must be valid.');
-        const source=world.creations.find(c=>c.id===action.evidenceCreationId);
-        if(!source)fail('NOT_FOUND','Evidence artifact not found.',404);
-        const version=source.version===action.evidenceVersion?source:source.versions.find(v=>v.version===action.evidenceVersion);
-        if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(at))fail('STALE_VERSION','That evidence version is not retained at the report time.',409);
-        evidenceCreationId=source.id;evidenceVersion=action.evidenceVersion;
+        const retained=earlierPublishedVersion(world,action.evidenceCreationId,action.evidenceVersion);
+        if(!retained)fail('STALE_VERSION','That evidence version must have one earlier retained Founder publication.',409);
+        evidenceCreationId=retained.source.id;evidenceVersion=action.evidenceVersion;
       }
       const reportId=uid('experiment-report');
       result={reportId};
@@ -327,8 +341,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       if(!source||versions.length!==1)fail('NOT_FOUND','A unique retained Source Archive version is required.',404);
       const publications=world.events.filter(item=>item.type==='publish'&&item.creationId===creationId&&item.version===action.version);
       if(publications.length!==1||publications[0].actor?.role!=='founder'||
-         publications[0].at!==versions[0].publishedAt||Date.parse(publications[0].at)>Date.parse(at)||
-         world.events.indexOf(publications[0])<0)
+         publications[0].at!==versions[0].publishedAt||world.events.indexOf(publications[0])<0)
         fail('SOURCE_ARCHIVE_NOT_PUBLISHED','The exact Source Archive version must have one earlier Founder publication.',409);
       // Enforce the public-retention protocol before decoding or hashing retained source bytes.
       if(action.publicRetentionAcknowledgementVersion!==SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION)
@@ -354,7 +367,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
     case 'challenge-experiment-report':{
       const reportId=text(action.reportId,128,'Experiment report ID');
       const matches=world.events.filter(e=>e.type==='experiment-reported'&&e.reportId===reportId);
-      if(matches.length!==1||Date.parse(matches[0].at)>Date.parse(at))fail('NOT_FOUND','A retained earlier experiment report is required before challenging it.',404);
+      if(matches.length!==1||!isStrictTimestamp(matches[0].at)||world.events.indexOf(matches[0])<0)fail('NOT_FOUND','A retained earlier experiment report is required before challenging it.',404);
       const report=matches[0];
       if(sameResearchActor(report.actor,who))fail('SELF_CHALLENGE','A different session actor (ID and role) must challenge this report.',409);
       if(!challengeTypes.has(action.challengeType))fail('INVALID_CHALLENGE_TYPE','Choose a bounded challenge category.');
@@ -365,11 +378,9 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       let evidenceCreationId=null,evidenceVersion=null;
       if(hasEvidenceId){
         if(typeof action.evidenceCreationId!=='string'||!action.evidenceCreationId.trim()||!Number.isSafeInteger(action.evidenceVersion)||action.evidenceVersion<1)fail('INVALID_EVIDENCE','Challenge evidence artifact and version must be valid.');
-        const source=world.creations.find(c=>c.id===action.evidenceCreationId);
-        if(!source)fail('NOT_FOUND','Challenge evidence artifact not found.',404);
-        const version=source.version===action.evidenceVersion?source:source.versions.find(v=>v.version===action.evidenceVersion);
-        if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(at))fail('STALE_VERSION','That challenge evidence version is not retained at the challenge time.',409);
-        evidenceCreationId=source.id;evidenceVersion=action.evidenceVersion;
+        const retained=earlierPublishedVersion(world,action.evidenceCreationId,action.evidenceVersion);
+        if(!retained)fail('STALE_VERSION','That challenge evidence version must have one earlier retained Founder publication.',409);
+        evidenceCreationId=retained.source.id;evidenceVersion=action.evidenceVersion;
       }
       const challengeId=uid('experiment-challenge');
       result={challengeId};
@@ -381,10 +392,12 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const challenges=world.events.filter(item=>item.type==='experiment-challenged'&&item.challengeId===challengeId);
       if(challenges.length!==1)fail('NOT_FOUND','A unique retained experiment challenge is required before responding.',404);
       const challenge=challenges[0];
-      if(Date.parse(challenge.at)>=Date.parse(at))fail('INVALID_CHRONOLOGY','An author response must follow its retained experiment challenge.',409);
+      const challengeIndex=world.events.indexOf(challenge);
       const reports=world.events.filter(item=>item.type==='experiment-reported'&&item.reportId===challenge.reportId);
       if(reports.length!==1)fail('NOT_FOUND','The challenged experiment report is unavailable or ambiguous.',404);
       const report=reports[0];
+      const reportIndex=world.events.indexOf(report);
+      if(reportIndex<0||challengeIndex<=reportIndex)fail('INVALID_CHALLENGE_TARGET','An author response must follow the exact retained report and challenge by append position.',409);
       if(!sameResearchActor(report.actor,who))fail('FORBIDDEN','Only the original experiment report author can respond to this challenge.',403);
       if(challenge.moonshotId!==report.moonshotId)fail('INVALID_CHALLENGE_TARGET','The challenge no longer matches the exact retained experiment report.',409);
       if(world.events.some(item=>item.type==='experiment-challenge-responded'&&item.challengeId===challengeId))fail('CHALLENGE_ALREADY_ANSWERED','This experiment challenge already has a retained author response.',409);
@@ -921,7 +934,11 @@ export async function validateWorld(raw) {
       if(typeof e.sourceCreationId!=='string'||!e.sourceCreationId.trim()||!Number.isSafeInteger(e.sourceVersion)||e.sourceVersion<1)invalid('Malformed moonshot source reference.');
       const source=raw.creations.find(c=>c.id===e.sourceCreationId);
       const version=source&&(source.version===e.sourceVersion?source:source.versions.find(v=>v.version===e.sourceVersion));
-      if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Malformed moonshot source reference.');
+      const publications=publicationsByVersion.get(historyKey(e.sourceCreationId,e.sourceVersion))||[];
+      const proposalIndex=eventPositions.get(e);
+      if(!version||!isStrictTimestamp(version.publishedAt)||publications.length!==1||
+         eventPositions.get(publications[0])>=proposalIndex||publications[0].actor?.role!=='founder'||
+         publications[0].at!==version.publishedAt)invalid('Malformed moonshot source reference.');
     }
   }
   const reportIds=new Set(),experimentReports=new Map(),challengeIds=new Set();
@@ -938,7 +955,7 @@ export async function validateWorld(raw) {
        typeof e.observation!=='string'||!e.observation.trim()||Array.from(e.observation).length>1000||
        !allowedReportedOutcomes.has(e.reportedOutcome))invalid('Malformed experiment report.');
     const reportIndex=eventPositions.get(e);
-    const proposals=(proposalsByMoonshot.get(e.moonshotId)||[]).filter(proposal=>proposal.index<reportIndex&&Date.parse(proposal.event.at)<=Date.parse(e.at));
+    const proposals=(proposalsByMoonshot.get(e.moonshotId)||[]).filter(proposal=>proposal.index<reportIndex);
     if(proposals.length!==1)invalid('Experiment report must reference one earlier retained moonshot proposal.');
     const hasEvidenceId=typeof e.evidenceCreationId==='string'&&e.evidenceCreationId.length>0;
     const hasEvidenceVersion=Number.isSafeInteger(e.evidenceVersion)&&e.evidenceVersion>0;
@@ -948,7 +965,11 @@ export async function validateWorld(raw) {
     }else{
       const source=raw.creations.find(c=>c.id===e.evidenceCreationId);
       const version=source&&(source.version===e.evidenceVersion?source:source.versions.find(v=>v.version===e.evidenceVersion));
-      if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Experiment evidence version is not retained at the report time.');
+      const publications=publicationsByVersion.get(historyKey(e.evidenceCreationId,e.evidenceVersion))||[];
+      const reportIndex=eventPositions.get(e);
+      if(!version||!isStrictTimestamp(version.publishedAt)||publications.length!==1||
+         eventPositions.get(publications[0])>=reportIndex||publications[0].actor?.role!=='founder'||
+         publications[0].at!==version.publishedAt)invalid('Experiment evidence version must bind one earlier retained Founder publication.');
     }
   }
   const allowedSourcePredicateKeys=new Set(['id','type','actor','at','semantics','predicateId','creationId','version','publicRetentionAcknowledgementVersion','predicateKind','literal','outcome','sourceSha256','sourceSize','retrievalMode','evaluator','observedBy','executionContext','sourceTruth','independentVerification','modelAssertions','requestId','actionFingerprint','actionResult']);
@@ -974,8 +995,7 @@ export async function validateWorld(raw) {
     if(!source||versions.length!==1||publications.length!==1||
        eventPositions.get(publications[0])>=index||
        publications[0].actor?.role!=='founder'||
-       publications[0].at!==versions[0].publishedAt||
-       Date.parse(publications[0].at)>Date.parse(e.at))
+       publications[0].at!==versions[0].publishedAt)
       invalid('Source Archive predicate must reference one earlier Founder-published retained version.');
     let evaluation;
     try { evaluation=await evaluateGitHubSourceArchivePredicate(versions[0],e.predicateKind,e.literal); }
@@ -1083,7 +1103,7 @@ export async function validateWorld(raw) {
     challengeIds.add(e.challengeId);
     experimentChallengeById.set(e.challengeId,e);
     const report=experimentReports.get(e.reportId),reportIndex=report?eventPositions.get(report):-1;
-    if(!report||reportIndex<0||reportIndex>=index||report.moonshotId!==e.moonshotId||sameResearchActor(report.actor,e.actor)||Date.parse(report.at)>Date.parse(e.at))invalid('Experiment challenge must target an earlier report from a different actor.');
+    if(!report||reportIndex<0||reportIndex>=index||report.moonshotId!==e.moonshotId||sameResearchActor(report.actor,e.actor))invalid('Experiment challenge must target an earlier report from a different actor.');
     const hasEvidenceId=typeof e.evidenceCreationId==='string'&&e.evidenceCreationId.length>0;
     const hasEvidenceVersion=Number.isSafeInteger(e.evidenceVersion)&&e.evidenceVersion>0;
     if(hasEvidenceId!==hasEvidenceVersion)invalid('Experiment challenge evidence reference is incomplete.');
@@ -1093,7 +1113,10 @@ export async function validateWorld(raw) {
     }else{
       const source=raw.creations.find(c=>c.id===e.evidenceCreationId);
       const version=source&&(source.version===e.evidenceVersion?source:source.versions.find(v=>v.version===e.evidenceVersion));
-      if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Experiment challenge evidence version is not retained at the challenge time.');
+      const publications=publicationsByVersion.get(historyKey(e.evidenceCreationId,e.evidenceVersion))||[];
+      if(!version||!isStrictTimestamp(version.publishedAt)||publications.length!==1||
+         eventPositions.get(publications[0])>=index||publications[0].actor?.role!=='founder'||
+         publications[0].at!==version.publishedAt)invalid('Experiment challenge evidence must bind one earlier retained Founder publication.');
     }
   }
   const allowedExperimentResponseKeys=new Set(['id','type','actor','at','semantics','responseId','challengeId','reportId','moonshotId','responseText','requestId','actionFingerprint','actionResult']);
@@ -1113,7 +1136,7 @@ export async function validateWorld(raw) {
        !sameResearchActor(report.actor,e.actor)||
        typeof e.responseText!=='string'||!e.responseText.trim()||Array.from(e.responseText).length>1000||
        reportIndex<0||challengeIndex<=reportIndex||index<=challengeIndex||
-       !isStrictTimestamp(e.at)||Date.parse(challenge.at)>=Date.parse(e.at)||Date.parse(report.at)>=Date.parse(e.at)||
+       !isStrictTimestamp(e.at)||
        (e.actionResult!==undefined&&(!e.actionResult||Object.keys(e.actionResult).sort().join(',')!=='responseId'||e.actionResult.responseId!==e.responseId)))invalid('Malformed experiment challenge response or response is not by the original report author after the exact challenge.');
     experimentResponseIds.add(e.responseId);
     respondedExperimentChallengeIds.add(e.challengeId);

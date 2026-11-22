@@ -53,8 +53,8 @@ export function recordSourceArchiveAttemptFailure(original, actor, details, { no
   }
   const at = date(now);
   const previousAt = Date.parse(original.updatedAt);
-  if (!Number.isFinite(previousAt) || !isStrictTimestamp(at) || Date.parse(at) < previousAt) {
-    fail('INVALID_CHRONOLOGY', 'Source Archive failure time cannot precede the retained world history.', 409);
+  if (!Number.isFinite(previousAt) || !isStrictTimestamp(at)) {
+    fail('INVALID_CHRONOLOGY', 'Source Archive failure requires a strict timestamp and valid world high-water mark.', 409);
   }
   const world = clone(original);
   const attemptId = uid('source-archive-attempt');
