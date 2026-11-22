@@ -1015,7 +1015,9 @@ def assert_world_visible_behind_sheet(page, label):
         const sheetRect = sheet.getBoundingClientRect()
         const worldStyle = getComputedStyle(world)
         const backdropStyle = getComputedStyle(backdrop)
-        const targetX = Math.round(window.innerWidth / 2 + 60)
+        // Keep the tap on open grass west of Guild Hall. The old width/2+60
+        // point landed on the Guild Hall roof at 320px and was not walkable.
+        const targetX = Math.max(36, Math.round(window.innerWidth * 0.2))
         const targetY = 200
         const target = document.elementFromPoint(targetX, targetY)
         return {
@@ -1082,7 +1084,26 @@ def assert_world_visible_behind_sheet(page, label):
     )
 
     before = authoritative_snapshot(page)
-    position_before = authoritative_position(page)
+    # The NPC approach route can finish a final step after the sheet opens.
+    # Capture a stable baseline so that residual approach motion cannot satisfy
+    # the independent world-canvas movement assertion.
+    previous_position = authoritative_position(page)
+    stable_samples = 0
+    for _ in range(10):
+        page.wait_for_timeout(200)
+        current_position = authoritative_position(page)
+        if math.hypot(
+            current_position["x"] - previous_position["x"],
+            current_position["y"] - previous_position["y"]
+        ) < 1:
+            stable_samples += 1
+            if stable_samples >= 2:
+                previous_position = current_position
+                break
+        else:
+            stable_samples = 0
+        previous_position = current_position
+    position_before = previous_position
     page.touchscreen.tap(metrics["targetX"], metrics["targetY"])
     assert page.evaluate("() => document.activeElement?.id === 'world'"), (
         f"{label}: selecting the visible map should transfer keyboard control to the world canvas."
@@ -1096,14 +1117,24 @@ def assert_world_visible_behind_sheet(page, label):
         const dto = await response.json()
         const position = dto?.viewer?.position
         return position && Number.isFinite(position.x) && Number.isFinite(position.y) &&
-            Math.hypot(position.x - before.x, position.y - before.y) > 2
+            Math.hypot(position.x - before.x, position.y - before.y) > 16
     }""", arg=position_before, timeout=15000)
     position_after = authoritative_position(page)
     after = authoritative_snapshot(page)
-    assert math.hypot(
+    movement_delta = math.hypot(
         position_after["x"] - position_before["x"],
         position_after["y"] - position_before["y"]
-    ) > 2, f"{label}: the player must be able to walk while the institution panel remains open."
+    )
+    assert movement_delta > 16, (
+        f"{label}: the player must be able to walk while the institution panel remains open: "
+        + json.dumps({
+            "before": position_before,
+            "after": position_after,
+            "movementDelta": movement_delta,
+            "target": {"x": metrics["targetX"], "y": metrics["targetY"]},
+            "worldHitTarget": metrics["worldHitTarget"]
+        })
+    )
     assert after["revision"] == before["revision"] and after["xp"] == before["xp"] and after["eventIds"] == before["eventIds"], (
         f"{label}: walking behind an open institution panel must update only session position, not canonical world state."
     )
