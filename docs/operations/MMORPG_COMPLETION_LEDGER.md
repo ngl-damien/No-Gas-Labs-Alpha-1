@@ -1,3 +1,28 @@
+## Run 315 — gate evidence update — 2026-11-22
+
+**Candidate:** draft runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), code/test head `5af51d8294a8660d416bf83064e50d5c3deebfe1`, main base `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. This is proposed-branch evidence, not integration into main.
+
+| Gate | Status | Run 315 evidence and limit |
+|---|---|---|
+| G0 Product definition | IN_PROGRESS | No supported-device baseline, declared player scale, server model or other Founder product decision was settled by this run. |
+| G1 Coherent playable loop | IN_PROGRESS | The Source Archive failure projection now fails closed on unclassifiable retained event slots. This hardens one research/evidence object path; it is not a complete Founder-accepted game loop. |
+| G2 Persistent character/world | IN_PROGRESS | The change is a deterministic read-only projection guard. It creates no event and makes no persistence, backup/restore or production-scale durability claim. |
+| G3 Authoritative multiplayer | IN_PROGRESS | No new multiplayer claim. Quest Board mobile journey remains in progress; three synthetic sessions in earlier acceptance are not proof of three independent humans. |
+| G4 Core RPG | IN_PROGRESS | No new XP, inventory, skill or combat behavior. Unclassifiable failure history cannot be treated as absent; the guard awards no progress. |
+| G5 Social/economic | IN_PROGRESS | No new social/economic mechanic. No marketplace, pricing, moderation or abuse-control capability is claimed. |
+| G6 Persistent world/content | IN_PROGRESS | Evidence Archive/Moonshot Field Source Archive failure objects now require every retained event slot to be safely classifiable before a failure-history projection is available. Missing/unreadable events are not silently treated as non-failures. |
+| G7 Android-first | IN_PROGRESS | PWA build passes. Quest Board and Synthesis mobile journeys remain in progress at 320px/390px. Android debug APK assembled; offline-world emulator/JUnit result remains pending. No physical-device acceptance. |
+| G8 Operational readiness | IN_PROGRESS | Exact-head Full Verify and hosted preflight pass; Genesis, Live Source Archive, PWA build, Academy, Council and Combat pass. Browser acceptance fails in Worker A-owned helper; Quest Board, Synthesis and Android remain in progress. |
+| G9 Release / Founder acceptance | NOT_STARTED | PR #718 remains draft/unmerged; Founder trust NOT_ENROLLED. No release candidate, approval, deployment or distribution. |
+
+**Test-first proof:** [45048727663](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048727663) failed exactly at the new regression: 1,509 tests, 1,508 passed, 1 failed. **Fixed exact head:** Full Verify [45048879153](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048879153) PASS with hosted preflight ready, warnings/failures empty, Node tests/Python inspector/package build/institutional exercise exit 0 and report passed=true. Preflight artifact [14764507357](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048879153/artifacts/14764507357).
+
+**Other exact-head results:** Genesis [45048879006](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048879006) PASS; Live Source Archive [45048879077](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048879077) PASS; PWA build [45048879295](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048879295) PASS (deploy skipped); Academy [45048879007](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048879007) PASS; Council [45048879036](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048879036) PASS; Combat Yard [45048879041](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048879041) PASS. Browser [45048878998](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048878998) FAIL in Worker A-owned `scripts/verify-browser.py`; handoff [#472 comment 7082789616](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7082789616). Quest Board [45048879013](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048879013), Synthesis [45048879082](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048879082), and Android [45048879011](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45048879011) were still running when this checkpoint was written.
+
+**Process and authority:** Both authorized Desktop Commander devices Offline; no local preflight or local Node/Playwright/Gradle execution. Hosted preflight is post-edit evidence; procedural compliance PARTIAL. G0-G8 IN_PROGRESS, G9 NOT_STARTED, Founder trust NOT_ENROLLED. No merge, release, deployment, Founder approval, truth verdict or authority transition.
+
+---
+
 ## Run 314 — gate evidence update — 2026-11-22
 
 **Candidate:** draft runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), code/test head `8691be4da39e67a0f3d6005186a047a8f32223e9`, main base `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. The new evidence is hosted acceptance on a proposed branch only; it is not integrated into main. PR #722 is the existing documentation child, still behind the moving #718 base.
