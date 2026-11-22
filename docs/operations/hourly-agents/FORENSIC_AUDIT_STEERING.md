@@ -1267,3 +1267,13 @@ Code/test head `b6f72a97a827cc97972981d70c4c4a54069d7145` terminal results:
 - Worker B did not edit Browser acceptance, NPC placement, Android manifest/native bridge/instrumentation/lifecycle/retry paths. Worker A retains those paths.
 - Next Worker A action: assert Clerk absence in Guild Hall, navigate to Evidence Archive, inspect the existing single Clerk; continue separately owned Android instrumentation from its exact-head terminal result.
 - Do not merge/rebase the 826-ahead-main / 602-ahead-#429 stack wholesale. Reconcile #694→#696→#698→#699 dependencies and path overlap against #429 first.
+
+
+## Run 300 — Worker B exact-head steering — 2026-11-22T04:02Z
+
+- Continue on runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `e1b7d3244d00627618b50e3a2989a3371e4cf2f5`. It remains draft/unmerged, 299 ahead / 0 behind main, 40 changed paths. Do not merge the accumulated stack wholesale.
+- Run 300 fixes offline shared-cache identity: same-world revision monotonicity now applies across actor changes; different world IDs reset revision ordering; accepted-position cache schema v2 binds actor ID/role, world ID and revision; legacy v1 entries fail closed. Full Verify, Genesis, PWA build, Live Source Archive, Combat, Council and Academy pass at exact head.
+- Browser [44982927286](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44982927286) fails in Worker A-owned `scripts/verify-browser.py:254` on the obsolete hidden `Enter Forge` locator; visible `#interact-button` says `Enter Guild Hall`. Exact handoff: [#472 comment 7073931999](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7073931999). Do not edit Browser-owned paths or move/duplicate the Contradiction Clerk.
+- Quest Board [44982927237](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44982927237), Synthesis [44982927244](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44982927244) and Android [44982927248](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44982927248) were still in progress at checkpoint capture; read terminal results before updating status. Android debug APK assembly succeeded; no JUnit/device acceptance is yet claimed.
+- Next: terminal mobile/Android results, then path-by-path #718/main reconciliation. G6/G7 IN_PROGRESS; G9 NOT_STARTED; Founder trust NOT_ENROLLED.
+
