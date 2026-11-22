@@ -45,6 +45,13 @@ Replay is idempotent by `event_id`.
 
 Verified revocations are replayed in event order. They block later executions using the revoked grant, and the quest projector applies the same boundary as the world reducer. A revocation does not silently erase earlier verified outcomes; the original event and its consequence remain auditable in history.
 
+## AOTA Codex navigation
+
+- Stage 10 keeps `guild_hall` as its owning institution but routes to the registered `guild-npc-synthesizer` NPC. The map preserves the exact NPC destination and still requires explicit Interact; the Synthesis Clerk workbench is advisory-only, does not invoke a model, and cannot write canonical state, grant authority, award progress, or certify truth/execution.
+- The Clerk's bundled project-state snapshot is dated and read-only. Its SHA-256 receipt identifies payload bytes only, not authenticity or claim truth. Preparing a lead is not submission; a separate explicit Source Observatory action is required to retain an actor-authored Source Observation.
+- Stage 11 routes to `decision_chamber` / Founder Gate. Witness inspection withholds APPROVE/REJECT/DEFER controls. Founder session authentication alone is not signed institutional authorization; consequential dispositions remain on the server's scoped human-gated decision path.
+- Codex display and NPC/room inspection do not complete a charter stage or award XP, evidence, approval, or authority. Normal map arrival may retain an actor-scoped discovery event under the existing world rules; discovery is not stage completion or evidence of the room's claims.
+
 ## Donor alignment
 
 This seam is intentionally compatible with the recovered NGL direction, with provenance boundaries:
