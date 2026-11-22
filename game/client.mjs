@@ -1026,6 +1026,16 @@ function followQuestAction(action){
   }
   if(action.type==='creation'&&typeof action.id==='string'&&Number.isInteger(action.version)){openCreation(action.id,action.version)}
 }
+function questActionLabel(action){
+  if(!action||action.type!=='location'||typeof action.id!=='string')return 'Go do this →';
+  const npc=GUILD_NPCS.find(candidate=>candidate.id===action.id) ||
+    LOCAL_NPCS.find(candidate=>candidate.id===action.id);
+  const place=npc?null:PLACES.find(candidate=>candidate.id===action.id);
+  const destination=npc?.name||place?.name;
+  return typeof destination==='string'&&destination.trim()
+    ? 'Walk to '+destination.trim()+' →'
+    : 'Go do this →';
+}
 const QUEST_EVIDENCE_PAGE_SIZE = 20;
 
 function renderQuestEvidenceEntry(evidence, options = {}) {
@@ -1144,7 +1154,7 @@ function renderQuestTrail(milestones, list = $('quest-trail'), options = {}) {
       text: item.progress + '/' + item.target + ' · ' + count + ' retained event' + (count === 1 ? '' : 's')
     }));
     if (isQuestObjectiveActionable(item)) {
-      row.append(button('Go do this →', () => followQuestAction(item.action), { class: 'text-button quest-action' }));
+      row.append(button(questActionLabel(item.action), () => followQuestAction(item.action), { class: 'text-button quest-action' }));
     } else if (!item.complete && item.blockedReason) {
       row.append(node('small', { class: 'quest-blocked', text: item.blockedReason }));
     }
