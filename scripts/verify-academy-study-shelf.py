@@ -375,7 +375,7 @@ def run_viewport(browser, url, out, width):
         expect(page.locator('#sheet-kicker')).to_have_text('COUNCIL · CAPABILITIES · EVIDENCE')
         expect(page.locator('#sheet-content')).to_contain_text('SYNTHESIS CLERK · BOUNDED COLLABORATOR')
         expect(page.locator('#sheet-content')).to_contain_text(
-            'The Synthesis Clerk can read the last public GitHub snapshot bundled with this build.'
+            'Synthesis Clerk reads a bounded public GitHub snapshot bundled with this build.'
         )
         clerk_snapshot = page.locator('#sheet-content [data-project-state-snapshot="true"]')
         expect(clerk_snapshot).to_have_attribute('aria-label', 'Bundled public GitHub project-state snapshot')
