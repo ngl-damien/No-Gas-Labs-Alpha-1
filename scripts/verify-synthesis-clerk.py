@@ -2459,7 +2459,7 @@ def assert_offline_cached_shared_snapshot_recovery(page, width):
 
     write_attempts = []
     def capture_write(request):
-        if request.method == "POST" and "/api/" in request.url:
+        if request.method == "POST" and request.url.split("?", 1)[0].endswith("/api/action"):
             write_attempts.append({"method": request.method, "url": request.url})
     page.on("request", capture_write)
     page.context.set_offline(True)
@@ -2563,6 +2563,7 @@ def assert_private_import_shared_reentry(page, width, out):
     if page.locator("#sheet").is_visible():
         page.locator("#sheet-close").tap()
     shared_before = authoritative_snapshot(page)
+    shared_position_before = authoritative_position(page)
     exported_world = page.evaluate("""async () => {
       const response = await fetch('/api/export', {
         cache: 'no-store',
@@ -2735,6 +2736,9 @@ def assert_private_import_shared_reentry(page, width, out):
     )
     assert after["revision"] == meta["baseRevision"]
     assert after["revision"] < meta["privateRevision"]
+    assert authoritative_position(page) == shared_position_before, (
+        "Private import must not move the shared character position."
+    )
     assert meta["privateEventId"] not in after["eventIds"], (
         "The imported private discovery must never enter shared history."
     )
