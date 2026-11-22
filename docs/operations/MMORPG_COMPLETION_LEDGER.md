@@ -1,3 +1,44 @@
+## Run 318 — destination-specific Quest Board actions — 2026-11-22
+
+**Candidate:** draft PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), head 8c5c73f61488d695185ebab367516a7ecf629aa4, main base 0d950c501cf128d828ae4f263cc05a9013d7e8c1. Compare: 392 ahead / 0 behind, 46 changed paths. The two Run 318 commits are not CI-verified.
+
+| Gate | Status | Run 318 evidence and limit |
+|---|---|---|
+| G0 Product definition | IN_PROGRESS | No new Founder decision on supported devices, declared player scale, server model, or product acceptance. |
+| G1 Coherent playable loop | IN_PROGRESS | Location-type Quest Board actions now resolve fixed NPC/place names; the Synthesis mobile test clicks the actual failure-provenance objective and routes to Moonshot Field. No workflow ran on the new head, so the behavior is not yet verified. |
+| G2 Persistent character/world | IN_PROGRESS | No persistence change. Route arrival may retain its normal actor-scoped discovery; inspection remains read-only. |
+| G3 Authoritative multiplayer | IN_PROGRESS | No new independent-human or scale claim. Existing three-session fixtures remain synthetic. |
+| G4 Core RPG | IN_PROGRESS | No XP, skill, inventory, or reward rule change. Navigation is not quest completion; no progress is manufactured. |
+| G5 Social/economic | IN_PROGRESS | No new economy, pricing, moderation, or abuse-control capability. |
+| G6 Persistent world/content | IN_PROGRESS | Run 316/317 failure-provenance and partial-snapshot boundaries are covered on parent head 9e6451f. Run 318 makes the objective's location route explicit, but the new route acceptance is unverified. |
+| G7 Android-first | IN_PROGRESS | Parent-head browser journeys pass at 320px/390px. Android run 45063577753 was cancelled during emulator acceptance after APK assembly; no JUnit/device result. |
+| G8 Operational readiness | IN_PROGRESS | Parent-head Full Verify/Genesis/Source Archive/PWA/Academy/Council/Combat/Quest Board/Synthesis pass. Browser fails in Worker A-owned helper. No Actions runs or combined status exist for 8c5c73f. |
+| G9 Release / Founder acceptance | NOT_STARTED | PR #718 remains draft/unmerged; Founder trust NOT_ENROLLED. No release, deployment, distribution, or Founder acceptance. |
+
+**Run 318 code:** test-first commit 38a28b5 updates scripts/verify-synthesis-clerk.py to click the actual quest action and expect “Walk to Moonshot Field →”; runtime commit 8c5c73f labels location actions from the fixed NPC/place catalogues. The action still only routes; explicit Interact remains required. No XP, evidence, truth, approval, or authority is created.
+
+**Verification boundary:** Full Verify 45063577715 and Synthesis 45063577775 pass on parent head 9e6451f only; they do not verify Run 318. No CI runs were created for 38a28b5 or 8c5c73f. Local preflight/tests were unavailable because both authorized Desktop Commander devices are offline and the container cannot resolve GitHub; procedural compliance PARTIAL.
+
+**Open blockers:** Browser 45063577714 fails on parent head 9e6451f in Worker A-owned scripts/verify-browser.py (visible Guild Hall Interact vs stale hidden Forge locator). Android 45063577753 was CANCELLED during the offline-world emulator journey after debug APK assembly; no terminal JUnit/instrumentation or physical-device acceptance. No merge or release.
+
+---
+
+## Run 317 — partial Source Archive history remains visible and scoped — 2026-11-22
+
+- Test d4c6b10 and runtime 0ee209e make the failure-provenance objective visible but blocked on partial/unavailable history when no visible failure can be inspected; complete-empty history does not invent a failure objective. When a visible retained failure exists, the route is available with explicit partial scope and unseen-event disclosure.
+- Mobile acceptance 9e6451f asserts Witness objective OPEN 0/1, partial/unseen scope, and the exact visible failure object. It does not click the objective route; that is the Run 318 acceptance target.
+- Exact parent head 9e6451f Full Verify 45063577715 and Synthesis mobile 45063577775 PASS at 320px/390px. Source retrieval/independent verification remain NOT_PERFORMED; model assertions LEADS_ONLY; execution NOT_EXECUTED; no XP or truth verdict.
+
+---
+
+## Run 316 — exact failure-origin provenance for Source Observations — 2026-11-22
+
+- Commits 39aacd6 / 26b4bee / 87d1189 add server-validated originFailureEventId binding to one exact earlier service-observed Source Archive failure inside the declared snapshot prefix. Identity protocol v3 and retained history validation preserve the exact link; free-text mentions do not count.
+- Mobile acceptance 970ded1 submits the failure-derived Source Observation explicitly and verifies exactly one retained event, exact origin ID, earlier failure position, declared snapshot revision, and zero XP. The quest title/copy in 99e8a15 states “Link a Source Archive failure to a Source Observation” and explicitly disclaims investigation, truth, evidence certification, and Questkeeper progression.
+- Exact parent head 9e6451f Full Verify 45063577715 and Synthesis mobile 45063577775 PASS; no source retrieval or independent verification is claimed. Model assertions remain LEADS_ONLY and execution NOT_EXECUTED.
+
+---
+
 ## Run 315 — gate evidence update — 2026-11-22
 
 **Candidate:** draft runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), code/test head `5af51d8294a8660d416bf83064e50d5c3deebfe1`, main base `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. This is proposed-branch evidence, not integration into main.

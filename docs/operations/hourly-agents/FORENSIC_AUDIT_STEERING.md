@@ -1,3 +1,16 @@
+## Run 318 Worker B steering — destination-specific Quest Board actions — 2026-11-22
+
+- Continue on existing runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch feat/evidence-archive-visible-stream-order-20261120-run272, exact head 8c5c73f61488d695185ebab367516a7ecf629aa4; draft/unmerged, 392 ahead / 0 behind main, 46 changed paths. Do not create a competing runtime PR or merge the stack without path-by-path reconciliation.
+- Run 318 commits: test-first [38a28b5](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/38a28b58723542ca93db6f77befdd5a1141e3084) clicks the Witness failure-provenance quest action and expects the exact Moonshot Field destination label; runtime [8c5c73f](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/8c5c73f61488d695185ebab367516a7ecf629aa4) resolves location-action labels from fixed NPC/place catalogues. No new Actions runs or combined status exist for either commit; do not claim red/green verification.
+- The parent head 9e6451f has Full Verify 45063577715, Genesis 45063577716, Live Source Archive 45063577777, PWA build 45063577799 (deploy skipped), Combat 45063577751, Academy 45063577726, Council 45063577736, Synthesis 45063577775 and Quest Board 45063577733 PASS. These checks predate Run 318.
+- Browser [45063577714](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45063577714) FAILS in Worker A-owned scripts/verify-browser.py: visible Enter Guild Hall vs stale hidden Enter Forge. Handoff #472 comment 7084833068; do not edit Browser-owned paths or move/duplicate the Contradiction Clerk.
+- Android [45063577753](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45063577753) is CANCELLED during the offline-world emulator journey after debug APK assembly and artifact preservation; no terminal JUnit/device result. Handoff #533 comment 7085196545; do not edit Android-owned paths.
+- Both authorized Desktop Commander devices are Offline; container GitHub DNS lookup fails. No local portable preflight, Node/Playwright/Gradle execution, or local pre-edit receipt. Hosted preflight is on parent head 9e6451f only; procedural compliance PARTIAL.
+- The existing docs child PR #722 was synchronized by two-parent commit 517ef02 (runtime head 8c5c73f first parent, prior docs head 757ebde second parent), with force=false and expected head. No rebase or force update.
+- Next: obtain exact-head Full Verify and Synthesis mobile acceptance for 8c5c73f; preserve explicit Interact and zero-XP/read-only invariants; continue Worker A Browser/Android handoffs; reconcile the 392-commit runtime stack path-by-path before integration. G0–G8 IN_PROGRESS, G9 NOT_STARTED, Founder trust NOT_ENROLLED. No merge/release/deployment/Founder approval/truth/authority transition.
+
+---
+
 ## Run 315 Worker B steering — fail-closed Source Archive failure projection — 2026-11-22
 
 - Continue on existing runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `5af51d8294a8660d416bf83064e50d5c3deebfe1`; draft/unmerged, 375 ahead / 0 behind main, 45 changed paths. Do not create a competing runtime PR or merge the large stack without path-by-path reconciliation.
