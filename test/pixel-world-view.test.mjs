@@ -2158,6 +2158,31 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
     'the primary Interact action enters the requested institution, not the incidental NPC');
   assert.equal(arrived.view.navigationTarget, null);
 
+  const synthesizer = GUILD_NPCS.find(candidate => candidate.roleId === 'synthesizer');
+  const synthesizerTarget = { id: synthesizer.id, type: 'npc' };
+  const synthesizerDestination = { ...synthesizer, type: 'npc', distance: 60 };
+  const npcWalking = renderProbe(390, 20, false, synthesizer, null, null, {
+    target: synthesizerTarget,
+    route: [{ x: synthesizer.x, y: synthesizer.y + 12 }],
+    destination: synthesizerDestination
+  });
+  assert.equal(npcWalking.dataset.navigationTargetId, synthesizer.id);
+  assert.equal(npcWalking.dataset.navigationState, 'walking');
+  assert.match(npcWalking.attributes['aria-description'], /Walking to Synthesis Clerk/i,
+    'screen-reader route copy must name the exact NPC destination, not a generic institution');
+  assert.match(npcWalking.attributes['aria-description'], /navigation alone does not open the interaction/i);
+  npcWalking.view.interact();
+  assert.deepEqual(npcWalking.interactions, [],
+    'NPC navigation must not talk to the collaborator before explicit arrival interaction');
+
+  const npcAwaitingRange = renderProbe(390, 20, false, synthesizer, null, null, {
+    target: synthesizerTarget,
+    route: [],
+    destination: { ...synthesizer, type: 'npc', distance: 300 }
+  });
+  assert.equal(npcAwaitingRange.dataset.navigationState, 'awaiting-range');
+  assert.match(npcAwaitingRange.attributes['aria-description'], /Synthesis Clerk is not within interaction range/i);
+
   const boundary = renderProbe(390, 160);
   assert.equal(boundary.dataset.nearbyNpcRole, 'none');
   assert.equal(boundary.dataset.nearbyNpcPacketState, 'none');
