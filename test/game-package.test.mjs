@@ -834,12 +834,12 @@ test('phone PWA captures and publishes a bounded public project-state snapshot',
   const artifact = workflow.indexOf('uses: actions/upload-pages-artifact@v3');
   assert.ok(capture >= 0, 'the PWA build must capture the dated project-state snapshot');
   assert.ok(capture < artifact, 'snapshot capture must finish before the Pages artifact is preserved');
-  assert.match(workflow, /GITHUB_TOKEN:\\s*\\$\\{\\{\\s*github\\.token\\s*\\}\\}/);
+  assert.ok(workflow.includes('GITHUB_TOKEN: ${{ github.token }}'));
   for (const permission of ['contents', 'pull-requests', 'issues', 'actions', 'checks', 'statuses']) {
-    assert.match(workflow, new RegExp('^\\\\s*' + permission + ': read$', 'm'));
+    assert.ok(workflow.includes('    ' + permission + ': read'));
   }
-  assert.match(workflow, /test -s _site\\/project-state\\.json/);
-  assert.match(workflow, /path:\\s*_site/);
+  assert.ok(workflow.includes('test -s _site/project-state.json'));
+  assert.ok(workflow.includes('path: _site'));
   for (const target of ['scripts/capture-project-state.mjs', 'src/institution/kernel.mjs', 'test/project-state-snapshot.test.mjs']) {
     assert.ok(workflow.includes("'" + target + "'"), 'PWA build must rerun when snapshot producer changes: ' + target);
   }
@@ -847,8 +847,10 @@ test('phone PWA captures and publishes a bounded public project-state snapshot',
 
 test('the dated project-state snapshot is optional and its cached copy remains readable offline', async () => {
   const source = await readFile(new URL('../game/sw.js', import.meta.url), 'utf8');
-  const core = /const CORE_SHELL = \\[([\\s\\S]*?)\\];/.exec(source)?.[1] || '';
-  const optional = /const OPTIONAL_SHELL = \\[([\\s\\S]*?)\\];/.exec(source)?.[1] || '';
+  const coreStart = source.indexOf('const CORE_SHELL = [');
+  const core = source.slice(coreStart, source.indexOf('];', coreStart));
+  const optionalStart = source.indexOf('const OPTIONAL_SHELL = [');
+  const optional = source.slice(optionalStart, source.indexOf('];', optionalStart));
   assert.ok(!core.includes('/project-state.json'), 'snapshot absence must not block shell installation');
   assert.ok(optional.includes('/project-state.json'), 'the dated snapshot must use the optional public-asset cache path');
 
