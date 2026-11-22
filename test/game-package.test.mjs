@@ -831,7 +831,10 @@ test('artifact detail fails closed for unavailable exact versions and guards sta
 test('phone PWA captures and publishes a bounded public project-state snapshot', async () => {
   const workflow = await readFile(new URL('../.github/workflows/publish-phone-pwa.yml', import.meta.url), 'utf8');
   const capture = workflow.indexOf('node scripts/capture-project-state.mjs --out _site/project-state.json');
+  const setupNode = workflow.indexOf('uses: actions/setup-node@v4');
   const artifact = workflow.indexOf('uses: actions/upload-pages-artifact@v3');
+  assert.ok(setupNode >= 0 && setupNode < capture, 'the snapshot producer must run on the repository's supported Node version');
+  assert.ok(workflow.includes('node-version: 24'));
   assert.ok(capture >= 0, 'the PWA build must capture the dated project-state snapshot');
   assert.ok(capture < artifact, 'snapshot capture must finish before the Pages artifact is preserved');
   assert.ok(workflow.includes('GITHUB_TOKEN: ${{ github.token }}'));
@@ -840,6 +843,8 @@ test('phone PWA captures and publishes a bounded public project-state snapshot',
   }
   assert.ok(workflow.includes('test -s _site/project-state.json'));
   assert.ok(workflow.includes('path: _site'));
+  assert.ok(workflow.includes("if: github.event_name == 'push' && github.ref == 'refs/heads/main'"),
+    'the PWA artifact may deploy only from an explicit main-branch push');
   for (const target of ['scripts/capture-project-state.mjs', 'src/institution/kernel.mjs', 'test/project-state-snapshot.test.mjs']) {
     assert.ok(workflow.includes("'" + target + "'"), 'PWA build must rerun when snapshot producer changes: ' + target);
   }
