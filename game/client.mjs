@@ -1,6 +1,7 @@
 import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,isDifferentPositionSession,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {registerOfflineShell} from './offline-shell.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
+import {readSharedSnapshotCache,readSharedPositionCache,writeSharedSnapshotCache,writeSharedPositionCache} from './shared-snapshot.mjs';
 import {buildSatireIssueBody,readSatireIssueArtifact,findSatireIssuePublication,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX,buildGitHubSourceArchiveBody,GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX,GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL,readGitHubSourceArchiveMetadata} from './artifacts.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,isQuestObjectiveActionable,findStudyReview,hasStudyReviewRecord,createQuestEvidenceEventLinkResolver} from './quests.mjs';
@@ -21,7 +22,7 @@ import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from 
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
 registerOfflineShell();
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0,positionConflictNoticeKey=null,sharedMovementPaused=false,sharedOfflinePreview=false,sharedStreamOpen=false,sharedConnectionRecovery=null,activeWorldChronicleRefresh=null,activeWorldChronicleSnapshot=null,activeWorldChroniclePinned=false;let commonsDraftText='';
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0,positionConflictNoticeKey=null,sharedMovementPaused=false,sharedOfflinePreview=false,sharedStreamOpen=false,sharedConnectionRecovery=null,activeWorldChronicleRefresh=null,activeWorldChronicleSnapshot=null,activeWorldChroniclePinned=false,sharedSnapshotCacheOnly=false;let commonsDraftText='';
 const sourceSnapshotReceiptsByRevision = new Map();
 const timedSharedPositionWrite=createPositionWriteDeadline((position,{signal})=>{
   const expectedEpoch=positionEpoch;
@@ -581,7 +582,17 @@ function toast(message,error=false){clearTimeout(toastTimer);$('toast').textCont
 function handleError(error){console.error(error);toast(error.message||'That action could not be completed.',true)}
 function guarded(fn){return async(...args)=>{try{return await fn(...args)}catch(error){handleError(error)}}}
 function download(name,content,type='text/html'){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const link=node('a',{href:url,download:name});document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}
-async function request(path,body,{signal}={}){let response;try{response=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},credentials:'same-origin',...(body===undefined?{}:{body:JSON.stringify(body)}),...(signal?{signal}:{})})}catch{setConnection(mode==='shared'?sharedStreamOpen:false);throw new Error('The shared world is unreachable. Your role has not changed. Reconnect to continue.')}let data;try{data=await response.json()}catch{throw new Error('The shared service did not return a readable response.')}if(!response.ok)throw Object.assign(new Error(data.error?.message||data.message||data.error||`Request failed (${response.status}).`),{code:data.error?.code||data.code,status:response.status});return data}
+async function request(path,body,{signal}={}){
+  if(mode==='shared'&&sharedSnapshotCacheOnly&&body!==undefined&&path!=='/api/login')
+    throw Object.assign(new Error('The cached shared snapshot is read-only until the live server revalidates this session.'),{code:'STALE_SHARED_SNAPSHOT',status:409});
+  let response;
+  try{response=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},credentials:'same-origin',...(body===undefined?{}:{body:JSON.stringify(body)}),...(signal?{signal}:{})})}
+  catch{setConnection(mode==='shared'?sharedStreamOpen:false);throw new Error('The shared world is unreachable. Your role has not changed. Reconnect to continue.')}
+  let data;
+  try{data=await response.json()}catch{throw new Error('The shared service did not return a readable response.')}
+  if(!response.ok)throw Object.assign(new Error(data.error?.message||data.message||data.error||'Request failed ('+response.status+').'),{code:data.error?.code||data.code,status:response.status});
+  return data;
+}
 function stableActionJSON(value){if(Array.isArray(value))return value.map(stableActionJSON);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).filter(key=>value[key]!==undefined).sort().map(key=>[key,stableActionJSON(value[key])]));return value}
 function readPendingSharedAction(){let raw;try{raw=localStorage.getItem(PENDING_SHARED_ACTION)}catch{throw new Error('Device storage is unavailable; shared writes are paused because a retry receipt cannot be checked.')}if(!raw)return null;let pending;try{pending=JSON.parse(raw)}catch{throw new Error('The saved shared-action retry receipt is unreadable. Do not clear it until the uncertain action is reconciled.')}if(!pending||typeof pending.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(pending.requestId)||typeof pending.actorId!=='string'||!['founder','witness'].includes(pending.actorRole)||!pending.action||typeof pending.action.type!=='string')throw new Error('The saved shared-action retry receipt is malformed. Preserve it for reconciliation before starting another shared action.');return pending}
 function savePendingSharedAction(pending){try{localStorage.setItem(PENDING_SHARED_ACTION,JSON.stringify(pending))}catch{throw new Error('Device storage could not preserve the retry receipt. The shared action was not sent.')}}
@@ -606,7 +617,7 @@ async function submitPendingSharedAction(pending){
   }
 }
 async function recoverPendingSharedAction(){
-  if(mode!=='shared'||pendingSharedActionInFlight)return false;
+  if(mode!=='shared'||sharedSnapshotCacheOnly||pendingSharedActionInFlight)return false;
   let pending;
   try{pending=readPendingSharedAction()}catch(error){handleError(error);return false}
   if(!pending||pending.actorId!==viewer.id||pending.actorRole!==viewer.role||pendingPredicateNeedsRetentionAcknowledgement(pending))return false;
@@ -650,18 +661,27 @@ function setConnection(connected){
   const offlinePreview=mode==='shared'&&sharedOfflinePreview&&!online;
   const dot=$('connection-dot');
   const worldCanvas=$('world');
-  if(worldCanvas?.dataset)worldCanvas.dataset.sharedOfflinePreview=String(offlinePreview);
+  if(worldCanvas?.dataset){
+    worldCanvas.dataset.sharedOfflinePreview=String(offlinePreview);
+    worldCanvas.dataset.sharedSnapshotCacheOnly=String(mode==='shared'&&sharedSnapshotCacheOnly);
+    worldCanvas.dataset.sharedSnapshotSource=mode==='shared'?(sharedSnapshotCacheOnly?'local-cache':'server'):mode==='private'?'private':'none';
+    worldCanvas.dataset.sharedSnapshotRevision=String(world.revision);
+  }
   dot.classList.toggle('online',online);
   dot.classList.toggle('offline',!online);
   dot.dataset.connectionState=online?'online':'offline';
   dot.title=online?'Network available':offlinePreview
-    ?'Shared snapshot preview only. Local travel is not saved to the shared world.'
+    ?sharedSnapshotCacheOnly
+      ?'Cached public snapshot only. The last session identity is not re-authenticated; shared actions are blocked and local travel is not saved.'
+      :'Shared snapshot preview only. Local travel is not saved to the shared world.'
     :mode==='shared'?'Shared service disconnected; reconnecting'
       :mode==='private'?'Offline; private work remains on this device':'Offline';
   dot.setAttribute('aria-label',dot.title);
   if(mode==='shared'){
     const roleLabel=viewer.role==='founder'?'Founder':'Witness';
-    $('mode-label').textContent=`Shared world · ${roleLabel}${online?'':offlinePreview?' · offline preview':' · reconnecting'}`;
+    $('mode-label').textContent=sharedSnapshotCacheOnly
+      ?'Shared snapshot · read-only'
+      :'Shared world · '+roleLabel+(online?'':offlinePreview?' · offline preview':' · reconnecting');
   }
   refreshCharacterSnapshotFreshnessNotice();
   refreshWorldChronicleSnapshot();
@@ -719,6 +739,8 @@ function acceptState(dto,{forcePosition=false}={}){
   const hasValidServerPosition=Boolean(serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y));
   if(positionStreamChanged&&(!hasValidServerPosition||stalePositionSnapshot))
     throw new Error('Shared state has no fresh authoritative position for the new session.');
+  sharedSnapshotCacheOnly=false;
+  sharedOfflinePreview=false;
   if(positionEpochChanged){positionEpoch=incomingEpoch;positionWriteRevision=incomingRevision;}
   else positionWriteRevision=Math.max(positionWriteRevision,incomingRevision);
   const demoted=viewer?.role==='founder'&&dto.viewer.role!=='founder';
@@ -740,11 +762,15 @@ function acceptState(dto,{forcePosition=false}={}){
     moving:view.moving,
     routeActive:Boolean(view.route?.length)
   })){player.x=serverPosition.x;player.y=serverPosition.y;}
-  view.setPlayer(player);presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(!sharedMovementPaused);
+  view.setPlayer(player);presence=dto.presence||[];institution=institutionSummaryFromState(dto);
+  const snapshotWrite=writeSharedSnapshotCache(localStorage,dto);
+  if(snapshotWrite.stored&&snapshotWrite.revision===dto.world.revision&&snapshotWrite.viewerId===dto.viewer.id&&snapshotWrite.viewerRole===dto.viewer.role)
+    writeSharedPositionCache(localStorage,dto.viewer,dto.world.revision,serverPosition);
+  setConnection(!sharedMovementPaused);
   if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}
   render();if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels();
 }
-async function act(action){const {requestId:suppliedRequestId,...payload}=action;const normalized=JSON.parse(JSON.stringify(payload));if(mode==='shared'){let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');if(suppliedRequestId&&pending.requestId!==suppliedRequestId)throw new Error('The pending Relay receipt uses a different stable request ID; resolve it before importing again.');}else{pending={requestId:suppliedRequestId||crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,normalized,viewer);persist(next.world);world=next.world;render();return next.result;}
+async function act(action){if(mode==='shared'&&sharedSnapshotCacheOnly)throw new Error('The cached shared snapshot is read-only until the live server revalidates this session.');const {requestId:suppliedRequestId,...payload}=action;const normalized=JSON.parse(JSON.stringify(payload));if(mode==='shared'){let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');if(suppliedRequestId&&pending.requestId!==suppliedRequestId)throw new Error('The pending Relay receipt uses a different stable request ID; resolve it before importing again.');}else{pending={requestId:suppliedRequestId||crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,normalized,viewer);persist(next.world);world=next.world;render();return next.result;}
 const view=new PixelWorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='player')openPlayerProfile(interaction.player);else if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>typeof interaction.npcRoleId==='string'
   ? openGuildNpcInteraction(interaction)
   : openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;if(mode==='shared'){try{const positionResult=await submitSharedPosition(view.getPlayer());if(positionResult?.resynchronized)return}catch(error){await recoverSharedPositionError(error);return}}const result=await act({type:'discover',locationId:id});if(result.discovered)toast(guides[id].name+' discovered · a new field note, no XP.')}),onPosition:guarded(async p=>{if(mode==='shared'){try{await submitSharedPosition(p)}catch(error){await recoverSharedPositionError(error)}}else if(mode==='private')writePrivatePlayerPosition(p)})});
@@ -759,6 +785,7 @@ async function submitSharedPosition(position){
   }
   const sequence=++positionWriteSequence;
   const result=await orderedSharedPositionWriter(position);
+  if(sequence===positionWriteSequence&&result.position)writeSharedPositionCache(localStorage,viewer,world.revision,result.position);
   // Older accepted responses must not pull the renderer backwards while a
   // newer coordinate is already queued.
   if(sequence===positionWriteSequence&&result.position&&!view.moving&&!view.route.length)
@@ -771,7 +798,7 @@ async function reconcileSharedPosition(){
   // Stop local movement and discard queued snapshots before reading. Waiting
   // for the in-flight write prevents a late accepted coordinate from landing
   // after this reconciliation snapshot.
-  pauseSharedMovement();
+  pauseSharedMovement({allowOfflinePreview:sharedSnapshotCacheOnly});
   setConnection(false);
   let reconciled=false;
   let reconciliation;
@@ -789,7 +816,8 @@ async function reconcileSharedPosition(){
       if(positionReconciliation===reconciliation)positionReconciliation=null;
       if(mode==='shared'){
         sharedMovementPaused=!reconciled||globalThis.navigator?.onLine===false||!sharedStreamOpen;
-        view.setMovementEnabled(!sharedMovementPaused);
+        const keepCachedPreview=sharedSnapshotCacheOnly&&sharedOfflinePreview;
+        view.setMovementEnabled(keepCachedPreview||!sharedMovementPaused);
         setConnection(!sharedMovementPaused);
       }
     }
@@ -811,8 +839,13 @@ async function recoverSharedConnection(){
   if(mode!=='shared')return false;
   if(sharedConnectionRecovery)return sharedConnectionRecovery;
   const recovery=(async()=>{
-    await recoverPendingSharedAction();
-    await reconcileSharedPosition();
+    if(sharedSnapshotCacheOnly){
+      await reconcileSharedPosition();
+      if(!sharedSnapshotCacheOnly)await recoverPendingSharedAction();
+    }else{
+      await recoverPendingSharedAction();
+      await reconcileSharedPosition();
+    }
     return !sharedMovementPaused;
   })();
   sharedConnectionRecovery=recovery;
@@ -1128,9 +1161,101 @@ function renderQuestTrail(milestones, list = $('quest-trail'), options = {}) {
   }
 }
 
-function render(){view.setWorld(world,mode==='shared'?institution:null,viewer);$('world').setAttribute('data-world-revision',String(world.revision));view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').querySelector('.character-level').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' character XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=getQuestTrail(world,viewer);const quest=getActiveQuest(world,viewer,questTrail);const nextQuestAction=quest.nextAction||questTrail.find(isQuestObjectiveActionable)?.action||null;view.setQuestTarget(nextQuestAction);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();refreshAcademySnapshotFreshnessNotice();refreshQuestBoardSnapshotFreshnessNotice();refreshCreationSnapshotFreshnessNotice();refreshMoonshotFieldSnapshotFreshnessNotice();refreshSourceObservatorySnapshotFreshnessNotice();}
-async function startPrivate(){pendingSourceObservatoryLead=null;sourceSnapshotReceiptsByRevision.clear();stream?.close();stream=null;sharedStreamOpen=false;sharedMovementPaused=false;sharedOfflinePreview=false;view.setMovementEnabled(true);mode='private';viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
-async function startShared(){pendingSourceObservatoryLead=null;const dto=await request('/api/state');stream?.close();stream=null;mode='shared';sharedStreamOpen=false;sharedMovementPaused=true;sharedOfflinePreview=false;view.setMovementEnabled(false);acceptState(dto,{forcePosition:true});$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels()}catch{}});stream.onerror=handleSharedDisconnect;stream.onopen=()=>{sharedStreamOpen=true;void recoverSharedConnection().catch(handleError)};toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
+function render(){
+  view.setWorld(world,mode==='shared'?institution:null,viewer);
+  $('world').setAttribute('data-world-revision',String(world.revision));
+  view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));
+  $('creation-count').textContent=world.creations.length;
+  $('xp-count').textContent=world.xp;
+  const character=projectCharacter(world,viewer);
+  $('character-button').querySelector('.character-level').textContent=String(character.level);
+  $('character-button').title='Level '+character.level+' · '+character.xp+' character XP';
+  $('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');
+  $('mode-label').textContent=mode==='shared'
+    ?sharedSnapshotCacheOnly?'Shared snapshot · read-only':'Shared world · '+(viewer.role==='founder'?'Founder':'Witness')
+    :mode==='private'?'Private world · saved on this device':'A world waiting to happen';
+  $('login-button').hidden=mode!=='shared'||(!sharedSnapshotCacheOnly&&viewer.role==='founder');
+  $('logout-button').hidden=mode!=='shared'||viewer.role!=='founder'||sharedSnapshotCacheOnly;
+  $('make-button').textContent=sharedSnapshotCacheOnly?'◌ Read-only snapshot':viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';
+  const questTrail=getQuestTrail(world,viewer);
+  const quest=getActiveQuest(world,viewer,questTrail);
+  const nextQuestAction=quest.nextAction||questTrail.find(isQuestObjectiveActionable)?.action||null;
+  view.setQuestTarget(nextQuestAction);
+  $('quest-title').textContent=quest.title;
+  $('quest-copy').textContent=quest.copy;
+  $('quest-button').textContent=quest.button;
+  renderQuestTrail(questTrail);
+  if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();
+  refreshAcademySnapshotFreshnessNotice();
+  refreshQuestBoardSnapshotFreshnessNotice();
+  refreshCreationSnapshotFreshnessNotice();
+  refreshMoonshotFieldSnapshotFreshnessNotice();
+  refreshSourceObservatorySnapshotFreshnessNotice();
+}
+async function startPrivate(){pendingSourceObservatoryLead=null;sourceSnapshotReceiptsByRevision.clear();stream?.close();stream=null;sharedStreamOpen=false;sharedMovementPaused=false;sharedOfflinePreview=false;sharedSnapshotCacheOnly=false;view.setMovementEnabled(true);mode='private';viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
+function connectSharedStream(){
+  stream=new EventSource('/api/events');
+  stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});
+  stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels()}catch{}});
+  stream.onerror=handleSharedDisconnect;
+  stream.onopen=()=>{sharedStreamOpen=true;void recoverSharedConnection().catch(handleError)};
+}
+async function startShared(){
+  pendingSourceObservatoryLead=null;
+  let dto;
+  try{
+    dto=await request('/api/state');
+  }catch(error){
+    const cacheableFailure=error?.status===undefined||error.status>=500;
+    const cached=cacheableFailure?readSharedSnapshotCache(localStorage):null;
+    if(!cached)throw error;
+    stream?.close();
+    stream=null;
+    mode='shared';
+    sharedStreamOpen=false;
+    sharedMovementPaused=true;
+    sharedOfflinePreview=true;
+    sharedSnapshotCacheOnly=true;
+    positionEpoch=null;
+    positionWriteRevision=0;
+    positionWriteSequence+=1;
+    positionReconciliation=null;
+    orderedSharedPositionWriter.cancelPending();
+    sourceSnapshotReceiptsByRevision.clear();
+    world=cached.world;
+    const cachedPosition=readSharedPositionCache(localStorage,cached)||cached.viewer.position;
+    viewer={...cached.viewer,position:{...cachedPosition}};
+    presence=[];
+    institution=null;
+    selectedDraft=null;
+    view.setMovementEnabled(true);
+    view.setPlayer({id:viewer.id,x:cachedPosition.x,y:cachedPosition.y});
+    $('doorway').hidden=true;
+    $('play-ui').hidden=false;
+    render();
+    setConnection(false);
+    connectSharedStream();
+    toast('Opened the last accepted public snapshot. It is read-only until the live server revalidates this session.');
+    view.canvas.focus({preventScroll:true});
+    return;
+  }
+  stream?.close();
+  stream=null;
+  mode='shared';
+  sharedStreamOpen=false;
+  sharedMovementPaused=true;
+  sharedOfflinePreview=false;
+  sharedSnapshotCacheOnly=false;
+  view.setMovementEnabled(false);
+  acceptState(dto,{forcePosition:true});
+  $('doorway').hidden=true;
+  $('play-ui').hidden=false;
+  selectedDraft=null;
+  connectSharedStream();
+  toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));
+  await recoverPendingSharedAction();
+  view.canvas.focus({preventScroll:true});
+}
 function showSheet(title,kicker='FIELD NOTES'){
   institutionRequestGeneration++;
   activeNoteRenderer=null;
