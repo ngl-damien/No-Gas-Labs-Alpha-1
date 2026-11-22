@@ -252,18 +252,19 @@ test('client resets and establishes shared-snapshot acceptance only at explicit 
   const startPrivateAt = client.indexOf('async function startPrivate()');
   const connectStreamAt = client.indexOf('function connectSharedStream()', startPrivateAt);
   assert.ok(resetAt >= 0 && startPrivateAt > resetAt && connectStreamAt > startPrivateAt);
-  const resetEnd = client.indexOf('\\nasync function startPrivate()', resetAt);
-  assert.ok(resetEnd > resetAt);
+  const resetEnd = startPrivateAt;
   const resetSession = client.slice(resetAt, resetEnd);
-  assert.match(resetSession, /sharedSnapshotAcceptance\\.reset\\(\\)/);
-  assert.match(resetSession, /sharedStreamOpen=false/);
-  assert.match(resetSession, /sharedMovementPaused=false/);
-  assert.match(resetSession, /sharedOfflinePreview=false/);
-  assert.match(resetSession, /sharedSnapshotCacheOnly=false/);
-  assert.match(resetSession, /stream\\?\\.close\\(\\);stream=null/);
-  assert.match(resetSession, /sourceSnapshotReceiptsByRevision\\.clear\\(\\)/);
-  assert.match(resetSession, /view\\.setMovementEnabled\\(true\\)/);
-  assert.match(client.slice(startPrivateAt, connectStreamAt), /resetSharedSessionForPrivateMode\\(\\)/,
+  for (const expected of [
+    'sharedSnapshotAcceptance.reset()',
+    'sharedStreamOpen=false',
+    'sharedMovementPaused=false',
+    'sharedOfflinePreview=false',
+    'sharedSnapshotCacheOnly=false',
+    'stream?.close();stream=null',
+    'sourceSnapshotReceiptsByRevision.clear()',
+    'view.setMovementEnabled(true)'
+  ]) assert.ok(resetSession.includes(expected), 'private-session reset must include ' + expected);
+  assert.ok(client.slice(startPrivateAt, connectStreamAt).includes('resetSharedSessionForPrivateMode()'),
     'entering a private world must use the complete shared-session reset');
 
   const importAt = client.indexOf("const file=node('input',{id:'import-world'");
