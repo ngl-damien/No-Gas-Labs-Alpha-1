@@ -2438,6 +2438,12 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
       };
     }""", source_archive_failure_event_id)
     assert witness_failure_projection is not None
+    assert witness_failure_projection["complete"] is False, (
+        "The Witness failure snapshot must remain explicitly partial."
+    )
+    assert witness_failure_projection["unseenEventCount"] > 0, (
+        "The Witness projection must retain its unseen-history count."
+    )
     assert source_archive_failure_event_id in witness_failure_projection["eventIds"], (
         "The bounded Witness projection must preserve the visible service failure object."
     )
@@ -2469,6 +2475,17 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
     expect(witness_source_row).to_have_count(1)
     expect(witness_source_row.locator(".quest-step-state")).to_have_text("OPEN")
     expect(witness_source_row).to_contain_text("0/1")
+    witness_failure_investigation_row = page.locator(
+        '#sheet-content [data-objective-id="witness-source-archive-failure-investigation"]'
+    )
+    expect(witness_failure_investigation_row).to_have_count(1)
+    expect(witness_failure_investigation_row.locator(".quest-step-state")).to_have_text("OPEN")
+    expect(witness_failure_investigation_row).to_contain_text("0/1")
+    failure_scope = witness_failure_investigation_row.locator(".quest-interpretation")
+    expect(failure_scope).to_contain_text("Snapshot scope:")
+    expect(failure_scope).to_contain_text("partial")
+    expect(failure_scope).to_contain_text("unseen")
+    expect(witness_failure_investigation_row.locator(".quest-action")).to_be_visible()
     after_board = authoritative_snapshot(page)
     assert_canonical_state_unchanged(after_arrival, after_board, "Reading the Witness Quest Board")
     page.screenshot(path=str(out / ("synthesis-witness-quest-" + str(width) + ".png")), full_page=True)
@@ -2508,6 +2525,11 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
         "sourceArchiveFailureProjectionUnseenEventCount": witness_failure_projection["unseenEventCount"],
         "witnessSourceObservationStatus": "OPEN",
         "witnessSourceObservationProgress": "0/1",
+        "witnessFailureInvestigationStatus": "OPEN",
+        "witnessFailureInvestigationProgress": "0/1",
+        "witnessFailureInvestigationPartialScopeDisclosed": True,
+        "witnessFailureInvestigationUnseenEventCount": witness_failure_projection["unseenEventCount"],
+        "witnessFailureInvestigationAction": "moonshot_field",
         "witnessSynthesisSkillCount": 0,
         "founderResponseVisibleInSharedHistory": True,
         "founderRejectedAttemptVisibleInSharedHistory": True,
