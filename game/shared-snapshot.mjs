@@ -241,3 +241,24 @@ export function createSharedSnapshotAcceptanceGuard() {
     }
   };
 }
+
+/**
+ * Gives each shared-session lifetime an opaque identity. Async callbacks must
+ * present the token they captured before awaiting; a private-world transition
+ * invalidates every outstanding token without relying on cancellation alone.
+ */
+export function createSharedSessionGenerationGuard() {
+  let current = Object.freeze({});
+  return {
+    capture() {
+      return current;
+    },
+    isCurrent(token) {
+      return token === current;
+    },
+    invalidate() {
+      current = Object.freeze({});
+      return current;
+    }
+  };
+}
