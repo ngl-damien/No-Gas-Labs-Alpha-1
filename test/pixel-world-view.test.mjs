@@ -503,6 +503,52 @@ test('a world obstacle update replans an active institution destination without 
   assert.equal(view.target, null, 'the route does not become an auto-interaction target');
 });
 
+test('same-session server position updates preserve an active freeform map route', () => {
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'actor', x: 180, y: 640, positionEpoch: 'epoch-1' },
+    positionEpoch: 'epoch-1',
+    world: { creations: [] }, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [], target: null, targetType: null, navigationTarget: null, playerApproach: null,
+    movementEnabled: true, keys: new Set(), input: { x: 0, y: 0 }, moving: false,
+    scheduleFrame: () => {}
+  });
+
+  view.goTo({ x: 420, y: 640 });
+  assert.ok(view.route.length > 0, 'a ground tap creates a walkable route');
+
+  view.setPlayer({ id: 'actor', x: 195, y: 640, positionEpoch: 'epoch-1' });
+
+  assert.ok(view.route.length > 0,
+    'a same-session server position receipt must replan the pending ground route instead of stranding the player after one update');
+  assert.equal(view.target, null, 'ground navigation remains movement-only');
+  assert.equal(view.targetType, null);
+});
+
+test('same-session server position updates preserve an active institution route', () => {
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'actor', x: 180, y: 640, positionEpoch: 'epoch-1' },
+    positionEpoch: 'epoch-1',
+    world: { creations: [] }, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [], target: null, targetType: null, navigationTarget: null, playerApproach: null,
+    movementEnabled: true, keys: new Set(), input: { x: 0, y: 0 }, moving: false,
+    scheduleFrame: () => {}
+  });
+
+  view.goTo('source_observatory');
+  const destination = { ...view.navigationTarget };
+  assert.ok(view.route.length > 0, 'the institution destination starts with a walkable route');
+
+  view.setPlayer({ id: 'actor', x: 195, y: 640, positionEpoch: 'epoch-1' });
+
+  assert.ok(view.route.length > 0,
+    'a same-session server position receipt must replan an institution route in progress');
+  assert.deepEqual(view.navigationTarget, destination,
+    'the exact requested institution remains the navigation destination, not an auto-interaction');
+  assert.equal(view.target, null, 'institution navigation does not become an automatic entry');
+});
+
 test('manual movement clears a pending institution destination', () => {
   const view = Object.create(PixelWorldView.prototype);
   Object.assign(view, {
