@@ -278,10 +278,15 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
  const candidates=[];
  for(let index=0;index<eventCount;index++){
   const event=ownDataValue(events,String(index));
-  if(!event||typeof event!=='object'||isArraySafely(event))continue;
+  // Every retained slot must be safely classifiable before this projection can
+  // make an absence or ordering claim. A hole, accessor-backed type, or malformed
+  // event cannot be silently treated as an unrelated event.
+  if(!event||typeof event!=='object'||isArraySafely(event))return null;
+  const eventType=ownDataValue(event,'type');
+  if(typeof eventType!=='string'||!eventType.trim())return null;
   const eventId=ownDataValue(event,'id');
   if(typeof eventId==='string')eventIdCounts.set(eventId,(eventIdCounts.get(eventId)||0)+1);
-  if(ownDataValue(event,'type')!=='source-archive-attempt-failed')continue;
+  if(eventType!=='source-archive-attempt-failed')continue;
   const attemptId=ownDataValue(event,'attemptId');
   if(typeof attemptId==='string')attemptIdCounts.set(attemptId,(attemptIdCounts.get(attemptId)||0)+1);
   const requestIdDigest=ownDataValue(event,'requestIdDigest');
