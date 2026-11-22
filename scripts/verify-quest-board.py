@@ -3119,7 +3119,10 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         # they are not evidence of distinct humans and award no XP.
         history_action_before = authoritative_snapshot(founder_page)
         history_offer_ids = []
-        for index in range(11):
+        # The three-session Ward chain adds one accepted offer; keep 13 total
+        # participant offers so the 12-entry newest page and one-entry older
+        # page still exercise the intended bounded pagination boundary.
+        for index in range(10):
             offer_payload = post_action(witness_page, {
                 'type': 'offer-field-item-transfer',
                 'itemEventId': second_forge_event_id,
@@ -3137,7 +3140,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             assert decline_payload.get('ok') is not False
             history_offer_ids.append(offer_id)
         history_action_after = authoritative_snapshot(founder_page)
-        assert history_action_after['revision'] == history_action_before['revision'] + 22
+        assert history_action_after['revision'] == history_action_before['revision'] + 20
         assert history_action_after['xp'] == history_action_before['xp'], (
             'Repeated retained offers and refusals must not award XP.'
         )
@@ -3153,7 +3156,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             '#sheet-content [data-field-item-participant-history]'
         )
         expect(handoff_history).to_have_count(1)
-        expect(handoff_history).to_have_attribute('data-history-total', '14')
+        expect(handoff_history).to_have_attribute('data-history-total', '13')
         expect(handoff_history).to_have_attribute('data-history-page', '0')
         expect(handoff_history).to_have_attribute('data-history-pages', '2')
         expect(handoff_history).to_have_attribute('data-history-has-older', 'true')
@@ -3168,7 +3171,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
              (event.recipientId === founderId && event.recipientRole === 'founder'))
           ).map(event => event.offerId);
         }""", founder_before['viewerId'])
-        assert len(expected_history_ids) == 14
+        assert len(expected_history_ids) == 13
         newest_page_ids = handoff_history.locator(
             '[data-field-item-participant-history-entry]'
         ).evaluate_all("nodes => nodes.map(node => node.getAttribute('data-field-item-participant-history-entry'))")
