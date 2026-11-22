@@ -2545,6 +2545,22 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             '#sheet-content [data-equipment-slot="adversarial"] [data-unequip-field-item="adversarial"]'
         )).to_be_visible()
 
+        # The same source-bound dissent dossier must travel with the exact item
+        # through the second handoff without becoming evidence or adjudication.
+        silent_page.locator('#sheet-close').tap()
+        silent_transfer_dossier = assert_contradiction_ward_dossier(
+            silent_page,
+            'The model assertion has no retrieved primary source. Literal <img> text remains text.',
+            'Founder fixture claim: the model assertion is not verified.',
+            'Agreed: this remains a lead until the primary source is retrieved.',
+            founder_before['viewerId'],
+            witness_before['viewerId'],
+            source_observation_event_id,
+            challenge_event_id,
+            response_event_id,
+            out / 'contradiction-ward-dossier-recipient-silent-320.png'
+        )
+
         after_chain_founder = authoritative_snapshot(founder_page)
         after_chain_witness = authoritative_snapshot(witness_page)
         after_chain_silent = authoritative_snapshot(silent_page)
@@ -2555,7 +2571,6 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert after_chain_silent['xp'] == silent_before['xp'], (
             'A second accepted handoff and recipient equipment are progression records, not XP.'
         )
-        silent_page.locator('#sheet-close').tap()
         founder_page.locator('#sheet-close').tap()
 
         founder_page.reload(wait_until='networkidle')
@@ -2606,7 +2621,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'All three independent contexts must observe the same retained shared world.'
         )
         assert after_founder['xp'] == founder_before['xp'] == after_silent['xp'], (
-            'Guild membership, observations, dissent and response award no XP.'
+            'Guild participation, dissent, responses, and both Armor Bearer handoffs award no XP.'
         )
         assert after_founder['revision'] == founder_before['revision'] + 21, (
             'Exactly twenty-one canonical actions should be retained: the original seventeen plus the Founder unequip, second offer, second acceptance, and third-player equip.'
