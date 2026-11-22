@@ -765,7 +765,7 @@ function acceptState(dto,{forcePosition=false}={}){
   view.setPlayer(player);presence=dto.presence||[];institution=institutionSummaryFromState(dto);
   const snapshotWrite=writeSharedSnapshotCache(localStorage,dto);
   if(snapshotWrite.stored&&snapshotWrite.revision===dto.world.revision&&snapshotWrite.viewerId===dto.viewer.id&&snapshotWrite.viewerRole===dto.viewer.role)
-    writeSharedPositionCache(localStorage,dto.viewer,dto.world.revision,serverPosition);
+    writeSharedPositionCache(localStorage,dto.viewer,dto.world.id,dto.world.revision,serverPosition);
   setConnection(!sharedMovementPaused);
   if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}
   render();if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels();
@@ -785,7 +785,7 @@ async function submitSharedPosition(position){
   }
   const sequence=++positionWriteSequence;
   const result=await orderedSharedPositionWriter(position);
-  if(sequence===positionWriteSequence&&result.position)writeSharedPositionCache(localStorage,viewer,world.revision,result.position);
+  if(sequence===positionWriteSequence&&result.position)writeSharedPositionCache(localStorage,viewer,world.id,world.revision,result.position);
   // Older accepted responses must not pull the renderer backwards while a
   // newer coordinate is already queued.
   if(sequence===positionWriteSequence&&result.position&&!view.moving&&!view.route.length)
