@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as sharedSnapshot from '../game/shared-snapshot.mjs';
 import { createWorld, publicWorld } from '../game/model.mjs';
 import {
   createSharedSnapshotEnvelope,
@@ -196,4 +197,26 @@ test('accepted position cache is bound to world identity as well as actor and re
     ...snapshot,
     world: { ...snapshot.world, id: 'different-world' }
   }), null);
+});
+
+
+test('live shared snapshot acceptance is monotonic per world across viewer changes', () => {
+  const accepts = sharedSnapshot.isNonRegressingSharedWorldSnapshot;
+  assert.equal(typeof accepts, 'function', 'the live client needs a shared-world revision guard');
+
+  const current = { id: 'world-a', revision: 8 };
+  assert.equal(accepts(current, { id: 'world-a', revision: 7 }), false,
+    'a delayed lower revision must not replace the current world');
+  assert.equal(accepts(current, { id: 'world-a', revision: 8 }), true,
+    'same-revision session refreshes remain admissible');
+  assert.equal(accepts(current, { id: 'world-a', revision: 9 }), true,
+    'a newer same-world snapshot remains admissible');
+  assert.equal(accepts(current, { id: 'world-b', revision: 1 }), true,
+    'a different world begins an independent revision sequence');
+  assert.equal(accepts(null, { id: 'world-a', revision: 0 }), true,
+    'the first valid snapshot is admissible');
+  assert.equal(accepts(current, { id: 'world-a', revision: -1 }), false,
+    'negative revisions fail closed');
+  assert.equal(accepts(current, { id: '', revision: 9 }), false,
+    'missing world identity fails closed');
 });
