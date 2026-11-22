@@ -271,10 +271,10 @@ test('client resets and establishes shared-snapshot acceptance only at explicit 
   const exportAt = client.indexOf("content.append(node('div',{class:'button-row'},[button('↓ Export world JSON'", importAt);
   assert.ok(importAt >= 0 && exportAt > importAt);
   const importTransition = client.slice(importAt, exportAt);
-  assert.match(importTransition, /resetSharedSessionForPrivateMode\\(\\)/,
+  assert.ok(importTransition.includes('resetSharedSessionForPrivateMode()'),
     'importing a save must clear all shared-session and offline-preview state');
-  assert.match(importTransition, /institution=null/);
-  assert.match(importTransition, /closeSheet\\(\\);setConnection\\(true\\);render\\(\\)/,
+  assert.ok(importTransition.includes('institution=null'));
+  assert.ok(importTransition.includes('closeSheet();setConnection(true);render()'),
     'the imported private world must refresh visible connection and canvas provenance');
 
   const acceptAt = client.indexOf('function acceptState(dto,');
