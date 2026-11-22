@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PLACES, institutionActivityCount, institutionSummaryFromState, projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
+import { GUILD_NPCS } from '../game/pixel-world-view.mjs';
 import { createWorld } from '../game/model.mjs';
 import { projectCharterCodex, renderCharterCodex } from '../game/institution-view.mjs';
 
@@ -632,10 +633,22 @@ test('AOTA Codex routes engineering handoff to Guild Hall and external deploymen
   assert.equal(projection.available, true);
   assert.equal(engineer.locationId, 'guild_hall');
   assert.equal(engineer.locationName, 'Guild Hall · Synthesis Clerk');
+  assert.equal(engineer.navigationTargetId, 'guild-npc-synthesizer');
+  const synthesizer = GUILD_NPCS.find(npc => npc.id === engineer.navigationTargetId);
+  assert.ok(synthesizer, 'Stage 10 must target the registered Synthesis Clerk NPC.');
+  assert.equal(synthesizer.roleId, 'synthesizer');
+  assert.equal(synthesizer.routeLocation, engineer.locationId);
+  assert.equal(synthesizer.authority, 'advisory-only');
+  assert.equal(synthesizer.invokesModel, false);
+  assert.equal(synthesizer.mayWriteCanonicalState, false);
+  assert.equal(synthesizer.mayGrantAuthority, false);
+  assert.equal(synthesizer.mayAwardProgress, false);
+  assert.equal(synthesizer.mayCertifyTruthOrExecution, false);
   assert.equal(engineer.status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
   assert.equal(engineer.relatedOnly, true);
   assert.deepEqual(engineer.evidenceIds, []);
   assert.equal(deploy.locationId, 'decision_chamber');
+  assert.equal(deploy.navigationTargetId, null);
   assert.equal(deploy.locationName, 'Founder Gate · Decision Chamber');
   assert.equal(deploy.status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
   assert.equal(deploy.relatedOnly, true);
@@ -666,7 +679,7 @@ test('AOTA Codex routes engineering handoff to Guild Hall and external deploymen
   });
 
   assert.deepEqual(actions, [
-    { type: 'location', id: 'guild_hall' },
+    { type: 'location', id: 'guild-npc-synthesizer' },
     { type: 'location', id: 'decision_chamber' }
   ]);
   assert.deepEqual(world, before, 'Codex routing remains read-only and awards no progress');
