@@ -1601,7 +1601,7 @@ test('touch pointer projection resolves institutional landmarks and rejects off-
   assert.equal(getterCalls, 0, 'institution hit testing must not invoke accessor-backed coordinates');
 });
 
-test('touching an institution landmark routes when distant and opens when near', () => {
+test('touching an institution landmark always navigates; explicit Interact remains separate', () => {
   const width = 390, height = 844, zoom = 0.78;
   const camera = { x: 600, y: 190 };
   const point = {
@@ -1629,8 +1629,10 @@ test('touching an institution landmark routes when distant and opens when near',
     }, () => calls.push(['fallback']));
     return { calls, focusCalls };
   };
-  assert.deepEqual(run(200), { calls: [['goTo', 'council_chamber']], focusCalls: 1 });
-  assert.deepEqual(run(100), { calls: [['interact', 'council_chamber']], focusCalls: 0 });
+  assert.deepEqual(run(200), { calls: [['goTo', 'council_chamber']], focusCalls: 1 },
+    'a distant landmark tap starts navigation without entering the institution');
+  assert.deepEqual(run(100), { calls: [['goTo', 'council_chamber']], focusCalls: 1 },
+    'a nearby landmark tap still navigates; the explicit nearby Interact action performs entry');
 });
 
 test('touching a distant NPC routes toward it, then a second tap opens its owning institution', () => {
