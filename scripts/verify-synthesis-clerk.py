@@ -1015,10 +1015,12 @@ def assert_world_visible_behind_sheet(page, label):
         const sheetRect = sheet.getBoundingClientRect()
         const worldStyle = getComputedStyle(world)
         const backdropStyle = getComputedStyle(backdrop)
-        // Keep the tap on open grass west of Guild Hall. The old width/2+60
-        // point landed on the Guild Hall roof at 320px and was not walkable.
+        // Keep the tap on open grass below the Synthesis Clerk sprite.
+        // At this camera position y=200 resolves inside the Clerk's 34px
+        // pointer hit radius, so it intentionally opens Guild Hall instead
+        // of exercising a ground-walk tap. y=280 is outside that hit radius.
         const targetX = Math.max(36, Math.round(window.innerWidth * 0.2))
-        const targetY = 200
+        const targetY = 280
         const target = document.elementFromPoint(targetX, targetY)
         return {
             sheetHidden: sheet.hidden,
