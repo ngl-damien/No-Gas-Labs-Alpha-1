@@ -1,6 +1,6 @@
 ## Run 309 — gate evidence update — 2026-11-22
 
-**Candidate:** draft runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), exact head \`9ec09334d965875b0165776c44b6375200010b97\`, main base \`0d950c501cf128d828ae4f263cc05a9013d7e8c1\`. Hosted-verified proposed-branch changes are not integrated into main.
+**Candidate:** draft runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), exact head `9ec09334d965875b0165776c44b6375200010b97`, main base `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. Hosted-verified proposed-branch changes are not integrated into main.
 
 | Gate | Status | Run 309 evidence and limit |
 |---|---|---|
@@ -1309,8 +1309,8 @@ PR #380 corrected code/test head 83a1b6c7e4e3a81320f2453b30905e2495eccd01. Verif
 
 ### 2026-11-06 — Worker B Run 105: PWA response/cache latency isolation
 
-- Draft PR #391, code/test head \`d6e37d5acb42632b8591696a6f5250b1d94a7c64\`, adds network-first handling for both navigation and allowlisted shell assets. A cache-update promise is registered with \`event.waitUntil\`; successful response bytes are cloned before awaiting Cache Storage, so slow cache open/write does not block the online response. Transport failure and HTTP 5xx retain cached fallback; 4xx remains visible; API/query/cross-origin requests remain excluded. The cache namespace stays stable.
-- \`test/game-package.test.mjs\` adds two slow-Cache-Storage regressions (asset and navigation) and now contains 21 top-level cases. Exact-head Verify 42333555158 and Genesis 42333555067 passed. Verify preflight was ready with zero warnings/failures; Node 24.22.2 full suite, Python inspector, game build and bounded institutional exercise exited 0. Preflight artifact 13558591839.
+- Draft PR #391, code/test head `d6e37d5acb42632b8591696a6f5250b1d94a7c64`, adds network-first handling for both navigation and allowlisted shell assets. A cache-update promise is registered with `event.waitUntil`; successful response bytes are cloned before awaiting Cache Storage, so slow cache open/write does not block the online response. Transport failure and HTTP 5xx retain cached fallback; 4xx remains visible; API/query/cross-origin requests remain excluded. The cache namespace stays stable.
+- `test/game-package.test.mjs` adds two slow-Cache-Storage regressions (asset and navigation) and now contains 21 top-level cases. Exact-head Verify 42333555158 and Genesis 42333555067 passed. Verify preflight was ready with zero warnings/failures; Node 24.22.2 full suite, Python inspector, game build and bounded institutional exercise exited 0. Preflight artifact 13558591839.
 - Browser Acceptance 42333555074 passed 15/15 (artifact 13558288524), including offline PWA recovery with 24 cached entries and shared API network-only, 320/360/412px controls, two-session Guild/Commons/Relay/Forge flows, exact replay, Forge recipient acceptance and actor-scoped position recovery. Synthesis Clerk 42333555064 passed at 320/390px (artifact 13558313055); retained collaborator attempts remained untrusted, Relay replay recovered, XP delta and world XP were zero.
 - Android Alpha-1 42333555143 was still in progress at ledger refresh; no exact-head Android result is claimed. Intermediate code heads 8b37849, 27a5b80 and 7877bc3 were superseded; cancelled runs/results are not transferred.
 - No canonical world state, XP, quest progress, authority, identity, server persistence, native Android network permission, merge, release or deployment changed. Current main remains 6f1a4aef. G6/G7 remain IN PROGRESS; physical Android-device acceptance and online-native architecture remain open.
