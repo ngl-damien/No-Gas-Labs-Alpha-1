@@ -653,7 +653,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261121-sticky-world-sheet-52/);
+  assert.match(source, /20261121-world-live-panel-53/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
