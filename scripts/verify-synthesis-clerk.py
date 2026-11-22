@@ -1148,7 +1148,7 @@ def assert_world_visible_behind_sheet(page, label):
     return metrics
 
 
-def open_synthesis_clerk(page, packet):
+def open_synthesis_clerk(page, packet, inspect_source_events=False):
     before = authoritative_snapshot(page)
     control = page.locator('[data-guild-npc-control="synthesizer"]')
     expect(control).to_have_count(1)
@@ -1220,6 +1220,60 @@ def open_synthesis_clerk(page, packet):
     assert_canonical_state_unchanged(
         arrival, after, "Reading the Synthesis Clerk after navigation"
     )
+    source_links = card.locator('[data-source-event-context="collaborator-packet"]')
+    expect(source_links).to_have_count(len(packet["inputRefs"]))
+    for event_id in packet["inputRefs"]:
+        source_link = card.locator('[data-source-event-id="' + event_id + '"]')
+        expect(source_link).to_be_visible()
+        expect(source_link).to_have_attribute("data-source-event-context", "collaborator-packet")
+        expect(source_link).to_have_attribute("data-source-event-role", "synthesizer")
+        expect(source_link).to_have_attribute(
+            "data-source-event-snapshot-revision", str(arrival["revision"])
+        )
+
+    if inspect_source_events:
+        event_id = packet["inputRefs"][0]
+        source_link = card.locator('[data-source-event-id="' + event_id + '"]')
+        source_link.tap()
+        page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'World Chronicle' && " +
+            "!document.querySelector('#sheet').hidden",
+            timeout=30000
+        )
+        chronicle = page.locator("#sheet-content")
+        expect(chronicle).to_have_attribute(
+            "data-chronicle-snapshot-revision", str(arrival["revision"])
+        )
+        expect(chronicle.locator(
+            '[data-event-id="world:' + event_id + '"]'
+        )).to_be_visible()
+        after_chronicle = authoritative_snapshot(page)
+        assert_canonical_state_unchanged(
+            after, after_chronicle,
+            "Opening a collaborator packet input in its exact retained Chronicle snapshot"
+        )
+        page.locator("#sheet-close").tap()
+        interact_button = page.locator("#interact-button")
+        expect(interact_button).to_be_visible()
+        interact_label = interact_button.get_attribute("aria-label") or ""
+        assert "Synthesis Clerk" in interact_label and "nearby collaborator" in interact_label, (
+            "Returning from Chronicle must preserve the explicit Synthesis Clerk interaction."
+        )
+        interact_button.tap()
+        page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Guild Hall' && " +
+            "!document.querySelector('#sheet').hidden",
+            timeout=30000
+        )
+        card = page.locator('#sheet-content [data-collaborator-role="synthesizer"]')
+        expect(card).to_be_visible()
+        after_return = authoritative_snapshot(page)
+        assert_canonical_state_unchanged(
+            after_chronicle, after_return,
+            "Returning from a collaborator source event to Guild Hall"
+        )
+        after = after_return
+
     after["npcRouteDiscoveries"] = route_discoveries
     after["worldSurface"] = world_surface
     return card, after
@@ -1715,7 +1769,7 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
         reentered_founder = login_founder(page)
     assert reentered_founder["id"] == founder_id
     assert reentered_founder["role"] == "founder"
-    card, after_reopen = open_synthesis_clerk(page, packet)
+    card, after_reopen = open_synthesis_clerk(page, packet, inspect_source_events=True)
     reopened_event = find_event(
         after_reopen,
         "collaborator-response-recorded",
