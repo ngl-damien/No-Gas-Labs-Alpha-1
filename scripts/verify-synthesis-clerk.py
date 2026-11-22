@@ -2419,6 +2419,131 @@ def assert_mobile_layout(page, width):
     return layout
 
 
+
+
+def assert_offline_cached_shared_snapshot_recovery(page, width):
+    # A reload while offline may reopen only a redacted public snapshot.
+    wait_for_shared_connection(page, "before cached shared-snapshot re-entry")
+    if page.locator("#sheet").is_visible():
+        page.locator("#sheet-close").tap()
+    before = wait_for_stable_world_snapshot(page)
+    server_before = authoritative_position(page)
+    page.wait_for_function(
+        "() => Boolean(navigator.serviceWorker?.controller)",
+        timeout=20000
+    )
+    cached_before = page.evaluate("""() => {
+      const raw = localStorage.getItem('ngl.common-ground.shared-snapshot.v1');
+      if (!raw) return null;
+      const envelope = JSON.parse(raw);
+      return { revision: envelope.world?.revision, actorId: envelope.viewer?.id,
+        actorRole: envelope.viewer?.role, scope: envelope.scope };
+    }""")
+    assert cached_before is not None, "Accepted shared state must be cached before offline reload."
+    assert cached_before["revision"] == before["revision"]
+    assert cached_before["actorId"] == before["viewer"]["id"]
+    assert cached_before["actorRole"] == before["viewer"]["role"]
+    assert cached_before["scope"] == "public-witness-projection"
+
+    write_attempts = []
+    def capture_write(request):
+        if request.method == "POST" and "/api/" in request.url:
+            write_attempts.append({"method": request.method, "url": request.url})
+    page.on("request", capture_write)
+    page.context.set_offline(True)
+    page.reload(wait_until="domcontentloaded")
+    page.locator("#start-shared").wait_for(state="visible")
+    page.locator("#start-shared").tap()
+    page.locator("#world").wait_for(state="visible")
+    page.wait_for_function("""() => {
+      const world = document.querySelector('#world');
+      const label = document.querySelector('#mode-label')?.textContent || '';
+      const dot = document.querySelector('#connection-dot');
+      return world?.dataset.sharedSnapshotCacheOnly === 'true' &&
+        world?.dataset.sharedSnapshotSource === 'local-cache' &&
+        world?.dataset.sharedOfflinePreview === 'true' &&
+        world?.dataset.movementEnabled === 'true' &&
+        dot?.dataset.connectionState === 'offline' &&
+        label.includes('read-only');
+    }""", timeout=20000)
+
+    cached = page.evaluate("""() => {
+      const envelope = JSON.parse(localStorage.getItem('ngl.common-ground.shared-snapshot.v1'));
+      const position = JSON.parse(localStorage.getItem('ngl.common-ground.shared-position.v1') || 'null');
+      return {
+        revision: envelope.world.revision,
+        actorId: envelope.viewer.id,
+        actorRole: envelope.viewer.role,
+        drafts: envelope.world.drafts.length,
+        privateEvents: envelope.world.events.filter(event =>
+          ['draft', 'repair', 'message-reported'].includes(event.type)).length,
+        hasPresence: Object.hasOwn(envelope, 'presence'),
+        hasInstitution: Object.hasOwn(envelope, 'institution'),
+        hasSourceSnapshotReceipt: Object.hasOwn(envelope, 'sourceSnapshotReceipt'),
+        positionMatches: Boolean(position &&
+          position.actorId === envelope.viewer.id &&
+          position.actorRole === envelope.viewer.role &&
+          position.worldRevision === envelope.world.revision)
+      };
+    }""")
+    assert cached["revision"] == before["revision"]
+    assert cached["actorId"] == before["viewer"]["id"]
+    assert cached["actorRole"] == before["viewer"]["role"]
+    assert cached["drafts"] == 0
+    assert cached["privateEvents"] == 0
+    assert not cached["hasPresence"]
+    assert not cached["hasInstitution"]
+    assert not cached["hasSourceSnapshotReceipt"]
+    assert cached["positionMatches"]
+    expect(page.locator("#login-button")).to_be_visible()
+    expect(page.locator("#logout-button")).to_be_hidden()
+    expect(page.locator("#make-button")).to_contain_text("Read-only snapshot")
+
+    # Exercise the normal draft control. It must fail before a POST or pending
+    # action receipt is created; cached display is not permission to mutate.
+    page.locator("#make-button").tap()
+    page.locator("#command-input").fill("Offline cached snapshot write attempt " + str(width))
+    page.locator("#intent-input").fill(
+        "This draft must remain unsubmitted until a fresh server state is accepted."
+    )
+    page.locator("#draft-button").tap()
+    page.wait_for_function(
+        "() => document.querySelector('#toast')?.textContent.includes('cached shared snapshot')",
+        timeout=10000
+    )
+    assert write_attempts == [], "Cached-only mode must block POSTs before network submission."
+    if page.locator("#sheet").is_visible():
+        page.locator("#sheet-close").tap()
+
+    page.context.set_offline(False)
+    page.evaluate("() => window.dispatchEvent(new Event('online'))")
+    wait_for_shared_connection(page, "after cached shared-snapshot revalidation")
+    page.wait_for_function("""() => {
+      const world = document.querySelector('#world');
+      return world?.dataset.sharedSnapshotCacheOnly === 'false' &&
+        world?.dataset.sharedSnapshotSource === 'server' &&
+        world?.dataset.sharedOfflinePreview === 'false';
+    }""", timeout=20000)
+    after = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(before, after, "Offline cached shared-snapshot re-entry")
+    assert authoritative_position(page) == server_before, (
+        "Fresh server revalidation must restore the accepted position, not cached local preview."
+    )
+    assert write_attempts == [], "Cached inspection must not submit shared writes."
+    assert_mobile_layout(page, width)
+    return {
+        "transport": "synthetic browser offline reload and online revalidation",
+        "cachedRevision": cached["revision"],
+        "cachedScope": "public-witness-projection",
+        "identityReauthenticated": False,
+        "writesAttempted": write_attempts,
+        "sharedPositionBefore": server_before,
+        "sharedPositionAfter": authoritative_position(page),
+        "canonicalStateUnchanged": True,
+        "revalidatedToServer": True
+    }
+
+
 def run_viewport(browser, width, out):
     context = browser.new_context(
         viewport={"width": width, "height": 844},
@@ -2546,6 +2671,8 @@ def run_viewport(browser, width, out):
                     width,
                     out
                 )
+                return_to_founder(page, founder["id"])
+                offline_snapshot_reentry = assert_offline_cached_shared_snapshot_recovery(page, width)
                 layout = assert_mobile_layout(page, width)
                 assert not errors, "Browser page errors: " + json.dumps(errors)
 
@@ -2566,6 +2693,7 @@ def run_viewport(browser, width, out):
                     "synthesisNpcVisitedAndOpened": True,
                     "projectStateSnapshot": project_state_snapshot,
                     "offlinePreview": offline_preview,
+                    "offlineSnapshotReentry": offline_snapshot_reentry,
                     "sourceObservatory": observatory,
                     "sourceArchiveFailure": source_archive_failure,
                     "sourceArchiveFailureLedger": failure_ledger,
@@ -2616,7 +2744,7 @@ def main():
     summary = {
         "journeys": results,
         "passed": len(results) == 2 and all(result["passed"] for result in results),
-        "evidenceBoundary": "The disposable shared-server fixture injects 13 initial 503 GitHub responses and a 14th while the Founder is viewing the older failure page. The service appends 14 Founder-attributed source-archive-attempt-failed events, each bound to a distinct request ID; no client-authored failure, draft, publication, XP, truth verdict, or authority is created. The Evidence Archive renders bounded pages of 12, and its local cursor resets to the newest page when the shared world revision changes. The acceptance compares page revision against the post-arrival snapshot so legitimate location discovery remains retained. Pagination and cursor rebinding create no canonical event or XP. The Witness can see the latest failure in shared history. These are simulated upstream outages, not live GitHub outages. The fixture also explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. This is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
+        "evidenceBoundary": "The disposable shared-server fixture injects 13 initial 503 GitHub responses and a 14th while the Founder is viewing the older failure page. The service appends 14 Founder-attributed source-archive-attempt-failed events, each bound to a distinct request ID; no client-authored failure, draft, publication, XP, truth verdict, or authority is created. The Evidence Archive renders bounded pages of 12, and its local cursor resets to the newest page when the shared world revision changes. The acceptance compares page revision against the post-arrival snapshot so legitimate location discovery remains retained. Pagination and cursor rebinding create no canonical event or XP. The Witness can see the latest failure in shared history. These are simulated upstream outages, not live GitHub outages. The fixture also explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. The offline shared-snapshot re-entry journey reloads a redacted public projection under synthetic browser offline conditions, blocks shared writes and resumes only after fresh server state is accepted. It is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
     }
     (args.out / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",
