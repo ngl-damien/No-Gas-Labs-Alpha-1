@@ -692,8 +692,93 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
         after_reset, after_lead,
         "Reviewing a failure-derived Source Observation lead without submitting it"
     )
+    source_snapshot_revision = int(form.get_attribute("data-source-snapshot-revision"))
+    assert source_snapshot_revision <= after_lead["revision"]
+
+    # The reviewed lead becomes a retained provenance link only after explicit
+    # submission. The shared server must revalidate the exact earlier failure.
+    wait_for_shared_connection(page, "explicit failure-context Source Observation submission")
+    page.locator("#source-observation-submit").tap()
+    page.wait_for_function(
+        "(expected) => document.querySelector('#sheet-title')?.textContent === expected",
+        arg=observatory["title"],
+        timeout=30000
+    )
+    after_submit = authoritative_snapshot(page)
+    added = after_submit["retainedEvents"][len(after_lead["retainedEvents"]):]
+    assert len(added) == 1, "Explicit submission must append exactly one failure-linked Source Observation."
+    observation = added[0]
+    assert observation["type"] == "source-observation-recorded"
+    assert observation["actor"]["id"] == after_lead["viewer"]["id"]
+    assert observation["actor"]["role"] == "founder"
+    assert observation["originFailureEventId"] == failure["eventId"]
+    assert observation["sourceSnapshotRevision"] == source_snapshot_revision
+    assert observation["sourceRetrieval"] == "NOT_PERFORMED"
+    assert observation["independentVerification"] == "NOT_PERFORMED"
+    assert observation["modelAssertions"] == "LEADS_ONLY"
+    assert observation["execution"] == "NOT_EXECUTED"
+    assert observation["observationId"].startswith("source-observation-")
+    assert observation["normalizedRecordDigest"] == observation["observationId"].removeprefix("source-observation-")
+    failure_position = next(
+        index + 1 for index, event in enumerate(after_submit["retainedEvents"])
+        if event["id"] == failure["eventId"]
+    )
+    observation_position = next(
+        index + 1 for index, event in enumerate(after_submit["retainedEvents"])
+        if event["id"] == observation["id"]
+    )
+    assert failure_position < observation_position
+    assert failure_position <= source_snapshot_revision < observation_position
+    assert after_submit["revision"] == after_lead["revision"] + 1
+    assert after_submit["xp"] == after_lead["xp"], "A provenance link must award no XP."
+    assert after_submit["draftCount"] == after_lead["draftCount"]
+    assert after_submit["creationRecords"] == after_lead["creationRecords"]
+    assert after_submit["eventIds"][:len(after_lead["eventIds"])] == after_lead["eventIds"]
+    assert after_submit["retainedEvents"][:len(after_lead["retainedEvents"])] == after_lead["retainedEvents"]
+
+    projected = page.evaluate("""async expectedEventId => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Failure-origin projection read failed: ' + response.status);
+      const dto = await response.json();
+      const { projectSourceObservationRecords } = await import('/research-records.mjs');
+      const records = projectSourceObservationRecords(dto.world.events, dto.world.creations, {
+        revision: dto.world.revision,
+        revisionPresent: true
+      });
+      const record = records.find(candidate => candidate.id === expectedEventId);
+      if (!record) return null;
+      return {
+        projectionStatus: record.projectionStatus,
+        failureOriginStatus: record.failureOriginStatus,
+        originFailureEventId: record.originFailureEventId,
+        sourceRetrieval: record.sourceRetrieval,
+        independentVerification: record.independentVerification,
+        modelAssertions: record.modelAssertions,
+        execution: record.execution
+      };
+    }""", observation["id"])
+    assert projected == {
+        "projectionStatus": "linked",
+        "failureOriginStatus": "linked",
+        "originFailureEventId": failure["eventId"],
+        "sourceRetrieval": "NOT_PERFORMED",
+        "independentVerification": "NOT_PERFORMED",
+        "modelAssertions": "LEADS_ONLY",
+        "execution": "NOT_EXECUTED"
+    }, json.dumps(projected)
+
+    failure["sourceObservationEventId"] = observation["id"]
+    failure["sourceObservationId"] = observation["observationId"]
+    failure["sourceObservationSnapshotRevision"] = source_snapshot_revision
+    failure["failureOriginProjectionStatus"] = projected["failureOriginStatus"]
     layout = assert_mobile_layout(page, width)
-    page.screenshot(path=str(out / ("source-archive-failure-ledger-" + str(width) + ".png")), full_page=True)
+    page.screenshot(
+        path=str(out / ("source-archive-failure-observation-" + str(width) + ".png")),
+        full_page=True
+    )
     page.locator("#sheet-close").tap()
     return {
         "eventIds": failure["eventIds"],
@@ -706,7 +791,11 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
         "target": "Evidence Archive",
         "nextLocation": "Source Observation form",
         "prefillOrigin": "source-archive-failure",
-        "submissionNotPerformed": True,
+        "submissionPerformed": True,
+        "sourceObservationEventId": observation["id"],
+        "sourceObservationSnapshotRevision": source_snapshot_revision,
+        "failureOriginProjectionStatus": projected["failureOriginStatus"],
+        "xpDelta": after_submit["xp"] - after_lead["xp"],
         "navigationReadOnly": True,
         "archiveLayout": archive_layout,
         "nextLayout": layout
@@ -1968,7 +2057,7 @@ def open_quest_board(page):
     return wait_for_stable_world_snapshot(page)
 
 
-def inspect_founder_progress(page, after_archive, source_observation_event_id, width, out):
+def inspect_founder_progress(page, after_archive, source_observation_event_id, failure_origin_observation_event_id, width, out):
     after_arrival = open_quest_board(page)
     travel_discoveries = assert_route_travel_records_only_discoveries(
         after_archive, after_arrival, "Walking to the Founder Quest Board"
@@ -1981,9 +2070,19 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, w
     expect(source_row).to_have_count(1)
     expect(source_row.locator(".quest-step-state")).to_have_text("RECORDED")
     expect(source_row).to_contain_text("1/1")
+    failure_row = page.locator('#sheet-content [data-objective-id="founder-source-archive-failure-investigation"]')
+    expect(failure_row).to_have_count(1)
+    expect(failure_row.locator(".quest-step-state")).to_have_text("RECORDED")
+    expect(failure_row).to_contain_text("1/1")
+    expect(failure_row).to_contain_text("Link a Source Archive failure to a retained observation")
+    expect(failure_row).to_contain_text("provenance only")
+    expect(failure_row).to_contain_text("NOT_PERFORMED")
     after_board = authoritative_snapshot(page)
     assert source_observation_event_id in after_board["eventIds"], (
         "The Founder quest must be backed by the retained source-observation event."
+    )
+    assert failure_origin_observation_event_id in after_board["eventIds"], (
+        "The failure-link objective must be backed by its exact retained observation event."
     )
     assert_canonical_state_unchanged(after_arrival, after_board, "Reading the Founder Quest Board")
     page.screenshot(path=str(out / ("synthesis-quest-board-" + str(width) + ".png")), full_page=True)
@@ -2006,6 +2105,10 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, w
         "sourceObservationStatus": "RECORDED",
         "sourceObservationProgress": "1/1",
         "sourceObservationEventId": source_observation_event_id,
+        "failureOriginObjective": "founder-source-archive-failure-investigation",
+        "failureOriginObjectiveStatus": "RECORDED",
+        "failureOriginObjectiveProgress": "1/1",
+        "failureOriginObservationEventId": failure_origin_observation_event_id,
         "synthesisSkillCount": 2,
         "routeDiscoveries": travel_discoveries
     }
@@ -2306,7 +2409,7 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out)
     }
 
 
-def inspect_witness_scope(page, founder_id, response_event_id, source_observation_event_id, source_archive_failure_event_id, after_archive, width, out):
+def inspect_witness_scope(page, founder_id, response_event_id, source_observation_event_id, failure_origin_observation_event_id, source_archive_failure_event_id, after_archive, width, out):
     page.locator("#sheet-close").tap()
     witness = logout_to_witness(page)
     assert witness["id"] != founder_id
@@ -2314,6 +2417,9 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
     assert before_board["viewer"]["role"] == "witness"
     assert source_observation_event_id in before_board["eventIds"], (
         "The Witness must see the retained Founder source-observation event in shared history."
+    )
+    assert failure_origin_observation_event_id in before_board["eventIds"], (
+        "The Witness must see the retained failure-origin observation in shared history."
     )
     assert source_archive_failure_event_id in before_board["eventIds"], (
         "The Witness must see the server-observed Source Archive failure in shared history."
@@ -2396,6 +2502,7 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
         "witnessObjectiveStatus": "OPEN",
         "witnessObjectiveProgress": "0/1",
         "founderSourceObservationVisibleInSharedHistory": True,
+        "failureOriginObservationVisibleInSharedHistory": True,
         "sourceArchiveFailureVisibleInSharedHistory": True,
         "sourceArchiveFailureProjectionComplete": witness_failure_projection["complete"],
         "sourceArchiveFailureProjectionUnseenEventCount": witness_failure_projection["unseenEventCount"],
@@ -3051,13 +3158,15 @@ def run_viewport(browser, width, out):
                     out
                 )
                 founder_progress = inspect_founder_progress(
-                    page, after_archive, source_observation["eventId"], width, out
+                    page, after_archive, source_observation["eventId"],
+                    failure_ledger["sourceObservationEventId"], width, out
                 )
                 witness_progress = inspect_witness_scope(
                     page,
                     founder["id"],
                     response["responseEventId"],
                     source_observation["eventId"],
+                    failure_ledger["sourceObservationEventId"],
                     source_archive_failure["eventId"],
                     after_archive,
                     width,
