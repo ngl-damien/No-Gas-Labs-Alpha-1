@@ -854,7 +854,7 @@ def assert_source_archive_objectives(page, role, proposal_progress, experiment_p
     )
     expect(predicate).to_contain_text('MATCH/NO_MATCH describes only that byte test')
     if predicate_progress == '0/1':
-        expect(predicate.get_by_role('button', name='Go do this →', exact=True)).to_be_visible()
+        expect(predicate.get_by_role('button', name='Walk to The Source Analyst →', exact=True)).to_be_visible()
 
     contrast = page.locator(
         f'#sheet-content [data-objective-id="{role}-source-archive-contrast"]'
@@ -2673,7 +2673,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         actionable_row = witness_page.locator(
             '#sheet-content [data-objective-id="witness-armor-bearer-delivery"]'
         )
-        expect(actionable_row.get_by_role('button', name='Go do this →', exact=True)).to_be_visible()
+        expect(actionable_row.get_by_role('button', name='Walk to Forge →', exact=True)).to_be_visible()
         pending_row = assert_armor_bearer_chain_objective(
             witness_page, 'witness', transfer_event_id, '3/4', complete=False
         )
@@ -3152,7 +3152,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         founder_round_three = founder_page.locator(
             '#sheet-content [data-objective-id="founder-guild-dissent-circuit-3"]'
         )
-        expect(founder_round_three.get_by_role('button', name='Go do this →', exact=True)).to_be_visible()
+        expect(founder_round_three.get_by_role('button', name='Walk to Source Observatory →', exact=True)).to_be_visible()
         founder_after_board = authoritative_snapshot(founder_page)
         assert shared_world_snapshot(founder_after_board) == shared_world_snapshot(founder_before_board)
 
@@ -3630,7 +3630,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     proposal_row = page.locator(
         f'#sheet-content [data-objective-id="{role}-source-archive-moonshot"]'
     )
-    proposal_action = proposal_row.get_by_role('button', name='Go do this →', exact=True)
+    proposal_action = proposal_row.get_by_role('button', name='Walk to Moonshot Field →', exact=True)
     expect(proposal_action).to_be_visible()
     proposal_action.tap()
     enter_nearby_institution(page, 'moonshot_field', 'Moonshot Field', 'Moonshot Field')
@@ -3756,7 +3756,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     predicate_row = page.locator(
         f'#sheet-content [data-objective-id="{role}-source-archive-predicate"]'
     )
-    predicate_action = predicate_row.get_by_role('button', name='Go do this →', exact=True)
+    predicate_action = predicate_row.get_by_role('button', name='Walk to The Source Analyst →', exact=True)
     expect(predicate_action).to_be_visible()
     predicate_before_navigation = authoritative_snapshot(page)
     predicate_action.tap()
@@ -3970,7 +3970,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     contrast_row = page.locator(
         f'#sheet-content [data-objective-id="{role}-source-archive-contrast"]'
     )
-    contrast_action = contrast_row.get_by_role('button', name='Go do this →', exact=True)
+    contrast_action = contrast_row.get_by_role('button', name='Walk to The Source Analyst →', exact=True)
     expect(contrast_action).to_be_visible()
     contrast_before_navigation = authoritative_snapshot(page)
     contrast_action.tap()
