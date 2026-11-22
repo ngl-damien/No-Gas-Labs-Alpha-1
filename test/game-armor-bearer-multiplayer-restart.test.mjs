@@ -726,7 +726,7 @@ test('one source-bound field item can pass through three sessions with actor-sco
 });
 
 
-test('a pending Armor Bearer offer survives restart and remains recipient-bound and single-use', async t => {
+test('a pending Armor Bearer offer survives restart, clients rejoin presence, and acceptance is single-use', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-armor-bearer-pending-restart-'));
   let movementTime = 0;
   let runtime = await startRuntime(dataDir, () => movementTime);
@@ -879,6 +879,51 @@ test('a pending Armor Bearer offer survives restart and remains recipient-bound 
   const restoredUnrelatedState = await restoredUnrelated.request('/api/state');
   assert.equal(restoredUnrelatedState.response.status, 200, JSON.stringify(restoredUnrelatedState.body));
   assert.equal(restoredUnrelatedState.body.viewer.id, unrelatedViewer.id);
+  assert.deepEqual(restoredOwnerState.body.presence, [],
+    'server restart clears ephemeral presence until clients rejoin the shared stream');
+  assert.deepEqual(restoredFounderState.body.presence, []);
+
+  const restoredOwnerStream = await restoredOwner.stream();
+  const restoredFounderStream = await restoredFounder.stream();
+  t.after(() => {
+    restoredOwnerStream.close();
+    restoredFounderStream.close();
+  });
+  await restoredOwnerStream.next('world');
+  await restoredFounderStream.next('world');
+  const expectedRejoinedActors = [
+    [ownerViewer.id, 'witness'],
+    [founderViewer.id, 'founder']
+  ].sort();
+  const [ownerRejoinedPresence, founderRejoinedPresence] = await Promise.all([
+    nextPresenceMatching(restoredOwnerStream, value => value.length === 2),
+    nextPresenceMatching(restoredFounderStream, value => value.length === 2)
+  ]);
+  for (const presence of [ownerRejoinedPresence, founderRejoinedPresence]) {
+    assert.deepEqual(
+      presence.map(player => [player.actorId, player.role]).sort(),
+      expectedRejoinedActors,
+      'reconnected streams must observe both restored actors and no stale pre-restart presence'
+    );
+    const ownerPresence = presence.find(player => player.actorId === ownerViewer.id);
+    const founderPresence = presence.find(player => player.actorId === founderViewer.id);
+    assert.deepEqual(
+      { x: ownerPresence.x, y: ownerPresence.y },
+      restoredOwnerState.body.viewer.position,
+      'the owner re-enters at the server-restored accepted position'
+    );
+    assert.deepEqual(
+      { x: founderPresence.x, y: founderPresence.y },
+      restoredFounderState.body.viewer.position,
+      'the recipient re-enters at the server-restored accepted position'
+    );
+  }
+  const rejoinedState = await restoredFounder.request('/api/state');
+  assert.equal(rejoinedState.response.status, 200);
+  assert.deepEqual(rejoinedState.body.presence.map(player => [player.actorId, player.role]).sort(), expectedRejoinedActors);
+  assert.equal(rejoinedState.body.world.revision, pendingRevision);
+  assert.deepEqual(rejoinedState.body.world.events.map(event => event.id), pendingEventIds);
+  assert.equal(rejoinedState.body.world.xp, baselineXp);
 
   for (const state of [restoredOwnerState.body, restoredFounderState.body, restoredUnrelatedState.body]) {
     assert.equal(state.world.revision, pendingRevision);
@@ -943,6 +988,17 @@ test('a pending Armor Bearer offer survives restart and remains recipient-bound 
   assert.equal(replay.body.world.revision, accepted.body.world.revision);
   assert.equal(replay.body.world.events.filter(event => event.type === 'field-item-transferred').length, 1);
   assert.equal(replay.body.world.xp, baselineXp);
+
+  const [ownerLiveWorld, founderLiveWorld] = await Promise.all([
+    restoredOwnerStream.next('world'),
+    restoredFounderStream.next('world')
+  ]);
+  for (const live of [ownerLiveWorld, founderLiveWorld]) {
+    assert.equal(live.world.revision, accepted.body.world.revision);
+    assert.deepEqual(live.world.events.map(event => event.id), accepted.body.world.events.map(event => event.id));
+    assert.equal(live.world.xp, baselineXp,
+      'rejoined clients receive the accepted transfer without an XP side effect');
+  }
 
   const ownerAfter = await restoredOwner.request('/api/state');
   const founderAfter = await restoredFounder.request('/api/state');
