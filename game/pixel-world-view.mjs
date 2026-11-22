@@ -1679,11 +1679,8 @@ export class PixelWorldView extends WorldView {
     );
     if (institutionId) {
       event.preventDefault?.();
-      const nearest = this.nearest(institutionId, 'institution');
-      if (nearest?.type === 'institution' && nearest.distance < 160) {
-        this.interact(institutionId);
-        return;
-      }
+      // A landmark tap selects a destination, even when the player is already
+      // nearby. The separate nearby Interact control is the only entry action.
       this.goTo(institutionId);
       this.canvas.focus({ preventScroll: true });
       return;
