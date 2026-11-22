@@ -47,6 +47,13 @@ Replay is idempotent by `event_id`.
 
 Verified revocations are replayed in event order. They block later executions using the revoked grant, and the quest projector applies the same boundary as the world reducer. A revocation does not silently erase earlier verified outcomes; the original event and its consequence remain auditable in history.
 
+## Renderer-local offline preview
+
+- `WorldView.syncCanvasState()` exposes local renderer diagnostics on the world canvas dataset: player/camera coordinates, zoom, viewport dimensions, route-active state, and `positionSource=renderer-local`. The values are updated after resize, route changes/cancellation, and movement updates. Non-finite coordinates clear stale numeric fields.
+- These values are not a server receipt, accepted shared position, canonical world state, event, evidence, progress, XP, approval, or authority. They exist to make the mobile PWA's local preview and reconnect behavior independently observable.
+- During shared disconnect, `game/client.mjs` pauses shared position submission while allowing the renderer-local preview path. Reconnection fetches the accepted shared snapshot and reprojects that position into the renderer. The Synthesis mobile acceptance at 320px/390px observed a local route of 17 steps and local movement deltas of approximately 17.48/17.51 while the shared position remained identical before, during and after offline preview; the canonical state remained unchanged and the renderer reconciled to the last accepted position.
+- The acceptance uses synthetic browser `offline`/`online` events, not a physical network outage or Android device. Any publication XP in the fixture is a separate publication action; local movement itself awards zero XP and appends no canonical event.
+
 ## Donor alignment
 
 This seam is intentionally compatible with the recovered NGL direction, with provenance boundaries:
