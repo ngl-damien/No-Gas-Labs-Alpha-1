@@ -1623,6 +1623,8 @@ export function getQuestTrail(world, viewer, options = {}) {
   });
   const validMoonshotIds = new Set(proposalPositionById.keys());
   const hasAnyMoonshotProposal = validMoonshotIds.size >= 1;
+  // R&D links are causal by retained append position. Strict UTC timestamps remain
+  // mandatory metadata, but a wall-clock regression cannot invalidate a later event.
   const allExperimentReports = events.filter(event => {
     const eventPosition = eventPositionByReference.get(event);
     const proposalPosition = proposalPositionById.get(event?.moonshotId);
@@ -1630,8 +1632,8 @@ export function getQuestTrail(world, viewer, options = {}) {
       uniqueMoonshotEventIds.has(event.id) && typeof event.reportId === 'string' &&
       reportIdCounts.get(event.reportId) === 1 && validMoonshotIds.has(event.moonshotId) &&
       Number.isInteger(eventPosition) && proposalPosition < eventPosition &&
+      isStrictTimestamp(events[proposalPosition]?.at) &&
       isStrictTimestamp(event.at) &&
-      Date.parse(events[proposalPosition]?.at) <= Date.parse(event.at) &&
       typeof event.actor?.id === 'string' && ['founder', 'witness'].includes(event.actor?.role) &&
       typeof event.procedure === 'string' && event.procedure.trim() &&
       typeof event.observation === 'string' && event.observation.trim() &&
@@ -1644,11 +1646,13 @@ export function getQuestTrail(world, viewer, options = {}) {
   // retained publication that existed earlier in the append-only event history.
   // This proves artifact linkage only; it does not verify the reported procedure,
   // observation, outcome, or truth of the hypothesis.
+  // The exact publication must precede this report in the retained stream; its
+  // timestamp/version binding is already checked by retainedPublicationEvents.
   const experimentEvidenceReports = experimentReports.filter(event => {
     if (typeof event.evidenceCreationId !== 'string' || !event.evidenceCreationId ||
         !Number.isSafeInteger(event.evidenceVersion) || event.evidenceVersion < 1) return false;
-    return hasUniqueEarlierPublication(
-      event.evidenceCreationId, event.evidenceVersion, event.at, eventPositionByReference.get(event)
+    return hasUniqueEarlierPublicationByAppendPosition(
+      event.evidenceCreationId, event.evidenceVersion, eventPositionByReference.get(event)
     );
   });
   const challengeIdCounts = new Map();
@@ -1658,6 +1662,7 @@ export function getQuestTrail(world, viewer, options = {}) {
     }
   }
   const reportById = new Map(allExperimentReports.map(event => [event.reportId, event]));
+  // Challenge evidence is linked by append position, never by wall-clock ordering.
   const validChallengeEvidence = event => {
     const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
     const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
@@ -1674,8 +1679,7 @@ export function getQuestTrail(world, viewer, options = {}) {
     const eventPosition = eventPositionByReference.get(event);
     return Boolean(creation && version && version.id === creation.id &&
       isStrictTimestamp(version.publishedAt) && isStrictTimestamp(event.at) &&
-      Date.parse(version.publishedAt) <= Date.parse(event.at) &&
-      hasUniqueEarlierPublication(event.evidenceCreationId, event.evidenceVersion, event.at, eventPosition));
+      hasUniqueEarlierPublicationByAppendPosition(event.evidenceCreationId, event.evidenceVersion, eventPosition));
   };
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
@@ -1692,7 +1696,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       Array.from(event.challengeText).length <= 1000 &&
       reportPosition >= 0 && challengePosition > reportPosition &&
       isStrictTimestamp(event.at) &&
-      isStrictTimestamp(report.at) && Date.parse(report.at) <= Date.parse(event.at) &&
+      isStrictTimestamp(report.at) &&
       validChallengeEvidence(event);
   });
   // Reuse the defensive full-history linker for author responses. A quest counts
