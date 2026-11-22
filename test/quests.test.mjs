@@ -465,7 +465,7 @@ test('a Witness-labelled publish event cannot manufacture canonical published-wo
   assert.equal(getQuestTrail(world, founder).find(item => item.id === 'founder-first-place').progress, 0);
 });
 
-test('study review lookup requires one later review bound to the exact source version', () => {
+test('study review lookup follows retained append order and binds the exact source version', () => {
   const study = {
     id: 'study-event-1', type: 'study', studyId: 'study-1',
     creationId: 'source-1', version: 2, at: '2026-10-29T12:00:00.000Z',
@@ -485,7 +485,6 @@ test('study review lookup requires one later review bound to the exact source ve
     { ...valid, version: 1 },
     { ...valid, creationId: 'other-source' },
     { ...valid, actor: witness },
-    { ...valid, at: '2026-10-29T11:59:59.000Z' },
     { ...valid, at: '2026-02-30T12:01:00.000Z' },
     { ...valid, response: '   ' },
     { ...valid, reflection: '   ' }
@@ -494,6 +493,9 @@ test('study review lookup requires one later review bound to the exact source ve
     assert.equal(findStudyReview(study, [study, invalid]), null);
   }
 
+  const backdated = { ...valid, at: '2026-10-29T11:59:59.000Z' };
+  assert.equal(findStudyReview(study, [study, backdated]), backdated,
+    'a later retained review may carry a regressed wall-clock timestamp');
   assert.equal(findStudyReview(study, [
     study, valid, { ...valid, id: 'review-event-2', reviewId: 'review-2' }
   ]), null, 'two reviews for one study are ambiguous');

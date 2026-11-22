@@ -658,7 +658,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/shared-snapshot\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261122-source-failure-objective-58/);
+  assert.match(source, /20261122-academy-append-order-59/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
