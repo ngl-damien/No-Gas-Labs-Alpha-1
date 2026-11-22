@@ -1,3 +1,16 @@
+## Run 299 — renderer-local offline preview and reconnect reconciliation — 2026-11-22
+
+- **Newly evidenced G7 slice:** PWA offline movement preview is now observable as renderer-local state and can be reconciled to the last accepted shared position without persisting offline movement.
+- **Implementation:** `game/world-view.mjs` adds `WorldView.syncCanvasState()` for local player/camera/zoom/viewport/route telemetry. `test/pixel-world-view.test.mjs` checks source labeling, invalid-coordinate clearing and canonical-state immutability. `scripts/verify-synthesis-clerk.py` asserts the renderer-local label and uses the app's already-loaded served module URLs for offline evaluation.
+- **Test-first / repair history:** red Full Verify/Synthesis on `be82df59` because the new test called a missing `syncCanvasState`; runtime `346f3ce`, test `37bfc27`, receipt `a8d1731`, then served-module path fix `0947e01` after the first Synthesis attempt exposed the incorrect `/game/...` import path.
+- **Exact-head Full Verify 44978520672 PASS** (`0947e010`; hosted preflight ready, warnings/failures empty; Node, Python inspector, PWA package build and institutional exercise exit 0). Genesis 44978520654, PWA 44978520656, Live Source Archive 44978520676, Combat 44978520667, Academy 44978520653, Council 44978520811, Quest Board 44978520648 and Synthesis 44978520725 also PASS.
+- **Mobile receipts:** Synthesis artifact 14737440212 passes at 320/390; local movement delta 17.4826/17.5064 with route length 17, while shared position before/during/after remains identical and canonical state remains unchanged. Quest Board artifact 14736912643 passes at 320/390, including actor-scoped source-observation/dissent/field-item handoff history and read-only snapshot behavior. Browser 44978520675 fails on Worker A's stale hidden institution-entry locator. Android 44978520660 remains in progress after APK assembly; no terminal JUnit/device result.
+- **State boundary:** renderer dataset is not server authority, event, evidence, XP or approval. Offline transport and 503 failures are simulated; the 100 XP in the Synthesis fixture comes from a separate publication action, not movement.
+- **Repository:** #718 head 0947e, draft/unmerged, 287 ahead / 0 behind main, 37 paths. #429 is merged into main at d08658d; #722 docs child synchronized to runtime head by merge commit 09841f1 and remains draft/unmerged.
+- **Gate state:** G6/G7 IN_PROGRESS, G9 NOT_STARTED, Founder trust NOT_ENROLLED. Local preflight unavailable because authorized Desktop Commander devices are offline; hosted preflight passed, procedural compliance PARTIAL. No merge/release/deployment/Founder approval/truth/authority transition.
+
+---
+
 ## Run 298 — Council source-event navigation and mobile acceptance — 2026-11-22
 
 - Runtime PR #718 current head: ba214dfc6abf7d2b6f71e0d5d77d489c820fc1d8; draft/unmerged, 273 ahead / 0 behind main, 37 changed paths. Main remains 0d950c501cf128d828ae4f263cc05a9013d7e8c1.
