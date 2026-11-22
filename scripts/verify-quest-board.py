@@ -1716,6 +1716,71 @@ def assert_contradiction_ward_dossier(page, expected_text, expected_claim, expec
     }
 
 
+
+def assert_previous_bearer_handoff_history(page, item_title, first_offer_id, first_transfer_event_id,
+                                           second_offer_id, second_transfer_event_id, declined_offer_id,
+                                           decline_event_id, current_owner_id, screenshot):
+    before = authoritative_snapshot(page)
+    character_button = page.locator('#character-button')
+    expect(character_button).to_be_visible()
+    character_button.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+        "!document.querySelector('#sheet').hidden"
+    )
+
+    inventory_item = page.locator('#sheet-content [data-field-item-id]').filter(has_text=item_title)
+    expect(inventory_item).to_have_count(0)
+
+    history = page.locator('#sheet-content [data-field-item-participant-history="true"]')
+    expect(history).to_have_count(1)
+    expect(history).to_have_attribute('data-history-total', '3')
+
+    def history_entry(offer_id, status):
+        row = history.locator('[data-field-item-participant-history-entry="' + offer_id + '"]')
+        expect(row).to_have_count(1)
+        expect(row).to_have_attribute('data-transfer-status', status)
+        return row
+
+    first = history_entry(first_offer_id, 'accepted')
+    expect(first).to_contain_text(item_title)
+    expect(first).to_contain_text('Current in-game owner ' + current_owner_id + ' (witness).')
+    first_acceptance = first.locator('[data-field-item-history-event-link="accepted"]')
+    expect(first_acceptance).to_have_count(1)
+    expect(first_acceptance).to_have_attribute('data-chronicle-event-id', first_transfer_event_id)
+    expect(first_acceptance).to_have_attribute('data-chronicle-source', 'world')
+
+    second = history_entry(second_offer_id, 'accepted')
+    expect(second).to_contain_text(item_title)
+    expect(second).to_contain_text('Current in-game owner ' + current_owner_id + ' (witness).')
+    second_acceptance = second.locator('[data-field-item-history-event-link="accepted"]')
+    expect(second_acceptance).to_have_count(1)
+    expect(second_acceptance).to_have_attribute('data-chronicle-event-id', second_transfer_event_id)
+    expect(second_acceptance).to_have_attribute('data-chronicle-source', 'world')
+
+    declined = history_entry(declined_offer_id, 'declined')
+    decline_link = declined.locator('[data-field-item-history-event-link="declined"]')
+    expect(decline_link).to_have_count(1)
+    expect(decline_link).to_have_attribute('data-chronicle-event-id', decline_event_id)
+    expect(decline_link).to_have_attribute('data-chronicle-source', 'world')
+
+    after = authoritative_snapshot(page)
+    assert after == before, 'Inspecting prior-bearer handoff history must not mutate world state or XP.'
+    screenshot = Path(screenshot)
+    page.screenshot(path=str(screenshot), full_page=True)
+    page.locator('#sheet-close').tap()
+    return {
+        'itemNoLongerInInventory': True,
+        'handoffHistoryRetained': True,
+        'firstAcceptanceEventId': first_transfer_event_id,
+        'secondAcceptanceEventId': second_transfer_event_id,
+        'declineEventId': decline_event_id,
+        'currentOwnerId': current_owner_id,
+        'readOnly': after == before,
+        'screenshot': screenshot.name
+    }
+
+
 def assert_deliberator_character_record(page, role, expected_rounds, screenshot, require_320px=False,
                                         expected_armor_bearer=0):
     before = authoritative_snapshot(page)
@@ -2631,17 +2696,20 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
         )
         wait_for_shared_world_ready(founder_page)
-        founder_transfer_dossier = assert_contradiction_ward_dossier(
+        # Founder has now carried the Ward forward to Silent. The item must leave
+        # Founder's inventory while the exact accepted/declined handoff history
+        # remains visible and linked to its canonical Chronicle events.
+        founder_handoff_history = assert_previous_bearer_handoff_history(
             founder_page,
-            'The model assertion has no retrieved primary source. Literal <img> text remains text.',
-            'Founder fixture claim: the model assertion is not verified.',
-            'Agreed: this remains a lead until the primary source is retrieved.',
-            founder_before['viewerId'],
-            witness_before['viewerId'],
-            source_observation_event_id,
-            challenge_event_id,
-            response_event_id,
-            out / 'contradiction-ward-dossier-recipient-founder-390.png'
+            'Contradiction Ward',
+            transfer_offer['offerId'],
+            transfer_event_id,
+            second_transfer_offer['offerId'],
+            second_transfer_event_id,
+            decline_offer_id,
+            decline_event_id,
+            silent_before['viewerId'],
+            out / 'contradiction-ward-handoff-history-previous-founder-390.png'
         )
 
         witness_page.reload(wait_until='networkidle')
@@ -3222,7 +3290,9 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
                 'offeredBy': witness_before['viewerId'],
                 'acceptedBy': founder_before['viewerId'],
                 'creatorPreserved': True,
-                'dossierPreservedAfterReload': founder_transfer_dossier['readOnly'],
+                'previousBearerNoLongerOwnsItem': founder_handoff_history['itemNoLongerInInventory'],
+                'handoffHistoryPreservedAfterReload': founder_handoff_history['handoffHistoryRetained'],
+                'handoffHistoryReadOnly': founder_handoff_history['readOnly'],
                 'senderNoLongerOwnsItem': True,
                 'recipientEquippedExactItem': True,
                 'recipientEquipEventId': recipient_equip_event_id,
@@ -3307,7 +3377,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'pageErrors': witness_errors + silent_errors,
             'screenshots': [
                 founder_screenshot.name, witness_screenshot.name, silent_screenshot.name,
-                ward_dossier['screenshot'], founder_transfer_dossier['screenshot'],
+                ward_dossier['screenshot'], founder_handoff_history['screenshot'],
                 silent_transfer_dossier['screenshot'],
                 founder_character['screenshot'], witness_character['screenshot'],
                 silent_character['screenshot'], handoff_history_screenshot.name,
