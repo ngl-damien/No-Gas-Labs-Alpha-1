@@ -1,6 +1,9 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { PLACES, institutionActivityCount, institutionSummaryFromState, projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
 import { createWorld } from '../game/model.mjs';
-import { projectCharterCodex, renderCharterCodex } from '../game/institution-view.mjs';utionActivityCount, institutionSummaryFromState, projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
+import { projectCharterCodex, renderCharterCodex } from '../game/institution-view.mjs';
 
 function sourceArchiveFailureEvent(overrides={}) {
   return {
