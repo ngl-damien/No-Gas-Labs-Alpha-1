@@ -486,7 +486,7 @@ def seed_source_archive_failure(page, width):
         "draftDelta": after["draftCount"] - before["draftCount"]
     }
 
-def inspect_source_archive_failure_ledger(page, failure, width, out):
+def inspect_source_archive_failure_ledger(page, failure, observatory, width, out):
     if page.locator("#sheet").is_visible():
         page.locator("#sheet-close").tap()
     page.bring_to_front()
@@ -3065,7 +3065,7 @@ def run_viewport(browser, width, out):
                 observatory = seed_source_observatory(page, width)
                 source_archive_failure = seed_source_archive_failure(page, width)
                 failure_ledger = inspect_source_archive_failure_ledger(
-                    page, source_archive_failure, width, out
+                    page, source_archive_failure, observatory, width, out
                 )
                 moonshot_failure_history = inspect_moonshot_source_archive_failures(
                     page, source_archive_failure, width, out
