@@ -1298,6 +1298,16 @@ export class PixelWorldView extends WorldView {
       previousActorId.length > 0 &&
       nextActorId === previousActorId
     ) ? this.playerApproach : null;
+    const navigationTarget = positionStreamChanged ? null : this.navigationTarget;
+    const pendingTargetId = !positionStreamChanged && typeof this.target === 'string'
+      ? this.target : null;
+    const pendingTargetType = pendingTargetId ? this.targetType : null;
+    const routeDestination = !positionStreamChanged && !playerApproach &&
+      !navigationTarget && !pendingTargetId && Array.isArray(this.route) && this.route.length > 0
+      ? this.route[this.route.length - 1] : null;
+    const groundDestination = routeDestination &&
+      Number.isFinite(routeDestination.x) && Number.isFinite(routeDestination.y)
+      ? { x: routeDestination.x, y: routeDestination.y } : null;
     if (positionStreamChanged) {
       this.keys?.clear?.();
       this.input = { x: 0, y: 0 };
@@ -1312,17 +1322,6 @@ export class PixelWorldView extends WorldView {
     } else if (actorSessionChanged) {
       this.positionEpoch = null;
     }
-    const navigationTarget = positionStreamChanged ? null : this.navigationTarget;
-    const preserveNavigationTarget = Boolean(
-      !positionStreamChanged &&
-      navigationTarget?.type === 'institution' &&
-      typeof navigationTarget.id === 'string' &&
-      Array.isArray(this.route) &&
-      this.route.length === 0 &&
-      Number.isFinite(player?.x) &&
-      Number.isFinite(player?.y) &&
-      (typeof player?.id !== 'string' || player.id === this.player?.id)
-    );
     super.setPlayer(player);
     if (playerApproach) {
       const target = Array.isArray(this.presence)
@@ -1338,18 +1337,33 @@ export class PixelWorldView extends WorldView {
       if (target && Number.isFinite(distance) &&
           distance >= interactionPromptRange({ type: 'player' })) {
         // Same-session state snapshots may omit x/y while a local route is
-        // active. Keep the current rendered coordinate in that case, but
-        // always rebuild waypoints from the post-snapshot player position.
-        // Never carry stale waypoints or a replaced remote identity forward.
+        // active. Rebuild from the accepted position; never carry stale
+        // waypoints or a replaced remote identity forward.
         this.routeBesidePlayer(target);
         return;
       }
     }
-    if (!preserveNavigationTarget || !navigationTarget) return;
-    const destination = this.nearest(navigationTarget.id, navigationTarget.type);
-    if (destination && Number.isFinite(destination.distance) &&
-        destination.distance < interactionPromptRange(destination)) {
-      this.navigationTarget = navigationTarget;
+    if (navigationTarget) {
+      const destination = this.nearest(navigationTarget.id, navigationTarget.type);
+      if (destination && Number.isFinite(destination.distance)) {
+        if (destination.distance < interactionPromptRange(destination)) {
+          this.navigationTarget = navigationTarget;
+        } else {
+          // Position receipts supersede coordinates, not the player's chosen
+          // institution/NPC destination. Rebuild the route from accepted state.
+          this.goTo(navigationTarget.id, navigationTarget.type);
+        }
+      }
+      return;
+    }
+    if (pendingTargetId) {
+      this.goTo(pendingTargetId, pendingTargetType);
+      return;
+    }
+    if (groundDestination) {
+      // A freeform map tap has no canonical target ID. Preserve only its final
+      // coordinate and recompute waypoints after each same-session receipt.
+      this.goTo(groundDestination);
     }
   }
 
@@ -1747,10 +1761,11 @@ export class PixelWorldView extends WorldView {
     }
     this.route = route;
     this.route.shift();
-    // Arrival leaves the player beside the NPC. The player must still use
-    // the explicit interact control; navigation alone is not a world event.
+    // Preserve the exact NPC destination across same-session position
+    // receipts. Arrival still requires the explicit Interact control.
     this.target = null;
     this.targetType = null;
+    this.navigationTarget = { id: npc.id, type: 'npc' };
     this.scheduleFrame?.();
   }
 
@@ -1889,15 +1904,22 @@ export class PixelWorldView extends WorldView {
   setWorld(world, institutionSummary = this.institutionSummary, viewer = null) {
     const previousWorld = this.world;
     const previousRouteObstacleSignature = this.routeObstacleSignature;
+    const groundRouteDestination = this.route.length > 0 &&
+      !this.navigationTarget && !this.playerApproach && !this.target
+      ? this.route[this.route.length - 1] : null;
     super.setWorld(world, institutionSummary, viewer);
     if (this.world !== previousWorld) {
       this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
       this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
       this.updateResearchAccessibility();
     }
-    if (this.navigationTarget && this.route.length > 0 &&
-        this.routeObstacleSignature !== previousRouteObstacleSignature) {
-      this.goTo(this.navigationTarget.id, 'institution');
+    if (this.routeObstacleSignature !== previousRouteObstacleSignature) {
+      if (this.navigationTarget && this.route.length > 0) {
+        this.goTo(this.navigationTarget.id, this.navigationTarget.type);
+      } else if (groundRouteDestination &&
+          Number.isFinite(groundRouteDestination.x) && Number.isFinite(groundRouteDestination.y)) {
+        this.goTo({ x: groundRouteDestination.x, y: groundRouteDestination.y });
+      }
     }
   }
 
