@@ -220,6 +220,34 @@ test('a challenge response cannot point forward to a later challenge despite a l
   ]);
 });
 
+test('invalid experiment challenges cannot anchor an author response', () => {
+  const cases = [
+    ['unsupported challenge type', challenge({ challengeType: 'unsupported' })],
+    ['empty challenge text', challenge({ challengeText: '' })],
+    ['oversized challenge text', challenge({ challengeText: 'x'.repeat(1001) })],
+    ['malformed supplied evidence', challenge({ evidenceCreationId: 'source-1', evidenceVersion: null })]
+  ];
+
+  for (const [label, invalidChallenge] of cases) {
+    const events = [proposal(), report(), invalidChallenge, challengeResponseEvent()];
+    const before = structuredClone(events);
+    const projected = project(events);
+    const challengeRecord = projected.find(event => event.id === invalidChallenge.id);
+    const responseRecord = projected.find(event => event.id === 'response-event-1');
+
+    assert.ok(challengeRecord, label + ': malformed challenge remains in retained projection');
+    assert.ok(responseRecord, label + ': retained response remains visible');
+    assert.equal(responseRecord._projection.targetChallenge, null, label);
+    assert.notEqual(responseRecord._projection.targetChallengeStatus, 'linked', label);
+    if (label === 'malformed supplied evidence') {
+      assert.equal(challengeRecord._projection.evidenceStatus, 'invalid', label);
+    } else {
+      assert.equal(challengeRecord._projection.targetReportStatus, 'invalid-challenge', label);
+    }
+    assert.deepEqual(events, before, label + ': research projection is read-only');
+  }
+});
+
 test('duplicate proposal identity is preserved but never used to infer report context', () => {
   const projected = project([
     proposal(),
