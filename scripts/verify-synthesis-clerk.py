@@ -2717,6 +2717,139 @@ def assert_private_import_shared_reentry(page, width, out):
         full_page=True
     )
 
+    # A failed attempt to rejoin the shared world must restore the still-loaded
+    # private world. Remove the public cache so the only safe fallback is private.
+    page.evaluate("""() => {
+      localStorage.removeItem('ngl.common-ground.shared-snapshot.v1');
+      localStorage.removeItem('ngl.common-ground.shared-position.v1');
+    }""")
+    private_before_failed_join = page.evaluate("""() => {
+      const world = JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+      const canvas = document.querySelector('#world');
+      return {
+        worldId: world?.id,
+        revision: world?.revision,
+        xp: world?.xp,
+        eventIds: Array.isArray(world?.events) ? world.events.map(event => event.id) : [],
+        playerX: Number(canvas?.dataset.playerX),
+        playerY: Number(canvas?.dataset.playerY)
+      };
+    }""")
+    assert private_before_failed_join["worldId"] == meta["worldId"]
+    assert private_before_failed_join["revision"] == meta["privateRevision"]
+    assert math.isfinite(private_before_failed_join["playerX"])
+    assert math.isfinite(private_before_failed_join["playerY"])
+
+    failed_join_requests = []
+
+    def fail_shared_join(route):
+        request = route.request
+        failed_join_requests.append({
+            "method": request.method,
+            "path": request.url.split("?", 1)[0]
+        })
+        route.fulfill(
+            status=503,
+            content_type="application/json",
+            body='{"error":"synthetic shared join unavailable"}'
+        )
+
+    page.route("**/api/state", fail_shared_join)
+    try:
+        page.locator("#journal-button").tap()
+        enter_shared_while_offline = page.locator("#sheet-content button").filter(
+            has_text="Enter shared world"
+        )
+        expect(enter_shared_while_offline).to_be_visible()
+        with page.expect_response(
+            lambda response: response.url.split("?", 1)[0].endswith("/api/state")
+            and response.status == 503,
+            timeout=10000
+        ) as failed_join_response:
+            enter_shared_while_offline.tap()
+        failed_join_status = failed_join_response.value.status
+        page.wait_for_function("""() => {
+          const canvas = document.querySelector('#world');
+          const dot = document.querySelector('#connection-dot');
+          const label = document.querySelector('#mode-label')?.textContent || '';
+          return label.startsWith('Private world') &&
+            canvas?.dataset.sharedSnapshotSource === 'private' &&
+            canvas?.dataset.sharedSnapshotCacheOnly === 'false' &&
+            canvas?.dataset.sharedOfflinePreview === 'false' &&
+            canvas?.dataset.movementEnabled === 'true' &&
+            dot?.dataset.connectionState === 'offline';
+        }""", timeout=10000)
+    finally:
+        page.unroute("**/api/state", fail_shared_join)
+
+    assert failed_join_status == 503
+    assert failed_join_requests == [{
+        "method": "GET",
+        "path": page.url.split("/", 3)[0] + "/api/state"
+    }], failed_join_requests
+
+    restored_private = page.evaluate("""() => {
+      const world = JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+      const canvas = document.querySelector('#world');
+      const dot = document.querySelector('#connection-dot');
+      return {
+        worldId: world?.id,
+        revision: world?.revision,
+        xp: world?.xp,
+        eventIds: Array.isArray(world?.events) ? world.events.map(event => event.id) : [],
+        playerX: Number(canvas?.dataset.playerX),
+        playerY: Number(canvas?.dataset.playerY),
+        modeLabel: document.querySelector('#mode-label')?.textContent || '',
+        movementEnabled: canvas?.dataset.movementEnabled,
+        sharedSnapshotSource: canvas?.dataset.sharedSnapshotSource,
+        sharedSnapshotCacheOnly: canvas?.dataset.sharedSnapshotCacheOnly,
+        sharedOfflinePreview: canvas?.dataset.sharedOfflinePreview,
+        connectionState: dot?.dataset.connectionState
+      };
+    }""")
+    assert restored_private["worldId"] == private_before_failed_join["worldId"]
+    assert restored_private["revision"] == private_before_failed_join["revision"]
+    assert restored_private["xp"] == private_before_failed_join["xp"]
+    assert restored_private["eventIds"] == private_before_failed_join["eventIds"]
+    assert restored_private["modeLabel"].startswith("Private world")
+    assert restored_private["movementEnabled"] == "true"
+    assert restored_private["sharedSnapshotSource"] == "private"
+    assert restored_private["sharedSnapshotCacheOnly"] == "false"
+    assert restored_private["sharedOfflinePreview"] == "false"
+    assert restored_private["connectionState"] == "offline"
+
+    # Prove that the restored control state is playable, not just a DOM flag.
+    page.locator("#world").focus()
+    page.keyboard.down("ArrowRight")
+    page.wait_for_timeout(300)
+    page.keyboard.up("ArrowRight")
+    page.wait_for_function(
+        "x => Number(document.querySelector('#world')?.dataset.playerX) > x + 8",
+        arg=private_before_failed_join["playerX"],
+        timeout=5000
+    )
+    private_after_movement = page.evaluate("""() => {
+      const world = JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+      const canvas = document.querySelector('#world');
+      return {
+        worldId: world?.id,
+        revision: world?.revision,
+        xp: world?.xp,
+        eventIds: Array.isArray(world?.events) ? world.events.map(event => event.id) : [],
+        playerX: Number(canvas?.dataset.playerX),
+        playerY: Number(canvas?.dataset.playerY)
+      };
+    }""")
+    private_movement_delta = private_after_movement["playerX"] - private_before_failed_join["playerX"]
+    assert private_movement_delta > 8, private_after_movement
+    assert private_after_movement["worldId"] == private_before_failed_join["worldId"]
+    assert private_after_movement["revision"] == private_before_failed_join["revision"]
+    assert private_after_movement["xp"] == private_before_failed_join["xp"]
+    assert private_after_movement["eventIds"] == private_before_failed_join["eventIds"]
+    assert write_attempts == [], (
+        "A failed shared join and private movement must not submit shared writes."
+    )
+
     page.context.set_offline(False)
     page.evaluate("() => window.dispatchEvent(new Event('online'))")
     wait_for_shared_connection(page, "after private import network restoration")
