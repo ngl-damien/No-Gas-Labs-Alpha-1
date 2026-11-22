@@ -262,10 +262,13 @@ test('client resets and establishes shared-snapshot acceptance only at explicit 
     'sharedSnapshotCacheOnly=false',
     'stream?.close();stream=null',
     'sourceSnapshotReceiptsByRevision.clear()',
-    'view.setMovementEnabled(true)'
+    'view.setMovementEnabled(false)'
   ]) assert.ok(resetSession.includes(expected), 'private-session reset must include ' + expected);
-  assert.ok(client.slice(startPrivateAt, connectStreamAt).includes('resetSharedSessionForPrivateMode()'),
+  const privateStart = client.slice(startPrivateAt, connectStreamAt);
+  assert.ok(privateStart.includes('resetSharedSessionForPrivateMode()'),
     'entering a private world must use the complete shared-session reset');
+  assert.ok(privateStart.includes('view.setMovementEnabled(true)'),
+    'private movement is restored only after the private world has finished loading');
 
   const importAt = client.indexOf("const file=node('input',{id:'import-world'");
   const exportAt = client.indexOf("content.append(node('div',{class:'button-row'},[button('↓ Export world JSON'", importAt);
@@ -291,6 +294,8 @@ test('client resets and establishes shared-snapshot acceptance only at explicit 
   const startShared = client.slice(startSharedAt, showSheetAt);
   assert.match(startShared, /sharedSnapshotAcceptance\.accept\(world,cached\.world\)/,
     'a cached public snapshot must pass through the same acceptance boundary');
+  assert.ok(startShared.includes("if(previousMode==='private')"),
+    'a failed shared join must restore private movement instead of stranding the local world');
 });
 
 test('shared-session generation invalidates delayed callbacks after a private-world transition', async () => {
