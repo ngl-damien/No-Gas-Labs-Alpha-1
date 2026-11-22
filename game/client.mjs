@@ -1312,8 +1312,18 @@ function connectSharedStream(){
   };
 }
 async function startShared(){
+  const previousMode=mode;
   sharedSessionGeneration.invalidate();
   const generation=sharedSessionGeneration.capture();
+  const restorePrivateWorld=()=>{
+    if(previousMode==='private'){
+      sharedMovementPaused=false;
+      sharedOfflinePreview=false;
+      sharedSnapshotCacheOnly=false;
+      view.setMovementEnabled(true);
+      setConnection(true);
+    }
+  };
   stream?.close();stream=null;
   sharedStreamOpen=false;
   sharedMovementPaused=true;
@@ -1341,9 +1351,11 @@ async function startShared(){
     const cacheableFailure=error?.status===undefined||error.status>=500;
     const cached=cacheableFailure?readSharedSnapshotCache(localStorage):null;
     if(!sharedSessionGeneration.isCurrent(generation))return;
-    if(!cached)throw error;
-    if(!sharedSnapshotAcceptance.accept(world,cached.world))
+    if(!cached){restorePrivateWorld();throw error;}
+    if(!sharedSnapshotAcceptance.accept(world,cached.world)){
+      restorePrivateWorld();
       throw new Error('The cached shared snapshot is older than the last accepted shared world; the current accepted view was kept.');
+    }
     mode='shared';
     sharedStreamOpen=false;
     sharedMovementPaused=true;
