@@ -419,13 +419,25 @@ def seed_council_review_fixture(page):
 
 
 def council_canvas_tap_position(page):
-    point = page.locator('#world').evaluate("""canvas => {
+    point = page.locator('#world').evaluate("""async canvas => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Could not read the accepted player position for landmark navigation.');
+      const dto = await response.json();
+      const player = dto?.viewer?.position;
+      if (!player || !Number.isFinite(player.x) || !Number.isFinite(player.y)) {
+        throw new Error('The accepted player position is unavailable; do not guess the camera location.');
+      }
       const rect = canvas.getBoundingClientRect();
       const zoom = rect.width < 600 ? 0.78 : Math.max(0.64, Math.min(0.92, rect.width / 1500));
       const visibleWidth = rect.width / zoom;
       const visibleHeight = rect.height / zoom;
-      const cameraX = Math.max(visibleWidth / 2, Math.min(1600 - visibleWidth / 2, 600));
-      const cameraY = Math.max(visibleHeight / 2, Math.min(1000 - visibleHeight / 2, 190));
+      // Match WorldView.cameraTarget() instead of assuming the player reached
+      // an exact pixel before the modeless institution panel stopped the route.
+      const cameraX = Math.max(visibleWidth / 2, Math.min(1600 - visibleWidth / 2, player.x + 100));
+      const cameraY = Math.max(visibleHeight / 2, Math.min(1000 - visibleHeight / 2, player.y - 50));
       return {
         x: rect.width / 2 + (500 - cameraX) * zoom,
         y: rect.height / 2 + (190 - cameraY) * zoom
