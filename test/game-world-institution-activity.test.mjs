@@ -402,6 +402,52 @@ test('failure projection never invokes accessors or Proxy get traps and rejects 
   }),null,'a revision smaller than the delivered event array is inconsistent history');
 });
 
+test('failure projection fails closed when any retained event slot cannot be classified safely', () => {
+  const visibleFailure = sourceArchiveFailureEvent({
+    id: 'visible-before-unclassifiable',
+    attemptId: 'visible-before-unclassifiable-attempt',
+    requestIdDigest: '1'.repeat(64),
+    actionDigest: '2'.repeat(64)
+  });
+  let typeGetterCalls = 0;
+  const accessorType = sourceArchiveFailureEvent({
+    id: 'unclassifiable-accessor-type',
+    attemptId: 'unclassifiable-accessor-attempt',
+    requestIdDigest: '3'.repeat(64),
+    actionDigest: '4'.repeat(64)
+  });
+  Object.defineProperty(accessorType, 'type', {
+    enumerable: true,
+    configurable: true,
+    get() {
+      typeGetterCalls++;
+      return 'source-archive-attempt-failed';
+    }
+  });
+
+  assert.equal(projectSourceArchiveFailureObjects({
+    schema: 'ngl.world.v2',
+    revision: 2,
+    events: [visibleFailure, accessorType]
+  }), null, 'an accessor-backed event type cannot be silently classified as a non-failure');
+  assert.equal(typeGetterCalls, 0, 'projection must not invoke an untrusted event-type getter');
+
+  const sparseEvents = new Array(2);
+  sparseEvents[0] = visibleFailure;
+  assert.equal(projectSourceArchiveFailureObjects({
+    schema: 'ngl.world.v2',
+    revision: 2,
+    events: sparseEvents
+  }), null, 'a sparse retained event array cannot support a complete-history claim');
+
+  assert.equal(projectSourceArchiveFailureObjects({
+    schema: 'ngl.world.v2',
+    revision: 2,
+    events: [visibleFailure, { id: 'event-without-type' }]
+  }), null, 'an event without a safe type is unclassifiable, not evidence of no failure');
+});
+
+
 test('Evidence Archive owns the fixed Contradiction Clerk challenge and its retained reports', () => {
   const archive = PLACES.find(place => place.id === 'evidence_archive');
   assert.ok(archive);
