@@ -731,12 +731,15 @@ test('AOTA Codex exposes actor-scoped snapshot-cited lead activity without calli
     renderCharterCodex(root, { world, viewer: founder });
     const card = walk(root).find(item => item.dataset?.charterStage === 'engineer-for-use');
     assert.ok(card);
-    assert.match(card.textContent, /SNAPSHOT-CITED LEAD/);
-    assert.match(card.textContent, /not server-validated/i);
-    assert.ok(card.textContent.includes(validLeadEventId));
-    assert.ok(!card.textContent.includes(mismatchedTimestampEventId));
-    assert.ok(!card.textContent.includes(modelAssertionEventId));
-    assert.ok(!card.textContent.includes(witnessLeadEventId));
+    const renderedText = walk(card).map(item =>
+      typeof item.textContent === 'string' ? item.textContent : ''
+    ).join(' ');
+    assert.match(renderedText, /SNAPSHOT-CITED LEAD/);
+    assert.match(renderedText, /not server-validated/i);
+    assert.ok(renderedText.includes(validLeadEventId));
+    assert.ok(!renderedText.includes(mismatchedTimestampEventId));
+    assert.ok(!renderedText.includes(modelAssertionEventId));
+    assert.ok(!renderedText.includes(witnessLeadEventId));
   });
 });
 
