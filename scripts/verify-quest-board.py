@@ -4179,8 +4179,23 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     open_evidence_archive(page)
     expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
     inspection_before = authoritative_snapshot(page)
+    # Preserve the exact server DTO before a second client appends a newer event.
+    # It will be replayed later as a delayed /api/state response to exercise the
+    # live client's world-revision monotonicity guard, not the cache helper alone.
+    stale_state_dto = page.evaluate("""async () => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Pre-regression shared state read failed: ' + response.status);
+      return await response.json();
+    }""")
+    assert stale_state_dto.get('world', {}).get('revision') == inspection_before['revision'], (
+        'The stale-response fixture must be the exact shared revision pinned by the opening Archive.'
+    )
+    assert stale_state_dto.get('viewer', {}).get('role') == 'founder'
 
-    report_stream = page.locator('#sheet-content [data-evidence-archive-activity-stream="report"]')
+    report_stream = page.locator('#sheet-content [data-evidence-archive-activity-stream="report"])
     contribution_stream = page.locator('#sheet-content [data-evidence-archive-activity-stream="contribution"]')
     expect(report_stream).to_have_count(1)
     expect(contribution_stream).to_have_count(1)
@@ -4337,6 +4352,119 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     assert accepted_revision_while_connected == second_after['revision'], (
         'The first session must accept the second-session report before disconnecting.'
     )
+
+    # Replay a delayed, same-world server snapshot after the first client has
+    # already accepted the Witness's newer report. The client must reject the
+    # old DTO, keep the newer world revision, pause shared movement, and recover
+    # only after a fresh authoritative read succeeds.
+    page.wait_for_function(
+        "() => document.querySelector('#connection-dot')?.dataset.connectionState === 'online' && document.querySelector('#world')?.dataset.movementEnabled === 'true'",
+        timeout=15000
+    )
+    live_state_dto = page.evaluate("""async () => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Current shared state read failed: ' + response.status);
+      return await response.json();
+    }""")
+    assert live_state_dto['world']['id'] == stale_state_dto['world']['id'], (
+        'The delayed and current DTOs must identify the same shared world.'
+    )
+    assert live_state_dto['world']['revision'] == second_after['revision']
+    assert stale_state_dto['world']['revision'] < live_state_dto['world']['revision'], (
+        'The delayed DTO must be strictly older than the already accepted shared snapshot.'
+    )
+    stale_response = {'count': 0}
+
+    def serve_stale_shared_snapshot(route):
+        stale_response['count'] += 1
+        route.fulfill(
+            status=200,
+            content_type='application/json',
+            body=json.dumps(stale_state_dto)
+        )
+
+    stale_reconcile_before = page.evaluate("""() => {
+      const world = document.querySelector('#world');
+      return {
+        revision: Number(world?.dataset.worldRevision),
+        playerX: world?.dataset.playerX ?? null,
+        playerY: world?.dataset.playerY ?? null,
+        movementEnabled: world?.dataset.movementEnabled ?? null,
+        connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null
+      };
+    }""")
+    assert stale_reconcile_before['revision'] == live_state_dto['world']['revision']
+    page.route('**/api/state', serve_stale_shared_snapshot)
+    page.evaluate("() => window.dispatchEvent(new Event('online'))")
+    page.wait_for_function(
+        "() => document.querySelector('#toast')?.textContent.includes('older snapshot')",
+        timeout=15000
+    )
+    assert stale_response['count'] >= 1, (
+        'The reconnect path must actually receive the delayed older server DTO.'
+    )
+    stale_reconcile_after = page.evaluate("""() => {
+      const world = document.querySelector('#world');
+      return {
+        revision: Number(world?.dataset.worldRevision),
+        playerX: world?.dataset.playerX ?? null,
+        playerY: world?.dataset.playerY ?? null,
+        movementEnabled: world?.dataset.movementEnabled ?? null,
+        connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null
+      };
+    }""")
+    assert stale_reconcile_after['revision'] == stale_reconcile_before['revision'], (
+        'A delayed live snapshot must not roll the already accepted world backward: ' +
+        json.dumps({'before': stale_reconcile_before, 'after': stale_reconcile_after})
+    )
+    assert stale_reconcile_after['playerX'] == stale_reconcile_before['playerX']
+    assert stale_reconcile_after['playerY'] == stale_reconcile_before['playerY']
+    assert stale_reconcile_after['movementEnabled'] == 'false', (
+        'Movement must remain paused after a stale reconciliation response.'
+    )
+    assert stale_reconcile_after['connectionState'] == 'offline', (
+        'The client must not label a rejected stale reconciliation as connected.'
+    )
+    assert page.locator('#sheet-content').get_attribute(
+        'data-evidence-archive-snapshot-revision'
+    ) == str(inspection_before['revision'])
+    page.screenshot(
+        path=str(out / ('evidence-archive-stale-live-snapshot-rejected-' + str(width) + '.png')),
+        full_page=True
+    )
+    page.unroute('**/api/state', serve_stale_shared_snapshot)
+    page.evaluate("() => window.dispatchEvent(new Event('online'))")
+    page.wait_for_function(
+        """expected => document.querySelector('#connection-dot')?.dataset.connectionState === 'online' &&
+            document.querySelector('#world')?.dataset.movementEnabled === 'true' &&
+            Number(document.querySelector('#world')?.dataset.worldRevision) === expected""",
+        arg=live_state_dto['world']['revision'],
+        timeout=30000
+    )
+    revalidated_state = authoritative_snapshot(page)
+    assert revalidated_state['revision'] == live_state_dto['world']['revision']
+    assert revalidated_state['xp'] == live_state_dto['world']['xp']
+    assert revalidated_state['eventIds'] == [event['id'] for event in live_state_dto['world']['events']]
+    assert revalidated_state['viewerId'] == live_state_dto['viewer']['id']
+    assert revalidated_state['viewerRole'] == live_state_dto['viewer']['role']
+    stale_live_snapshot_reconciliation = {
+        'sameWorldId': True,
+        'staleRevision': stale_state_dto['world']['revision'],
+        'acceptedRevision': live_state_dto['world']['revision'],
+        'staleResponseServed': stale_response['count'],
+        'revisionPreservedAfterStaleResponse': stale_reconcile_after['revision'],
+        'playerPositionPreserved': (
+            stale_reconcile_after['playerX'] == stale_reconcile_before['playerX'] and
+            stale_reconcile_after['playerY'] == stale_reconcile_before['playerY']
+        ),
+        'movementPausedAfterStaleResponse': stale_reconcile_after['movementEnabled'] == 'false',
+        'freshRevalidationAccepted': revalidated_state['revision'] == live_state_dto['world']['revision'],
+        'worldMutation': False,
+        'xpDelta': revalidated_state['xp'] - live_state_dto['world']['xp']
+    }
     assert page.locator('#sheet-content').get_attribute(
         'data-evidence-archive-snapshot-revision'
     ) == str(inspection_before['revision']), (
@@ -4988,6 +5116,7 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'archiveSnapshotRevision': inspection_before['revision'],
         'acceptedRevisionWhileOffline': accepted_revision_while_offline,
         'acceptedRevisionWhileConnected': accepted_revision_while_connected,
+        'staleLiveSnapshotReconciliation': stale_live_snapshot_reconciliation,
         'offlineChronicleSnapshotRevision': inspection_before['revision'],
         'offlineChronicleExcludedNewerReportEventId': new_report_event_id,
         'returnToArchiveSnapshotRevision': inspection_before['revision'],
