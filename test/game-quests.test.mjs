@@ -1070,6 +1070,91 @@ test('research quest targets the latest appended eligible records even when thei
   }, 'the newest appended other-actor report is the challenge target, not the oldest');
 });
 
+test('R&D Quest Trail links publication, proposal, report, challenge and response by retained append order under clock regression', () => {
+  const retained = experimentQuestWorld();
+  const [publication, proposal, report] = retained.events;
+  publication.at = '2026-10-28T17:00:00.000Z';
+  retained.creations[0].publishedAt = publication.at;
+  proposal.at = '2026-10-28T16:59:00.000Z';
+  report.at = '2026-10-28T16:58:00.000Z';
+
+  const challenge = {
+    id: 'experiment-challenge-event-1',
+    type: 'experiment-challenged',
+    challengeId: 'experiment-challenge-1',
+    reportId: 'report-1',
+    moonshotId: 'moon-1',
+    actor: witness,
+    at: '2026-10-28T16:57:00.000Z',
+    challengeType: 'missing-evidence',
+    challengeText: 'The observation is not an independent source check.',
+    evidenceCreationId: 'evidence-1',
+    evidenceVersion: 1
+  };
+  const response = {
+    id: 'experiment-challenge-response-event-1',
+    type: 'experiment-challenge-responded',
+    responseId: 'experiment-response-1',
+    challengeId: challenge.challengeId,
+    reportId: 'report-1',
+    moonshotId: 'moon-1',
+    actor: founder,
+    at: '2026-10-28T16:56:00.000Z',
+    responseText: 'The limitation is accepted; independent verification remains open.'
+  };
+  retained.events.push(challenge, response);
+  const before = structuredClone(retained);
+
+  const founderTrail = getQuestTrail(retained, founder);
+  const witnessTrail = getQuestTrail(retained, witness);
+  const milestone = (trail, id) => trail.find(item => item.id === id);
+
+  assert.deepEqual(milestone(founderTrail, 'founder-experiment-report').evidenceIds, [report.id]);
+  assert.deepEqual(milestone(founderTrail, 'founder-experiment-evidence').evidenceIds, [report.id]);
+  assert.deepEqual(milestone(witnessTrail, 'witness-challenge-experiment-report').evidenceIds, [challenge.id]);
+  assert.deepEqual(milestone(founderTrail, 'founder-experiment-challenge-response').evidenceIds, [response.id]);
+  for (const [trail, id] of [
+    [founderTrail, 'founder-experiment-report'],
+    [founderTrail, 'founder-experiment-evidence'],
+    [witnessTrail, 'witness-challenge-experiment-report'],
+    [founderTrail, 'founder-experiment-challenge-response']
+  ]) {
+    assert.equal(milestone(trail, id).complete, true, id);
+  }
+
+  const founderCharacter = projectCharacter(retained, founder);
+  const witnessCharacter = projectCharacter(retained, witness);
+  assert.equal(founderCharacter.skills.find(skill => skill.id === 'experimenter').count, 1);
+  assert.equal(founderCharacter.skills.find(skill => skill.id === 'experiment-responder').count, 1);
+  assert.equal(witnessCharacter.skills.find(skill => skill.id === 'adversary').count, 1);
+  assert.deepEqual(retained, before, 'Quest Board and Character Sheet projections are read-only');
+
+  const responseBeforeChallenge = structuredClone(retained);
+  const [movedResponse] = responseBeforeChallenge.events.splice(4, 1);
+  movedResponse.at = '2026-10-28T17:02:00.000Z';
+  responseBeforeChallenge.events.splice(3, 0, movedResponse);
+  const blockedResponse = milestone(
+    getQuestTrail(responseBeforeChallenge, founder),
+    'founder-experiment-challenge-response'
+  );
+  assert.equal(blockedResponse.complete, false);
+  assert.deepEqual(blockedResponse.evidenceIds, []);
+  assert.match(blockedResponse.blockedReason, /ambiguous or invalid/i,
+    'a later timestamp cannot rescue a response appended before its exact challenge');
+
+  const challengeBeforeReport = structuredClone(retained);
+  const [movedChallenge] = challengeBeforeReport.events.splice(3, 1);
+  movedChallenge.at = '2026-10-28T17:03:00.000Z';
+  challengeBeforeReport.events.splice(2, 0, movedChallenge);
+  const blockedChallenge = milestone(
+    getQuestTrail(challengeBeforeReport, witness),
+    'witness-challenge-experiment-report'
+  );
+  assert.equal(blockedChallenge.complete, false);
+  assert.deepEqual(blockedChallenge.evidenceIds, [],
+    'a later timestamp cannot rescue a challenge appended before its exact report');
+});
+
 test('experiment challenge quest treats a same-ID different-role report author as another actor', () => {
   const world = experimentQuestWorld({ reportActor: founder });
   const crossRoleWitness = { ...witness, id: founder.id };
