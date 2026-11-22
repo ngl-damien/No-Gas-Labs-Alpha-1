@@ -1000,6 +1000,62 @@ test('Source Archive response objective withholds progress for a response by the
   assert.equal(world.xp, 0);
 });
 
+test('invalid optional evidence on a Source Archive challenge cannot advance dissent or response quests', () => {
+  const world = sourceArchiveQuestWorld({ actor: founder });
+  const report = world.events.find(event => event.type === 'experiment-reported');
+  const baselineXp = projectCharacter(world, founder).xp;
+  const challenge = {
+    id: 'source-archive-invalid-evidence-challenge-event',
+    type: 'experiment-challenged',
+    challengeId: 'source-archive-invalid-evidence-challenge',
+    reportId: report.reportId,
+    moonshotId: report.moonshotId,
+    actor: witness,
+    at: '2026-10-28T17:04:00.000Z',
+    challengeType: 'scope',
+    challengeText: 'The challenge cites an unavailable publication version.',
+    evidenceCreationId: 'source-archive-1',
+    evidenceVersion: 99
+  };
+  const response = {
+    id: 'source-archive-invalid-evidence-response-event',
+    type: 'experiment-challenge-responded',
+    responseId: 'source-archive-invalid-evidence-response',
+    challengeId: challenge.challengeId,
+    reportId: report.reportId,
+    moonshotId: report.moonshotId,
+    actor: founder,
+    at: '2026-10-28T17:05:00.000Z',
+    responseText: 'The response cannot turn an invalid evidence link into a valid challenge.'
+  };
+  world.events.push(challenge, response);
+  const beforeProjection = structuredClone(world);
+
+  const witnessChallenge = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-source-archive-challenge');
+  assert.equal(witnessChallenge.complete, false);
+  assert.equal(witnessChallenge.progress, 0);
+  assert.deepEqual(witnessChallenge.evidenceIds, []);
+  assert.deepEqual(witnessChallenge.action, {
+    type: 'research-activity',
+    id: 'research-activity:' + report.id,
+    moonshotId: report.moonshotId,
+    activityId: report.reportId
+  }, 'the invalid challenge remains history, while the valid report remains the next objective target');
+
+  const founderResponse = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-source-archive-response');
+  assert.equal(founderResponse.complete, false);
+  assert.equal(founderResponse.progress, 0);
+  assert.deepEqual(founderResponse.evidenceIds, []);
+  assert.match(founderResponse.blockedReason, /another actor must retain a valid challenge/i);
+
+  const founderCharacter = projectCharacter(world, founder);
+  assert.equal(founderCharacter.skills.find(skill => skill.id === 'experiment-responder').count, 0);
+  assert.equal(founderCharacter.xp, baselineXp);
+  assert.deepEqual(world, beforeProjection, 'quest and character projections are read-only');
+});
+
 test('Source Archive objective fails closed for unmarked, duplicated, or later-published source copies', () => {
   const cases = [
     { archiveIntent: false },

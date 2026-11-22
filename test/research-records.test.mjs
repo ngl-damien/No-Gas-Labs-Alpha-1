@@ -158,6 +158,7 @@ test('unique, earlier research records receive only explicit chronological links
   assert.equal(byId.get('challenge-event-1')._projection.proposal?.id, 'proposal-event-1');
   assert.equal(byId.get('challenge-event-1')._projection.targetReport?.id, 'report-event-1');
   assert.equal(byId.get('challenge-event-1')._projection.targetReportStatus, 'linked');
+  assert.equal(byId.get('challenge-event-1')._projection.challengeStatus, 'linked');
   assert.deepEqual(projected.map(event => event.id), ['challenge-event-1', 'report-event-1', 'proposal-event-1']);
 });
 
@@ -190,6 +191,7 @@ test('research links and Archive order follow retained append positions when clo
   assert.equal(byId.get('report-event-1')._projection.proposalStatus, 'linked');
   assert.equal(byId.get('report-event-1')._projection.evidenceStatus, 'linked');
   assert.equal(byId.get('challenge-event-1')._projection.targetReportStatus, 'linked');
+  assert.equal(byId.get('challenge-event-1')._projection.challengeStatus, 'linked');
   assert.equal(byId.get('challenge-event-1')._projection.evidenceStatus, 'linked');
   assert.equal(byId.get('response-event-1')._projection.targetChallengeStatus, 'linked');
   assert.deepEqual(projected.map(record => record.id), [
@@ -241,8 +243,10 @@ test('invalid experiment challenges cannot anchor an author response', () => {
     assert.notEqual(responseRecord._projection.targetChallengeStatus, 'linked', label);
     if (label === 'malformed supplied evidence') {
       assert.equal(challengeRecord._projection.evidenceStatus, 'invalid', label);
+      assert.equal(challengeRecord._projection.challengeStatus, 'invalid-evidence', label);
     } else {
       assert.equal(challengeRecord._projection.targetReportStatus, 'invalid-challenge', label);
+      assert.equal(challengeRecord._projection.challengeStatus, 'invalid-challenge', label);
     }
     assert.deepEqual(events, before, label + ': research projection is read-only');
   }
