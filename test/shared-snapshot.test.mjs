@@ -248,17 +248,33 @@ test('first live shared snapshot is not compared against a higher-revision priva
 
 test('client resets and establishes shared-snapshot acceptance only at explicit trust boundaries', async () => {
   const client = await readFile(new URL('../game/client.mjs', import.meta.url), 'utf8');
+  const resetAt = client.indexOf('function resetSharedSessionForPrivateMode()');
   const startPrivateAt = client.indexOf('async function startPrivate()');
   const connectStreamAt = client.indexOf('function connectSharedStream()', startPrivateAt);
-  assert.ok(startPrivateAt >= 0 && connectStreamAt > startPrivateAt);
-  assert.match(client.slice(startPrivateAt, connectStreamAt), /sharedSnapshotAcceptance\.reset\(\)/,
-    'entering a private world must clear shared-snapshot provenance');
+  assert.ok(resetAt >= 0 && startPrivateAt > resetAt && connectStreamAt > startPrivateAt);
+  const resetEnd = client.indexOf('\\nasync function startPrivate()', resetAt);
+  assert.ok(resetEnd > resetAt);
+  const resetSession = client.slice(resetAt, resetEnd);
+  assert.match(resetSession, /sharedSnapshotAcceptance\\.reset\\(\\)/);
+  assert.match(resetSession, /sharedStreamOpen=false/);
+  assert.match(resetSession, /sharedMovementPaused=false/);
+  assert.match(resetSession, /sharedOfflinePreview=false/);
+  assert.match(resetSession, /sharedSnapshotCacheOnly=false/);
+  assert.match(resetSession, /stream\\?\\.close\\(\\);stream=null/);
+  assert.match(resetSession, /sourceSnapshotReceiptsByRevision\\.clear\\(\\)/);
+  assert.match(resetSession, /view\\.setMovementEnabled\\(true\\)/);
+  assert.match(client.slice(startPrivateAt, connectStreamAt), /resetSharedSessionForPrivateMode\\(\\)/,
+    'entering a private world must use the complete shared-session reset');
 
   const importAt = client.indexOf("const file=node('input',{id:'import-world'");
   const exportAt = client.indexOf("content.append(node('div',{class:'button-row'},[button('↓ Export world JSON'", importAt);
   assert.ok(importAt >= 0 && exportAt > importAt);
-  assert.match(client.slice(importAt, exportAt), /sharedSnapshotAcceptance\.reset\(\)/,
-    'importing a save must not inherit a previous shared acceptance');
+  const importTransition = client.slice(importAt, exportAt);
+  assert.match(importTransition, /resetSharedSessionForPrivateMode\\(\\)/,
+    'importing a save must clear all shared-session and offline-preview state');
+  assert.match(importTransition, /institution=null/);
+  assert.match(importTransition, /closeSheet\\(\\);setConnection\\(true\\);render\\(\\)/,
+    'the imported private world must refresh visible connection and canvas provenance');
 
   const acceptAt = client.indexOf('function acceptState(dto,');
   const actAt = client.indexOf('async function act(action)', acceptAt);
