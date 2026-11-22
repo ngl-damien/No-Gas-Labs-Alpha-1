@@ -120,3 +120,60 @@ test('malformed, oversized and unavailable storage fails closed without manufact
   assert.equal(writeSharedSnapshotCache({ setItem() { throw new Error('quota'); } }, fixture(), { now: 1000 }).stored, false);
   assert.equal(writeSharedPositionCache({ setItem() { throw new Error('quota'); } }, founder, 4, { x: 180, y: 640 }), false);
 });
+
+
+test('older accepted snapshots cannot replace a newer same-world cache after actor changes', () => {
+  const storage = memoryStorage();
+  const newer = fixture('founder');
+  newer.world.revision = 5;
+  newer.world.events.push({
+    id: 'newer-event', type: 'contribute', actor: { id: 'witness-2', role: 'witness' },
+    at: now, semantics: 'newer contribution'
+  });
+  assert.equal(writeSharedSnapshotCache(storage, newer, { now: 2000 }).stored, true);
+
+  const older = fixture('witness');
+  older.viewer.id = 'witness-2';
+  older.viewer.name = 'Witness Two';
+  const result = writeSharedSnapshotCache(storage, older, { now: 3000 });
+
+  assert.equal(result.reason, 'newer-cache-preserved');
+  assert.equal(readSharedSnapshotCache(storage).world.id, 'offline-snapshot-world');
+  assert.equal(readSharedSnapshotCache(storage).world.revision, 5);
+  assert.equal(readSharedSnapshotCache(storage).viewer.id, 'damien');
+});
+
+test('snapshot revision ordering resets when the world identity changes', () => {
+  const storage = memoryStorage();
+  const previousWorld = fixture('founder');
+  previousWorld.world.revision = 9;
+  assert.equal(writeSharedSnapshotCache(storage, previousWorld, { now: 2000 }).stored, true);
+
+  const replacementWorld = fixture('founder');
+  replacementWorld.world.id = 'replacement-world';
+  replacementWorld.world.revision = 1;
+  replacementWorld.world.events = [];
+  const result = writeSharedSnapshotCache(storage, replacementWorld, { now: 3000 });
+
+  assert.equal(result.stored, true);
+  const snapshot = readSharedSnapshotCache(storage);
+  assert.equal(snapshot.world.id, 'replacement-world');
+  assert.equal(snapshot.world.revision, 1);
+});
+
+test('accepted position cache is bound to world identity as well as actor and revision', () => {
+  const storage = memoryStorage();
+  const dto = fixture('founder');
+  assert.equal(writeSharedSnapshotCache(storage, dto, { now: 1000 }).stored, true);
+  assert.equal(writeSharedPositionCache(
+    storage, dto.viewer, dto.world.id, dto.world.revision, { x: 300, y: 650 }, { now: 1100 }
+  ), true);
+
+  const snapshot = readSharedSnapshotCache(storage);
+  assert.ok(snapshot);
+  assert.deepEqual(readSharedPositionCache(storage, snapshot), { x: 300, y: 650 });
+  assert.equal(readSharedPositionCache(storage, {
+    ...snapshot,
+    world: { ...snapshot.world, id: 'different-world' }
+  }), null);
+});
