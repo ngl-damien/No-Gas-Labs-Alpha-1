@@ -1483,7 +1483,7 @@ test('R&D, Source Archive predicates and bounded collaborator responses preserve
     evidenceNeeded: 'An independent source check is still required for any substantive claim.',
     sourceCreationId: published.result.creationId,
     sourceVersion: 1
-  }, founderActor, { now: at(10) });
+  }, founderActor, { now: at(1.2) });
   const report = await applyAction(proposal.world, {
     type: 'report-experiment',
     moonshotId: proposal.result.moonshotId,
@@ -1492,7 +1492,7 @@ test('R&D, Source Archive predicates and bounded collaborator responses preserve
     reportedOutcome: 'inconclusive',
     evidenceCreationId: published.result.creationId,
     evidenceVersion: 1
-  }, founderActor, { now: at(8) });
+  }, founderActor, { now: at(1) });
 
   const packet = projectCollaboratorPackets(publicWorld(report.world, founderActor)).find(candidate =>
     candidate.id === 'adversary' && candidate.available === true
@@ -1516,7 +1516,7 @@ test('R&D, Source Archive predicates and bounded collaborator responses preserve
     packetJson: packet.packetJson,
     sourceEventIds: packet.inputRefs,
     responseText
-  }, founderActor, { now: at(6) });
+  }, founderActor, { now: at(0.8) });
   const collaboratorEvent = collaborated.world.events.at(-1);
   assert.equal(collaboratorEvent.type, 'collaborator-response-recorded');
   assert.equal(collaboratorEvent.validationStatus, 'valid-for-human-review');
@@ -1530,13 +1530,13 @@ test('R&D, Source Archive predicates and bounded collaborator responses preserve
     challengeText: 'A byte predicate is not an independent observation of the claim.',
     evidenceCreationId: null,
     evidenceVersion: null
-  }, witnessActor, { now: at(4) });
+  }, witnessActor, { now: at(0.6) });
   const challengeEvent = challenged.world.events.at(-1);
   const answered = await applyAction(challenged.world, {
     type: 'respond-experiment-challenge',
     challengeId: challengeEvent.challengeId,
     responseText: 'The limitation is accepted; independent observation remains outstanding.'
-  }, founderActor, { now: at(3) });
+  }, founderActor, { now: at(0.4) });
   const beforeFailureXp = answered.world.xp;
   const failed = recordSourceArchiveAttemptFailure(answered.world, founderActor, {
     requestIdDigest: 'a'.repeat(64),
@@ -1545,7 +1545,7 @@ test('R&D, Source Archive predicates and bounded collaborator responses preserve
     commitSha,
     path,
     failureCode: 'GITHUB_SOURCE_UNAVAILABLE'
-  }, { now: at(1) });
+  }, { now: at(0.2) });
   const world = failed.world;
 
   assert.deepEqual(world.events.map(event => event.type), [
@@ -1554,9 +1554,9 @@ test('R&D, Source Archive predicates and bounded collaborator responses preserve
     'experiment-challenge-responded', 'source-archive-attempt-failed'
   ]);
   assert.deepEqual(world.events.slice(2).map(event => event.at), [
-    at(1.5), at(10), at(8), at(6), at(4), at(3), at(1)
+    at(1.5), at(1.2), at(1), at(0.8), at(0.6), at(0.4), at(0.2)
   ]);
-  assert.equal(world.updatedAt, at(10), 'updatedAt remains the maximum retained wall-clock timestamp');
+  assert.equal(world.updatedAt, at(2), 'updatedAt remains the maximum retained wall-clock timestamp');
   assert.equal(world.revision, world.events.length);
   assert.equal(world.xp, beforeFailureXp);
   assert.equal(world.xp, 100, 'only the explicit publication earns XP');
@@ -1586,7 +1586,7 @@ test('R&D, Source Archive predicates and bounded collaborator responses preserve
   assert.equal(witnessRecord.xp, 0);
 
   await assert.rejects(
-    applyAction(world, { type: 'discover', locationId: 'overlook' }, founderActor, { now: at(9) }),
+    applyAction(world, { type: 'discover', locationId: 'overlook' }, founderActor, { now: at(1.9) }),
     error => error.code === 'INVALID_CHRONOLOGY',
     'ordinary actions remain subject to the world timestamp high-water mark'
   );
@@ -1595,9 +1595,9 @@ test('R&D, Source Archive predicates and bounded collaborator responses preserve
   const responseIndex = responseBeforeChallenge.events.findIndex(event => event.type === 'experiment-challenge-responded');
   const [responseEvent] = responseBeforeChallenge.events.splice(responseIndex, 1);
   const challengeIndex = responseBeforeChallenge.events.findIndex(event => event.type === 'experiment-challenged');
-  responseEvent.at = at(11);
+  responseEvent.at = at(3);
   responseBeforeChallenge.events.splice(challengeIndex, 0, responseEvent);
-  responseBeforeChallenge.updatedAt = at(11);
+  responseBeforeChallenge.updatedAt = at(3);
   await assert.rejects(
     validateWorld(responseBeforeChallenge),
     error => error.code === 'INVALID_WORLD',
