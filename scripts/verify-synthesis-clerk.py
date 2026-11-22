@@ -197,6 +197,22 @@ def authoritative_snapshot(page):
     }""")
 
 
+def authoritative_position(page):
+    return page.evaluate("""async () => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Shared position read failed: ' + response.status);
+      const dto = await response.json();
+      const position = dto?.viewer?.position;
+      if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+        throw new Error('Shared state did not expose a finite accepted session position.');
+      }
+      return { x: position.x, y: position.y };
+    }""")
+
+
 def post_action(page, action):
     return page.evaluate("""async action => {
       const response = await fetch('/api/action', {
@@ -991,29 +1007,93 @@ def assert_world_visible_behind_sheet(page, label):
         const world = document.querySelector('#world')
         const sheet = document.querySelector('#sheet')
         const backdrop = document.querySelector('#sheet-backdrop')
-        if (!world || !sheet || !backdrop) return null
+        const questCard = document.querySelector('#quest-card')
+        const worldStats = document.querySelector('.world-stats')
+        if (!world || !sheet || !backdrop || !questCard || !worldStats) return null
         const worldRect = world.getBoundingClientRect()
         const sheetRect = sheet.getBoundingClientRect()
         const worldStyle = getComputedStyle(world)
         const backdropStyle = getComputedStyle(backdrop)
+        const targetX = Math.round(window.innerWidth / 2 + 60)
+        const targetY = 200
+        const target = document.elementFromPoint(targetX, targetY)
         return {
             sheetHidden: sheet.hidden,
+            sheetRole: sheet.getAttribute('role'),
+            sheetAriaModal: sheet.getAttribute('aria-modal'),
             worldVisible: worldRect.width > 0 && worldRect.height > 0 &&
                 worldStyle.display !== 'none' && worldStyle.visibility !== 'hidden',
             sheetTop: sheetRect.top,
             sheetHeight: sheetRect.height,
             viewportHeight: window.innerHeight,
             backdropFilter: backdropStyle.backdropFilter,
-            worldFilter: worldStyle.filter
+            backdropPointerEvents: backdropStyle.pointerEvents,
+            worldFilter: worldStyle.filter,
+            bodyModalOpen: document.body.classList.contains('modal-open'),
+            worldPanelOpen: document.body.classList.contains('world-panel-open'),
+            movementEnabled: world.dataset.movementEnabled,
+            questCardDisplay: getComputedStyle(questCard).display,
+            worldStatsDisplay: getComputedStyle(worldStats).display,
+            worldHitTarget: target?.id || target?.tagName?.toLowerCase() || null,
+            targetX,
+            targetY
         }
     }""")
     assert metrics is not None, f"{label}: world/sheet/backdrop elements must exist"
-    assert metrics["sheetHidden"] is False, f"{label}: institution sheet must be open"
-    assert metrics["worldVisible"], f"{label}: world canvas must remain visible behind the sheet"
-    assert metrics["sheetTop"] >= 100, f"{label}: sheet must leave a visible world strip above it: {metrics}"
-    assert metrics["sheetHeight"] <= metrics["viewportHeight"] - 100, f"{label}: sheet must not consume the full viewport: {metrics}"
+    assert metrics["sheetHidden"] is False, f"{label}: institution panel must be open"
+    assert metrics["sheetRole"] == "region" and metrics["sheetAriaModal"] is None, (
+        f"{label}: an in-world institution panel must remain modeless: {metrics}"
+    )
+    assert metrics["worldVisible"], f"{label}: world canvas must remain visible behind the panel"
+    assert metrics["sheetTop"] >= 180, f"{label}: mobile panel must leave a substantial world viewport: {metrics}"
+    assert metrics["sheetHeight"] <= metrics["viewportHeight"] - 180, (
+        f"{label}: institution panel must not consume the world viewport: {metrics}"
+    )
     assert metrics["backdropFilter"] == "none", f"{label}: backdrop must not blur the world: {metrics}"
+    assert metrics["backdropPointerEvents"] == "none", (
+        f"{label}: the decorative backdrop must let pointer input reach the world: {metrics}"
+    )
     assert metrics["worldFilter"] == "none", f"{label}: world canvas itself must not be blurred: {metrics}"
+    assert metrics["bodyModalOpen"] is False, (
+        f"{label}: opening an institution panel must not pause the playable world: {metrics}"
+    )
+    assert metrics["worldPanelOpen"] is True, f"{label}: the modeless world panel state must be explicit: {metrics}"
+    assert metrics["movementEnabled"] == "true", f"{label}: shared movement must be enabled: {metrics}"
+    assert metrics["questCardDisplay"] == "none" and metrics["worldStatsDisplay"] == "none", (
+        f"{label}: mobile world overlays must not cover the visible map context: {metrics}"
+    )
+    assert metrics["worldHitTarget"] == "world", (
+        f"{label}: a tap above the panel must target the world canvas, not an overlay: {metrics}"
+    )
+
+    before = authoritative_snapshot(page)
+    position_before = authoritative_position(page)
+    page.touchscreen.tap(metrics["targetX"], metrics["targetY"])
+    page.wait_for_function("""async before => {
+        const response = await fetch('/api/state', {
+            cache: 'no-store',
+            credentials: 'same-origin'
+        })
+        if (!response.ok) return false
+        const dto = await response.json()
+        const position = dto?.viewer?.position
+        return position && Number.isFinite(position.x) && Number.isFinite(position.y) &&
+            Math.hypot(position.x - before.x, position.y - before.y) > 2
+    }""", arg=position_before, timeout=15000)
+    position_after = authoritative_position(page)
+    after = authoritative_snapshot(page)
+    assert math.hypot(
+        position_after["x"] - position_before["x"],
+        position_after["y"] - position_before["y"]
+    ) > 2, f"{label}: the player must be able to walk while the institution panel remains open."
+    assert after["revision"] == before["revision"] and after["xp"] == before["xp"] and after["eventIds"] == before["eventIds"], (
+        f"{label}: walking behind an open institution panel must update only session position, not canonical world state."
+    )
+    expect(page.locator("#sheet")).to_be_visible()
+    metrics["positionBefore"] = position_before
+    metrics["positionAfter"] = position_after
+    metrics["playerMovedWhilePanelOpen"] = True
+    metrics["worldStateUnchanged"] = True
     return metrics
 
 
