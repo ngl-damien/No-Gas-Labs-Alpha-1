@@ -1,7 +1,7 @@
 import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,isDifferentPositionSession,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {registerOfflineShell} from './offline-shell.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {readSharedSnapshotCache,readSharedPositionCache,writeSharedSnapshotCache,writeSharedPositionCache} from './shared-snapshot.mjs';
+import {isNonRegressingSharedWorldSnapshot,readSharedSnapshotCache,readSharedPositionCache,writeSharedSnapshotCache,writeSharedPositionCache} from './shared-snapshot.mjs';
 import {buildSatireIssueBody,readSatireIssueArtifact,findSatireIssuePublication,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX,buildGitHubSourceArchiveBody,GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX,GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL,readGitHubSourceArchiveMetadata} from './artifacts.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,isQuestObjectiveActionable,findStudyReview,hasStudyReviewRecord,createQuestEvidenceEventLinkResolver} from './quests.mjs';
@@ -725,6 +725,13 @@ async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
 function acceptState(dto,{forcePosition=false}={}){
   if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');
+  if(mode==='shared'&&!isNonRegressingSharedWorldSnapshot(world,dto.world)){
+    const sameWorld=dto.world?.id===world?.id;
+    const regressed=sameWorld&&Number.isSafeInteger(world?.revision)&&
+      Number.isSafeInteger(dto.world?.revision)&&dto.world.revision<world.revision;
+    if(regressed)return false;
+    throw new Error('Shared state has an invalid world identity or revision.');
+  }
   const incomingEpoch=dto.viewer.positionEpoch;
   const incomingRevision=dto.viewer.positionRevision;
   if(typeof incomingEpoch!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(incomingEpoch)||!Number.isSafeInteger(incomingRevision)||incomingRevision<0)
@@ -769,6 +776,7 @@ function acceptState(dto,{forcePosition=false}={}){
   setConnection(!sharedMovementPaused);
   if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}
   render();if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels();
+  return true;
 }
 async function act(action){if(mode==='shared'&&sharedSnapshotCacheOnly)throw new Error('The cached shared snapshot is read-only until the live server revalidates this session.');const {requestId:suppliedRequestId,...payload}=action;const normalized=JSON.parse(JSON.stringify(payload));if(mode==='shared'){let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');if(suppliedRequestId&&pending.requestId!==suppliedRequestId)throw new Error('The pending Relay receipt uses a different stable request ID; resolve it before importing again.');}else{pending={requestId:suppliedRequestId||crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,normalized,viewer);persist(next.world);world=next.world;render();return next.result;}
 const view=new PixelWorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='player')openPlayerProfile(interaction.player);else if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>typeof interaction.npcRoleId==='string'
@@ -806,7 +814,8 @@ async function reconcileSharedPosition(){
     try{
       await orderedSharedPositionWriter.whenIdle();
       const dto=await request('/api/state');
-      acceptState(dto,{forcePosition:true});
+      if(!acceptState(dto,{forcePosition:true}))
+        throw new Error('Shared world reconciliation returned an older snapshot; retaining the newer accepted revision.');
       reconciled=true;
       return dto;
     }finally{
@@ -1244,15 +1253,15 @@ async function startShared(){
   mode='shared';
   sharedStreamOpen=false;
   sharedMovementPaused=true;
-  sharedOfflinePreview=false;
-  sharedSnapshotCacheOnly=false;
   view.setMovementEnabled(false);
-  acceptState(dto,{forcePosition:true});
+  const accepted=acceptState(dto,{forcePosition:true});
+  if(!accepted)setConnection(false);
   $('doorway').hidden=true;
   $('play-ui').hidden=false;
   selectedDraft=null;
   connectSharedStream();
-  toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));
+  if(accepted)toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));
+  else toast('A delayed shared-world snapshot was ignored. The newer accepted view remains in place while the client waits for a current update.',true);
   await recoverPendingSharedAction();
   view.canvas.focus({preventScroll:true});
 }
