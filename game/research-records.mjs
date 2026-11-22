@@ -509,35 +509,41 @@ export function projectResearchRecords(input, retainedCreations = [], {
     if (!proposal || proposal.index >= index) return;
     reportById.set(event.reportId, { event, index });
   });
-  // A response may link only to a challenge that is itself valid. Otherwise a
-  // malformed challenge (or an invalid supplied artifact link) could be laundered
-  // into a completed author-response objective.
+  const challengeDetailsAreValid = event =>
+    !unsafeEvents.has(event) &&
+    event?.type === 'experiment-challenged' &&
+    hasText(event.actor?.id) &&
+    ['founder', 'witness'].includes(event.actor.role) &&
+    EXPERIMENT_CHALLENGE_TYPES.has(event.challengeType) &&
+    hasText(event.challengeText) &&
+    Array.from(event.challengeText).length <= 1000;
+  const challengeEvidenceIsValid = (event, evidenceStatus) =>
+    evidenceStatus === 'linked' ||
+    (evidenceStatus === 'not-provided' &&
+      (event.evidenceCreationId === undefined || event.evidenceCreationId === null) &&
+      (event.evidenceVersion === undefined || event.evidenceVersion === null));
+
+  // A response may link only to a complete, source-valid challenge. Check the
+  // unsafe/null boundary before reading any event field or artifact reference.
   const challengeCanAnchorResponse = (event, index) => {
+    if (unsafeEvents.has(event) || event?.type !== 'experiment-challenged') return false;
+    if (!eventIdentityIsUnique(event, eventIdCounts) ||
+        !hasText(event.challengeId) ||
+        challengeCounts.get(event.challengeId) !== 1 ||
+        !hasText(event.reportId) ||
+        !challengeDetailsAreValid(event) ||
+        !validTime(event.at)) return false;
     const evidenceStatus = artifactStatusFor(event, index, 'evidenceCreationId', 'evidenceVersion');
-    const evidenceIsValid = evidenceStatus === 'linked' ||
-      (evidenceStatus === 'not-provided' &&
-        (event.evidenceCreationId === undefined || event.evidenceCreationId === null) &&
-        (event.evidenceVersion === undefined || event.evidenceVersion === null));
-    return !unsafeEvents.has(event) &&
-      event?.type === 'experiment-challenged' &&
-      eventIdentityIsUnique(event, eventIdCounts) &&
-      hasText(event.challengeId) &&
-      challengeCounts.get(event.challengeId) === 1 &&
-      hasText(event.reportId) &&
-      hasText(event.actor?.id) &&
-      ['founder', 'witness'].includes(event.actor.role) &&
-      EXPERIMENT_CHALLENGE_TYPES.has(event.challengeType) &&
-      hasText(event.challengeText) &&
-      Array.from(event.challengeText).length <= 1000 &&
-      validTime(event.at) &&
-      evidenceIsValid;
+    if (!challengeEvidenceIsValid(event, evidenceStatus)) return false;
+    const report = reportById.get(event.reportId);
+    return Boolean(report && report.index < index &&
+      report.event.moonshotId === event.moonshotId &&
+      !sameResearchActor(report.event.actor, event.actor));
   };
   const challengeById = new Map();
   events.forEach((event, index) => {
     if (!challengeCanAnchorResponse(event, index)) return;
     const report = reportById.get(event.reportId);
-    if (!report || report.index >= index || report.event.moonshotId !== event.moonshotId ||
-        sameResearchActor(report.event.actor, event.actor)) return;
     challengeById.set(event.challengeId, { event, index, report });
   });
 
@@ -580,9 +586,7 @@ export function projectResearchRecords(input, retainedCreations = [], {
       let targetChallengeStatus = 'not-applicable';
       if (event.type === 'experiment-challenged') {
         if (!recordSafe || !eventIdUnique || !hasText(event.challengeId) || challengeCounts.get(event.challengeId) !== 1) targetReportStatus = 'ambiguous';
-        else if (!hasText(event.actor?.id) || !['founder', 'witness'].includes(event.actor.role) ||
-            !EXPERIMENT_CHALLENGE_TYPES.has(event.challengeType) ||
-            !hasText(event.challengeText) || Array.from(event.challengeText).length > 1000) targetReportStatus = 'invalid-challenge';
+        else if (!challengeDetailsAreValid(event)) targetReportStatus = 'invalid-challenge';
         else if (!hasText(event.reportId)) targetReportStatus = 'missing';
         else if (reportCounts.get(event.reportId) > 1) targetReportStatus = 'ambiguous';
         else {
@@ -622,6 +626,13 @@ export function projectResearchRecords(input, retainedCreations = [], {
         }
       }
 
+      const evidenceStatus = event.type === 'experiment-reported' || event.type === 'experiment-challenged'
+        ? recordSafe ? artifactStatusFor(event, index, 'evidenceCreationId', 'evidenceVersion') : 'invalid'
+        : 'not-applicable';
+      const challengeStatus = event.type !== 'experiment-challenged' ? 'not-applicable'
+        : targetReportStatus !== 'linked' ? targetReportStatus
+          : challengeEvidenceIsValid(event, evidenceStatus) ? 'linked' : 'invalid-evidence';
+
       return Object.freeze({
         ...event,
         historyPosition: historyPositions[index],
@@ -637,9 +648,8 @@ export function projectResearchRecords(input, retainedCreations = [], {
           proposalStatus,
           sourceStatus: event.type === 'moonshot-proposed' ? artifactStatusFor(event, index, 'sourceCreationId', 'sourceVersion') : event.type === 'source-archive-predicate-evaluated' ? artifactStatusFor(event, index, 'creationId', 'version') : 'not-applicable',
           predicateStatus: predicateStatusFor(event, index),
-          evidenceStatus: event.type === 'experiment-reported' || event.type === 'experiment-challenged'
-            ? artifactStatusFor(event, index, 'evidenceCreationId', 'evidenceVersion')
-            : 'not-applicable',
+          evidenceStatus,
+          challengeStatus,
           targetReport,
           targetReportStatus,
           targetChallenge,

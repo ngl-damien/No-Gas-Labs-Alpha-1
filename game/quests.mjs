@@ -1581,7 +1581,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       (source.type === 'experiment-reported' && source._projection.proposalStatus === 'linked') ||
       (source.type === 'experiment-challenged' &&
         source._projection.proposalStatus === 'linked' &&
-        source._projection.targetReportStatus === 'linked')
+        source._projection.challengeStatus === 'linked')
     );
     // Retained append order, not wall-clock order, decides whether a source preceded this response.
     // Offline and cross-device clock skew may regress timestamps without reversing event history.
@@ -1633,11 +1633,7 @@ export function getQuestTrail(world, viewer, options = {}) {
   const experimentChallenges = projectedExperimentRecords.filter(record =>
     record?.type === 'experiment-challenged' &&
     record?._projection?.proposalStatus === 'linked' &&
-    record?._projection?.targetReportStatus === 'linked' &&
-    (record?._projection?.evidenceStatus === 'linked' ||
-      (record?._projection?.evidenceStatus === 'not-provided' &&
-        (record.evidenceCreationId === undefined || record.evidenceCreationId === null) &&
-        (record.evidenceVersion === undefined || record.evidenceVersion === null))) &&
+    record?._projection?.challengeStatus === 'linked' &&
     sameResearchActor(record.actor, viewer)
   );
   // Reuse the defensive full-history linker for author responses. A quest counts
@@ -1677,7 +1673,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       record?._projection?.recordSafe === true &&
       record?._projection?.eventIdUnique === true &&
       record?._projection?.proposalStatus === 'linked' &&
-      record?._projection?.targetReportStatus === 'linked' &&
+      record?._projection?.challengeStatus === 'linked' &&
       sourceArchiveExperimentReportIds.has(record?._projection?.targetReport?.id) &&
       !guildChallengeScopeBlocked &&
       (!guildChallengeScopeActive ||
@@ -1724,7 +1720,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       record?._projection?.recordSafe === true &&
       record?._projection?.eventIdUnique === true &&
       record?._projection?.proposalStatus === 'linked' &&
-      record?._projection?.targetReportStatus === 'linked' &&
+      record?._projection?.challengeStatus === 'linked' &&
       sameResearchActor(record?._projection?.targetReport?.actor, viewer))
     .sort((left, right) => left._projection.index - right._projection.index);
   const responseEventCountsByChallenge = new Map();
