@@ -292,3 +292,91 @@ test('client resets and establishes shared-snapshot acceptance only at explicit 
   assert.match(startShared, /sharedSnapshotAcceptance\.accept\(world,cached\.world\)/,
     'a cached public snapshot must pass through the same acceptance boundary');
 });
+
+test('shared-session generation invalidates delayed callbacks after a private-world transition', async () => {
+  const createGuard = sharedSnapshot.createSharedSessionGenerationGuard;
+  assert.equal(typeof createGuard, 'function',
+    'the client needs an explicit generation boundary for asynchronous shared-session work');
+  const guard = createGuard();
+  const sharedGeneration = guard.capture();
+  let release;
+  const delayedCompletion = new Promise(resolve => { release = resolve; }).then(value =>
+    guard.isCurrent(sharedGeneration) ? { accepted: value } : { discarded: true }
+  );
+
+  assert.equal(guard.isCurrent(sharedGeneration), true);
+  guard.invalidate();
+  const privateGeneration = guard.capture();
+  assert.notEqual(privateGeneration, sharedGeneration);
+  assert.equal(guard.isCurrent(sharedGeneration), false);
+  assert.equal(guard.isCurrent(privateGeneration), true);
+
+  release('late shared-world response');
+  assert.deepEqual(await delayedCompletion, { discarded: true },
+    'a response from the exited shared session must not be applied to the private world');
+
+  guard.invalidate();
+  assert.equal(guard.isCurrent(privateGeneration), false);
+});
+
+test('private-mode teardown invalidates queued writes, stale responses and old stream callbacks', async () => {
+  const client = await readFile(new URL('../game/client.mjs', import.meta.url), 'utf8');
+  const resetAt = client.indexOf('function resetSharedSessionForPrivateMode()');
+  const startPrivateAt = client.indexOf('async function startPrivate()', resetAt);
+  assert.ok(resetAt >= 0 && startPrivateAt > resetAt);
+  const reset = client.slice(resetAt, startPrivateAt);
+
+  for (const expected of [
+    "mode='private'",
+    'sharedSessionGeneration.invalidate()',
+    'positionWriteSequence+=1',
+    'orderedSharedPositionWriter.cancelPending()',
+    'positionReconciliation=null',
+    'sharedConnectionRecovery=null',
+    'positionEpoch=null',
+    'positionWriteRevision=0',
+    'stream?.close();stream=null',
+    'presence=[]',
+    'view.setPresence([])',
+    'view.clearManualInput()',
+    'view.cancelRoute()',
+    'view.setMovementEnabled(false)'
+  ]) {
+    assert.ok(reset.includes(expected), 'private-mode teardown must include ' + expected);
+  }
+
+  const acceptAt = client.indexOf('function acceptState(dto,');
+  const actAt = client.indexOf('async function act(action)', acceptAt);
+  const accept = client.slice(acceptAt, actAt);
+  assert.match(accept, /if\(!isCurrentSharedSession\(generation\)\)return false;/,
+    'late HTTP/SSE snapshots must be rejected outside their originating shared session');
+
+  const submitAt = client.indexOf('async function submitSharedPosition(');
+  const reconcileAt = client.indexOf('async function reconcileSharedPosition(', submitAt);
+  const submit = client.slice(submitAt, reconcileAt);
+  assert.match(submit, /const generation=sharedSessionGeneration\.capture\(\)/);
+  assert.ok(submit.indexOf('await orderedSharedPositionWriter(position)') <
+    submit.indexOf('isCurrentSharedSession(generation)'),
+  'a delayed position response must be checked after the network write before touching local state');
+
+  const recoverAt = client.indexOf('async function recoverSharedConnection(', reconcileAt);
+  const reconcile = client.slice(reconcileAt, recoverAt);
+  assert.match(reconcile, /const generation=sharedSessionGeneration\.capture\(\)/);
+  assert.match(reconcile, /if\(!isCurrentSharedSession\(generation\)\)return null;/,
+    'a stale reconciliation must stop after every asynchronous boundary');
+
+  const connectAt = client.indexOf('function connectSharedStream()');
+  const startSharedAt = client.indexOf('async function startShared()', connectAt);
+  const connect = client.slice(connectAt, startSharedAt);
+  assert.match(connect, /const generation=sharedSessionGeneration\.capture\(\)/);
+  assert.match(connect, /if\(!isCurrentSharedSession\(generation\)\)return/);
+
+  const privateStart = client.slice(startPrivateAt, connectAt);
+  assert.match(privateStart, /const generation=resetSharedSessionForPrivateMode\(\)/);
+  assert.match(privateStart, /if\(!sharedSessionGeneration\.isCurrent\(generation\)\|\|mode!=='private'\)return/);
+
+  const sharedStartEnd = client.indexOf('function showSheet(', startSharedAt);
+  const sharedStart = client.slice(startSharedAt, sharedStartEnd);
+  assert.match(sharedStart, /const generation=sharedSessionGeneration\.capture\(\)/);
+  assert.match(sharedStart, /if\(!sharedSessionGeneration\.isCurrent\(generation\)\)return/);
+});
