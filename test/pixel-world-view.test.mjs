@@ -3240,7 +3240,8 @@ test('world canvas publishes renderer-local player, camera and route telemetry w
     zoom: '0.78',
     viewportWidth: '320',
     viewportHeight: '845',
-    routeActive: 'true'
+    routeActive: 'true',
+    positionSource: 'renderer-local'
   });
   assert.equal(JSON.stringify(view.world), before,
     'renderer telemetry must never mutate the canonical world projection');
@@ -3248,4 +3249,13 @@ test('world canvas publishes renderer-local player, camera and route telemetry w
   view.route = [];
   view.syncCanvasState();
   assert.equal(view.canvas.dataset.routeActive, 'false');
+
+  view.player = { x: Number.NaN, y: 243 };
+  view.syncCanvasState();
+  assert.equal('playerX' in view.canvas.dataset, false,
+    'invalid local coordinates must clear stale renderer telemetry');
+  assert.equal(view.canvas.dataset.playerY, '243');
+  assert.equal(view.canvas.dataset.positionSource, 'renderer-local');
+  assert.equal(JSON.stringify(view.world), before,
+    'publishing or clearing renderer telemetry must remain outside canonical world state');
 });
