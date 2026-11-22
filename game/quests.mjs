@@ -1076,7 +1076,51 @@ export function getQuestTrail(world, viewer, options = {}) {
   const failureOriginObservationEvents = failureOriginObservationRecords
     .map(record => events.find(event => event?.id === record.id))
     .filter(Boolean);
-  const sourceArchiveFailureInvestigationMilestones = sourceArchiveFailureProjection?.total > 0
+  const sourceArchiveFailureProjectionAvailable =
+    sourceArchiveFailureProjection?.available === true &&
+    Number.isSafeInteger(sourceArchiveFailureProjection.total) &&
+    sourceArchiveFailureProjection.total >= 0 &&
+    Number.isSafeInteger(sourceArchiveFailureProjection.invalidCount) &&
+    sourceArchiveFailureProjection.invalidCount >= 0 &&
+    typeof sourceArchiveFailureProjection.complete === 'boolean' &&
+    Number.isSafeInteger(sourceArchiveFailureProjection.unseenEventCount) &&
+    sourceArchiveFailureProjection.unseenEventCount >= 0;
+  const sourceArchiveFailureProjectionHasVisibleRecords =
+    sourceArchiveFailureProjectionAvailable && sourceArchiveFailureProjection.total > 0;
+  const sourceArchiveFailureInvestigationVisible =
+    !sourceArchiveFailureProjectionAvailable ||
+    sourceArchiveFailureProjectionHasVisibleRecords ||
+    sourceArchiveFailureProjection.complete !== true ||
+    sourceArchiveFailureProjection.invalidCount > 0;
+  const sourceArchiveFailureInvestigationBlockedReason = !sourceArchiveFailureProjectionAvailable
+    ? 'Source Archive failure history is unavailable or unclassifiable; reconnect or refresh the accepted world snapshot and inspect the Evidence Archive. No failure absence or progress is inferred.'
+    : !sourceArchiveFailureProjectionHasVisibleRecords
+      ? [
+          sourceArchiveFailureProjection.complete !== true
+            ? 'The accepted world snapshot is partial (' + sourceArchiveFailureProjection.unseenEventCount + ' unseen event(s)); reconnect and refresh before treating the failure list as empty.'
+            : null,
+          sourceArchiveFailureProjection.invalidCount > 0
+            ? 'The Source Archive failure projection withheld ' + sourceArchiveFailureProjection.invalidCount + ' invalid record(s); inspect the Evidence Archive.'
+            : null,
+          'No progress is credited.'
+        ].filter(Boolean).join(' ')
+      : null;
+  const sourceArchiveFailureInvestigationScope = !sourceArchiveFailureProjectionAvailable
+    ? 'The Source Archive failure-history projection is unavailable or unclassifiable.'
+    : [
+        sourceArchiveFailureProjection.complete !== true
+          ? 'The accepted snapshot is partial; ' + sourceArchiveFailureProjection.unseenEventCount + ' event(s) are unseen.'
+          : null,
+        sourceArchiveFailureProjection.invalidCount > 0
+          ? sourceArchiveFailureProjection.invalidCount + ' invalid failure record(s) were withheld.'
+          : null
+      ].filter(Boolean).join(' ');
+  const sourceArchiveFailureInvestigationInterpretation =
+    'Only an exact retained originFailureEventId link to one earlier service-observed Source Archive failure in the declared snapshot prefix counts. This records a provenance link only; it is not a source retry or an investigation result. Source retrieval and independent verification remain NOT_PERFORMED, model assertions remain LEADS_ONLY, execution remains NOT_EXECUTED, and no XP, truth verdict, or evidence certification is awarded.' +
+    (sourceArchiveFailureInvestigationScope
+      ? ' Snapshot scope: ' + sourceArchiveFailureInvestigationScope + ' Only validated, visible failure links can count.'
+      : '');
+  const sourceArchiveFailureInvestigationMilestones = sourceArchiveFailureInvestigationVisible
     ? [Object.freeze({
         ...trailMilestone(
           actorRole + '-source-archive-failure-investigation',
@@ -1084,9 +1128,10 @@ export function getQuestTrail(world, viewer, options = {}) {
           1,
           failureOriginObservationEvents.map(event => event.id),
           failureOriginObservationEvents,
-          { type: 'location', id: 'moonshot_field' },
-          null,
-          'Only an exact retained originFailureEventId link to one earlier service-observed Source Archive failure in the declared snapshot prefix counts. This records a provenance link only; it is not a source retry or an investigation result. Source retrieval and independent verification remain NOT_PERFORMED, model assertions remain LEADS_ONLY, execution remains NOT_EXECUTED, and no XP, truth verdict, or evidence certification is awarded.'
+          sourceArchiveFailureProjectionHasVisibleRecords
+            ? { type: 'location', id: 'moonshot_field' } : null,
+          sourceArchiveFailureInvestigationBlockedReason,
+          sourceArchiveFailureInvestigationInterpretation
         ),
         countsForQuestkeeper: false
       })]
