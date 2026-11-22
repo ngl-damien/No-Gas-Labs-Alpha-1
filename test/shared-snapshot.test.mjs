@@ -8,6 +8,7 @@ import {
   readSharedSnapshotCache,
   writeSharedPositionCache,
   writeSharedSnapshotCache,
+  SHARED_POSITION_CACHE_KEY,
   MAX_SHARED_SNAPSHOT_CACHE_BYTES
 } from '../game/shared-snapshot.mjs';
 
@@ -80,11 +81,14 @@ test('snapshot round-trip and accepted position cache are actor- and revision-bo
   const dto = fixture('founder');
   const written = writeSharedSnapshotCache(storage, dto, { now: 1000 });
   assert.deepEqual(written, { stored: true, revision: 4, viewerId: 'damien', viewerRole: 'founder' });
-  assert.equal(writeSharedPositionCache(storage, dto.viewer, 4, { x: 300, y: 650 }, { now: 1100 }), true);
+  assert.equal(writeSharedPositionCache(storage, dto.viewer, dto.world.id, 4, { x: 300, y: 650 }, { now: 1100 }), true);
   const snapshot = readSharedSnapshotCache(storage);
   assert.ok(snapshot);
   assert.equal(parseSharedSnapshotEnvelope(JSON.stringify(snapshot)).world.revision, 4);
   assert.deepEqual(readSharedPositionCache(storage, snapshot), { x: 300, y: 650 });
+  const positionEnvelope = JSON.parse(storage.getItem(SHARED_POSITION_CACHE_KEY));
+  assert.equal(positionEnvelope.schema, 'ngl.shared-accepted-position.v2');
+  assert.equal(positionEnvelope.worldId, dto.world.id);
   assert.equal(readSharedPositionCache(storage, {
     ...snapshot,
     viewer: { ...snapshot.viewer, id: 'different-actor' }
@@ -110,6 +114,21 @@ test('older accepted snapshots cannot overwrite a newer public cache', () => {
   assert.equal(readSharedSnapshotCache(storage).world.revision, 5);
 });
 
+test('legacy accepted-position caches without world identity are rejected', () => {
+  const storage = memoryStorage();
+  const dto = fixture('founder');
+  const snapshot = createSharedSnapshotEnvelope(dto, { now: 1000 });
+  storage.setItem(SHARED_POSITION_CACHE_KEY, JSON.stringify({
+    schema: 'ngl.shared-accepted-position.v1',
+    cachedAt: 1100,
+    actorId: dto.viewer.id,
+    actorRole: dto.viewer.role,
+    worldRevision: dto.world.revision,
+    position: { x: 300, y: 650 }
+  }));
+  assert.equal(readSharedPositionCache(storage, snapshot), null);
+});
+
 test('malformed, oversized and unavailable storage fails closed without manufacturing a snapshot', () => {
   assert.equal(parseSharedSnapshotEnvelope('{bad json'), null);
   assert.equal(parseSharedSnapshotEnvelope('x'.repeat(MAX_SHARED_SNAPSHOT_CACHE_BYTES + 1)), null);
@@ -118,7 +137,8 @@ test('malformed, oversized and unavailable storage fails closed without manufact
   assert.equal(createSharedSnapshotEnvelope(oversized, { now: 1000 }), null);
   assert.equal(readSharedSnapshotCache({ getItem() { throw new Error('denied'); } }), null);
   assert.equal(writeSharedSnapshotCache({ setItem() { throw new Error('quota'); } }, fixture(), { now: 1000 }).stored, false);
-  assert.equal(writeSharedPositionCache({ setItem() { throw new Error('quota'); } }, founder, 4, { x: 180, y: 640 }), false);
+  assert.equal(writeSharedPositionCache({ setItem() { throw new Error('quota'); } }, founder, 'offline-snapshot-world', 4, { x: 180, y: 640 }), false);
+  assert.equal(writeSharedPositionCache(memoryStorage(), founder, '', 4, { x: 180, y: 640 }), false);
 });
 
 
