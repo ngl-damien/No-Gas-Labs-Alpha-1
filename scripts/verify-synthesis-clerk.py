@@ -2074,7 +2074,7 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, f
     expect(failure_row).to_have_count(1)
     expect(failure_row.locator(".quest-step-state")).to_have_text("RECORDED")
     expect(failure_row).to_contain_text("1/1")
-    expect(failure_row).to_contain_text("Link a Source Archive failure to a retained observation")
+    expect(failure_row).to_contain_text("Link a Source Archive failure to a Source Observation")
     expect(failure_row).to_contain_text("provenance only")
     expect(failure_row).to_contain_text("NOT_PERFORMED")
     after_board = authoritative_snapshot(page)
