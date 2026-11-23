@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { sameResearchActor } from './research-records.mjs';
+import { GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
 
 export const WORLD_WIDTH=1600,WORLD_HEIGHT=1000,PLAYER_MOVE_SPEED=175,MAX_FRAME_DELTA_SECONDS=0.25;
 export const COMBAT_YARD_ACTION_RADIUS=160;
@@ -245,6 +246,127 @@ const SOURCE_ARCHIVE_FAILURE_STATUS_LABELS=Object.freeze({
 });
 const SOURCE_ARCHIVE_FAILURE_PAGE_SIZE=12;
 
+function projectServerRecheckedSourceArchivePublications(world,events,eventCount,eventIdCounts){
+ let complete=true;
+ const creations=ownDataValue(world,'creations');
+ if(!isArraySafely(creations))return {complete:false,captures:[]};
+ const creationCount=ownDataValue(creations,'length');
+ if(!Number.isSafeInteger(creationCount)||creationCount<0||creationCount>MAX_WORLD_EVENT_SCAN)return {complete:false,captures:[]};
+ const sourceVersions=new Map();
+ const sourceCreationIds=new Set();
+ const creationIdCounts=new Map();
+ for(let creationIndex=0;creationIndex<creationCount;creationIndex++){
+  const creation=ownDataValue(creations,String(creationIndex));
+  if(!creation||typeof creation!=='object'||isArraySafely(creation)){complete=false;continue;}
+  if(unsafeOwnAccessor(creation,'id')){complete=false;continue;}
+  const creationId=ownDataValue(creation,'id');
+  if(typeof creationId!=='string'||!creationId.trim()||creationId.length>128){complete=false;continue;}
+  creationIdCounts.set(creationId,(creationIdCounts.get(creationId)||0)+1);
+  if(unsafeOwnAccessor(creation,'versions'))complete=false;
+  const priorVersions=ownDataValue(creation,'versions');
+  if(priorVersions!==undefined&&!isArraySafely(priorVersions)){complete=false;continue;}
+  const priorVersionCount=priorVersions===undefined?0:ownDataValue(priorVersions,'length');
+  if(!Number.isSafeInteger(priorVersionCount)||priorVersionCount<0||priorVersionCount>MAX_WORLD_EVENT_SCAN){complete=false;continue;}
+  for(let versionIndex=0;versionIndex<=priorVersionCount;versionIndex++){
+   const version=versionIndex===priorVersionCount?creation:ownDataValue(priorVersions,String(versionIndex));
+   if(!version||typeof version!=='object'||isArraySafely(version)){complete=false;continue;}
+   const kind=ownDataValue(version,'kind')??ownDataValue(creation,'kind');
+   const intent=ownDataValue(version,'intent');
+   const html=ownDataValue(version,'html');
+   if(kind==='custom'&&(unsafeOwnAccessor(version,'intent')||unsafeOwnAccessor(version,'html'))){
+    complete=false;
+    sourceCreationIds.add(creationId);
+    continue;
+   }
+   const hasSourceArchiveSignal=
+    (typeof intent==='string'&&intent.startsWith(GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX))||
+    (typeof html==='string'&&html.includes('data-ngl-source-archive="v1"'));
+   if(!hasSourceArchiveSignal)continue;
+   sourceCreationIds.add(creationId);
+   const versionNumber=ownDataValue(version,'version');
+   const versionId=ownDataValue(version,'id');
+   const publishedAt=ownDataValue(version,'publishedAt');
+   const receipt=ownDataValue(version,'receipt');
+   const receiptDigest=ownDataValue(receipt,'digest');
+   if(unsafeOwnAccessor(version,'id')||unsafeOwnAccessor(version,'version')||
+      unsafeOwnAccessor(version,'publishedAt')||unsafeOwnAccessor(version,'receipt')||
+      unsafeOwnAccessor(receipt,'digest')||unsafeOwnAccessor(version,'kind')||
+      unsafeOwnAccessor(creation,'kind')||
+      kind!=='custom'||typeof intent!=='string'||
+      !intent.startsWith(GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX)||
+      typeof html!=='string'||!html.includes('data-ngl-source-archive="v1"')||
+      versionId!==creationId||!Number.isSafeInteger(versionNumber)||versionNumber<1||
+      !isStrictTimestamp(publishedAt)||typeof receiptDigest!=='string'||!/^[a-f0-9]{64}$/.test(receiptDigest)){
+    complete=false;
+    continue;
+   }
+   let metadata;
+   try{metadata=readGitHubSourceArchiveMetadata(html)}catch{complete=false;continue;}
+   const key=JSON.stringify([creationId,versionNumber]);
+   const versions=sourceVersions.get(key)||[];
+   versions.push({creationId,version:versionNumber,publishedAt,metadata});
+   sourceVersions.set(key,versions);
+  }
+ }
+ for(const [creationId,count] of creationIdCounts){
+  if(count>1&&sourceCreationIds.has(creationId))complete=false;
+ }
+ const publicationRows=new Map();
+ for(let index=0;index<eventCount;index++){
+  const event=ownDataValue(events,String(index));
+  if(ownDataValue(event,'type')!=='publish')continue;
+  const creationId=ownDataValue(event,'creationId');
+  const version=ownDataValue(event,'version');
+  if(typeof creationId!=='string'||!Number.isSafeInteger(version)||version<1){
+   complete=false;
+   continue;
+  }
+  const key=JSON.stringify([creationId,version]);
+  if(!sourceVersions.has(key)){
+   if(sourceCreationIds.has(creationId))complete=false;
+   continue;
+  }
+  const publications=publicationRows.get(key)||[];
+  publications.push({event,index});
+  publicationRows.set(key,publications);
+ }
+ const captures=[];
+ for(const [key,versions] of sourceVersions){
+  if(versions.length!==1){complete=false;continue;}
+  const version=versions[0];
+  const publications=publicationRows.get(key)||[];
+  if(publications.length!==1){complete=false;continue;}
+  const publication=publications[0];
+  const event=publication.event;
+  const eventId=ownDataValue(event,'id');
+  const eventCreationId=ownDataValue(event,'creationId');
+  const eventVersion=ownDataValue(event,'version');
+  const eventAt=ownDataValue(event,'at');
+  const actor=ownDataValue(event,'actor');
+  const actorId=ownDataValue(actor,'id');
+  const actorRole=ownDataValue(actor,'role');
+  const valid=typeof eventId==='string'&&WORLD_OBJECT_ID.test(eventId)&&eventIdCounts.get(eventId)===1&&
+   eventCreationId===version.creationId&&eventVersion===version.version&&
+   actor&&typeof actor==='object'&&!isArraySafely(actor)&&
+   typeof actorId==='string'&&actorId.length>0&&actorRole==='founder'&&
+   isStrictTimestamp(eventAt)&&eventAt===version.publishedAt&&
+   Number.isInteger(publication.index)&&publication.index>=0;
+  if(!valid){complete=false;continue;}
+  if(version.metadata.retrievalMode==='SERVER_RECHECKED'){
+   captures.push(Object.freeze({
+    creationId:version.creationId,version:version.version,publicationEventId:eventId,
+    publicationPosition:publication.index+1,actorId,
+    repository:version.metadata.repository,commitSha:version.metadata.commitSha,path:version.metadata.path,
+    fetchedAt:version.metadata.fetchedAt,capturedAt:version.metadata.capturedAt,
+    captureId:version.metadata.captureId,gitBlobSha:version.metadata.gitBlobSha,
+    sha256:version.metadata.sha256,size:version.metadata.size
+   }));
+  }
+ }
+ return {complete,captures:Object.freeze(captures)};
+}
+
+
 function validSourceArchiveFailurePath(value){
  return typeof value==='string'&&value.length>0&&value.length<=240&&
   !value.split('/').some(segment=>!segment||segment==='.'||segment==='..')&&
@@ -371,27 +493,71 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
  for(const group of failureClassGroups.values()){
   for(const item of group)item.failureClassCount=group.length;
  }
+ const captureScan=projectServerRecheckedSourceArchivePublications(world,events,eventCount,eventIdCounts);
+ let captureProjectionComplete=complete&&invalidCount===0&&captureScan.complete;
+ const capturesByFailureId=new Map();
+ if(captureProjectionComplete){
+  for(const item of projected){
+   const failureAt=Date.parse(item.record.at);
+   const failurePosition=item.index+1;
+   const matches=captureScan.captures.filter(capture=>
+    capture.actorId===item.record.actorId&&
+    capture.repository===item.record.repository&&
+    capture.commitSha===item.record.commitSha&&
+    capture.path===item.record.path&&
+    capture.publicationPosition>failurePosition&&
+    Date.parse(capture.fetchedAt)>failureAt&&
+    Date.parse(capture.capturedAt)>failureAt
+   );
+   if(matches.length>1)captureProjectionComplete=false;
+   capturesByFailureId.set(item.record.eventId,matches);
+  }
+ }
+ for(const item of projected){
+  const matches=capturesByFailureId.get(item.record.eventId)||[];
+  const observed=captureProjectionComplete&&matches.length===1;
+  const notObserved=captureProjectionComplete&&matches.length===0;
+  const capture=observed?matches[0]:null;
+  item.record=Object.freeze({
+   ...item.record,
+   laterCaptureStatus:observed?'observed':notObserved?'not-observed':'unknown',
+   laterCaptureStatusLabel:observed
+    ?'LATER SERVER-RECHECKED CAPTURE OBSERVED'
+    :notObserved?'NO LATER SERVER-RECHECKED CAPTURE OBSERVED':'LATER CAPTURE STATUS UNKNOWN',
+   laterCaptureCount:observed?1:notObserved?0:null,
+   laterCapture:capture?Object.freeze({
+    creationId:capture.creationId,version:capture.version,
+    publicationEventId:capture.publicationEventId,
+    repository:capture.repository,commitSha:capture.commitSha,path:capture.path,
+    fetchedAt:capture.fetchedAt,capturedAt:capture.capturedAt,
+    publicationPosition:capture.publicationPosition,captureId:capture.captureId,
+    gitBlobSha:capture.gitBlobSha,sha256:capture.sha256,size:capture.size
+   }):null
+  });
+ }
  const failureClassHistoryComplete=complete&&invalidCount===0;
+ const allRecords=projected.map(item=>Object.freeze({
+  ...item.record,
+  failureClassPosition:item.failureClassPosition,
+  failureClassCount:item.failureClassCount,
+  failureClassHistoryComplete
+ }));
  const boundedLimit=Number.isSafeInteger(limit)&&limit>=1&&limit<=100
   ?limit:SOURCE_ARCHIVE_FAILURE_PAGE_SIZE;
  if(!Number.isSafeInteger(page)||page<0||page>MAX_WORLD_EVENT_SCAN)return null;
- const total=projected.length;
+ const total=allRecords.length;
  const totalPages=Math.ceil(total/boundedLimit);
  const boundedPage=totalPages===0?0:Math.min(page,totalPages-1);
  // Page zero is the newest page. Records inside each page retain append order;
  // the Evidence Archive renders each bounded page newest-first.
  const pageEnd=Math.max(0,total-boundedPage*boundedLimit);
  const pageStart=Math.max(0,pageEnd-boundedLimit);
- const pageRecords=projected.slice(pageStart,pageEnd);
- const records=pageRecords.map(item=>Object.freeze({
-  ...item.record,
-  failureClassPosition:item.failureClassPosition,
-  failureClassCount:item.failureClassCount,
-  failureClassHistoryComplete
- }));
+ const records=allRecords.slice(pageStart,pageEnd);
+ const mostRecentVisibleRetryableFailure=[...allRecords].reverse().find(record=>record.retryable)||null;
  return Object.freeze({
   available:true,
   complete,
+  captureProjectionComplete,
   unseenEventCount:revision-eventCount,
   total,
   invalidCount,
@@ -403,6 +569,7 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   hasOlder:pageStart>0,
   hasNewer:boundedPage>0,
   omittedCount:total-records.length,
+  mostRecentVisibleRetryableFailure,
   records:Object.freeze(records)
  });
 }

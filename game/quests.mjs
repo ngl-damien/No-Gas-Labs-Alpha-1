@@ -1090,6 +1090,7 @@ export function getQuestTrail(world, viewer, options = {}) {
     Number.isSafeInteger(sourceArchiveFailureProjection.invalidCount) &&
     sourceArchiveFailureProjection.invalidCount >= 0 &&
     typeof sourceArchiveFailureProjection.complete === 'boolean' &&
+    typeof sourceArchiveFailureProjection.captureProjectionComplete === 'boolean' &&
     Number.isSafeInteger(sourceArchiveFailureProjection.unseenEventCount) &&
     sourceArchiveFailureProjection.unseenEventCount >= 0;
   const sourceArchiveFailureProjectionHasVisibleRecords =
@@ -1143,6 +1144,45 @@ export function getQuestTrail(world, viewer, options = {}) {
         countsForQuestkeeper: false
       })]
     : [];
+  const sourceArchiveLaterCaptureMilestones = (() => {
+    if (actorRole !== 'founder') return [];
+    const failure = sourceArchiveFailureProjection?.mostRecentVisibleRetryableFailure;
+    if (!failure || typeof failure.eventId !== 'string') return [];
+    const failureEvent = events.find(event => event?.id === failure.eventId) || null;
+    if (!failureEvent || failureEvent.type !== 'source-archive-attempt-failed') return [];
+    const captureProjectionComplete = sourceArchiveFailureProjection.captureProjectionComplete === true;
+    const candidateCapture = captureProjectionComplete && failure.laterCaptureStatus === 'observed'
+      ? failure.laterCapture : null;
+    const publicationEvent = candidateCapture
+      ? events.find(event => event?.id === candidateCapture.publicationEventId) || null
+      : null;
+    const observed = Boolean(candidateCapture && publicationEvent &&
+      publicationEvent.type === 'publish' &&
+      publicationEvent.creationId === candidateCapture.creationId &&
+      publicationEvent.version === candidateCapture.version &&
+      publicationEvent.actor?.id === actorId &&
+      publicationEvent.actor?.role === actorRole);
+    const statusUnknown = !captureProjectionComplete ||
+      failure.laterCaptureStatus === 'unknown' ||
+      (failure.laterCaptureStatus === 'observed' && !observed);
+    const evidenceEvents = observed ? [failureEvent, publicationEvent] : [failureEvent];
+    const interpretation = 'This objective links one service-observed failure to a later explicitly published server-rechecked capture of the same repository, full commit SHA, and path. The expected response body is not retained; the later capture records bytes fetched later and is not proof of source truth, claim accuracy, authorship, independent verification, approval, or authority. The two-event game objective grants no XP.';
+    return [Object.freeze({
+      ...trailMilestone(
+        'founder-source-archive-later-capture',
+        'Capture the same pinned source after a recorded failure',
+        2,
+        evidenceEvents.map(event => event.id),
+        evidenceEvents,
+        statusUnknown || observed ? null : { type: 'location', id: 'source_observatory' },
+        statusUnknown
+          ? 'The accepted Source Archive history is partial, incomplete, or ambiguous; refresh and inspect the Evidence Archive before treating a later capture as absent. No capture is inferred.'
+          : null,
+        interpretation
+      ),
+      countsForQuestkeeper: false
+    })];
+  })();
   const unlinkedSourceObservationHistory = allSourceObservationRecords.some(record =>
     record.actor?.id === actorId && record.actor?.role === actorRole &&
     record.projectionStatus !== 'linked'
@@ -2018,6 +2058,7 @@ export function getQuestTrail(world, viewer, options = {}) {
         'This is an actor-attributed research note against one exact retained version. Source retrieval, independent verification and execution remain NOT_PERFORMED; the note is not a truth verdict.'
       ),
       ...sourceArchiveFailureInvestigationMilestones,
+      ...sourceArchiveLaterCaptureMilestones,
       trailMilestone(
         'founder-source-observation-challenge', 'Challenge another actor’s source observation', 1,
         sourceObservationChallenges.map(event => event.id), sourceObservationChallenges,

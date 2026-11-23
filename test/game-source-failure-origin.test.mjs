@@ -71,7 +71,7 @@ async function publishSourceArchive(world, {
   const bytes = Buffer.from('export const ARCHIVE_RECOVERY = "later-capture";\\n', 'utf8');
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   const gitBlobSha = createHash('sha1')
-    .update(Buffer.from('blob ' + bytes.length + '\\0'))
+    .update(Buffer.from('blob ' + bytes.length + String.fromCharCode(0)))
     .update(bytes)
     .digest('hex');
   const html = await buildGitHubSourceArchiveBody({

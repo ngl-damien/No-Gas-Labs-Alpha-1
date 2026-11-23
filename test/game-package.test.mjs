@@ -902,3 +902,15 @@ test('activation carries the optional dated project-state snapshot forward witho
   assert.equal(currentEntries.get(snapshotUrl)?.body, 'dated-snapshot-from-previous-build');
   assert.equal(currentEntries.has(privateUrl), false);
 });
+
+
+test('Source Archive failure cards distinguish later captures and navigate to the exact retained publication', async () => {
+  const client = await readFile(join(process.cwd(), 'game/client.mjs'), 'utf8');
+  assert.match(client, /data-source-archive-failure-capture-projection-complete/);
+  assert.match(client, /data-source-archive-failure-capture-status/);
+  assert.match(client, /laterCaptureStatusLabel/);
+  assert.match(client, /openCreation\(laterCapture\.creationId,laterCapture\.version,false,\{snapshot:archiveWorld\}\)/);
+  assert.match(client, /openWorldChronicle\(laterCapture\.publicationEventId,\{snapshot:archiveWorld\}\)/);
+  assert.match(client, /expected response body is not retained/);
+  assert.match(client, /does not establish source truth/);
+});

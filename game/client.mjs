@@ -4254,6 +4254,7 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null,{snapsho
       failureLedger.setAttribute('data-source-archive-failure-total',String(failureProjection.total));
       failureLedger.setAttribute('data-source-archive-failure-complete',String(failureProjection.complete));
       failureLedger.setAttribute('data-source-archive-failure-scope',failureProjection.complete?'complete':'partial');
+      failureLedger.setAttribute('data-source-archive-failure-capture-projection-complete',String(failureProjection.captureProjectionComplete));
       failureLedger.setAttribute('data-source-archive-failure-unseen-event-count',String(failureProjection.unseenEventCount));
       failureLedger.setAttribute('data-source-archive-failure-total-pages',String(failureProjection.totalPages));
       failureLedger.setAttribute('data-source-archive-failure-has-older',String(failureProjection.hasOlder));
@@ -4292,7 +4293,9 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null,{snapsho
             'data-source-archive-failure-status':record.status,
             'data-source-archive-failure-class-position':String(record.failureClassPosition),
             'data-source-archive-failure-class-count':String(record.failureClassCount),
-            'data-source-archive-failure-class-history-complete':String(record.failureClassHistoryComplete)
+            'data-source-archive-failure-class-history-complete':String(record.failureClassHistoryComplete),
+            'data-source-archive-failure-capture-status':record.laterCaptureStatus,
+            'data-source-archive-failure-later-capture-count':record.laterCaptureCount===null?'unknown':String(record.laterCaptureCount)
           },[]);
           card.append(
             node('h3',{text:'Source Archive · '+record.failureLabel}),
@@ -4328,6 +4331,41 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null,{snapsho
               'aria-label':'Review source context for '+record.eventId
             })
           );
+          const laterCapture=record.laterCapture;
+          card.append(
+            node('span',{
+              class:'pill',
+              'data-source-archive-later-capture-status':record.laterCaptureStatus,
+              text:record.laterCaptureStatusLabel
+            }),
+            paragraph(record.laterCaptureStatus==='observed'
+              ?'A later server-rechecked capture was explicitly published for the same repository, full commit SHA and path. This records a later byte retrieval only; it does not establish source truth, authorship, claim accuracy, independent verification, approval or authority.'
+              :record.laterCaptureStatus==='not-observed'
+                ?'No later server-rechecked capture is observed in this accepted history for the same repository, full commit SHA and path. Drafts and client-reported captures do not count; the expected response body is not retained.'
+                :'Later capture status is unknown because the accepted history is partial, incomplete or ambiguous. No capture is inferred; refresh and inspect the Evidence Archive before treating absence as meaningful.',
+              record.laterCaptureStatus==='unknown'?'evidence-warning':'form-help'
+            )
+          );
+          if(record.laterCaptureStatus==='observed'&&laterCapture){
+            card.append(
+              paragraph('Later publication · '+laterCapture.repository+'@'+laterCapture.commitSha+':'+laterCapture.path+
+                ' · v'+laterCapture.version+' · fetched '+laterCapture.fetchedAt+' · published at world history position #'+laterCapture.publicationPosition),
+              button('Inspect later capture v'+laterCapture.version+' →',()=>{
+                openCreation(laterCapture.creationId,laterCapture.version,false,{snapshot:archiveWorld});
+              },{
+                class:'list-button',
+                'data-source-archive-later-capture-open-artifact':'true',
+                'aria-label':'Inspect exact later Source Archive capture version '+laterCapture.version
+              }),
+              button('Inspect exact publication event →',()=>{
+                openWorldChronicle(laterCapture.publicationEventId,{snapshot:archiveWorld});
+              },{
+                class:'list-button',
+                'data-source-archive-later-capture-open-chronicle':'true',
+                'aria-label':'Inspect exact later Source Archive publication event'
+              })
+            );
+          }
           failureLedger.append(card);
         }
         if(failureProjection.hasNewer)failureLedger.append(button('Newer failures →',()=>{
