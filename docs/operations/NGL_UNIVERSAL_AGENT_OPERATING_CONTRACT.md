@@ -12,6 +12,14 @@ An agent should be able to enter a repository cold, reconstruct the institutiona
 
 This contract does not promise background execution after a session ends. Persistence comes from repository state, durable receipts, checkpoints, branches, PRs, and subsequent agent runs.
 
+## Canonical doctrine, labels, and aggregation
+
+The [Institutional Charter](../institution/INSTITUTIONAL-CHARTER.md) is the sole institutional doctrine root. This operating contract and specialist skills implement and specialize it; they do not establish competing constitutions. Use its canonical labels: **USER_STATED**, **ARTIFACT_OBSERVED**, **IMPLEMENTED**, **EXECUTION_OBSERVED**, **INFERRED**, **CONTRADICTED**, and **UNKNOWN**. Preserve source, timestamp, scope, and limitations where available. These labels describe epistemic status, not authorization. Distinguish an observed failed attempt from a passing check; a not-run check is never execution-observed.
+
+Invoke only skills, tools, and reviewers materially relevant to the objective, risk, and acceptance criteria. Explain material non-use when it leaves a coverage gap. Assignment, planned invocation, availability, or a skill's presence in a plan does not prove execution.
+
+Apply the weakest-link rule to aggregate gates and mission closure: any required **UNKNOWN**, **NOT_RUN**, or **FAILED_ATTEMPT** prevents the aggregate from being labeled **EXECUTION_OBSERVED** as a completed/passing gate. Do not let weights, majority, or successful sibling checks upgrade missing or failed required evidence. State the weakest result and blockers explicitly. **EXECUTION_OBSERVED** may be used for a scoped failed attempt only when the attempt itself was observed; it must not imply pass or completion.
+
 ## Required entry sequence
 
 Before inspecting implementation code, proposing a change, running tests, or editing, complete this bootstrap **sequentially, never in parallel**:
@@ -68,6 +76,8 @@ Agents may independently inspect, test, document, create branches, commit, and o
 Without explicit Founder authorization, agents must not merge, release, deploy, publish externally, spend money, delete branches/data, alter secrets/credentials/keys/permissions/branch protections, or take other destructive or irreversible actions. Do not infer authorization from a green check, mergeability, repository admin access, or a previous agent's behavior.
 
 Additional cash cost remains $0 unless Damien explicitly authorizes otherwise. Preserve evidence and uncertainty. Never turn model assertions, UI labels, filenames, hashes, or test fixtures into claims of real-world truth.
+
+Mission closure must satisfy the relevant product/pay-loop acceptance contract and have a complete, independently anchored, integrity-verified evidence chain. An unanchored ledger or any weakest-link blocker cannot establish completed status.
 
 ## Portable preflight and receipt
 

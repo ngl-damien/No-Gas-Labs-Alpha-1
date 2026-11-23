@@ -36,3 +36,7 @@ Produce a manifest comparison, missing-file list, validator/test matrix, runtime
 
 ## Stop conditions
 Stop if package provenance is unclear, required files are absent, the validator attempts unsafe execution, or a digest is being inferred from pasted text rather than actual bytes.
+
+## Commission closure check
+
+Before closing a validation mission, compare actual deliverables and observed checks against the originally declared criteria; do not redefine criteria after results are known. Preserve command, environment, output, exit status, and failed or skipped cases. Repair only evidence-supported defects when authorized, then rerun relevant validation. Closure requires every required check to be complete and passing, with the ledger's externally expected head independently confirmed; otherwise report partial, blocked, not-run, or indeterminate status rather than completion.

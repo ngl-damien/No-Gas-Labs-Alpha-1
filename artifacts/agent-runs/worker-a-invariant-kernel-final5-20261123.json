@@ -1,0 +1,169 @@
+{
+  "schema": "ngl.agent-preflight.v1",
+  "generatedAt": "2026-11-23T21:30:33.350Z",
+  "repositoryRoot": "/home/ubuntu/No-Gas-Labs-Alpha-1-work",
+  "status": "ready",
+  "entry": "AGENTS.md",
+  "protocol": "docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md",
+  "targets": [
+    "docs/institution/INSTITUTIONAL-CHARTER.md",
+    "docs/operations/NGL_UNIVERSAL_AGENT_OPERATING_CONTRACT.md",
+    "skills/README.md",
+    "skills/ngl-evidence-governed-delivery/SKILL.md",
+    "skills/ngl-constitutional-reconciliation/SKILL.md",
+    "skills/ngl-traceability-and-recovery/SKILL.md",
+    "skills/ngl-safe-execution-boundaries/SKILL.md",
+    "skills/ngl-validation-completeness/SKILL.md",
+    "skills/plugin-scouter/SKILL.md",
+    "skills/founder-almanac/SKILL.md",
+    "skills/skill-for-cavemen/SKILL.md",
+    "scripts/ngl.py",
+    "scripts/gate_runner.py",
+    "scripts/ngl-invariant-gate.json",
+    "test/test_ngl.py",
+    ".github/workflows/ngl-invariant-gate.yml"
+  ],
+  "checkpoint": "docs/operations/LATEST_CHECKPOINT.md",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "kind": "root-instructions",
+      "sha256": "a812d16b742ca873736cd5a37e443e7988636b486cf9d52c43568fe6a1826292",
+      "bytes": 5147
+    },
+    {
+      "path": "docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md",
+      "kind": "shared-protocol",
+      "sha256": "8c0b1d92d53f15f1af4684c1a111cb5558e1970ac085a0e8c1fa9d81edf2ed24",
+      "bytes": 15387
+    },
+    {
+      "path": "CLAUDE.md",
+      "kind": "vendor-pointer",
+      "sha256": "10c5ed08990511fce84afc366a1afefba14ad7650fb97ac8cbd9be459fab1113",
+      "bytes": 405
+    },
+    {
+      "path": "GEMINI.md",
+      "kind": "vendor-pointer",
+      "sha256": "95c214de41f9f22ca2fb027dc3871266ee6fd580ed79a6e9f3bedcef9011ae4d",
+      "bytes": 405
+    },
+    {
+      "path": "CODEX.md",
+      "kind": "vendor-pointer",
+      "sha256": "bd27a441f31fc32f6892469b9744f8b52afa21be1e5a4c66ff65d7dd1f11ab97",
+      "bytes": 404
+    },
+    {
+      "path": ".github/copilot-instructions.md",
+      "kind": "vendor-pointer",
+      "sha256": "df2b865050c24eaf55e5bfa538bd98baf07acc6cbc2aed44f775567e3fd1cfca",
+      "bytes": 446
+    },
+    {
+      "path": "docs/institution/INSTITUTIONAL-CHARTER.md",
+      "kind": "target",
+      "sha256": "5e3da110171475a26274860e40a2af0a8ac69f2ad5264cea981a0283a9012289",
+      "bytes": 10783
+    },
+    {
+      "path": "docs/operations/NGL_UNIVERSAL_AGENT_OPERATING_CONTRACT.md",
+      "kind": "target",
+      "sha256": "391e9e75525971e9e8029137ec4d1a14e8535aaab8cdf333d4023d76f8bebc80",
+      "bytes": 11934
+    },
+    {
+      "path": "skills/README.md",
+      "kind": "target",
+      "sha256": "5849b1b81616b283152fbf970380e125bd9740a529365429d7a46bdd40014c22",
+      "bytes": 2312
+    },
+    {
+      "path": "skills/ngl-evidence-governed-delivery/SKILL.md",
+      "kind": "target",
+      "sha256": "bdfae32f7265c17e463961b9ad5b62c959aa9730f2bbd075b78868700093b7bd",
+      "bytes": 8352
+    },
+    {
+      "path": "skills/ngl-constitutional-reconciliation/SKILL.md",
+      "kind": "target",
+      "sha256": "d09541177db9785d2e95fc92f20cbf66bebe826e349c380fe558e28c1aaeb796",
+      "bytes": 3483
+    },
+    {
+      "path": "skills/ngl-traceability-and-recovery/SKILL.md",
+      "kind": "target",
+      "sha256": "bf5edd334b3bb3d364c1a74097c08dd35847138db77a8e8f4ec926256d5ba778",
+      "bytes": 2863
+    },
+    {
+      "path": "skills/ngl-safe-execution-boundaries/SKILL.md",
+      "kind": "target",
+      "sha256": "3091c9bdb73552ca8eadb4d9d6de431377156ec197bd6f58e999b7624d9574ea",
+      "bytes": 3518
+    },
+    {
+      "path": "skills/ngl-validation-completeness/SKILL.md",
+      "kind": "target",
+      "sha256": "d0775f5e7e3ad132cbde4a24dd85d2cde6fd15dac3f3c0fefefa09854a175b2d",
+      "bytes": 2931
+    },
+    {
+      "path": "skills/plugin-scouter/SKILL.md",
+      "kind": "target",
+      "sha256": "1afb9dc4bb8756b6e6b1bc994be1380660389a260e2061a81475f2f3daa3bb3c",
+      "bytes": 1488
+    },
+    {
+      "path": "skills/founder-almanac/SKILL.md",
+      "kind": "target",
+      "sha256": "420064108061f656072b755dd410e4ba3f1ff8f973cec7f907afea5f01fdc9c1",
+      "bytes": 1781
+    },
+    {
+      "path": "skills/skill-for-cavemen/SKILL.md",
+      "kind": "target",
+      "sha256": "b06cf455eb5810ac22489f798733d726422c27f715fcbeceefe52028521a62eb",
+      "bytes": 1464
+    },
+    {
+      "path": "scripts/ngl.py",
+      "kind": "target",
+      "sha256": "93f264935d21d0156a295bd36d7154cdc18a84d7eca1ad0645de2b262c19436b",
+      "bytes": 10251
+    },
+    {
+      "path": "scripts/gate_runner.py",
+      "kind": "target",
+      "sha256": "f31816ceda5d7b782c72acef96567fa95a81f1a00b505ab16fde4c89f9b73a5c",
+      "bytes": 9335
+    },
+    {
+      "path": "scripts/ngl-invariant-gate.json",
+      "kind": "target",
+      "sha256": "02c43d54f7f3d9a80aa87bd52966a5feb56490c76b260364f1e75b5f89ca9acc",
+      "bytes": 465
+    },
+    {
+      "path": "test/test_ngl.py",
+      "kind": "target",
+      "sha256": "efac3045a7194ff2492e5423126c8179e2e68819b6db77976a289e2d09d400e6",
+      "bytes": 7947
+    },
+    {
+      "path": ".github/workflows/ngl-invariant-gate.yml",
+      "kind": "target",
+      "sha256": "a43f023dcb210b8f2c37d085f732e051ac2b459db343f08794b57225046e0aaa",
+      "bytes": 2331
+    },
+    {
+      "path": "docs/operations/LATEST_CHECKPOINT.md",
+      "kind": "durable-checkpoint",
+      "sha256": "e4b89452dbcf13b3a9b6d83ff874e2eb0ebc0946734a10b60da4334d80d3ea04",
+      "bytes": 921031
+    }
+  ],
+  "warnings": [],
+  "failures": []
+}

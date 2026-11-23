@@ -39,6 +39,26 @@ AOTA does not mean every activity must be performed simultaneously. It means pre
 
 This lifecycle is chronological by default but iterative in operation, not a blind waterfall. New evidence may return work to any earlier stage. Failed, inconclusive, and negative experiments remain part of the institutional record. Research must influence build decisions. Every material invention claim must be traceable to prior art, original contribution, and supporting evidence.
 
+### Canonical epistemic labels
+
+Use these labels consistently for material claims and check results:
+
+- **USER_STATED** — supplied by a user; not independently verified.
+- **ARTIFACT_OBSERVED** — directly inspected in an identified artifact; does not by itself prove execution or truth.
+- **IMPLEMENTED** — code, configuration, or a process was changed; does not prove it ran or worked.
+- **EXECUTION_OBSERVED** — a named operation was actually observed to execute, with its result and evidence recorded; this does not imply success or correctness.
+- **INFERRED** — reasoned from identified evidence; alternatives and uncertainty remain explicit.
+- **CONTRADICTED** — available evidence conflicts with the claim; preserve the conflict and its sources.
+- **UNKNOWN** — evidence is absent, inaccessible, insufficient, or inconclusive. Never promote UNKNOWN by assumption.
+
+These labels describe evidence status, not permission or authority. Record source, time, scope, and limitations when available. A failed attempt may be execution-observed as an attempt, but is not a passing check. A not-run check is not execution-observed.
+
+### Selective invocation and weakest-link rule
+
+Invoke only the skills, tools, and reviewers materially useful to the objective, risk, and acceptance criteria. State material non-use when omission affects coverage; a skill's assignment or presence in a plan is not evidence it ran. Avoid ceremonial invocation and duplicate authoritative records.
+
+For any aggregate gate or completion claim, the weakest required evidence governs. If any required check is UNKNOWN, NOT_RUN, or FAILED_ATTEMPT, the aggregate must not be labeled EXECUTION_OBSERVED as a completed/passing gate. Report the blockers and weaker state explicitly; no weighted score, majority, or successful sibling check may upgrade it. EXECUTION_OBSERVED may describe a failed execution attempt only when clearly scoped to that attempt, never as a pass or completion.
+
 Improve reusable research and production machinery as well as individual inventions. Test whether claimed improvements transfer to a distinct task. Distinguish what is proposed, built, locally tested, independently verified, deployed, externally adopted, and commercially successful. Never collapse these into one status.
 
 A model's assertion is never sufficient evidence that the state it describes is correct. Preserve competing explanations, dissent, missing evidence, and uncertainty. Human authorization remains distinct from evidence and technical execution; this charter grants no agent authority to merge, release, deploy, spend, publish externally, change protected permissions, or take other consequential action without the applicable authorization.
@@ -48,6 +68,8 @@ A model's assertion is never sufficient evidence that the state it describes is 
 - Every agent, coding assistant, scheduled worker, autonomous process, human contributor, and partner acting within No_Gas_Labs™ must inherit and apply this charter.
 - Every project and repository must link to this canonical charter from its governing instructions or contributor entry point; a copied excerpt is not a substitute for the canonical source.
 - Every research, design, acquisition, implementation, evaluation, publication, and deployment plan must identify the applicable lifecycle stage and preserve the relevant provenance.
+- This charter is the single institutional doctrine root. Skill packages and operating contracts may specialize it but must not create a competing constitution; role-specific material belongs in skills and implementation detail in the relevant contracts/runtime.
+- Use the canonical epistemic labels and weakest-link aggregation rule above; invoke only materially relevant skills and disclose material gaps.
 - Local procedures may add stricter safeguards or domain-specific steps. They may not erase the AOTA scope rule, reverse the knowledge-first sequence without a documented reason, weaken evidence requirements, or bypass legal and human-authority boundaries.
 - When this charter changes, institutional entry points should be reconciled so contributors do not follow stale or contradictory copies.
 

@@ -1,0 +1,56 @@
+name: NGL Invariant Gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  invariant-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Reject coupled candidate and policy changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+          import sys
+
+          base = os.environ["BASE_SHA"]
+          head = os.environ["HEAD_SHA"]
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", "--diff-filter=ACMRT", f"{base}...{head}"],
+              text=True,
+          ).splitlines()
+          policy_exact = {
+              "scripts/ngl.py",
+              "scripts/gate_runner.py",
+              "scripts/ngl-invariant-gate.json",
+              "test/test_ngl.py",
+              ".github/workflows/ngl-invariant-gate.yml",
+          }
+          candidate_roots = ("src/", "game/", "server/", "test/", "scripts/")
+          candidate = [p for p in changed if p.startswith(candidate_roots) and p not in policy_exact]
+          policy = [p for p in changed if p in policy_exact]
+          if candidate and policy:
+              print("FAIL CLOSED: this PR changes candidate code and its own invariant gate/evaluator.")
+              print("Candidate code:", *candidate, sep="\n  ")
+              print("Gate/evaluator policy:", *policy, sep="\n  ")
+              print("Separate candidate implementation from gate-policy changes into independently reviewed PRs.")
+              sys.exit(1)
+          print(f"Separation check passed: candidate_paths={len(candidate)} policy_paths={len(policy)}")
+          PY
+      - name: Run kernel tests and typed gate
+        run: |
+          python3 -m unittest discover -s test -p 'test_ngl.py' -v
+          python3 -B scripts/ngl.py --store /tmp/ngl-ci-ledger init CI-INVARIANT --objective 'Validate NGL invariant kernel'
+          python3 -B scripts/ngl.py --store /tmp/ngl-ci-ledger gate CI-INVARIANT scripts/ngl-invariant-gate.json --workdir .

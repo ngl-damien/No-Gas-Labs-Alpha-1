@@ -1,0 +1,8 @@
+{
+  "checks": [
+    {"id": "ngl_cli_exists", "type": "file_exists", "path": "scripts/ngl.py", "weight": 10},
+    {"id": "gate_runner_exists", "type": "file_exists", "path": "scripts/gate_runner.py", "weight": 10},
+    {"id": "kernel_unit_tests", "type": "unittest_run", "test_id": "ngl-invariant-core", "weight": 50},
+    {"id": "gate_spec_valid", "type": "validator_run", "validator_id": "gate-spec", "path": "scripts/ngl-invariant-gate.json", "weight": 30}
+  ]
+}
