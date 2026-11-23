@@ -7937,9 +7937,6 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
     witness_context = None
     witness_page = None
     witness_errors = []
-    witness_context = None
-    witness_page = None
-    witness_errors = []
     cdp = context.new_cdp_session(page)
     cdp_contexts = {}
     cdp_frames = {}
