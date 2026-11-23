@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { createGameServer } from '../game/server.mjs';
 import { GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from '../game/artifacts.mjs';
 import { projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
+import { projectCharacter } from '../game/character-sheet.mjs';
+import { getQuestTrail } from '../game/quests.mjs';
 
 const FOUNDER_KEY = 'test-source-archive-restart-founder-key';
 
@@ -364,4 +366,235 @@ test('GitHub retrieval failures remain in Chronicle and the same request can ret
   assert.equal(afterReplay.world.revision, revisionAfterRetry);
   assert.equal(afterReplay.world.drafts.length, 1);
   assert.equal(afterReplay.world.xp, 0);
+});
+
+
+test('a server-observed Source Archive failure survives restart and unlocks its actor-scoped Recovery Ledger', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-source-archive-recovery-restart-'));
+  const source = 'export const RECOVERY_LEDGER_RESTART = true;\n';
+  const capture = sourceArchiveCaptureFixture(source);
+  let attempts = 0;
+  const fetchImpl = async (url, options) => {
+    attempts += 1;
+    if (attempts === 1) {
+      return new Response(JSON.stringify({ message: 'fixture upstream unavailable' }), {
+        status: 503,
+        headers: { 'content-type': 'application/json' }
+      });
+    }
+    return capture.fetchImpl(url, options);
+  };
+  const servers = [];
+  let current = await startServer(dataDir, fetchImpl);
+  servers.push(current.server);
+  t.after(async () => {
+    for (const server of servers.reverse()) await server.closeGame().catch(() => {});
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  let founder = makeClient(current.origin);
+  const firstLogin = await founder.request('/api/login', { key: FOUNDER_KEY, name: 'Damien' });
+  assert.equal(firstLogin.response.status, 200);
+  assert.equal(firstLogin.body.viewer.role, 'founder');
+
+  const failed = await founder.request('/api/action', {
+    ...capture.action,
+    requestId: 'source-archive-recovery-restart-failure-001'
+  });
+  assert.equal(failed.response.status, 502);
+  assert.equal(failed.body.error.code, 'GITHUB_SOURCE_UNAVAILABLE');
+  assert.equal(attempts, 1);
+
+  const beforeRestart = (await founder.request('/api/state')).body;
+  const failure = beforeRestart.world.events.find(event =>
+    event.type === 'source-archive-attempt-failed'
+  );
+  assert.ok(failure);
+  assert.equal(failure.retryable, true);
+  assert.equal(beforeRestart.world.drafts.length, 0);
+  assert.equal(beforeRestart.world.xp, 0);
+  const beforeProjection = projectSourceArchiveFailureObjects(beforeRestart.world, {
+    includeRecoveryLinks: true
+  });
+  assert.equal(beforeProjection.captureProjectionComplete, true);
+  assert.equal(beforeProjection.recoveryLinks.length, 0);
+  assert.equal(
+    beforeProjection.records.find(record => record.eventId === failure.id).laterCaptureStatus,
+    'not-observed'
+  );
+
+  await current.server.closeGame();
+  current = await startServer(dataDir, fetchImpl);
+  servers.push(current.server);
+
+  founder = makeClient(current.origin);
+  const resumedLogin = await founder.request('/api/login', { key: FOUNDER_KEY, name: 'Damien' });
+  assert.equal(resumedLogin.response.status, 200);
+  assert.equal(resumedLogin.body.viewer.role, 'founder');
+
+  const witness = makeClient(current.origin);
+  const witnessInitial = (await witness.request('/api/state')).body;
+  assert.equal(witnessInitial.viewer.role, 'witness');
+  assert.equal(witnessInitial.world.events.some(event => event.id === failure.id), true);
+
+  const afterRestart = (await founder.request('/api/state')).body;
+  assert.equal(afterRestart.world.events.filter(event =>
+    event.type === 'source-archive-attempt-failed'
+  ).length, 1);
+  assert.equal(afterRestart.world.events.find(event => event.id === failure.id).id, failure.id);
+  assert.equal(afterRestart.world.drafts.length, 0);
+  assert.equal(afterRestart.world.xp, 0);
+  const afterRestartProjection = projectSourceArchiveFailureObjects(afterRestart.world, {
+    includeRecoveryLinks: true
+  });
+  assert.equal(afterRestartProjection.captureProjectionComplete, true);
+  assert.equal(afterRestartProjection.records.find(record => record.eventId === failure.id).laterCaptureStatus,
+    'not-observed');
+
+  const draft = await founder.request('/api/action', {
+    ...capture.action,
+    requestId: 'source-archive-recovery-restart-capture-002'
+  });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  assert.equal(attempts, 2);
+  assert.equal(capture.calls.length, 1);
+  const afterDraft = (await founder.request('/api/state')).body;
+  assert.equal(afterDraft.world.drafts.length, 1);
+  assert.equal(afterDraft.world.xp, 0, 'private capture after restart is not progression');
+
+  const publication = await founder.request('/api/action', {
+    type: 'publish',
+    draftId: draft.body.result.draftId,
+    expectedVersion: 0,
+    requestId: 'source-archive-recovery-restart-publish-003'
+  });
+  assert.equal(publication.response.status, 200, JSON.stringify(publication.body));
+  const afterPublish = (await founder.request('/api/state')).body;
+  const publicationEvent = afterPublish.world.events.find(event =>
+    event.type === 'publish' &&
+    event.creationId === publication.body.result.creationId &&
+    event.version === 1
+  );
+  assert.ok(publicationEvent);
+  assert.equal(afterPublish.world.xp, 100, 'only the explicit publication earns its existing reward');
+
+  const projection = projectSourceArchiveFailureObjects(afterPublish.world, {
+    includeRecoveryLinks: true
+  });
+  assert.equal(projection.captureProjectionComplete, true);
+  assert.equal(projection.recoveryLinkScanComplete, true);
+  assert.equal(projection.recoveryLinks.length, 1);
+  assert.deepEqual(
+    [projection.recoveryLinks[0].failureEventId, projection.recoveryLinks[0].publicationEventId],
+    [failure.id, publicationEvent.id]
+  );
+  assert.equal(projection.recoveryLinks[0].sha256, capture.action.sha256);
+  assert.equal(projection.recoveryLinks[0].gitBlobSha, capture.action.gitBlobSha);
+  const failureRecord = projection.records.find(record => record.eventId === failure.id);
+  assert.equal(failureRecord.laterCaptureStatus, 'observed');
+  assert.equal(failureRecord.laterCapture.publicationEventId, publicationEvent.id);
+
+  const founderCharacter = projectCharacter(afterPublish.world, afterPublish.viewer);
+  const recoverySource = founderCharacter.fieldItemSources.recovery.find(item =>
+    item.eventId === publicationEvent.id
+  );
+  assert.ok(recoverySource);
+  assert.equal(recoverySource.kind, 'source-archive-recovery');
+  assert.equal(recoverySource.recovery.failureEventId, failure.id);
+  assert.equal(recoverySource.recovery.publicationEventId, publicationEvent.id);
+
+  const laterCaptureQuest = getQuestTrail(afterPublish.world, afterPublish.viewer).find(item =>
+    item.id === 'founder-source-archive-later-capture'
+  );
+  assert.ok(laterCaptureQuest);
+  assert.deepEqual(
+    [laterCaptureQuest.progress, laterCaptureQuest.target, laterCaptureQuest.complete],
+    [2, 2, true]
+  );
+  assert.deepEqual(laterCaptureQuest.evidenceIds, [failure.id, publicationEvent.id]);
+
+  const recoveryQuestId = 'founder-source-archive-recovery-ledger-' + failure.id;
+  const initialRecoveryQuest = getQuestTrail(afterPublish.world, afterPublish.viewer).find(item =>
+    item.id === recoveryQuestId
+  );
+  assert.ok(initialRecoveryQuest);
+  assert.deepEqual(
+    [initialRecoveryQuest.progress, initialRecoveryQuest.target, initialRecoveryQuest.complete],
+    [2, 4, false]
+  );
+  assert.deepEqual(initialRecoveryQuest.evidenceIds, [failure.id, publicationEvent.id]);
+
+  const witnessAfterPublish = (await witness.request('/api/state')).body;
+  const witnessCharacter = projectCharacter(witnessAfterPublish.world, witnessAfterPublish.viewer);
+  assert.equal(witnessCharacter.fieldItemSources.recovery.length, 0);
+  assert.equal(getQuestTrail(witnessAfterPublish.world, witnessAfterPublish.viewer).some(item =>
+    item.id === recoveryQuestId
+  ), false);
+
+  const revisionBeforeDeniedForge = witnessAfterPublish.world.revision;
+  const deniedForge = await witness.request('/api/action', {
+    type: 'forge-field-item',
+    slotId: 'recovery',
+    sourceEventId: publicationEvent.id,
+    requestId: 'source-archive-recovery-restart-witness-forge-004'
+  });
+  assert.equal(deniedForge.response.status, 409);
+  assert.equal(deniedForge.body.error.code, 'INVALID_FIELD_ITEM_SOURCE');
+  const afterDeniedForge = (await witness.request('/api/state')).body;
+  assert.equal(afterDeniedForge.world.revision, revisionBeforeDeniedForge);
+  assert.equal(afterDeniedForge.world.events.some(event => event.type === 'field-item-forged'), false);
+  assert.equal(afterDeniedForge.world.xp, 100);
+
+  const forged = await founder.request('/api/action', {
+    type: 'forge-field-item',
+    slotId: 'recovery',
+    sourceEventId: publicationEvent.id,
+    requestId: 'source-archive-recovery-restart-founder-forge-005'
+  });
+  assert.equal(forged.response.status, 200, JSON.stringify(forged.body));
+  const afterForge = (await founder.request('/api/state')).body;
+  const forgeEvent = afterForge.world.events.at(-1);
+  assert.equal(forgeEvent.type, 'field-item-forged');
+  assert.equal(forgeEvent.actor.id, 'damien');
+  assert.equal(forgeEvent.sourceEventId, publicationEvent.id);
+  assert.equal(afterForge.world.xp, 100, 'Forge does not award XP');
+  const forgedQuest = getQuestTrail(afterForge.world, afterForge.viewer).find(item =>
+    item.id === recoveryQuestId
+  );
+  assert.deepEqual([forgedQuest.progress, forgedQuest.target, forgedQuest.complete], [3, 4, false]);
+  assert.deepEqual(forgedQuest.evidenceIds, [failure.id, publicationEvent.id, forgeEvent.id]);
+
+  const equipped = await founder.request('/api/action', {
+    type: 'equip-field-item',
+    slotId: 'recovery',
+    sourceEventId: forgeEvent.id,
+    requestId: 'source-archive-recovery-restart-founder-equip-006'
+  });
+  assert.equal(equipped.response.status, 200, JSON.stringify(equipped.body));
+  const afterEquip = (await founder.request('/api/state')).body;
+  const equipEvent = afterEquip.world.events.at(-1);
+  assert.equal(equipEvent.type, 'field-item-equipped');
+  assert.equal(equipEvent.actor.id, 'damien');
+  assert.equal(equipEvent.sourceEventId, forgeEvent.id);
+  assert.equal(afterEquip.world.xp, 100, 'equipment and quest completion do not award XP');
+
+  const finalCharacter = projectCharacter(afterEquip.world, afterEquip.viewer);
+  const item = finalCharacter.fieldInventory.find(candidate => candidate.eventId === forgeEvent.id);
+  assert.ok(item);
+  assert.equal(item.sourceKind, 'source-archive-recovery');
+  assert.equal(item.sourceEventId, publicationEvent.id);
+  assert.equal(item.sourceRecovery.failureEventId, failure.id);
+  assert.equal(item.sourceRecovery.publicationEventId, publicationEvent.id);
+  assert.equal(item.sourceRecovery.sha256, capture.action.sha256);
+  assert.equal(finalCharacter.equipment.find(slot => slot.id === 'recovery').source.eventId, forgeEvent.id);
+
+  const completedQuest = getQuestTrail(afterEquip.world, afterEquip.viewer).find(item =>
+    item.id === recoveryQuestId
+  );
+  assert.deepEqual([completedQuest.progress, completedQuest.target, completedQuest.complete], [4, 4, true]);
+  assert.deepEqual(completedQuest.evidenceIds, [failure.id, publicationEvent.id, forgeEvent.id, equipEvent.id]);
+  assert.equal(completedQuest.action, null);
+  assert.equal(completedQuest.countsForQuestkeeper, false);
+  assert.equal(attempts, 2);
+  assert.equal(capture.calls.length, 1, 'the restarted capture is the only successful fixture retrieval');
 });
