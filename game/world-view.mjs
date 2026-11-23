@@ -404,6 +404,9 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
     !Number.isSafeInteger(revision)||revision<eventCount||revision>MAX_WORLD_EVENT_SCAN)return null;
  const complete=revision===eventCount;
 
+ const historyPositions=[];
+ let historyPositionCount=0;
+ let previousHistoryPosition=0;
  const eventIdCounts=new Map();
  const attemptIdCounts=new Map();
  const outcomeCounts=new Map();
@@ -416,6 +419,19 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   // make an absence or ordering claim. A hole, accessor-backed type, or malformed
   // event cannot be silently treated as an unrelated event.
   if(!event||typeof event!=='object'||isArraySafely(event))return null;
+  let historyPositionDescriptor;
+  try{historyPositionDescriptor=Object.getOwnPropertyDescriptor(event,'historyPosition')}catch{return null}
+  if(historyPositionDescriptor){
+   if(!Object.hasOwn(historyPositionDescriptor,'value'))return null;
+   const historyPosition=historyPositionDescriptor.value;
+   if(!Number.isSafeInteger(historyPosition)||historyPosition<1||
+      historyPosition>revision||historyPosition<=previousHistoryPosition)return null;
+   previousHistoryPosition=historyPosition;
+   historyPositionCount++;
+   historyPositions.push(historyPosition);
+  }else{
+   historyPositions.push(null);
+  }
   const eventType=ownDataValue(event,'type');
   if(typeof eventType!=='string'||!eventType.trim())return null;
   const eventId=ownDataValue(event,'id');
@@ -437,6 +453,10 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   }
   candidates.push({event,index,eventId,attemptId,requestIdDigest,actionDigest,failureCode});
  }
+ if(historyPositionCount!==0&&historyPositionCount!==eventCount)return null;
+ const hasExplicitHistoryPositions=eventCount>0&&historyPositionCount===eventCount;
+ if(complete&&hasExplicitHistoryPositions&&
+    historyPositions.some((position,index)=>position!==index+1))return null;
 
  const projected=[];
  let invalidCount=0;
@@ -479,7 +499,7 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
     locationId:'evidence_archive',
     eventId,
     attemptId,
-    historyPosition:complete?index+1:null,
+    historyPosition:hasExplicitHistoryPositions?historyPositions[index]:complete?index+1:null,
     visiblePosition:index+1,
     actorId,
     actorName,

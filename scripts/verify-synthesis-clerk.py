@@ -2192,11 +2192,14 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out,
       const { projectSourceArchiveFailureObjects } = await import('/world-view.mjs');
       const result = projectSourceArchiveFailureObjects(dto.world, { limit: 6, page: 0 });
       if (!result) return null;
+      const failureRecord = result.records.find(record => record.eventId === expectedEventId);
       return {
         complete: result.complete,
         unseenEventCount: result.unseenEventCount,
         total: result.total,
-        eventIds: result.records.map(record => record.eventId)
+        eventIds: result.records.map(record => record.eventId),
+        failureHistoryPosition: failureRecord?.historyPosition ?? null,
+        failureVisiblePosition: failureRecord?.visiblePosition ?? null
       };
     }""")
     assert projection is not None
@@ -2205,6 +2208,11 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out,
     )
     assert projection["unseenEventCount"] > 0
     assert failure_event_id in projection["eventIds"]
+    assert isinstance(projection["failureHistoryPosition"], int) and projection["failureHistoryPosition"] > 0
+    assert isinstance(projection["failureVisiblePosition"], int) and projection["failureVisiblePosition"] > 0
+    assert projection["failureHistoryPosition"] > projection["failureVisiblePosition"], (
+        "The partial Witness projection must retain the exact pre-filter world position separately from its visible-list ordinal."
+    )
     expect(section).to_have_attribute("data-moonshot-source-archive-failure-complete", "false")
     expect(section).to_have_attribute("data-moonshot-source-archive-failure-scope", "partial")
     expect(section).to_have_attribute(
@@ -2225,6 +2233,8 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out,
         '[data-moonshot-source-archive-failure-event-id="' + failure_event_id + '"]'
     )
     expect(target_card).to_have_count(1)
+    expect(target_card).to_contain_text("world history position #" + str(projection["failureHistoryPosition"]))
+    expect(target_card).not_to_contain_text("canonical history position unavailable")
 
     before_first_append = authoritative_snapshot(page)
     after_first_append = append_witness_moonshot_revision(page, width, "chronicle")
