@@ -9741,6 +9741,20 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         witness_page.screenshot(path=str(recovery_handoff_screenshot), full_page=True)
         # The accepted Recovery Ledger remains directly inspectable from the
         # recipient's owned inventory in a cache-only 320px session.
+        witness_page.wait_for_function(
+            """expected => {
+              const raw = localStorage.getItem('ngl.common-ground.shared-snapshot.v1');
+              if (!raw) return false;
+              try {
+                const envelope = JSON.parse(raw);
+                const accepted = envelope.world || envelope.snapshot;
+                return accepted?.revision === expected;
+              } catch {
+                return false;
+              }
+            }""",
+            arg=witness_after_equip['revision']
+        )
         inventory_cache_snapshot_raw = witness_page.evaluate(
             "() => localStorage.getItem('ngl.common-ground.shared-snapshot.v1')"
         )
@@ -9757,20 +9771,6 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         }
         assert recovery_forge_event_id in inventory_cache_event_ids
         assert recovery_recipient_equip_event_id in inventory_cache_event_ids
-        witness_page.wait_for_function(
-            """expected => {
-              const raw = localStorage.getItem('ngl.common-ground.shared-snapshot.v1');
-              if (!raw) return false;
-              try {
-                const envelope = JSON.parse(raw);
-                const accepted = envelope.world || envelope.snapshot;
-                return accepted?.revision === expected;
-              } catch {
-                return false;
-              }
-            }""",
-            arg=witness_after_equip['revision']
-        )
 
         inventory_cache_context = browser.new_context(
             viewport={'width': 320, 'height': 844},
