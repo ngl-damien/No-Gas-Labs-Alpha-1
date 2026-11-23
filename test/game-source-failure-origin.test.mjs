@@ -348,6 +348,44 @@ test('client-reported or different-target Source Archive publications do not cou
   assert.equal(pathRecord.laterCapture, null);
 });
 
+test('an orphan retained publish event keeps later-capture absence UNKNOWN', async () => {
+  const fixture = await worldWithFailure();
+  const captured = await publishSourceArchive(fixture.world);
+  const world = {
+    ...captured.world,
+    creations: captured.world.creations.filter(creation => creation.id !== captured.creationId)
+  };
+
+  const revision = world.revision;
+  const xp = world.xp;
+  const eventCount = world.events.length;
+  const projection = projectSourceArchiveFailureObjects(world);
+  assert.ok(projection);
+  assert.equal(projection.complete, true, 'the retained event array itself remains complete');
+  assert.equal(
+    projection.captureProjectionComplete,
+    false,
+    'a publish event without its retained creation/version cannot establish absence'
+  );
+  assert.equal(projection.captureProjectionReason, 'unlinked-published-artifact');
+  const record = projection.records.find(candidate => candidate.eventId === fixture.failure.id);
+  assert.ok(record);
+  assert.equal(record.laterCaptureStatus, 'unknown');
+  assert.equal(record.laterCapture, null);
+
+  const quest = getQuestTrail(world, founder).find(candidate =>
+    candidate.id === 'founder-source-archive-later-capture'
+  );
+  assert.ok(quest);
+  assert.equal(quest.progress, 1);
+  assert.equal(quest.complete, false);
+  assert.equal(quest.action, null);
+  assert.match(quest.blockedReason, /unlinked published artifact.*UNKNOWN/i);
+  assert.equal(world.revision, revision);
+  assert.equal(world.xp, xp);
+  assert.equal(world.events.length, eventCount);
+});
+
 test('inherited Source Archive metadata cannot be treated as proof that no later capture exists', async () => {
   const fixture = await worldWithFailure();
   const captured = await publishSourceArchive(fixture.world);
