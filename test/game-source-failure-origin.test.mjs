@@ -5,7 +5,7 @@ import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
 import { projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
 import { projectSourceObservationRecords, sourceObservationRequestMaterial } from '../game/research-records.mjs';
-import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, readGitHubSourceArchiveMetadata } from '../game/artifacts.mjs';
+import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from '../game/artifacts.mjs';
 
 const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
 const witness = { id: 'origin-witness', name: 'Witness', role: 'witness' };
@@ -267,49 +267,7 @@ test('a later server-rechecked capture of the same pinned target completes a two
   assert.equal(projection.captureProjectionComplete, true);
   const record = projection.records.find(candidate => candidate.eventId === fixture.failure.id);
   assert.ok(record);
-  const sourceCreation = captured.world.creations.find(creation => creation.id === captured.creationId);
-  const sourceMetadata = readGitHubSourceArchiveMetadata(sourceCreation.html);
-  const sourceVersion = sourceCreation.versions.find(version => version.version === 1) || sourceCreation;
-  const failureIndex = captured.world.events.findIndex(event => event.id === fixture.failure.id);
-  const publicationIndex = captured.world.events.findIndex(event => event.id === captured.publicationEvent.id);
-  const captureDiagnostics = {
-    creation: {
-      id: sourceCreation.id, kind: sourceCreation.kind, version: sourceCreation.version,
-      priorVersionCount: sourceCreation.versions.length, sourceVersionId: sourceVersion.id,
-      sourceVersionKind: sourceVersion.kind, sourceVersionIntent: sourceVersion.intent,
-      sourceVersionHasMarker: sourceVersion.html.includes('data-ngl-source-archive="v1"'),
-      sourceVersionReceipt: sourceVersion.receipt, sourceVersionPublishedAt: sourceVersion.publishedAt,
-      intentStartsWithPrefix: sourceVersion.intent.startsWith(GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX),
-      publishedAt: sourceCreation.publishedAt,
-      metadata: {
-        retrievalMode: sourceMetadata.retrievalMode, repository: sourceMetadata.repository,
-        commitSha: sourceMetadata.commitSha, path: sourceMetadata.path,
-        fetchedAt: sourceMetadata.fetchedAt, capturedAt: sourceMetadata.capturedAt
-      }
-    },
-    publication: {
-      id: captured.publicationEvent.id, type: captured.publicationEvent.type,
-      creationId: captured.publicationEvent.creationId, version: captured.publicationEvent.version,
-      at: captured.publicationEvent.at, actor: captured.publicationEvent.actor, index: publicationIndex
-    },
-    failure: {
-      id: fixture.failure.id, at: fixture.failure.at, actor: fixture.failure.actor,
-      repository: fixture.failure.repository, commitSha: fixture.failure.commitSha, path: fixture.failure.path,
-      index: failureIndex
-    },
-    manualMatch: {
-      actor: captured.publicationEvent.actor.id === fixture.failure.actor.id,
-      repository: sourceMetadata.repository === fixture.failure.repository,
-      commitSha: sourceMetadata.commitSha === fixture.failure.commitSha,
-      path: sourceMetadata.path === fixture.failure.path,
-      afterInHistory: publicationIndex > failureIndex,
-      fetchedAfterFailure: Date.parse(sourceMetadata.fetchedAt) > Date.parse(fixture.failure.at),
-      capturedAfterFailure: Date.parse(sourceMetadata.capturedAt) > Date.parse(fixture.failure.at),
-      eventAtEqualsPublishedAt: captured.publicationEvent.at === sourceCreation.publishedAt
-    },
-    eventOrder: captured.world.events.map((event,index)=>({index,type:event.type,id:event.id,creationId:event.creationId,version:event.version}))
-  };
-  assert.equal(record.laterCaptureStatus, 'observed', JSON.stringify(captureDiagnostics));
+  assert.equal(record.laterCaptureStatus, 'observed');
   assert.equal(record.laterCaptureStatusLabel, 'LATER SERVER-RECHECKED CAPTURE OBSERVED');
   assert.equal(record.laterCaptureCount, 1);
   assert.equal(record.laterCapture.creationId, captured.creationId);
