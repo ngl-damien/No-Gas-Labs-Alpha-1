@@ -2182,7 +2182,7 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out,
         '#sheet-content [data-moonshot-source-archive-failure-ledger="true"]'
     )
     expect(section).to_be_visible()
-    projection = page.evaluate("""async () => {
+    projection = page.evaluate("""async expectedEventId => {
       const response = await fetch('/api/state', {
         cache: 'no-store',
         credentials: 'same-origin'
@@ -2201,7 +2201,7 @@ def inspect_witness_moonshot_failure_history(page, failure_event_id, width, out,
         failureHistoryPosition: failureRecord?.historyPosition ?? null,
         failureVisiblePosition: failureRecord?.visiblePosition ?? null
       };
-    }""")
+    }""", failure_event_id)
     assert projection is not None
     assert projection["complete"] is False, (
         "The Witness fixture must retain an intentionally partial world projection."
