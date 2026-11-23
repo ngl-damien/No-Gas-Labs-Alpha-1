@@ -9341,9 +9341,11 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             has_touch=True,
             service_workers='block'
         )
+        cache_origin = '/'.join(url.split('/', 3)[:3])
         cache_context.add_init_script(
+            "if (window.top === window && location.origin === " + json.dumps(cache_origin) + ") { " +
             "localStorage.setItem('ngl.common-ground.shared-snapshot.v1', " +
-            json.dumps(cached_shared_snapshot_raw) + ");"
+            json.dumps(cached_shared_snapshot_raw) + "); }"
         )
         cache_page = cache_context.new_page()
         cache_page_errors = []
@@ -9430,9 +9432,19 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         assert not any(request['method'] == 'POST' for request in cache_api_requests), (
             'Cache-only inspection must not send a shared action.'
         )
-        assert not cache_page_errors, (
-            'The cache-only Field Kit journey must not produce browser errors: ' +
-            json.dumps(cache_page_errors)
+        expected_cache_sandbox_denial = (
+            "Failed to read the 'serviceWorker' property from 'Navigator': "
+            "Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag."
+        )
+        unexpected_cache_page_errors = [
+            error for error in cache_page_errors if error != expected_cache_sandbox_denial
+        ]
+        assert cache_page_errors.count(expected_cache_sandbox_denial) == 1 and not unexpected_cache_page_errors, (
+            'Only the exact service-worker denial from the opaque artifact frame may remain; the cache seeding '
+            'script must not touch sandboxed frames: ' + json.dumps({
+                'pageErrors': cache_page_errors,
+                'unexpectedPageErrors': unexpected_cache_page_errors
+            }, sort_keys=True)
         )
         cache_only_recovery_offer = {
             'viewerRole': 'witness',
