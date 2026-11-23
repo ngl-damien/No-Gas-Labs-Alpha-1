@@ -391,6 +391,14 @@ test('Source Archive failure writer refuses incomplete world snapshots before ap
     ['revision ahead of retained events', world => { world.revision = 1; }],
     ['retained events ahead of revision', world => {
       world.events.push({ id: 'existing-event', type: 'discover' });
+    }],
+    ['sparse retained event slot', world => {
+      world.revision = 1;
+      world.events.length = 1;
+    }],
+    ['null retained event slot', world => {
+      world.revision = 1;
+      world.events.push(null);
     }]
   ];
   for (const [label, mutate] of incompleteSnapshots) {
@@ -406,6 +414,28 @@ test('Source Archive failure writer refuses incomplete world snapshots before ap
     );
     assert.deepEqual(malformed, before, label + ' must remain unchanged');
   }
+
+  const accessorBacked = structuredClone(original);
+  accessorBacked.revision = 1;
+  let accessorReads = 0;
+  Object.defineProperty(accessorBacked.events, '0', {
+    enumerable: true,
+    configurable: true,
+    get() {
+      accessorReads += 1;
+      return { id: 'accessor-event', type: 'discover' };
+    }
+  });
+  assert.throws(
+    () => recordSourceArchiveAttemptFailure(accessorBacked, actor, details, {
+      now: '2026-11-23T12:00:01.000Z'
+    }),
+    error => error?.code === 'INVALID_WORLD',
+    'accessor-backed retained event slots must be rejected'
+  );
+  assert.equal(accessorReads, 0, 'reject an accessor without invoking it');
+  assert.equal(accessorBacked.revision, 1);
+  assert.equal(accessorBacked.events.length, 1);
 });
 
 test('Source Archive preview mismatch is retained as a rejected non-progression world event', async t => {
