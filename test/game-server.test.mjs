@@ -4152,3 +4152,88 @@ test('stored-history validation accepts only complete response-position metadata
     /filtered|history position/i
   );
 });
+
+
+test('a later shared server-rechecked Source Archive publication links the exact prior failure and completes a no-extra-XP Founder quest', async t => {
+  let attempts = 0;
+  let capture;
+  capture = sourceArchiveCaptureFixture(
+    'export const SOURCE_ARCHIVE_RECOVERY = "same-pinned-target";\\n',
+    {
+      path: 'test/fixtures/failure-ledger.mjs',
+      fetchImpl: async () => {
+        attempts += 1;
+        return attempts === 1
+          ? new Response('temporary upstream outage', { status: 503 })
+          : capture.response();
+      }
+    }
+  );
+  const f = await fixture(t, undefined, { githubSourceFetch: capture.fetchImpl });
+  const founder = f.client();
+  await founder.login();
+
+  const failed = await founder.request('/api/action', {
+    ...capture.action, requestId: 'source-archive-failure-then-later-capture-001'
+  });
+  assert.equal(failed.response.status, 502);
+  const afterFailure = (await founder.request('/api/state')).body;
+  const failureEvent = afterFailure.world.events.find(event =>
+    event.type === 'source-archive-attempt-failed'
+  );
+  assert.ok(failureEvent);
+  assert.equal(failureEvent.retryable, true);
+  assert.equal(afterFailure.world.xp, 0);
+  const beforeCapture = projectSourceArchiveFailureObjects(afterFailure.world);
+  const beforeRecord = beforeCapture.records.find(record => record.eventId === failureEvent.id);
+  assert.equal(beforeCapture.captureProjectionComplete, true);
+  assert.equal(beforeRecord.laterCaptureStatus, 'not-observed');
+
+  await new Promise(resolve => setTimeout(resolve, 25));
+  const draft = await founder.request('/api/action', {
+    ...capture.action, requestId: 'source-archive-later-capture-002'
+  });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const afterDraft = (await founder.request('/api/state')).body;
+  assert.equal(afterDraft.world.xp, 0);
+  const draftProjection = projectSourceArchiveFailureObjects(afterDraft.world);
+  assert.equal(draftProjection.records.find(record => record.eventId === failureEvent.id).laterCaptureStatus, 'not-observed');
+
+  const publication = await founder.request('/api/action', {
+    type: 'publish',
+    draftId: draft.body.result.draftId,
+    expectedVersion: 0,
+    requestId: 'source-archive-later-capture-publish-003'
+  });
+  assert.equal(publication.response.status, 200, JSON.stringify(publication.body));
+  const state = (await founder.request('/api/state')).body;
+  const projection = projectSourceArchiveFailureObjects(state.world);
+  assert.equal(projection.captureProjectionComplete, true);
+  const record = projection.records.find(candidate => candidate.eventId === failureEvent.id);
+  assert.ok(record);
+  assert.equal(record.laterCaptureStatus, 'observed');
+  assert.equal(record.laterCaptureCount, 1);
+  assert.equal(record.laterCapture.creationId, draft.body.result.draftId);
+  assert.equal(record.laterCapture.version, 1);
+  assert.equal(record.laterCapture.publicationEventId, state.world.events.at(-1).id);
+  assert.equal(record.laterCapture.repository, failureEvent.repository);
+  assert.equal(record.laterCapture.commitSha, failureEvent.commitSha);
+  assert.equal(record.laterCapture.path, failureEvent.path);
+  assert.ok(Date.parse(record.laterCapture.fetchedAt) > Date.parse(failureEvent.at));
+  assert.ok(Date.parse(record.laterCapture.capturedAt) > Date.parse(failureEvent.at));
+  assert.ok(record.laterCapture.publicationPosition > record.historyPosition);
+
+  const quest = getQuestTrail(state.world, { id: 'damien', role: 'founder' }).find(candidate =>
+    candidate.id === 'founder-source-archive-later-capture'
+  );
+  assert.ok(quest);
+  assert.equal(quest.target, 2);
+  assert.equal(quest.progress, 2);
+  assert.equal(quest.complete, true);
+  assert.deepEqual(quest.evidenceIds, [failureEvent.id, state.world.events.at(-1).id]);
+  assert.equal(quest.countsForQuestkeeper, false);
+  assert.match(quest.interpretation, /same repository.*full commit SHA.*path.*expected.*not retained.*not proof.*no XP/i);
+  assert.equal(state.world.xp, 100);
+  assert.equal(capture.calls.length, 2);
+  assert.deepEqual(capture.calls.map(call => call.url), [capture.apiUrl, capture.apiUrl]);
+});
