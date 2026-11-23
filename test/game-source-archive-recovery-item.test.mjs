@@ -5,6 +5,7 @@ import { createWorld, applyAction, publicWorld, validateWorld } from '../game/mo
 import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
 import { projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
+import { createSharedSnapshotEnvelope, parseSharedSnapshotEnvelope } from '../game/shared-snapshot.mjs';
 import { recordSourceArchiveAttemptFailure } from '../game/source-archive-failures.mjs';
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from '../game/artifacts.mjs';
 
@@ -488,9 +489,25 @@ test('a role-filtered shared snapshot preserves a pending Recovery Ledger offer 
   const offerEvent = offered.world.events.at(-1);
   assert.equal(offerEvent.type, 'field-item-transfer-offered');
 
-  const witnessView = publicWorld(offered.world, witness);
+  const posted = await applyAction(offered.world, {
+    type: 'post-message',
+    text: 'The archive should preserve an offer without hiding its history boundary.'
+  }, founder, { now: '2026-11-23T10:00:12.000Z' });
+  const reported = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'other',
+    details: 'Keep this report private to its author.'
+  }, witness, { now: '2026-11-23T10:00:13.000Z' });
+  assert.equal(reported.world.events.at(-1).type, 'message-reported');
+  assert.equal(reported.world.xp, offered.world.xp,
+    'Commons posting and reporting do not award XP.');
+
+  const witnessView = publicWorld(reported.world, witness);
   assert.equal(witnessView.revision > witnessView.events.length, true,
     'The Witness view intentionally omits private draft events.');
+  assert.equal(witnessView.events.some(event => event.type === 'message-reported'), true,
+    'The author can inspect their own report in the live projection.');
   assert.equal(witnessView.historyCoverage?.schema, 'ngl.public-world-history.v1');
   assert.equal(witnessView.historyCoverage?.omittedEventCount, witnessView.revision - witnessView.events.length);
   assert.equal(witnessView.historyCoverage?.omittedEventTypes?.draft, 2);
@@ -547,13 +564,52 @@ test('a role-filtered shared snapshot preserves a pending Recovery Ledger offer 
   assert.equal(noCaptureRecord.laterCaptureStatus, 'unknown',
     'Partial history must never turn a missing positive match into a negative absence claim.');
 
-  const founderResponse = publicWorld(offered.world, founder);
+  const snapshotEnvelope = createSharedSnapshotEnvelope({
+    world: witnessView,
+    viewer: {
+      id: witness.id,
+      name: witness.name,
+      role: witness.role,
+      position: { x: 120, y: 80 }
+    }
+  }, { now: 1234 });
+  assert.ok(snapshotEnvelope,
+    'The bounded offline snapshot should preserve a valid response-only coverage receipt.');
+  const cachedWorld = snapshotEnvelope.world;
+  assert.equal(cachedWorld.events.some(event => event.type === 'message-reported'), false,
+    'Offline public cache continues to redact private moderation reports.');
+  assert.equal(cachedWorld.historyCoverage.omittedEventTypes.draft, 2);
+  assert.equal(cachedWorld.historyCoverage.omittedEventTypes['message-reported'], 1,
+    'The cache records the additional report event it deliberately removes.');
+  assert.equal(cachedWorld.historyCoverage.omittedEventCount,
+    cachedWorld.revision - cachedWorld.events.length);
+  const cachedRecoveryProjection = projectSourceArchiveFailureObjects(cachedWorld, {
+    includeRecoveryLinks: true
+  });
+  assert.equal(cachedRecoveryProjection.complete, false);
+  assert.equal(cachedRecoveryProjection.captureProjectionComplete, false);
+  assert.equal(cachedRecoveryProjection.recoveryLinkScanComplete, true);
+  assert.equal(cachedRecoveryProjection.recoveryLinks.length, 1);
+  assert.equal(projectCharacter(cachedWorld, witness).fieldItemTransferOffers.length, 1,
+    'The designated recipient can inspect the exact pending offer from the offline cache.');
+  const restoredEnvelope = parseSharedSnapshotEnvelope(JSON.stringify(snapshotEnvelope));
+  assert.ok(restoredEnvelope,
+    'The persisted offline envelope must validate the exact coverage counts.');
+  assert.equal(projectCharacter(restoredEnvelope.world, witness).fieldItemTransferOffers.length, 1);
+  const tamperedEnvelope = structuredClone(snapshotEnvelope);
+  tamperedEnvelope.world.historyCoverage.omittedEventTypes.publish = 1;
+  assert.equal(parseSharedSnapshotEnvelope(JSON.stringify(tamperedEnvelope)), null,
+    'The offline cache must reject coverage claims that hide publication events.');
+
+  const founderResponse = publicWorld(reported.world, founder);
   const canonicalFounderResponse = await validateWorld(founderResponse);
   assert.equal(Object.hasOwn(canonicalFounderResponse, 'historyCoverage'), false,
     'Response-only coverage metadata must be stripped before canonical import.');
   assert.ok(canonicalFounderResponse.events.every(event => !Object.hasOwn(event, 'historyPosition')),
     'Response-only global positions must also be stripped before canonical import.');
-  await validateWorld(offered.world);
+  await validateWorld(reported.world);
   await assert.rejects(validateWorld(witnessView), error => error.code === 'INVALID_WORLD',
     'A role-filtered response snapshot must not be imported as canonical world state.');
+  await assert.rejects(validateWorld(restoredEnvelope.world), error => error.code === 'INVALID_WORLD',
+    'An offline partial projection must remain read-only and non-canonical.');
 });
