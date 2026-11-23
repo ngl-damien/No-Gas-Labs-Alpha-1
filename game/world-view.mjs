@@ -340,11 +340,16 @@ function projectServerRecheckedSourceArchivePublications(world,events,eventCount
   const version=ownDataValue(event,'version');
   if(typeof creationId!=='string'||!Number.isSafeInteger(version)||version<1){
    complete=false;
+   reason||='unlinked-published-artifact';
    continue;
   }
   const key=JSON.stringify([creationId,version]);
   if(!sourceVersions.has(key)){
-   if(sourceCreationIds.has(creationId))complete=false;
+   const retainedCreationCount=creationIdCounts.get(creationId)||0;
+   if(sourceCreationIds.has(creationId)||retainedCreationCount!==1){
+    complete=false;
+    reason||='unlinked-published-artifact';
+   }
    continue;
   }
   const publications=publicationRows.get(key)||[];
