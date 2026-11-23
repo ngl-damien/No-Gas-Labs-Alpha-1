@@ -198,6 +198,130 @@ test('a unique later server-rechecked capture becomes a forgeable, equippable Re
   assert.deepEqual(partialProjection.recoveryLinks, []);
 });
 
+test('a Recovery Ledger can complete the four-step Armor Bearer handoff without XP or authority', async () => {
+  const fixture = await worldWithFailure();
+  const capture = await publishSourceArchive(fixture.world);
+  const publication = capture.publicationEvent;
+
+  const forged = await applyAction(capture.world, {
+    type: 'forge-field-item',
+    slotId: 'recovery',
+    sourceEventId: publication.id
+  }, founder, { now: '2026-11-23T10:00:08.000Z' });
+  const forgeEvent = forged.world.events.at(-1);
+  const founderEquipped = await applyAction(forged.world, {
+    type: 'equip-field-item',
+    slotId: 'recovery',
+    sourceEventId: forgeEvent.id
+  }, founder, { now: '2026-11-23T10:00:09.000Z' });
+  const founderEquipEvent = founderEquipped.world.events.at(-1);
+  const founderUnequipped = await applyAction(founderEquipped.world, {
+    type: 'unequip-field-item',
+    slotId: 'recovery'
+  }, founder, { now: '2026-11-23T10:00:10.000Z' });
+  const founderUnequipEvent = founderUnequipped.world.events.at(-1);
+
+  const offered = await applyAction(founderUnequipped.world, {
+    type: 'offer-field-item-transfer',
+    itemEventId: forgeEvent.id,
+    recipientId: witness.id,
+    recipientRole: witness.role
+  }, founder, { now: '2026-11-23T10:00:11.000Z', allowTransfers: true });
+  const offerEvent = offered.world.events.at(-1);
+  assert.equal(offerEvent.type, 'field-item-transfer-offered');
+  assert.equal(offerEvent.itemEventId, forgeEvent.id);
+  assert.equal(offerEvent.recipientId, witness.id);
+  assert.equal(offered.world.xp, capture.world.xp);
+  const offeredChain = getQuestTrail(offered.world, founder).find(item =>
+    item.id === 'founder-armor-bearer-delivery'
+  );
+  assert.deepEqual([offeredChain.progress, offeredChain.target, offeredChain.complete], [2, 4, false]);
+  assert.deepEqual(offeredChain.evidenceIds, [forgeEvent.id, founderEquipEvent.id]);
+
+  const accepted = await applyAction(offered.world, {
+    type: 'accept-field-item-transfer',
+    offerId: offerEvent.offerId
+  }, witness, { now: '2026-11-23T10:00:12.000Z', allowTransfers: true });
+  const transferEvent = accepted.world.events.at(-1);
+  assert.equal(transferEvent.type, 'field-item-transferred');
+  assert.equal(transferEvent.actor.id, witness.id);
+  assert.equal(transferEvent.fromActorId, founder.id);
+  assert.equal(transferEvent.itemEventId, forgeEvent.id);
+  assert.equal(accepted.world.xp, capture.world.xp);
+
+  const acceptedChain = getQuestTrail(accepted.world, founder).find(item =>
+    item.id === 'founder-armor-bearer-delivery'
+  );
+  assert.deepEqual([acceptedChain.progress, acceptedChain.target, acceptedChain.complete], [3, 4, false]);
+  assert.deepEqual(acceptedChain.evidenceIds, [
+    forgeEvent.id, founderEquipEvent.id, transferEvent.id
+  ]);
+  assert.equal(acceptedChain.action, null);
+
+  const founderAfterAcceptance = projectCharacter(accepted.world, founder);
+  const witnessAfterAcceptance = projectCharacter(accepted.world, witness);
+  assert.equal(founderAfterAcceptance.fieldInventoryTotal, 0);
+  assert.equal(witnessAfterAcceptance.fieldInventoryTotal, 1);
+  const transferredItem = witnessAfterAcceptance.fieldInventory.find(item =>
+    item.eventId === forgeEvent.id
+  );
+  assert.ok(transferredItem);
+  assert.equal(transferredItem.ownerId, witness.id);
+  assert.equal(transferredItem.creatorId, founder.id);
+  assert.equal(transferredItem.sourceRecovery.failureEventId, fixture.failure.id);
+  assert.equal(transferredItem.sourceRecovery.publicationEventId, publication.id);
+  assert.equal(transferredItem.transferHistory[0].status, 'accepted');
+  assert.equal(founderAfterAcceptance.skills.find(skill => skill.id === 'armor-bearer').count, 1);
+  assert.equal(witnessAfterAcceptance.skills.find(skill => skill.id === 'armor-bearer').count, 0);
+
+  const recipientEquipped = await applyAction(accepted.world, {
+    type: 'equip-field-item',
+    slotId: 'recovery',
+    sourceEventId: forgeEvent.id
+  }, witness, { now: '2026-11-23T10:00:13.000Z' });
+  const recipientEquipEvent = recipientEquipped.world.events.at(-1);
+  assert.equal(recipientEquipEvent.type, 'field-item-equipped');
+  assert.equal(recipientEquipEvent.actor.id, witness.id);
+  assert.equal(recipientEquipEvent.sourceEventId, forgeEvent.id);
+  assert.equal(recipientEquipped.world.xp, capture.world.xp);
+
+  const founderFinal = projectCharacter(recipientEquipped.world, founder);
+  const witnessFinal = projectCharacter(recipientEquipped.world, witness);
+  assert.equal(founderFinal.fieldInventoryTotal, 0);
+  assert.equal(witnessFinal.fieldInventoryTotal, 1);
+  assert.equal(witnessFinal.equipment.find(slot => slot.id === 'recovery').source.eventId, forgeEvent.id);
+  const finalItem = witnessFinal.fieldInventory.find(item => item.eventId === forgeEvent.id);
+  assert.equal(finalItem.creatorId, founder.id);
+  assert.equal(finalItem.ownerId, witness.id);
+  assert.equal(finalItem.sourceRecovery.failureEventId, fixture.failure.id);
+  assert.equal(finalItem.sourceRecovery.publicationEventId, publication.id);
+  assert.equal(finalItem.transferHistory[0].transferEventId, transferEvent.id);
+
+  const founderChain = getQuestTrail(recipientEquipped.world, founder).find(item =>
+    item.id === 'founder-armor-bearer-delivery'
+  );
+  assert.deepEqual([founderChain.progress, founderChain.target, founderChain.complete], [4, 4, true]);
+  assert.deepEqual(founderChain.evidenceIds, [
+    forgeEvent.id, founderEquipEvent.id, transferEvent.id, recipientEquipEvent.id
+  ]);
+  assert.equal(founderChain.countsForQuestkeeper, false);
+  const witnessChain = getQuestTrail(recipientEquipped.world, witness).find(item =>
+    item.id === 'witness-armor-bearer-delivery'
+  );
+  assert.deepEqual([witnessChain.progress, witnessChain.target, witnessChain.complete], [2, 4, false]);
+  assert.deepEqual(witnessChain.evidenceIds, [forgeEvent.id, recipientEquipEvent.id]);
+  assert.deepEqual(witnessChain.action, { type: 'location', id: 'forge' });
+  assert.equal(founderFinal.skills.find(skill => skill.id === 'armor-bearer').count, 1);
+  assert.equal(witnessFinal.skills.find(skill => skill.id === 'armor-bearer').count, 0);
+
+  const recoveryObjective = recoveryQuest(recipientEquipped.world, fixture.failure.id);
+  assert.deepEqual([recoveryObjective.progress, recoveryObjective.target, recoveryObjective.complete], [4, 4, true]);
+  assert.equal(recoveryObjective.countsForQuestkeeper, false);
+  assert.equal(recipientEquipped.world.xp, capture.world.xp);
+  assert.equal(founderUnequipEvent.type, 'field-item-unequipped');
+  await validateWorld(recipientEquipped.world);
+});
+
 test('client-reported, non-retryable, shared-failure and ambiguous-capture histories cannot mint a Recovery Ledger source', async () => {
   const clientReported = await worldWithFailure();
   const clientCapture = await publishSourceArchive(clientReported.world, {
