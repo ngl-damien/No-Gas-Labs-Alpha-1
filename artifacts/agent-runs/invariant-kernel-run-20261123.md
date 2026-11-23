@@ -4,7 +4,7 @@
 - Repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
 - Base: `origin/main` at `21677d88cb027f3d16adacf92dbdd0ec08e96dbd`.
 - Local branch: `feat/unified-invariant-core`.
-- Authorization: user requested this feature branch and explicitly withheld push to `main`; no remote writes were performed.
+- Authorization: user requested this feature branch and explicitly withheld changes to `main`; later explicitly approved pushing the feature branch and opening PR #723. No merge is authorized yet.
 - Scope: unify canonical doctrine and skills, add a typed gate evaluator/mission ledger, add PR separation workflow, test locally.
 - Preflight: `artifacts/agent-runs/worker-a-invariant-kernel-final5-20261123.json` (ready; exact source-target hashes and checkpoint receipt; no warnings or failures).
 
@@ -23,4 +23,14 @@
 - `close` is a read-only closure decision: it requires a matching anchored intact head, latest completed gate, scheduler JSON with `ready=true`, named owner and no blockers, and evidence through the declared S0–S8 pay-loop stage. It does not update the anchor or append a closure event.
 - An explicit `--expected-head` is caller-supplied evidence; an `--anchor-ref` is required to be outside the ledger directory but still depends on the external store's independent administration.
 - The CI separation workflow itself must be protected as a required check on the hosting platform; a PR-controlled workflow alone cannot prove its own independence.
-- No commit, push, merge, or main-branch change occurred. The feature branch remains local; obtain explicit user approval before pushing it.
+- At initial completion there was no commit or push. Subsequently, authorized commit `03adcc847ffc533af27486d5ca5b08a8daa75124` was pushed to `feat/unified-invariant-core`, opening PR #723. `main` remains unchanged and PR #723 remains unmerged.
+
+## Browser-acceptance investigation and fix (2026-11-23)
+
+- PR #723 baseline head: `03adcc847ffc533af27486d5ca5b08a8daa75124`; failed hosted browser run: `45286359957`.
+- Root cause: `origin/main` contains `c34d5e7ed` (`feat(world): station Contradiction Clerk at the Evidence Archive`), which mounts the existing `#contradiction-clerk-npc` in `openEvidenceArchive` and not Guild Hall. The older desktop journey still opened Guild Hall before asserting the selector at `scripts/verify-browser.py:472–473`. The selector and visible text were not renamed; the journey had stale location assumptions.
+- Baseline evidence: direct invocation of the unchanged `basic(..., 'desktop')` journey on a detached `origin/main` worktree at `21677d88cb027f3d16adacf92dbdd0ec08e96dbd` failed at the exact `BOUNDED ADVERSARY` assertion. A full local baseline run exited earlier at the separate offline-network assertion (line 5017) under system Chromium; that earlier result was not treated as evidence for the Clerk step.
+- Fix on the feature branch: assert the Clerk selector is absent in Guild Hall; navigate to Evidence Archive; retain both original Clerk text assertions verbatim there. No assertion was weakened, skipped, or deleted.
+- Local verification after fix: focused desktop journey passed; `npm test` reported 1,444 passed, 0 failed, 0 skipped (26,505.472595 ms); nine kernel tests passed; Python compilation and `git diff --check` passed.
+- Preflight receipt: `artifacts/agent-runs/worker-a-browser-failure-final2-20261123.json` (targeting the modified browser verifier; expected ready with no warnings or failures).
+- Next: commit and push the fix only to `feat/unified-invariant-core` as authorized, then inspect all checks on the updated PR head. Do not merge until every check is green and Damien explicitly approves the merge.

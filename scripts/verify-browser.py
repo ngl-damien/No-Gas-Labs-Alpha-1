@@ -469,6 +469,12 @@ def basic(page,url,out,label):
     page.locator('#places-button').click()
     walk_to_location(page, "Guild Hall")
     page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+    expect(page.locator('#contradiction-clerk-npc')).to_have_count(0)
+    close_sheet(page)
+    page.locator('#places-button').click()
+    # The Clerk was intentionally moved from Guild Hall to the Evidence Archive.
+    walk_to_location(page, "Evidence Archive")
+    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
     page.get_by_role('button',name='Challenge The real comic lives here · v1 →',exact=True).click()
