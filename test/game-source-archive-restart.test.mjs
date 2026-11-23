@@ -705,8 +705,10 @@ test('a server-observed Source Archive failure unlocks a Recovery Ledger whose p
   const founderAfterSecondRestart = (await founder.request('/api/state')).body;
   assert.equal(founderAfterSecondRestart.world.revision, pendingRevision);
   assert.deepEqual(founderAfterSecondRestart.world.events.map(event => event.id), pendingEventIds);
-  assert.equal(founderAfterSecondRestart.world.drafts.length, 1,
-    'the Founder retains the private draft across the same restart');
+  assert.equal(founderAfterSecondRestart.world.drafts.length, 0,
+    'publication consumes the private draft rather than leaving an active draft behind');
+  assert.equal(founderAfterSecondRestart.world.events.filter(event => event.type === 'draft').length, 1,
+    'the Founder retains the private draft event in Chronicle after publication');
 
   const witnessStreamAfterSecondRestart = await witness.stream();
   streams.push(witnessStreamAfterSecondRestart);
