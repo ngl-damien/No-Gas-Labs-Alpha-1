@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { gunzipSync } from 'node:zlib';
 import { createGameServer, validateStoredWorldHistory } from '../game/server.mjs';
+import { recordSourceArchiveAttemptFailure } from '../game/source-archive-failures.mjs';
 import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
 import { GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR, buildGitHubSourceArchiveBody } from '../game/artifacts.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
@@ -362,6 +363,49 @@ test('server-rechecked Source Archive bytes stay private across HTTP and SSE unt
   const artifact = await witness.request('/api/artifacts/' + creation.id + '?version=1');
   assert.equal(artifact.response.status, 200);
   assert.equal(artifact.body, retainedHtml);
+});
+
+test('Source Archive failure writer refuses incomplete world snapshots before appending', () => {
+  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const details = {
+    requestIdDigest: 'a'.repeat(64),
+    actionDigest: 'b'.repeat(64),
+    repository: 'ngl-damien/No-Gas-Labs-Alpha-1',
+    commitSha: 'f'.repeat(40),
+    path: 'test/fixtures/source.mjs',
+    failureCode: 'GITHUB_SOURCE_UNAVAILABLE'
+  };
+  const original = createWorld({
+    id: 'source-archive-failure-writer-world',
+    now: '2026-11-23T12:00:00.000Z'
+  });
+  const accepted = recordSourceArchiveAttemptFailure(original, actor, details, {
+    now: '2026-11-23T12:00:01.000Z'
+  });
+  assert.equal(accepted.world.revision, accepted.world.events.length);
+  assert.equal(accepted.world.events.length, 1);
+  assert.equal(original.revision, 0);
+  assert.equal(original.events.length, 0);
+
+  const incompleteSnapshots = [
+    ['revision ahead of retained events', world => { world.revision = 1; }],
+    ['retained events ahead of revision', world => {
+      world.events.push({ id: 'existing-event', type: 'discover' });
+    }]
+  ];
+  for (const [label, mutate] of incompleteSnapshots) {
+    const malformed = structuredClone(original);
+    mutate(malformed);
+    const before = structuredClone(malformed);
+    assert.throws(
+      () => recordSourceArchiveAttemptFailure(malformed, actor, details, {
+        now: '2026-11-23T12:00:01.000Z'
+      }),
+      error => error?.code === 'INVALID_WORLD',
+      label
+    );
+    assert.deepEqual(malformed, before, label + ' must remain unchanged');
+  }
 });
 
 test('Source Archive preview mismatch is retained as a rejected non-progression world event', async t => {
