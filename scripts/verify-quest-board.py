@@ -8261,9 +8261,85 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             service_workers='block'
         )
         inspection_page = inspection_context.new_page()
+        inspection_cdp = inspection_context.new_cdp_session(inspection_page)
+        inspection_cdp_contexts = {}
+        inspection_cdp_frames = {}
+        inspection_cdp_exceptions = []
+
+        def capture_inspection_execution_context(event):
+            context_info = event.get('context') or {}
+            auxiliary = context_info.get('auxData') or {}
+            context_id = context_info.get('id')
+            if context_id is not None:
+                inspection_cdp_contexts[context_id] = {
+                    'frameId': auxiliary.get('frameId'),
+                    'isDefault': auxiliary.get('isDefault'),
+                    'type': context_info.get('type'),
+                    'name': context_info.get('name'),
+                    'origin': context_info.get('origin')
+                }
+
+        def capture_inspection_frame_attached(event):
+            frame_id = event.get('frameId')
+            if frame_id:
+                current = inspection_cdp_frames.setdefault(frame_id, {'id': frame_id})
+                current['parentId'] = event.get('parentFrameId')
+
+        def capture_inspection_frame_navigated(event):
+            frame_info = event.get('frame') or {}
+            frame_id = frame_info.get('id')
+            if frame_id:
+                current = inspection_cdp_frames.setdefault(frame_id, {'id': frame_id})
+                current.update({
+                    'parentId': frame_info.get('parentId'),
+                    'name': frame_info.get('name') or '',
+                    'url': frame_info.get('url') or '',
+                    'securityOrigin': frame_info.get('securityOrigin') or ''
+                })
+
+        def capture_inspection_cdp_exception(event):
+            details = event.get('exceptionDetails') or {}
+            context_id = details.get('executionContextId')
+            context_info = inspection_cdp_contexts.get(context_id) or {}
+            frame_id = context_info.get('frameId')
+            frame_info = inspection_cdp_frames.get(frame_id) or {}
+            exception = details.get('exception') or {}
+            description = exception.get('description') or ''
+            first_line = description.splitlines()[0] if description else ''
+            if first_line.startswith('SecurityError: '):
+                exception_name = 'SecurityError'
+                exception_message = first_line[len('SecurityError: '):]
+            else:
+                exception_name = exception.get('className')
+                exception_message = first_line or details.get('text') or ''
+            inspection_cdp_exceptions.append({
+                'executionContextId': context_id,
+                'executionContextName': context_info.get('name'),
+                'executionContextType': context_info.get('type'),
+                'executionContextIsDefault': context_info.get('isDefault'),
+                'frameId': frame_id,
+                'frameNameAtException': frame_info.get('name'),
+                'frameUrlAtException': frame_info.get('url'),
+                'frameParentId': frame_info.get('parentId'),
+                'exceptionName': exception_name,
+                'message': exception_message,
+                'description': first_line,
+                'scriptUrl': details.get('url') or '',
+                'lineNumber': details.get('lineNumber'),
+                'columnNumber': details.get('columnNumber'),
+                'exceptionText': details.get('text') or ''
+            })
+
+        inspection_cdp.on('Runtime.executionContextCreated', capture_inspection_execution_context)
+        inspection_cdp.on('Page.frameAttached', capture_inspection_frame_attached)
+        inspection_cdp.on('Page.frameNavigated', capture_inspection_frame_navigated)
+        inspection_cdp.on('Runtime.exceptionThrown', capture_inspection_cdp_exception)
+        inspection_cdp.send('Page.enable')
+        inspection_cdp.send('Runtime.enable')
         inspection_page.on('pageerror', lambda error: inspection_errors.append({
             'name': getattr(error, 'name', None),
-            'message': str(error)
+            'message': str(error),
+            'stack': getattr(error, 'stack', None)
         }))
         inspection_page.goto(url, wait_until='networkidle')
         inspection_page.locator('#start-shared').tap()
@@ -8367,9 +8443,100 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         assert lead_after['xp'] == observatory_after['xp'], (
             'Opening the unretained failure-context form must award no XP.'
         )
-        assert not inspection_errors, (
-            'Quest Board to Evidence Archive to Source Observatory lead produced page errors: ' +
-            json.dumps(inspection_errors)
+        inspection_artifact_frames = [
+            frame for frame in inspection_page.frames if frame != inspection_page.main_frame
+        ]
+        assert len(inspection_artifact_frames) == 1, (
+            'The failure-context form must retain exactly one isolated artifact frame: ' +
+            json.dumps([{'name': frame.name, 'url': frame.url} for frame in inspection_artifact_frames])
+        )
+        inspection_artifact_sandbox_probe = inspection_artifact_frames[0].evaluate("""() => {
+          let serviceWorkerAccess = 'accessible';
+          try {
+            void navigator.serviceWorker;
+          } catch (error) {
+            serviceWorkerAccess = error.name;
+          }
+          return { origin: self.origin, serviceWorkerAccess };
+        }""")
+        assert inspection_artifact_sandbox_probe == {
+            'origin': 'null', 'serviceWorkerAccess': 'SecurityError'
+        }, (
+            'The failure-context artifact must keep an opaque origin and deny service-worker access: ' +
+            json.dumps(inspection_artifact_sandbox_probe, sort_keys=True)
+        )
+
+        inspection_frame_tree = inspection_cdp.send('Page.getFrameTree')
+        inspection_frame_tree_root = inspection_frame_tree.get('frameTree') or {}
+        inspection_main_frame = inspection_frame_tree_root.get('frame') or {}
+        inspection_main_frame_id = inspection_main_frame.get('id')
+
+        def collect_inspection_frame_tree(node):
+            frame_info = node.get('frame') or {}
+            frame_id = frame_info.get('id')
+            if frame_id:
+                current = inspection_cdp_frames.setdefault(frame_id, {'id': frame_id})
+                current.update({
+                    'parentId': frame_info.get('parentId'),
+                    'name': frame_info.get('name') or '',
+                    'url': frame_info.get('url') or '',
+                    'securityOrigin': frame_info.get('securityOrigin') or ''
+                })
+            for child in node.get('childFrames') or []:
+                collect_inspection_frame_tree(child)
+
+        collect_inspection_frame_tree(inspection_frame_tree_root)
+        for exception in inspection_cdp_exceptions:
+            final_frame = inspection_cdp_frames.get(exception.get('frameId')) or {}
+            exception['frameNameAtEnd'] = final_frame.get('name')
+            exception['frameUrlAtEnd'] = final_frame.get('url')
+            exception['frameParentIdAtEnd'] = final_frame.get('parentId')
+        inspection_artifact_frame_ids = [
+            frame_id for frame_id, frame in inspection_cdp_frames.items()
+            if frame.get('parentId') == inspection_main_frame_id
+            and (frame.get('name') == 'artifact-frame' or frame.get('url') in ('about:blank', 'about:srcdoc'))
+        ]
+        inspection_frame_runtime_errors = {
+            'mainFrameId': inspection_main_frame_id,
+            'artifactFrameIds': inspection_artifact_frame_ids,
+            'frames': list(inspection_cdp_frames.values()),
+            'exceptions': inspection_cdp_exceptions
+        }
+        expected_sandbox_denial = (
+            "Failed to read the 'serviceWorker' property from 'Navigator': "
+            "Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag."
+        )
+        unexpected_inspection_page_errors = [
+            error for error in inspection_errors
+            if error.get('name') != 'SecurityError' or error.get('message') != expected_sandbox_denial
+        ]
+        unexpected_inspection_cdp_errors = [
+            error for error in inspection_cdp_exceptions
+            if error.get('frameId') not in inspection_artifact_frame_ids
+            or (error.get('frameParentId') or error.get('frameParentIdAtEnd')) != inspection_main_frame_id
+            or error.get('exceptionName') != 'SecurityError'
+            or error.get('message') != expected_sandbox_denial
+            or (error.get('frameUrlAtException') or error.get('frameUrlAtEnd')) not in ('about:blank', 'about:srcdoc')
+        ]
+        assert len(inspection_artifact_frame_ids) == 1, (
+            'The failure-context sandbox frame must be attributable to the main inspection page: ' +
+            json.dumps(inspection_frame_runtime_errors, sort_keys=True)
+        )
+        assert len(inspection_errors) == len(inspection_cdp_exceptions), (
+            'Every inspection-page error must map to one CDP exception with a frame identity: ' +
+            json.dumps({
+                'pageErrors': inspection_errors,
+                'frameRuntimeErrors': inspection_frame_runtime_errors
+            }, sort_keys=True)
+        )
+        assert not unexpected_inspection_page_errors and not unexpected_inspection_cdp_errors, (
+            'Only the exact service-worker denial from the opaque artifact frame may be classified as a sandbox boundary event: ' +
+            json.dumps({
+                'pageErrors': inspection_errors,
+                'cdpExceptions': inspection_cdp_exceptions,
+                'unexpectedPageErrors': unexpected_inspection_page_errors,
+                'unexpectedCdpErrors': unexpected_inspection_cdp_errors
+            }, sort_keys=True)
         )
         retry_diagnostics['questRouteInspection'] = {
             'objectiveId': 'founder-source-archive-later-capture',
@@ -8382,6 +8549,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'leadUnretained': True,
             'readOnly': shared_world_snapshot(lead_after) == shared_world_snapshot(lead_before),
             'xpDelta': lead_after['xp'] - lead_before['xp'],
+            'artifactSandboxProbe': inspection_artifact_sandbox_probe,
+            'frameRuntimeErrors': inspection_frame_runtime_errors,
             'pageErrors': inspection_errors
         }
 
