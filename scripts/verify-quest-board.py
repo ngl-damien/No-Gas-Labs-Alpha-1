@@ -8861,7 +8861,14 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         publication_link = evidence_details.locator(
             '[data-quest-evidence-event-link="' + publication_event_id + '"]'
         )
-        publication_entry = evidence_details.locator('li').filter(has=publication_link)
+        # Resolve the event button to its own parent row. A has= locator
+        # created from the ancestor evidence_details panel is not relative to
+        # each candidate <li>, so it can select no row even when the event
+        # button is present.
+        publication_entry = publication_link.locator('xpath=..')
+        expect(publication_entry).to_have_count(1)
+        expect(publication_entry).to_contain_text('creation ' + published_creation_id)
+        expect(publication_entry).to_contain_text('version 1')
         version_link = publication_entry.get_by_role(
             'button', name='Open retained version 1 →', exact=True
         )
