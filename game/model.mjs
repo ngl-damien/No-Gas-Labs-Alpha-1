@@ -1102,7 +1102,7 @@ export async function validateWorld(raw) {
     sourceObservationResponseIds.add(e.responseId);
     respondedSourceObservationChallengeIds.add(e.challengeId);
   }
-  const allowedChallengeKeys=new Set(['id','type','actor','at','semantics','challengeId','reportId','moonshotId','challengeType','challengeText','evidenceCreationId','evidenceVersion','requestId','actionFingerprint','actionResult']);
+  const allowedChallengeKeys=new Set(['id','type','actor','at','semantics','challengeId','reportId','moonshotId','challengeType','challengeText','resolutionRequest','evidenceCreationId','evidenceVersion','requestId','actionFingerprint','actionResult']);
   const experimentChallengeById=new Map();
   for(let index=0;index<raw.events.length;index++){
     const e=raw.events[index];if(e.type!=='experiment-challenged')continue;

@@ -1015,6 +1015,7 @@ test('an experiment report author can preserve one response to a retained challe
   const challenged=await applyAction(report.world,{
     type:'challenge-experiment-report',reportId:report.result.reportId,
     challengeType:'methodology',challengeText:'The procedure omits a reproducible measurement setting.',
+    resolutionRequest:'Repeat the procedure with the missing measurement setting retained.',
     evidenceCreationId:null,evidenceVersion:null
   },witness,{now:'2026-10-17T12:00:03.000Z'});
   const challenge=challenged.world.events.at(-1);
@@ -1548,6 +1549,7 @@ test('R&D, Source Archive predicates and bounded collaborator responses preserve
     reportId: report.result.reportId,
     challengeType: 'missing-evidence',
     challengeText: 'A byte predicate is not an independent observation of the claim.',
+    resolutionRequest: 'Obtain an independently observed result for the same stated claim.',
     evidenceCreationId: null,
     evidenceVersion: null
   }, witnessActor, { now: at(0.6) });

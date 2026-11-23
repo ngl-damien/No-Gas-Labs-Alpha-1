@@ -5414,7 +5414,6 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
           }else challengeCard.append(paragraph('No original-author response retained yet.','form-help'));
         }else challengeCard.append(paragraph('Response history is ambiguous; no reply is selected.','evidence-warning'));
         reportCard.append(challengeCard);
-      }        reportCard.append(challengeCard);
       }
       if(!sameResearchActor(report.actor,viewer))reportCard.append(button('Challenge this report →',()=>openExperimentChallenge(report),{class:'list-button'}));
       card.append(reportCard);

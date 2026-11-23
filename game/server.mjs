@@ -571,7 +571,7 @@ function validateHistory(world) {
       'requestId', 'actionFingerprint', 'actionResult',
       ...(event.type === 'contribute' || event.type === 'report' ? ['recordId', 'recordTextReceipt'] : []),
       ...(event.type === 'discover' ? ['repeat'] : []),
-      ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion'] : []),
+      ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion', 'resolutionRequest'] : []),
       ...(event.type === 'source-observation-recorded' ? ['sourceSnapshotRevision', 'sourceSnapshotReceiptDigest', 'originFailureEventId'] : [])
     ];
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);

@@ -1820,6 +1820,7 @@ test('server startup accepts persisted experiment challenges from a same-ID diff
     type: 'challenge-experiment-report', reportId: report.result.reportId,
     challengeType: 'contradiction',
     challengeText: 'The measurement method is underspecified.',
+    resolutionRequest: 'Repeat the measurement with the missing settings retained.',
     evidenceCreationId: null, evidenceVersion: null
   }, crossRoleWitness, {
     now: '2026-10-27T00:00:03.000Z',
@@ -3328,6 +3329,7 @@ test('experiment challenge author responses are actor-bound, replay-safe, and no
     reportId: report.body.result.reportId,
     challengeType: 'methodology',
     challengeText: 'The procedure omits a reproducible measurement setting.',
+    resolutionRequest: 'Repeat the procedure with the measurement settings retained.',
     evidenceCreationId: null,
     evidenceVersion: null,
     requestId: 'experiment-response-challenge-001'
@@ -3395,6 +3397,7 @@ test('stored-history validator independently binds experiment challenge response
   const challenged = await applyAction(report.world, {
     type: 'challenge-experiment-report', reportId: report.result.reportId,
     challengeType: 'methodology', challengeText: 'The procedure omits a reproducible measurement setting.',
+    resolutionRequest: 'Repeat the procedure with the measurement settings retained.',
     evidenceCreationId: null, evidenceVersion: null
   }, witness, { now: '2026-11-08T12:00:03.000Z' });
   const challenge = challenged.world.events.at(-1);
