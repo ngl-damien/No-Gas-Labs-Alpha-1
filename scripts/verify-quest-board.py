@@ -9377,6 +9377,10 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             '[data-field-item-transfer-history-event-link="accepted"]'
         )
         expect(accepted_history_link).to_have_attribute('data-chronicle-event-id', recovery_transfer_event_id)
+        decline_history_link = declined_handoff_entry.locator(
+            '[data-field-item-transfer-history-event-link="declined"]'
+        )
+        expect(decline_history_link).to_have_attribute('data-chronicle-event-id', recovery_decline_event_id)
 
         # The accepted transfer event is independently navigable from the item
         # history; opening it changes neither the world nor the XP projection.
@@ -9391,6 +9395,32 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         witness_after_transfer_chronicle = authoritative_snapshot(witness_page)
         assert shared_world_snapshot(witness_after_transfer_chronicle) == shared_world_snapshot(witness_before_transfer_chronicle)
         assert witness_after_transfer_chronicle['xp'] == witness_before_transfer_chronicle['xp']
+        witness_page.locator('#sheet-close').tap()
+        witness_page.locator('#character-button').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        witness_recovery_item = witness_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Recovery Ledger')
+        recovery_handoff_history = witness_recovery_item.locator('[data-field-item-transfer-history]')
+        declined_handoff_entry = recovery_handoff_history.locator(
+            '[data-field-item-transfer-history-entry="' + recovery_offer['offerId'] + '"]'
+        )
+        decline_history_link = declined_handoff_entry.locator(
+            '[data-field-item-transfer-history-event-link="declined"]'
+        )
+        witness_before_decline_chronicle = authoritative_snapshot(witness_page)
+        decline_history_link.tap()
+        expect(witness_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        declined_event_card = witness_page.locator(
+            '#sheet-content [data-event-id="world:' + recovery_decline_event_id + '"]'
+        )
+        expect(declined_event_card).to_have_count(1)
+        expect(declined_event_card).to_have_attribute('data-event-source', 'world')
+        witness_after_decline_chronicle = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(witness_after_decline_chronicle) == shared_world_snapshot(witness_before_decline_chronicle)
+        assert witness_after_decline_chronicle['xp'] == witness_before_decline_chronicle['xp']
         witness_page.locator('#sheet-close').tap()
         witness_page.locator('#character-button').tap()
         witness_page.wait_for_function(
@@ -9451,6 +9481,10 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         assert founder_after_recovery_handoff['viewerId'] == founder_id
         assert founder_after_recovery_handoff['xp'] == after_publish['xp']
         assert recovery_decline_event_id in founder_after_recovery_handoff['eventIds']
+        assert recovery_offer_event_id in founder_after_recovery_handoff['eventIds']
+        assert recovery_accept_offer_event_id in founder_after_recovery_handoff['eventIds']
+        assert failure['id'] in founder_after_recovery_handoff['eventIds']
+        assert publication_event_id in founder_after_recovery_handoff['eventIds']
         assert recovery_transfer_event_id in founder_after_recovery_handoff['eventIds']
         assert recovery_recipient_equip_event_id in founder_after_recovery_handoff['eventIds']
         inspection_page.locator('#character-button').tap()
@@ -9552,8 +9586,6 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'Inspecting the partial recipient Armor Bearer objective must be read-only.'
         )
         assert witness_board_after['xp'] == witness_board_before['xp']
-        witness_armor_bearer_after = recovery_armor_bearer_count(witness_page)
-        assert witness_armor_bearer_after == witness_armor_bearer_before
 
         assert not witness_errors, 'The Recovery Ledger recipient journey produced page errors: ' + json.dumps(witness_errors)
         retry_diagnostics['recoveryLedgerIncomingOffer'] = {
@@ -9570,11 +9602,29 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'exactPublicationChronicleOpened': True,
             'declineEventId': recovery_decline_event_id,
             'declineRetained': recovery_decline_event_id in founder_after_decline['eventIds'],
-            'ownershipRemainedWithFounder': founder_recovery_item.count() == 1,
+            'ownershipRemainedWithFounder': ownership_remained_with_founder_after_decline,
+            'secondOfferEventId': recovery_accept_offer_event_id,
+            'secondOfferId': recovery_accept_offer_id,
+            'acceptedTransferEventId': recovery_transfer_event_id,
+            'recipientEquipEventId': recovery_recipient_equip_event_id,
+            'declinedOfferStillRetainedAfterAcceptance': recovery_decline_event_id in founder_after_recovery_handoff['eventIds'],
+            'ownershipTransferredToWitness': ownership_transferred_to_witness,
+            'creatorPreserved': creator_preserved,
+            'sourceLineagePreserved': source_lineage_preserved,
             'recoveryObjectiveAfterDecline': '4/4',
+            'recoveryObjectiveAfterHandoff': '4/4',
+            'founderArmorBearerObjectiveProgress': '4/4',
+            'witnessArmorBearerObjectiveProgress': '2/4',
+            'founderArmorBearerEvidenceEventIds': founder_armor_bearer_event_ids,
+            'witnessArmorBearerEvidenceEventIds': witness_armor_bearer_event_ids,
+            'founderArmorBearerSkillDelta': founder_armor_bearer_after - founder_armor_bearer_before,
+            'witnessArmorBearerSkillDelta': witness_armor_bearer_after - witness_armor_bearer_before,
+            'acceptedHandoffChronicleOpened': True,
             'xpDeltaAfterPublication': founder_after_quest_inspection['xp'] - after_publish['xp'],
+            'xpDeltaAfterHandoff': witness_after_equip['xp'] - after_publish['xp'],
             'pageErrors': witness_errors,
             'screenshot': recovery_offer_screenshot.name,
+            'acceptedHandoffScreenshot': recovery_handoff_screenshot.name,
             'identityQualification': 'separate pseudonymous session IDs; not proof of distinct humans'
         }
         retry_diagnostics['inspectionPageErrors'] = inspection_errors
