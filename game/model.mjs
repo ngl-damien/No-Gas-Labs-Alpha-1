@@ -761,6 +761,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
 }
 export function publicWorld(world,actor){
   const copy=clone(world);
+  delete copy.historyCoverage;
   const sourceEvents=Array.isArray(copy.events)?copy.events:[];
   const sourceEventCount=sourceEvents.length;
   let sourceHistoryDense=Array.isArray(copy.events);
@@ -798,15 +799,17 @@ export function publicWorld(world,actor){
   // role filtering omitted. It permits positive matching only for event types
   // that cannot be Source Archive failures or publications; it never upgrades
   // a partial snapshot to canonical history or permits an absence conclusion.
-  copy.historyCoverage=Object.freeze({
-    schema:'ngl.public-world-history.v1',
-    sourceComplete:sourceHistoryComplete,
-    sourceEventCount,
-    suppliedEventCount:Array.isArray(copy.events)?copy.events.length:0,
-    omittedEventCount:sourceEventCount-(Array.isArray(copy.events)?copy.events.length:0),
-    omittedEventTypes:Object.freeze(omittedEventTypes),
-    viewerRole:actor?.role==='founder'?'founder':actor?.role==='witness'?'witness':'unknown'
-  });
+  if(sourceEventCount>0){
+    copy.historyCoverage=Object.freeze({
+      schema:'ngl.public-world-history.v1',
+      sourceComplete:sourceHistoryComplete,
+      sourceEventCount,
+      suppliedEventCount:Array.isArray(copy.events)?copy.events.length:0,
+      omittedEventCount:sourceEventCount-(Array.isArray(copy.events)?copy.events.length:0),
+      omittedEventTypes:Object.freeze(omittedEventTypes),
+      viewerRole:actor?.role==='founder'?'founder':actor?.role==='witness'?'witness':'unknown'
+    });
+  }
   return copy;
 }
 export async function validateWorld(raw) {
