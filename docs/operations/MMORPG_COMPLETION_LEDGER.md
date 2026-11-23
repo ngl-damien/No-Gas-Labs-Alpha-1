@@ -1,3 +1,23 @@
+## Run 322 — Mobile Character Record R&D acceptance — 2026-11-22
+
+**Candidate:** draft runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), exact head `5331162f2fd8df25a5a39092f8722efd321e205e`, main base `0d950c501cf128d828ae4f263cc05a9013d7e8c1`; 410 commits ahead / 0 behind, 48 changed paths.
+
+**Capability:** the existing Quest Board mobile acceptance now opens the actual Character & field record after the retained Source Archive → Moonshot proposal → experiment report → two unique Source Analyst predicate operators journey. It checks actor-scoped Researcher 1, Experimenter 1, Source Analyst 2, Adversary 0, and Experiment Responder 0. Repeated same-operator predicates remain one skill input. The visible basis copy is checked for non-mastery, non-truth, non-verification, and non-authority boundaries. The Character Record inspection must leave the shared world projection and XP unchanged. Founder and Witness runs use the same check at 320px and 390px.
+
+**Exact-head CI:**
+- Full Verify [45086528965](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086528965) PASS.
+- Genesis [45086529037](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086529037), PWA [45086529021](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086529021), Academy [45086528928](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086528928), Council [45086528957](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086528957), and Combat [45086528950](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086528950) PASS.
+- Quest Board [45086529087](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086529087), Synthesis [45086529040](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086529040), and Android [45086528936](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086528936) were IN_PROGRESS when recorded; no terminal result is claimed.
+- Browser [45086529124](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086529124) FAIL: Worker A-owned `scripts/verify-browser.py:254` waits for hidden `Enter Forge` while live state exposes `Enter Guild Hall`. Offline PWA recovery passes before this mismatch. No Worker A path changed.
+- Live Source Archive [45086528961](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086528961) FAIL: shared public GitHub retrieval returned 502 where the integration expected 409; failed attempt retained, no draft created.
+- Source Archive hosted preflight: `ready`, warnings 0, failures 0.
+
+**Evidence limits:** the new mobile check is still pending its Quest Board workflow terminal result. No local pre-edit receipt or local Node/Playwright/Gradle run is claimed; procedural compliance PARTIAL. No physical-device acceptance, release APK, independent-human proof, source truth, independent verification, XP, Founder approval, or authority transition is claimed.
+
+**Governance:** PR #718 remains draft/unmerged. G0–G8 IN_PROGRESS; G9 NOT_STARTED; Founder trust NOT_ENROLLED. No merge, release, or deployment.
+
+---
+
 ## Run 321 — Quest Trail / Character Sheet R&D projection parity — 2026-11-22
 
 **Candidate:** [draft runtime PR #718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), exact head `aa26bb0eaf460574aeb5dc2512be37ac4a037c94`, main base `0d950c501cf128d828ae4f263cc05a9013d7e8c1`; 405 commits ahead / 0 behind, 48 changed paths.
