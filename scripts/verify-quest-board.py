@@ -1892,6 +1892,63 @@ def assert_deliberator_character_record(page, role, expected_rounds, screenshot,
     }
 
 
+def assert_research_character_record(page, role, screenshot):
+    before = authoritative_snapshot(page)
+    assert before['viewerRole'] == role, 'The R&D Character Record must remain actor-scoped.'
+    character_button = page.locator('#character-button')
+    expect(character_button).to_be_visible()
+    character_button.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+
+    expected_skills = [
+        ('researcher', 'Researcher', 1, 'retained falsifiable proposals',
+         'not a validated discovery or experiment result'),
+        ('experimenter', 'Experimenter', 1, 'retained experiment reports',
+         'not proof of execution, independent observation, or a validated result'),
+        ('source-analyst', 'Source Analyst', 2, 'unique literal predicates',
+         'not claim truth, authorship, independent verification, mastery, authority, or XP'),
+        ('adversary', 'Adversary', 0, 'retained challenges to another actor’s experiment reports',
+         'not correctness or adjudication'),
+        ('experiment-responder', 'Experiment Responder', 0,
+         'original-author responses to uniquely linked experiment challenges',
+         'not truth, reproduction, adjudication, approval, or XP')
+    ]
+    observed = {}
+    for skill_id, label, count, record_label, boundary in expected_skills:
+        skill = page.locator('#sheet-content [data-skill-id="' + skill_id + '"]')
+        expect(skill).to_have_count(1)
+        expect(skill.locator('h3')).to_have_text(label)
+        expect(skill).to_contain_text(f'{count} recorded {record_label}')
+        expect(skill).to_contain_text(boundary)
+        observed[skill_id] = count
+
+    after = authoritative_snapshot(page)
+    assert shared_world_snapshot(after) == shared_world_snapshot(before), (
+        'Opening the R&D Character Record must not append events or change the accepted world.'
+    )
+    assert after['xp'] == before['xp'], (
+        'Research, failed self-reported attempts and byte-predicate inspection award no XP.'
+    )
+    viewport_width = page.evaluate("() => window.innerWidth")
+    assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth"), (
+        'The R&D Character Record must not create horizontal page overflow.'
+    )
+    page.screenshot(path=str(screenshot), full_page=True)
+    page.locator('#sheet-close').tap()
+    return {
+        'role': role,
+        'skills': observed,
+        'readOnly': True,
+        'xpUnchanged': after['xp'] == before['xp'],
+        'viewportWidth': viewport_width,
+        'screenshot': screenshot.name
+    }
+
+
 def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, out, server_state):
     witness_context = browser.new_context(
         viewport={'width': 390, 'height': 844},
@@ -4319,6 +4376,9 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     page.screenshot(path=str(padded_history_screenshot), full_page=True)
 
     page.locator('#sheet-close').tap()
+    research_character = assert_research_character_record(
+        page, role, out / ('rnd-character-record-' + role + '-' + suffix + '.png')
+    )
     open_quest_board(page)
     final_board_before = authoritative_snapshot(page)
     assert_board(page, role)
@@ -4333,6 +4393,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     screenshot = out / ('source-archive-quest-' + role + '-' + suffix + '.png')
     page.screenshot(path=str(screenshot), full_page=True)
     return {
+        'researchCharacterRecord': research_character,
         'actorRole': role,
         'actorId': actor['viewerId'],
         'archiveCreationId': archive['creationId'],
