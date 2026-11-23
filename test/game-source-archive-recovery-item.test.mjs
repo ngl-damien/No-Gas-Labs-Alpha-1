@@ -353,9 +353,18 @@ test('client-reported, non-retryable, shared-failure and ambiguous-capture histo
   const sharedCaptureProjection = projectSourceArchiveFailureObjects(oneCaptureForTwoFailures.world, {
     includeRecoveryLinks: true
   });
-  assert.equal(sharedCaptureProjection.captureProjectionComplete, true);
+  assert.equal(sharedCaptureProjection.captureProjectionComplete, false,
+    'A complete scan is still ambiguous when one publication matches two failure origins.');
+  assert.equal(sharedCaptureProjection.recoveryLinkScanComplete, false);
   assert.deepEqual(sharedCaptureProjection.recoveryLinks, [],
     'one later publication cannot be assigned to two distinct failure origins');
+  for (const failureId of [twoFailures.failure.id, secondFailure.world.events.at(-1).id]) {
+    const record = sharedCaptureProjection.records.find(candidate => candidate.eventId === failureId);
+    assert.ok(record);
+    assert.equal(record.laterCaptureStatus, 'unknown',
+      'Ambiguous one-to-many matching cannot credit a later-capture objective.');
+    assert.equal(record.laterCapture, null);
+  }
 
   const oneFailure = await worldWithFailure();
   const firstCapture = await publishSourceArchive(oneFailure.world);
@@ -532,6 +541,12 @@ test('a role-filtered shared snapshot preserves a pending Recovery Ledger offer 
   assert.equal(noCaptureRecord.laterCaptureStatus, 'unknown',
     'Partial history must never turn a missing positive match into a negative absence claim.');
 
+  const founderResponse = publicWorld(offered.world, founder);
+  const canonicalFounderResponse = await validateWorld(founderResponse);
+  assert.equal(Object.hasOwn(canonicalFounderResponse, 'historyCoverage'), false,
+    'Response-only coverage metadata must be stripped before canonical import.');
+  assert.ok(canonicalFounderResponse.events.every(event => !Object.hasOwn(event, 'historyPosition')),
+    'Response-only global positions must also be stripped before canonical import.');
   await validateWorld(offered.world);
   await assert.rejects(validateWorld(witnessView), error => error.code === 'INVALID_WORLD',
     'A role-filtered response snapshot must not be imported as canonical world state.');
