@@ -48,6 +48,9 @@ export function recordSourceArchiveAttemptFailure(original, actor, details, { no
       original.revision < 0 || !Array.isArray(original.events) || !isStrictTimestamp(original.updatedAt)) {
     fail('INVALID_WORLD', 'Source Archive failure requires a valid current world snapshot.');
   }
+  if (original.revision !== original.events.length) {
+    fail('INVALID_WORLD', 'Source Archive failure requires a complete retained event history.');
+  }
   if (original.revision >= Number.MAX_SAFE_INTEGER) {
     fail('REVISION_EXHAUSTED', 'The world revision cannot advance safely.', 503);
   }
