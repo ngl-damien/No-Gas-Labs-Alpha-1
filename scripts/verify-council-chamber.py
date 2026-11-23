@@ -324,15 +324,25 @@ def seed_council_review_fixture(page):
           initial.viewer.id === fixture.reporterActorId) {
         throw new Error('The retained report and challenge must be authored by distinct Witness actors.');
       }
+      const resolutionRequest = 'Repeat the experiment with the control condition recorded and preserve the resulting observation.';
       const challenge = await post({
         type: 'challenge-experiment-report',
         reportId: fixture.reportId,
         challengeType: 'methodology',
         challengeText: 'The report does not describe a control condition.',
+        resolutionRequest,
         requestId: 'council-mobile-fixture-challenge'
       });
       if (typeof challenge.result?.challengeId !== 'string') {
         throw new Error('The independent challenge action did not retain its challenge ID.');
+      }
+      const challengeState = await read();
+      const retainedChallenge = challengeState.world.events.find(event =>
+        event.type === 'experiment-challenged' && event.challengeId === challenge.result.challengeId
+      );
+      if (!retainedChallenge || retainedChallenge.resolutionRequest !== resolutionRequest ||
+          Object.hasOwn(retainedChallenge, 'outcome') || Object.hasOwn(retainedChallenge, 'status')) {
+        throw new Error('The retained challenge must preserve its exact requested next check without a verdict.');
       }
 
       const { projectCollaboratorPackets } = await import('/collaborator-contracts.mjs');

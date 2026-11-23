@@ -276,6 +276,7 @@ test('Moonshot Field challenge is an actor-scoped quest backed by a different ac
     reportId: report.result.reportId,
     challengeType: 'methodology',
     challengeText: 'The procedure does not control the stated condition.',
+    resolutionRequest: 'Repeat the comparison with the stated condition controlled and retain the exact observations.',
     evidenceCreationId: published.result.creationId,
     evidenceVersion: 1
   }, founder, { now: '2026-10-27T00:00:05.000Z' });

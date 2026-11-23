@@ -1035,6 +1035,7 @@ def add_witness_challenge(page, width, fixture):
         "reportId": fixture["reportId"],
         "challengeType": "methodology",
         "challengeText": "The fixture contains no independent measurement or control; its self-reported failure cannot establish the proposal's hypothesis.",
+        "resolutionRequest": "Repeat the procedure with a recorded control and retain the exact observation and timestamp.",
         "evidenceCreationId": None,
         "evidenceVersion": None,
         "requestId": "synthesis-" + str(width) + "-witness-challenge"
@@ -1048,6 +1049,8 @@ def add_witness_challenge(page, width, fixture):
     assert challenge_event["moonshotId"] == fixture["moonshotId"]
     assert challenge_event["actorId"] == witness["id"]
     assert challenge_event["actorRole"] == "witness"
+    assert challenge_event["resolutionRequest"] == "Repeat the procedure with a recorded control and retain the exact observation and timestamp."
+    assert "outcome" not in challenge_event and "status" not in challenge_event
     assert challenge_event["actorId"] != fixture["afterReport"]["viewer"]["id"]
     # Logout changes the public projection (Founder-only drafts are hidden), so
     # event deltas must be measured from the same Witness projection immediately

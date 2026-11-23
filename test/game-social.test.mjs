@@ -320,7 +320,8 @@ test('Guild Hall field satchel indexes current members’ retained work, dissent
     type: 'challenge-experiment-report',
     reportId: experiment.result.reportId,
     challengeType: 'reproducibility',
-    challengeText: 'The attempt record does not include a reproducible retrieval procedure.'
+    challengeText: 'The attempt record does not include a reproducible retrieval procedure.',
+    resolutionRequest: 'Repeat the retrieval with the exact procedure and retain the response bytes and timestamp.'
   }, witnessA, { now: at(10000) })).world;
 
   const note = {

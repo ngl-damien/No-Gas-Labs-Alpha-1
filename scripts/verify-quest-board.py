@@ -871,6 +871,24 @@ def assert_source_archive_objectives(page, role, proposal_progress, experiment_p
     expect(contrast).to_contain_text('do not adjudicate a claim')
 
 
+def assert_experiment_dissent_objective(page, role, progress, complete, require_action=False):
+    objective_id = (
+        'witness-challenge-experiment-report'
+        if role == 'witness' else 'founder-experiment-challenge-response'
+    )
+    title = (
+        'Challenge another actor’s experiment report'
+        if role == 'witness' else 'Respond to a challenge against your experiment report'
+    )
+    row = page.locator(f'#sheet-content [data-objective-id="{objective_id}"]')
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text(title)
+    expect(row).to_contain_text(progress)
+    expect(row.locator('.quest-step-state')).to_have_text('RECORDED' if complete else 'OPEN')
+    if require_action:
+        expect(row.get_by_role('button', name='Go do this →', exact=True)).to_be_visible()
+    return row
+
 
 def post_action(page, action):
     return page.evaluate("""async action => {
@@ -1892,7 +1910,10 @@ def assert_deliberator_character_record(page, role, expected_rounds, screenshot,
     }
 
 
-def assert_research_character_record(page, role, screenshot, expected_satirist_count=0):
+def assert_research_character_record(page, role, screenshot, expected_satirist_count=0,
+                                     expected_researcher_count=1, expected_experimenter_count=1,
+                                     expected_source_analyst_count=2, expected_adversary_count=0,
+                                     expected_experiment_responder_count=0):
     before = authoritative_snapshot(page)
     assert before['viewerRole'] == role, 'The R&D Character Record must remain actor-scoped.'
     character_button = page.locator('#character-button')
@@ -1910,15 +1931,15 @@ def assert_research_character_record(page, role, screenshot, expected_satirist_c
         else 'published America’s Got Problems issue editions'
     )
     expected_skills = [
-        ('researcher', 'Researcher', 1, 'retained falsifiable proposals',
+        ('researcher', 'Researcher', expected_researcher_count, 'retained falsifiable proposals',
          'not a validated discovery or experiment result'),
-        ('experimenter', 'Experimenter', 1, 'retained experiment reports',
+        ('experimenter', 'Experimenter', expected_experimenter_count, 'retained experiment reports',
          'not proof of execution, independent observation, or a validated result'),
-        ('source-analyst', 'Source Analyst', 2, 'unique literal predicates',
+        ('source-analyst', 'Source Analyst', expected_source_analyst_count, 'unique literal predicates',
          'not claim truth, authorship, independent verification, mastery, authority, or XP'),
-        ('adversary', 'Adversary', 0, 'retained challenges to another actor’s experiment reports',
+        ('adversary', 'Adversary', expected_adversary_count, 'retained challenges to another actor’s experiment reports',
          'not correctness or adjudication'),
-        ('experiment-responder', 'Experiment Responder', 0,
+        ('experiment-responder', 'Experiment Responder', expected_experiment_responder_count,
          'original-author responses to uniquely linked experiment challenges',
          'not truth, reproduction, adjudication, approval, or XP'),
         ('satirist', 'Satirist', expected_satirist_count, satirist_record_label,
@@ -4855,6 +4876,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'independentVerification': 'NOT_PERFORMED',
         'proposalEventId': research_details['proposalEventId'],
         'reportEventId': research_details['reportEventId'],
+        'reportId': research_details['reportId'],
         'reportOutcome': research_details['reportOutcome'],
         'proposalProgress': '1/1',
         'experimentProgress': '1/1',
@@ -4945,7 +4967,398 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     }
 
 
-def verify_founder_source_archive_progress(browser, url, out, expected_actor_id, archive):
+
+def start_witness_mobile_context(browser, url, width):
+    context = browser.new_context(
+        viewport={'width': width, 'height': 844},
+        is_mobile=True,
+        has_touch=True
+    )
+    page = context.new_page()
+    page.goto(url, wait_until='networkidle')
+    page.locator('#start-shared').tap()
+    page.locator('#world').wait_for(state='visible')
+    page.wait_for_function(
+        "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
+    )
+    wait_for_shared_world_ready(page)
+    viewer = authoritative_snapshot(page)
+    assert viewer['viewerRole'] == 'witness'
+    return context, page
+
+
+def challenge_experiment_report_mobile(page, report_id, founder_actor_id, width, out,
+                                       expected_researcher_count=0,
+                                       expected_experimenter_count=0,
+                                       expected_source_analyst_count=0,
+                                       expected_satirist_count=0):
+    errors = []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    initial = authoritative_snapshot(page)
+    assert initial['viewerRole'] == 'witness'
+    assert initial['viewerId'] != founder_actor_id, (
+        'The challenge must be attributed to a separate pseudonymous Witness session.'
+    )
+
+    open_quest_board(page)
+    assert_board(page, 'witness')
+    board_before = authoritative_snapshot(page)
+    row = assert_experiment_dissent_objective(
+        page, 'witness', '0/1', complete=False, require_action=True
+    )
+    row.get_by_role('button', name='Go do this →', exact=True).tap()
+    page.wait_for_function(
+        """expected => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' &&
+          !document.querySelector('#sheet').hidden &&
+          document.querySelector('#sheet-content [data-research-activity-id="' + expected + '"]')""",
+        arg=report_id
+    )
+    report_card = page.locator(
+        '#sheet-content [data-research-activity-id="' + report_id + '"]'
+    )
+    expect(report_card).to_have_count(1)
+    expect(report_card).to_contain_text('SELF-REPORTED · NOT ADJUDICATED')
+    report_snapshot = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Founder report lookup failed: ' + response.status);
+      const dto = await response.json();
+      const matches = dto.world.events.filter(event =>
+        event?.type === 'experiment-reported' && event.reportId === expected.reportId
+      );
+      if (matches.length !== 1) throw new Error('The exact Founder report is missing or ambiguous.');
+      const report = matches[0];
+      if (report.actor?.id !== expected.founderActorId || report.actor?.role !== 'founder') {
+        throw new Error('The challenge target must be the exact original Founder report.');
+      }
+      return {
+        json: JSON.stringify(report),
+        eventId: report.id,
+        moonshotId: report.moonshotId,
+        actorId: report.actor.id,
+        actorRole: report.actor.role
+      };
+    }""", {'reportId': report_id, 'founderActorId': founder_actor_id})
+    assert report_snapshot['actorId'] == founder_actor_id
+    report_card.get_by_role(
+        'button', name='Challenge this report →', exact=True
+    ).tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Challenge experiment report' && " +
+        "!document.querySelector('#sheet').hidden"
+    )
+    form_open = authoritative_snapshot(page)
+    assert shared_world_snapshot(form_open) == shared_world_snapshot(board_before), (
+        'Opening the challenge form from the retained Quest objective must remain read-only.'
+    )
+
+    resolution_request = (
+        'Repeat the stated procedure from a separate client, retain the exact input and output bytes '
+        'with a retrieval timestamp, and record transport failures without treating them as a source verdict.'
+    )
+    page.locator('#experiment-challenge-type').select_option(value='methodology')
+    page.locator('#experiment-challenge-text').fill(
+        'The report records a failed mock-transport attempt; it does not establish whether the source '
+        'can be retrieved from an independent client.'
+    )
+    request_field = page.locator('#experiment-challenge-resolution-request')
+    expect(request_field).to_have_attribute('maxlength', '1000')
+    request_field.fill(resolution_request)
+    expect(page.locator('#challenge-experiment-report')).to_be_enabled()
+    before_submit = authoritative_snapshot(page)
+    assert shared_world_snapshot(before_submit) == shared_world_snapshot(board_before), (
+        'Filling a challenge and its requested next check must not mutate canonical state.'
+    )
+    page.locator('#challenge-experiment-report').tap()
+    page.wait_for_function(
+        """expected => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' &&
+          document.querySelector('#sheet-content')?.textContent.includes(expected)""",
+        arg=resolution_request
+    )
+    after = authoritative_snapshot(page)
+    assert after['revision'] == before_submit['revision'] + 1, (
+        'One Witness challenge must append exactly one retained event.'
+    )
+    assert after['xp'] == before_submit['xp'], (
+        'A challenge and its requested next check must award no XP.'
+    )
+
+    challenge_details = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Challenge event lookup failed: ' + response.status);
+      const dto = await response.json();
+      const events = dto.world.events;
+      const reports = events.filter(event =>
+        event?.type === 'experiment-reported' && event.reportId === expected.reportId
+      );
+      const challenges = events.filter(event =>
+        event?.type === 'experiment-challenged' &&
+        event.reportId === expected.reportId &&
+        event.actor?.id === expected.witnessActorId &&
+        event.actor?.role === 'witness'
+      );
+      if (reports.length !== 1 || challenges.length !== 1) {
+        throw new Error('The exact report and one actor-attributed challenge must be retained.');
+      }
+      const report = reports[0], challenge = challenges[0];
+      if (challenge.moonshotId !== report.moonshotId) {
+        throw new Error('The challenge must remain linked to the exact report Moonshot.');
+      }
+      return {
+        reportJson: JSON.stringify(report),
+        challengeJson: JSON.stringify(challenge),
+        reportEventId: report.id,
+        reportIndex: events.indexOf(report),
+        challengeId: challenge.challengeId,
+        challengeEventId: challenge.id,
+        challengeIndex: events.indexOf(challenge),
+        moonshotId: challenge.moonshotId,
+        resolutionRequest: challenge.resolutionRequest,
+        actorId: challenge.actor?.id,
+        actorRole: challenge.actor?.role,
+        evidenceCreationId: challenge.evidenceCreationId,
+        evidenceVersion: challenge.evidenceVersion,
+        hasOutcome: Object.hasOwn(challenge, 'outcome'),
+        hasStatus: Object.hasOwn(challenge, 'status')
+      };
+    }""", {
+        'reportId': report_id,
+        'witnessActorId': initial['viewerId']
+    })
+    assert challenge_details['reportJson'] == report_snapshot['json'], (
+        'The challenge must not rewrite the original self-reported experiment report.'
+    )
+    assert challenge_details['reportIndex'] < challenge_details['challengeIndex'], (
+        'The retained challenge must follow the exact report by append position.'
+    )
+    assert challenge_details['resolutionRequest'] == resolution_request
+    assert challenge_details['actorId'] == initial['viewerId']
+    assert challenge_details['actorRole'] == 'witness'
+    assert challenge_details['actorId'] != founder_actor_id
+    assert challenge_details['evidenceCreationId'] is None
+    assert challenge_details['evidenceVersion'] is None
+    assert challenge_details['hasOutcome'] is False
+    assert challenge_details['hasStatus'] is False
+    challenge_details['reportEventDigest'] = hashlib.sha256(
+        challenge_details.pop('reportJson').encode('utf-8')
+    ).hexdigest()
+    challenge_details['challengeEventDigest'] = hashlib.sha256(
+        challenge_details.pop('challengeJson').encode('utf-8')
+    ).hexdigest()
+    challenge_details['founderActorId'] = founder_actor_id
+    challenge_details['witnessActorId'] = initial['viewerId']
+    challenge_details['revisionAfterChallenge'] = after['revision']
+    challenge_details['xpAfterChallenge'] = after['xp']
+
+    challenge_card = page.locator(
+        '#sheet-content [data-research-activity-id="' + challenge_details['challengeId'] + '"]'
+    )
+    expect(challenge_card).to_have_count(1)
+    expect(challenge_card).to_have_attribute('data-experiment-challenge-status', 'linked')
+    expect(challenge_card).to_contain_text('DISSENT · NOT ADJUDICATED')
+    expect(challenge_card).to_contain_text(resolution_request)
+    expect(challenge_card).to_contain_text('No original-author response retained yet.')
+    expect(challenge_card.get_by_role(
+        'button', name='Respond to this challenge →', exact=True
+    )).to_have_count(0)
+
+    page.locator('#sheet-close').tap()
+    open_quest_board(page)
+    assert_board(page, 'witness')
+    assert_experiment_dissent_objective(page, 'witness', '1/1', complete=True)
+    page.locator('#sheet-close').tap()
+    character = assert_research_character_record(
+        page,
+        'witness',
+        out / ('experiment-challenge-witness-character-' + str(width) + '.png'),
+        expected_satirist_count=expected_satirist_count,
+        expected_researcher_count=expected_researcher_count,
+        expected_experimenter_count=expected_experimenter_count,
+        expected_source_analyst_count=expected_source_analyst_count,
+        expected_adversary_count=1,
+        expected_experiment_responder_count=0
+    )
+    assert not errors, 'Witness challenge mobile page errors: ' + json.dumps(errors)
+    return {
+        **challenge_details,
+        'reportId': report_id,
+        'witnessObjectiveProgress': '1/1',
+        'witnessCharacterRecord': character,
+        'challengeRevisionDelta': 1,
+        'challengeXpDelta': 0,
+        'actorSeparation': 'distinct pseudonymous session IDs; not proof of distinct humans',
+        'pageErrors': errors
+    }
+
+
+def respond_to_experiment_challenge_mobile(page, challenge_info, width, out,
+                                           expected_response_count,
+                                           expected_satirist_count=0):
+    page.wait_for_function(
+        """expected => Number(document.querySelector('#world')?.dataset.worldRevision) >= expected""",
+        arg=challenge_info['revisionAfterChallenge'],
+        timeout=30000
+    )
+    before = authoritative_snapshot(page)
+    assert before['viewerRole'] == 'founder'
+    assert before['viewerId'] == challenge_info['founderActorId']
+    assert before['revision'] >= challenge_info['revisionAfterChallenge']
+
+    open_quest_board(page)
+    assert_board(page, 'founder')
+    progress_before = f'{expected_response_count - 1}/{expected_response_count}'
+    row = assert_experiment_dissent_objective(
+        page, 'founder', progress_before, complete=False, require_action=True
+    )
+    row.get_by_role('button', name='Go do this →', exact=True).tap()
+    page.wait_for_function(
+        """expected => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' &&
+          !document.querySelector('#sheet').hidden &&
+          document.querySelector('#sheet-content [data-research-activity-id="' + expected.reportId + '"]') &&
+          document.querySelector('#sheet-content [data-research-activity-id="' + expected.challengeId + '"]')""",
+        arg={
+            'reportId': challenge_info['reportId'],
+            'challengeId': challenge_info['challengeId']
+        }
+    )
+    report_card = page.locator(
+        '#sheet-content [data-research-activity-id="' + challenge_info['reportId'] + '"]'
+    )
+    challenge_card = report_card.locator(
+        '[data-research-activity-id="' + challenge_info['challengeId'] + '"]'
+    )
+    expect(challenge_card).to_have_attribute('data-experiment-challenge-status', 'linked')
+    expect(challenge_card).to_contain_text(challenge_info['resolutionRequest'])
+    expect(challenge_card).to_contain_text('No original-author response retained yet.')
+    challenge_card.get_by_role(
+        'button', name='Respond to this challenge →', exact=True
+    ).tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Respond to experiment challenge' && " +
+        "!document.querySelector('#sheet').hidden"
+    )
+    request_notice = page.locator(
+        '#sheet-content [data-experiment-challenge-resolution-request="true"]'
+    )
+    expect(request_notice).to_contain_text(challenge_info['resolutionRequest'])
+    response_text = (
+        'This report records only the mocked Source Archive fixture. No separate-client retrieval or '
+        'independent observation was executed; the requested check remains open.'
+    )
+    page.locator('#experiment-challenge-response-text').fill(response_text)
+    expect(page.locator('#respond-experiment-challenge')).to_be_enabled()
+    before_submit = authoritative_snapshot(page)
+    page.locator('#respond-experiment-challenge').tap()
+    page.wait_for_function(
+        """expected => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' &&
+          document.querySelector('#sheet-content')?.textContent.includes(expected)""",
+        arg=response_text
+    )
+    after = authoritative_snapshot(page)
+    assert after['revision'] == before_submit['revision'] + 1, (
+        'One original-author response must append exactly one retained event.'
+    )
+    assert after['xp'] == before_submit['xp'], (
+        'An original-author response must award no XP.'
+    )
+
+    response_details = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Original-author response lookup failed: ' + response.status);
+      const dto = await response.json();
+      const events = dto.world.events;
+      const reports = events.filter(event =>
+        event?.type === 'experiment-reported' && event.reportId === expected.reportId
+      );
+      const challenges = events.filter(event =>
+        event?.type === 'experiment-challenged' && event.challengeId === expected.challengeId
+      );
+      const responses = events.filter(event =>
+        event?.type === 'experiment-challenge-responded' && event.challengeId === expected.challengeId
+      );
+      if (reports.length !== 1 || challenges.length !== 1 || responses.length !== 1) {
+        throw new Error('The report, exact challenge and one original-author response must be unique.');
+      }
+      const report = reports[0], challenge = challenges[0], authorResponse = responses[0];
+      return {
+        reportJson: JSON.stringify(report),
+        challengeJson: JSON.stringify(challenge),
+        reportEventId: report.id,
+        reportIndex: events.indexOf(report),
+        challengeEventId: challenge.id,
+        challengeIndex: events.indexOf(challenge),
+        responseId: authorResponse.responseId,
+        responseEventId: authorResponse.id,
+        responseIndex: events.indexOf(authorResponse),
+        responseActorId: authorResponse.actor?.id,
+        responseActorRole: authorResponse.actor?.role,
+        responseText: authorResponse.responseText,
+        challengeActorId: challenge.actor?.id,
+        challengeActorRole: challenge.actor?.role,
+        challengeResolutionRequest: challenge.resolutionRequest,
+        responseHasOutcome: Object.hasOwn(authorResponse, 'outcome'),
+        responseHasStatus: Object.hasOwn(authorResponse, 'status'),
+        responseHasApproval: Object.hasOwn(authorResponse, 'approval'),
+        responseHasAuthority: Object.hasOwn(authorResponse, 'authority'),
+        challengeHasOutcome: Object.hasOwn(challenge, 'outcome'),
+        challengeHasStatus: Object.hasOwn(challenge, 'status')
+      };
+    }""", {
+        'reportId': challenge_info['reportId'],
+        'challengeId': challenge_info['challengeId']
+    })
+    assert response_details['reportIndex'] < response_details['challengeIndex'] < response_details['responseIndex']
+    assert response_details['responseActorId'] == challenge_info['founderActorId']
+    assert response_details['responseActorRole'] == 'founder'
+    assert response_details['challengeActorId'] == challenge_info['witnessActorId']
+    assert response_details['challengeActorRole'] == 'witness'
+    assert response_details['challengeResolutionRequest'] == challenge_info['resolutionRequest']
+    assert response_details['responseText'] == response_text
+    assert response_details['responseHasOutcome'] is False
+    assert response_details['responseHasStatus'] is False
+    assert response_details['responseHasApproval'] is False
+    assert response_details['responseHasAuthority'] is False
+    assert response_details['challengeHasOutcome'] is False
+    assert response_details['challengeHasStatus'] is False
+    assert hashlib.sha256(response_details['reportJson'].encode('utf-8')).hexdigest() == challenge_info['reportEventDigest'], (
+        'The original report must remain byte-for-byte unchanged after its challenge and response.'
+    )
+    assert hashlib.sha256(response_details['challengeJson'].encode('utf-8')).hexdigest() == challenge_info['challengeEventDigest'], (
+        'The retained challenge and its requested next check must remain unchanged after the response.'
+    )
+
+    page.locator('#sheet-close').tap()
+    open_quest_board(page)
+    assert_board(page, 'founder')
+    completed_progress = f'{expected_response_count}/{expected_response_count}'
+    assert_experiment_dissent_objective(
+        page, 'founder', completed_progress, complete=True
+    )
+    page.locator('#sheet-close').tap()
+    character = assert_research_character_record(
+        page,
+        'founder',
+        out / ('experiment-challenge-founder-character-' + str(width) + '-' + str(expected_response_count) + '.png'),
+        expected_satirist_count=expected_satirist_count,
+        expected_researcher_count=1,
+        expected_experimenter_count=1,
+        expected_source_analyst_count=2,
+        expected_adversary_count=0,
+        expected_experiment_responder_count=expected_response_count
+    )
+    return {
+        **response_details,
+        'responseText': response_text,
+        'founderObjectiveProgress': completed_progress,
+        'founderCharacterRecord': character,
+        'responseRevisionDelta': 1,
+        'responseXpDelta': 0,
+        'worldRevisionAfterResponse': after['revision'],
+        'worldXpAfterResponse': after['xp']
+    }
+
+
+def verify_founder_source_archive_progress(browser, url, out, expected_actor_id, archive,
+                                             challenge_info, expected_response_count):
     context = browser.new_context(
         viewport={'width': 390, 'height': 844},
         is_mobile=True,
@@ -4969,11 +5382,22 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
         assert before['viewerId'] == expected_actor_id, (
             'A fresh Founder client must resolve to the same pseudonymous Founder actor.'
         )
+        response_info = respond_to_experiment_challenge_mobile(
+            page, challenge_info, 390, out,
+            expected_response_count=expected_response_count,
+            expected_satirist_count=2
+        )
+        board_before = authoritative_snapshot(page)
         open_quest_board(page)
         assert_board(page, 'founder')
         assert_source_archive_objectives(page, 'founder', '1/1', '1/1', '1/1', '2/2')
-        after = authoritative_snapshot(page)
-        assert after == before, 'A fresh Founder Quest Board inspection must remain read-only.'
+        assert_experiment_dissent_objective(
+            page, 'founder', f'{expected_response_count}/{expected_response_count}', complete=True
+        )
+        board_after = authoritative_snapshot(page)
+        assert board_after == board_before, (
+            'A fresh Founder Quest Board inspection after the response must remain read-only.'
+        )
         details = source_archive_research_snapshot(
             page, expected_actor_id, 'founder', archive,
             'Source Archive workflow · Founder', True
@@ -4988,11 +5412,12 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
             'proposalProgress': '1/1',
             'experimentProgress': '1/1',
             'sharedArchiveCreationId': archive['creationId'],
-            'worldStateUnchanged': True,
+            'worldStateUnchangedByBoardInspection': True,
             'pageErrors': errors,
             'screenshot': screenshot.name,
             'proposalEventId': details['proposalEventId'],
-            'reportEventId': details['reportEventId']
+            'reportEventId': details['reportEventId'],
+            'experimentChallengeResponse': response_info
         }
     finally:
         context.close()
@@ -6105,7 +6530,7 @@ def run_evidence_archive_activity_streams_mobile(browser, url, out, width):
         context.close()
 
 
-def run_viewport(browser, url, out, width, source_archive_fixture=None, source_archive_failure=None, server_state=None):
+def run_viewport(browser, url, out, width, source_archive_fixture=None, source_archive_failure=None, server_state=None, founder_report_id=None):
     context = browser.new_context(
         viewport={'width': width, 'height': 844},
         is_mobile=True,
@@ -6116,6 +6541,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
     failure_chronicle_result = None
     contradiction_clerk_result = None
     publication_chronicle_result = None
+    experiment_dissent_circuit = None
     page.on('pageerror', lambda error: errors.append(str(error)))
     try:
         page.goto(url, wait_until='networkidle')
@@ -6247,6 +6673,32 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             agp_satirist_followup = publish_agp_followup_from_publication_house(
                 page, out, agp_satirist_publication
             )
+            witness_context, witness_page = start_witness_mobile_context(browser, url, width)
+            try:
+                witness_challenge = challenge_experiment_report_mobile(
+                    witness_page,
+                    source_archive_founder_chain['reportId'],
+                    before['viewerId'],
+                    width,
+                    out,
+                    expected_researcher_count=0,
+                    expected_experimenter_count=0,
+                    expected_source_analyst_count=0,
+                    expected_satirist_count=0
+                )
+            finally:
+                witness_context.close()
+            founder_response = respond_to_experiment_challenge_mobile(
+                page, witness_challenge, width, out,
+                expected_response_count=1,
+                expected_satirist_count=2
+            )
+            experiment_dissent_circuit = {
+                'viewport': width,
+                'witnessChallenge': witness_challenge,
+                'founderResponse': founder_response,
+                'actorSeparation': 'distinct pseudonymous session IDs; not proof of distinct humans'
+            }
         else:
             assert source_archive_fixture and source_archive_fixture.get('fixtureOnly') is True, (
                 'The 390px journey must reuse the exact Source Archive published by the 320px journey.'
@@ -6307,8 +6759,35 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             contradiction_clerk_result = run_contradiction_clerk_mobile_journey(
                 page, source_archive_fixture, out, width, 'witness'
             )
+            assert isinstance(founder_report_id, str) and founder_report_id, (
+                'The 390px Witness must challenge the exact Founder report retained by the 320px journey.'
+            )
+            witness_challenge = challenge_experiment_report_mobile(
+                page,
+                founder_report_id,
+                before['viewerId'],
+                width,
+                out,
+                expected_researcher_count=1,
+                expected_experimenter_count=1,
+                expected_source_analyst_count=2,
+                expected_satirist_count=0
+            )
             founder_fresh_client = verify_founder_source_archive_progress(
-                browser, url, out, before['viewerId'], source_archive_fixture
+                browser, url, out, before['viewerId'], source_archive_fixture,
+                witness_challenge, expected_response_count=2
+            )
+            founder_response = founder_fresh_client['experimentChallengeResponse']
+            experiment_dissent_circuit = {
+                'viewport': width,
+                'witnessChallenge': witness_challenge,
+                'founderResponse': founder_response,
+                'actorSeparation': 'distinct pseudonymous session IDs; not proof of distinct humans'
+            }
+            page.wait_for_function(
+                "expected => Number(document.querySelector('#world')?.dataset.worldRevision) >= expected",
+                arg=founder_response['worldRevisionAfterResponse'],
+                timeout=30000
             )
             witness_result = {
                 'viewerRole': witness_before['viewerRole'],
@@ -6316,6 +6795,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
                 'witnessObjectivesVisible': True,
                 'witnessSourceArchiveChain': source_archive_witness_chain,
                 'founderProgressAfterWitnessActivity': founder_fresh_client,
+                'experimentDissentCircuit': experiment_dissent_circuit,
                 'contradictionClerk': contradiction_clerk_result,
                 'worldStateUnchangedByBoardInspection': True
             }
@@ -6361,6 +6841,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             'agpSatiristFollowup': agp_satirist_followup,
             'sourceArchiveWitnessChain': source_archive_witness_chain,
             'founderFreshClientProgress': founder_fresh_client,
+            'experimentDissentCircuit': experiment_dissent_circuit,
             'contradictionClerk': contradiction_clerk_result,
             'boardInspectionReadOnly': True,
             'worldRevision': before['revision'],
@@ -7969,14 +8450,17 @@ def main():
                     source_archive_fixture = None
                     source_archive_failure = None
                     observatory_fixture = None
+                    founder_report_id = None
                     for width in (320, 390):
                         result = run_viewport(
-                            browser, url, out, width, source_archive_fixture, source_archive_failure, server_state
+                            browser, url, out, width, source_archive_fixture, source_archive_failure,
+                            server_state, founder_report_id
                         )
                         results.append(result)
                         if width == 320:
                             source_archive_fixture = result['sourceArchiveFixture']
                             source_archive_failure = result['sourceArchiveFailure']
+                            founder_report_id = result['sourceArchiveFounderChain']['reportId']
                         if width == 390:
                             observatory_fixture = result['observatoryPublication']
                         (out / 'results.json').write_text(json.dumps(results, indent=2))
