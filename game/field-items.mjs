@@ -170,11 +170,14 @@ export function projectValidFieldItemSourceEventIds(world) {
     const eventCounts = uniqueEventCounts(history);
     const positionByEvent = new Map(history.map((event, index) => [event, index]));
     const failureProjection = projectSourceArchiveFailureObjects(world, { includeRecoveryLinks: true });
-    const recoveryLinks = failureProjection?.captureProjectionComplete === true &&
+    const projectedRecoveryLinks = failureProjection?.captureProjectionComplete === true &&
       Array.isArray(failureProjection.recoveryLinks) ? failureProjection.recoveryLinks : [];
-    const recoveryIds = new Set(recoveryLinks.map(link => link.publicationEventId));
     const { retainedByVersion, matchedPublicationIds } =
       retainedPublicationContext(world, history, eventCounts);
+    // A recovery link must also pass the field-item publication matcher; the
+    // two projections intentionally intersect rather than trusting either alone.
+    const recoveryLinks = projectedRecoveryLinks.filter(link => matchedPublicationIds.has(link.publicationEventId));
+    const recoveryIds = new Set(recoveryLinks.map(link => link.publicationEventId));
     const hasEarlierPublication = (event, position) => {
       const publication = retainedByVersion.get(JSON.stringify([event?.creationId, event?.version]));
       const publicationPosition = publication ? positionByEvent.get(publication) : -1;
