@@ -9361,7 +9361,6 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         expect(recovery_lineage).to_contain_text(publication_event_id)
         recovery_handoff_history = witness_recovery_item.locator('[data-field-item-transfer-history]')
         expect(recovery_handoff_history).to_have_attribute('data-history-total', '2')
-        recovery_handoff_history.locator('summary').tap()
         declined_handoff_entry = recovery_handoff_history.locator(
             '[data-field-item-transfer-history-entry="' + recovery_offer['offerId'] + '"]'
         )
@@ -9370,6 +9369,10 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             '[data-field-item-transfer-history-entry="' + recovery_accept_offer_id + '"]'
         )
         expect(accepted_handoff_entry).to_have_attribute('data-transfer-status', 'accepted')
+        # Each retained offer has its own collapsed event chain. Open both exact
+        # entries rather than using an ambiguous item-level summary locator.
+        declined_handoff_entry.locator('[data-field-item-transfer-history-event-chain] summary').tap()
+        accepted_handoff_entry.locator('[data-field-item-transfer-history-event-chain] summary').tap()
         decline_history_link = declined_handoff_entry.locator(
             '[data-field-item-transfer-history-event-link="declined"]'
         )
