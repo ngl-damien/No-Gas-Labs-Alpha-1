@@ -5225,6 +5225,9 @@ def challenge_experiment_report_mobile(page, report_id, founder_actor_id, width,
     expect(challenge_card).to_contain_text('DISSENT · NOT ADJUDICATED')
     expect(challenge_card).to_contain_text(resolution_request)
     expect(challenge_card).to_contain_text('No original-author response retained yet.')
+    expect(challenge_card.locator(
+        '[data-experiment-challenge-response-status="unanswered"]'
+    )).to_have_count(1)
     expect(challenge_card.get_by_role(
         'button', name='Respond to this challenge →', exact=True
     )).to_have_count(0)
@@ -5299,6 +5302,9 @@ def respond_to_experiment_challenge_mobile(page, challenge_info, width, out,
     expect(challenge_card).to_have_attribute('data-experiment-challenge-status', 'linked')
     expect(challenge_card).to_contain_text(challenge_info['resolutionRequest'])
     expect(challenge_card).to_contain_text('No original-author response retained yet.')
+    expect(challenge_card.locator(
+        '[data-experiment-challenge-response-status="unanswered"]'
+    )).to_have_count(1)
     challenge_card.get_by_role(
         'button', name='Respond to this challenge →', exact=True
     ).tap()

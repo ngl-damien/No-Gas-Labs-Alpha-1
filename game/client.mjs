@@ -5409,9 +5409,14 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
         }else if(responses.length===0){
           if(challengeStatus!=='linked'){
             challengeCard.append(paragraph('This retained challenge is invalid or unlinked; it cannot anchor a response or progress.','evidence-warning'));
-          }else if(sameResearchActor(report.actor,viewer)){
-            challengeCard.append(button('Respond to this challenge →',()=>openExperimentChallengeResponse(report,challenge),{class:'list-button'}));
-          }else challengeCard.append(paragraph('No original-author response retained yet.','form-help'));
+          }else{
+            const pendingResponse = paragraph('No original-author response retained yet.','form-help');
+            pendingResponse.setAttribute('data-experiment-challenge-response-status','unanswered');
+            challengeCard.append(pendingResponse);
+            if(sameResearchActor(report.actor,viewer)){
+              challengeCard.append(button('Respond to this challenge →',()=>openExperimentChallengeResponse(report,challenge),{class:'list-button'}));
+            }
+          }
         }else challengeCard.append(paragraph('Response history is ambiguous; no reply is selected.','evidence-warning'));
         reportCard.append(challengeCard);
       }
