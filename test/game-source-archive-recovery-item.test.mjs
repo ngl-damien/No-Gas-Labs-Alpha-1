@@ -450,6 +450,12 @@ test('a pending Recovery Ledger offer exposes exact failure/capture lineage to i
 });
 
 test('a role-filtered shared snapshot preserves a pending Recovery Ledger offer for its designated recipient without inferring absence', async () => {
+  const emptyWorld = await createWorld();
+  const emptyResponse = publicWorld(emptyWorld, founder);
+  assert.equal(Object.hasOwn(emptyResponse, 'historyCoverage'), false,
+    'An empty world needs no response-only coverage marker and remains importable.');
+  await validateWorld(emptyResponse);
+
   const fixture = await worldWithFailure();
   const privateDraft = await applyAction(fixture.world, {
     type: 'draft',
