@@ -25,6 +25,34 @@ function validViewer(viewer) {
     ['founder', 'witness'].includes(viewer.role) &&
     validPosition(viewer.position);
 }
+function validHistoryCoverage(world) {
+  if (!Object.hasOwn(world, 'historyCoverage')) return true;
+  const coverage = world.historyCoverage;
+  if (!isRecord(coverage)) return false;
+  const expectedKeys = [
+    'schema', 'sourceComplete', 'sourceEventCount', 'suppliedEventCount',
+    'omittedEventCount', 'omittedEventTypes', 'viewerRole'
+  ];
+  const keys = Reflect.ownKeys(coverage);
+  if (keys.length !== expectedKeys.length ||
+      keys.some(key => typeof key !== 'string' || !expectedKeys.includes(key))) return false;
+  if (coverage.schema !== 'ngl.public-world-history.v1' ||
+      coverage.sourceComplete !== true ||
+      coverage.sourceEventCount !== world.revision ||
+      coverage.suppliedEventCount !== world.events.length ||
+      coverage.omittedEventCount !== world.revision - world.events.length ||
+      coverage.viewerRole !== 'witness' ||
+      !isRecord(coverage.omittedEventTypes)) return false;
+  const allowedTypes = new Set(['draft', 'repair', 'message-reported']);
+  let omittedCount = 0;
+  for (const key of Reflect.ownKeys(coverage.omittedEventTypes)) {
+    if (typeof key !== 'string' || !allowedTypes.has(key)) return false;
+    const count = coverage.omittedEventTypes[key];
+    if (!Number.isSafeInteger(count) || count < 0) return false;
+    omittedCount += count;
+  }
+  return omittedCount === coverage.omittedEventCount;
+}
 function validWorldProjection(world) {
   if (!isRecord(world) || world.schema !== 'ngl.world.v2' ||
       typeof world.id !== 'string' || typeof world.founderName !== 'string' ||
@@ -35,7 +63,8 @@ function validWorldProjection(world) {
     if (!Array.isArray(world[key])) return false;
   }
   if (world.creations.length > 12 || world.drafts.length !== 0 ||
-      world.events.length > world.revision || world.events.length > 100000) return false;
+      world.events.length > world.revision || world.events.length > 100000 ||
+      !validHistoryCoverage(world)) return false;
   let previousPosition = 0;
   for (const event of world.events) {
     if (!isRecord(event) || ['draft', 'repair', 'message-reported'].includes(event.type) ||
@@ -82,9 +111,29 @@ export function createSharedSnapshotEnvelope(dto, { now = Date.now() } = {}) {
       ? publicWorld(sourceWorld, { id: 'ngl-offline-public-snapshot', role: 'witness' })
       : cloneJson(sourceWorld);
     projection.drafts = [];
-    projection.events = projection.events.filter(event =>
-      event && !['draft', 'repair', 'message-reported'].includes(event.type)
-    );
+    const cacheOmissions = {};
+    projection.events = projection.events.filter(event => {
+      const type = event?.type;
+      if (['draft', 'repair', 'message-reported'].includes(type)) {
+        cacheOmissions[type] = (cacheOmissions[type] || 0) + 1;
+        return false;
+      }
+      return true;
+    });
+    if (Object.hasOwn(projection, 'historyCoverage')) {
+      const coverage = projection.historyCoverage;
+      if (!isRecord(coverage) || !isRecord(coverage.omittedEventTypes)) return null;
+      const omittedEventTypes = { ...coverage.omittedEventTypes };
+      for (const [type, count] of Object.entries(cacheOmissions)) {
+        omittedEventTypes[type] = (omittedEventTypes[type] || 0) + count;
+      }
+      projection.historyCoverage = {
+        ...coverage,
+        suppliedEventCount: projection.events.length,
+        omittedEventCount: coverage.sourceEventCount - projection.events.length,
+        omittedEventTypes
+      };
+    }
   } catch {
     return null;
   }
