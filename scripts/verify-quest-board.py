@@ -9757,6 +9757,20 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         }
         assert recovery_forge_event_id in inventory_cache_event_ids
         assert recovery_recipient_equip_event_id in inventory_cache_event_ids
+        witness_page.wait_for_function(
+            """expected => {
+              const raw = localStorage.getItem('ngl.common-ground.shared-snapshot.v1');
+              if (!raw) return false;
+              try {
+                const envelope = JSON.parse(raw);
+                const accepted = envelope.world || envelope.snapshot;
+                return accepted?.revision === expected;
+              } catch {
+                return false;
+              }
+            }""",
+            arg=witness_after_equip['revision']
+        )
 
         inventory_cache_context = browser.new_context(
             viewport={'width': 320, 'height': 844},
@@ -9806,7 +9820,11 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         )
         expect(inventory_cache_item_card).to_have_count(1)
         expect(inventory_cache_item_card).to_contain_text('current owner ' + witness_id + ' (witness)')
-        expect(inventory_cache_item_card.locator('[data-unequip-field-item]')).to_be_disabled()
+        inventory_cache_equipment_slot = inventory_cache_page.locator(
+            '#sheet-content [data-equipment-slot="recovery"]'
+        )
+        expect(inventory_cache_equipment_slot).to_have_count(1)
+        expect(inventory_cache_equipment_slot.locator('[data-unequip-field-item="recovery"]')).to_be_disabled()
 
         inventory_cache_before = inventory_cache_page.evaluate("""() => ({
           raw: localStorage.getItem('ngl.common-ground.shared-snapshot.v1'),
