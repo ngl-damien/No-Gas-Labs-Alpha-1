@@ -61,6 +61,12 @@ INSTITUTION_ROUTE_IDS = {
     'Publication House': 'publication_house'
 }
 
+# Institution sheets are intentionally non-modal. Keep their public display
+# title separate from the route label when the two differ.
+INSTITUTION_SHEET_TITLES = {
+    'The Commons at TownSquare': 'TownSquare · Institution Records'
+}
+
 # Stable world coordinates for the two distant route choices used by the
 # offline fixture. The player may already be standing at either institution.
 INSTITUTION_ROUTE_POINTS = {
@@ -106,12 +112,13 @@ def enter_nearby_institution(page, place_id, timeout=30000):
     if expected_name is None:
         raise AssertionError(f'No institution name is registered for {place_id!r}')
 
+    expected_title = INSTITUTION_SHEET_TITLES.get(expected_name, expected_name)
     deadline = time.monotonic() + timeout / 1000
     last_state = None
     while time.monotonic() < deadline:
         if position_resync_notice_visible(page):
             return False
-        last_state = page.evaluate("""expectedName => {
+        last_state = page.evaluate("""expectedTitle => {
             const world = document.querySelector('#world');
             const sheet = document.querySelector('#sheet');
             const sheetTitle = document.querySelector('#sheet-title')?.textContent?.trim() ?? null;
@@ -122,9 +129,12 @@ def enter_nearby_institution(page, place_id, timeout=30000):
                 element.getClientRects().length &&
                 getComputedStyle(element).visibility !== 'hidden' &&
                 getComputedStyle(element).pointerEvents !== 'none');
-            const alreadyOpen = Boolean(sheet && !sheet.hidden && modalOpen && sheetTitle === expectedName);
+            // Institution sheets are non-modal side panels. Their exact visible
+            // title, not the modal-open CSS class, is the entry receipt.
+            const alreadyOpen = Boolean(sheet && !sheet.hidden && sheetTitle === expectedTitle);
             return {
                 nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+                navigationState: world?.dataset.navigationState ?? null,
                 sheetHidden: sheet?.hidden === true,
                 sheetTitle,
                 modalOpen,
@@ -134,7 +144,7 @@ def enter_nearby_institution(page, place_id, timeout=30000):
                 primaryVisible: visible(primary),
                 primaryLabel: primary?.getAttribute('aria-label') ?? null
             };
-        }""", expected_name)
+        }""", expected_title)
 
         # The player can reach and open the exact target sheet between the
         # movement poll and this entry poll. Treat that exact open sheet as
@@ -143,10 +153,20 @@ def enter_nearby_institution(page, place_id, timeout=30000):
             return True
 
         ready = last_state.get('nearbyInstitutionId') == place_id and \
+            last_state.get('navigationState') in ('idle', 'arrived') and \
             last_state.get('sheetHidden') and not last_state.get('modalOpen')
         if ready and last_state.get('separateVisible') and last_state.get('separateId') == place_id:
             try:
                 page.locator('#enter-institution-button').click(timeout=500)
+                page.wait_for_function(
+                    """expectedTitle => {
+                        const sheet = document.querySelector('#sheet');
+                        return Boolean(sheet && !sheet.hidden &&
+                            document.querySelector('#sheet-title')?.textContent?.trim() === expectedTitle);
+                    }""",
+                    arg=expected_title,
+                    timeout=min(1500, max(100, int((deadline - time.monotonic()) * 1000)))
+                )
                 return True
             except PlaywrightTimeoutError:
                 # The nearest entity can change between the DOM snapshot and
@@ -160,6 +180,15 @@ def enter_nearby_institution(page, place_id, timeout=30000):
                 isinstance(primary_label, str) and primary_label.startswith('Enter '):
             try:
                 page.locator('#interact-button').click(timeout=500)
+                page.wait_for_function(
+                    """expectedTitle => {
+                        const sheet = document.querySelector('#sheet');
+                        return Boolean(sheet && !sheet.hidden &&
+                            document.querySelector('#sheet-title')?.textContent?.trim() === expectedTitle);
+                    }""",
+                    arg=expected_title,
+                    timeout=min(1500, max(100, int((deadline - time.monotonic()) * 1000)))
+                )
                 return True
             except PlaywrightTimeoutError:
                 pass
@@ -213,36 +242,58 @@ def walk_to_location(page, name, timeout=30000, enter=True, _position_resync_ret
         entered = enter_nearby_institution(page, place_id, timeout)
         if not entered:
             return reissue_after_resync()
+        expected_title = INSTITUTION_SHEET_TITLES.get(name, name)
         page.wait_for_function(
-            """notice => {
+            """({expectedTitle, notice}) => {
+                const sheet = document.querySelector('#sheet');
+                const sheetTitle = document.querySelector('#sheet-title')?.textContent?.trim() ?? null;
                 const toast = document.querySelector('#toast');
-                return document.body.classList.contains('modal-open') ||
-                    Boolean(toast && !toast.hidden && toast.textContent.includes(notice));
+                const resyncNotice = Boolean(toast && !toast.hidden && toast.textContent.includes(notice));
+                return Boolean(sheet && !sheet.hidden && sheetTitle === expectedTitle) || resyncNotice;
             }""",
-            arg=POSITION_RESYNC_NOTICE,
+            arg={'expectedTitle': expected_title, 'notice': POSITION_RESYNC_NOTICE},
             timeout=timeout
         )
-        modal_open = page.evaluate("() => document.body.classList.contains('modal-open')")
-        if position_resync_notice_visible(page) and not modal_open:
+        sheet_open = page.evaluate(
+            """expectedTitle => {
+                const sheet = document.querySelector('#sheet');
+                return Boolean(sheet && !sheet.hidden &&
+                    document.querySelector('#sheet-title')?.textContent?.trim() === expectedTitle);
+            }""",
+            expected_title
+        )
+        if position_resync_notice_visible(page) and not sheet_open:
             return reissue_after_resync()
         return False
     except Exception as error:
-        modal_open = page.evaluate("() => document.body.classList.contains('modal-open')")
-        if position_resync_notice_visible(page) and not modal_open:
+        expected_title = INSTITUTION_SHEET_TITLES.get(name, name)
+        sheet_open = page.evaluate(
+            """expectedTitle => {
+                const sheet = document.querySelector('#sheet');
+                return Boolean(sheet && !sheet.hidden &&
+                    document.querySelector('#sheet-title')?.textContent?.trim() === expectedTitle);
+            }""",
+            expected_title
+        )
+        if position_resync_notice_visible(page) and not sheet_open:
             return reissue_after_resync()
         diagnostics = page.evaluate("""() => {
             let playerPosition = null;
             try { playerPosition = JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')); } catch {}
             const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
             return {
                 visibilityState: document.visibilityState,
                 hasFocus: document.hasFocus(),
                 modeLabel: document.querySelector('#mode-label')?.textContent ?? null,
                 connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null,
                 movementEnabled: world?.dataset.movementEnabled ?? null,
+                navigationState: world?.dataset.navigationState ?? null,
                 nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
                 nearbyNpcRole: world?.dataset.nearbyNpcRole ?? null,
                 nearbyPlayerName: world?.dataset.nearbyPlayerName ?? null,
+                sheetHidden: sheet?.hidden ?? null,
+                sheetTitle: document.querySelector('#sheet-title')?.textContent ?? null,
                 interactLabel: document.querySelector('#interact-button')?.getAttribute('aria-label') ?? null,
                 enterInstitutionLabel: document.querySelector('#enter-institution-button')?.getAttribute('aria-label') ?? null,
                 enterInstitutionHidden: document.querySelector('#enter-institution-button')?.hidden ?? null,
@@ -251,7 +302,7 @@ def walk_to_location(page, name, timeout=30000, enter=True, _position_resync_ret
                 playerPosition
             };
         }""")
-        raise AssertionError(f'Player did not reach the explicit entry prompt for {name}: {diagnostics}') from error
+        raise AssertionError(f'Player did not reach the explicit institution sheet for {name}: {diagnostics}') from error
 
 
 def install_gate_fixture(page, *, offline_initial=False, advance_head=False):
