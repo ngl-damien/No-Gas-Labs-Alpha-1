@@ -761,26 +761,52 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
 }
 export function publicWorld(world,actor){
   const copy=clone(world);
+  const sourceEvents=Array.isArray(copy.events)?copy.events:[];
+  const sourceEventCount=sourceEvents.length;
+  let sourceHistoryDense=Array.isArray(copy.events);
+  for(let index=0;sourceHistoryDense&&index<sourceEventCount;index++){
+    if(!Object.hasOwn(sourceEvents,String(index)))sourceHistoryDense=false;
+  }
+  const sourceHistoryComplete=sourceHistoryDense&&Number.isSafeInteger(copy.revision)&&copy.revision===sourceEventCount;
+  const omittedEventTypes={};
   // Response-only metadata: derive global positions before role filtering and
   // overwrite any caller-supplied field. Canonical world events are not mutated.
-  if(Array.isArray(copy.events)){
-    copy.events=copy.events.map((event,index)=>{
-      if(!event||typeof event!=='object'||Array.isArray(event))return event;
-      return {...event,historyPosition:index+1};
-    });
-  }
+  copy.events=sourceEvents.map((event,index)=>{
+    if(!event||typeof event!=='object'||Array.isArray(event))return event;
+    return {...event,historyPosition:index+1};
+  });
   if(actor?.role!=='founder'){
     copy.drafts=[];
     const hidden=hiddenCommonsMessageIds(copy);
     copy.events=copy.events
-      .filter(e=>!['draft','repair'].includes(e.type)&&(e.type!=='message-reported'||(e.actor?.id===actor?.id&&e.actor?.role===actor?.role)))
-      .map(e=>{
-        if(e.type!=='message-posted'||!hidden.has(e.messageId))return e;
-        const safe={...e,text:'[Message hidden by human moderation.]'};
+      .filter(event=>{
+        const type=event?.type;
+        const omitted=['draft','repair'].includes(type)||
+          (type==='message-reported'&&!(event?.actor?.id===actor?.id&&event?.actor?.role===actor?.role));
+        if(omitted)omittedEventTypes[type]=(omittedEventTypes[type]||0)+1;
+        return !omitted;
+      })
+      .map(event=>{
+        if(!event||typeof event!=='object'||Array.isArray(event)||
+           event.type!=='message-posted'||!hidden.has(event.messageId))return event;
+        const safe={...event,text:'[Message hidden by human moderation.]'};
         delete safe.actionFingerprint;
         return safe;
       });
   }
+  // This response-only coverage receipt explains exactly which event families
+  // role filtering omitted. It permits positive matching only for event types
+  // that cannot be Source Archive failures or publications; it never upgrades
+  // a partial snapshot to canonical history or permits an absence conclusion.
+  copy.historyCoverage=Object.freeze({
+    schema:'ngl.public-world-history.v1',
+    sourceComplete:sourceHistoryComplete,
+    sourceEventCount,
+    suppliedEventCount:Array.isArray(copy.events)?copy.events.length:0,
+    omittedEventCount:sourceEventCount-(Array.isArray(copy.events)?copy.events.length:0),
+    omittedEventTypes:Object.freeze(omittedEventTypes),
+    viewerRole:actor?.role==='founder'?'founder':actor?.role==='witness'?'witness':'unknown'
+  });
   return copy;
 }
 export async function validateWorld(raw) {
