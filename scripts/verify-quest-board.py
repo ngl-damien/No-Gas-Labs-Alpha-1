@@ -1372,6 +1372,23 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
 
     screenshot = out / ('contradiction-clerk-evidence-archive-' + str(viewport_width) + '.png')
     page.screenshot(path=str(screenshot), full_page=True)
+
+    # The next R&D quest starts from the world map. Close the completed Clerk
+    # panel explicitly; the non-modal sheet otherwise intercepts the Places
+    # control even though the world remains visible behind it.
+    page.locator('#sheet-close').tap()
+    expect(page.locator('#sheet')).to_be_hidden()
+    after_close = contradiction_clerk_snapshot(page, archive['creationId'])
+    assert after_close['revision'] == after['revision'], (
+        'Closing the completed Clerk panel must not append a world event.'
+    )
+    assert after_close['xp'] == after['xp'], (
+        'Closing the completed Clerk panel must not award XP.'
+    )
+    assert after_close['eventIds'] == after['eventIds'], (
+        'Closing the completed Clerk panel must preserve retained event history.'
+    )
+
     return {
         'npcRole': 'contradiction-clerk',
         'owningInstitution': 'evidence_archive',
