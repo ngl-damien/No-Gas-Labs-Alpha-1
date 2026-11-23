@@ -1,3 +1,63 @@
+# Latest Checkpoint — Run 322
+
+Date: 2026-11-22
+
+## Candidate and branch state
+
+- Runtime PR: [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), draft and unmerged.
+- Runtime branch: `feat/evidence-archive-visible-stream-order-20261120-run272`.
+- Exact runtime/test head: `5331162f2fd8df25a5a39092f8722efd321e205e`.
+- Main base: `0d950c501cf128d828ae4f263cc05a9013d7e8c1`.
+- PR delta: 410 commits ahead, 0 behind; 48 changed paths.
+- Documentation remains separate in existing draft child PR [#722](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/722); it is 5 commits behind the runtime branch but its diff remains documentation-only.
+
+## Run 322 implementation
+
+Added a mobile acceptance assertion to `scripts/verify-quest-board.py` at the end of the real Source Archive → Moonshot → experiment → Source Analyst predicate journey.
+
+At both 320px and 390px, for Founder and Witness sessions, the acceptance now opens the actual Character & field record and checks the same retained R&D activity represented on the Quest Board:
+
+- Researcher: 1 retained falsifiable proposal.
+- Experimenter: 1 retained experiment report.
+- Source Analyst: 2 unique literal predicates; repeated same-operator events do not inflate the count.
+- Adversary: 0, because this journey does not append a cross-actor experiment challenge.
+- Experiment Responder: 0, because this journey does not append an original-author experiment response.
+
+The check asserts the visible skill explanations retain their limits (activity is not mastery, independent verification, truth, or authority), and that opening the Character Record leaves the shared world projection and character XP unchanged. A screenshot and structured receipt are included in the existing Quest Board workflow artifact.
+
+This is a user-visible acceptance improvement, not a runtime mechanic or a new XP rule. It tests that R&D activity is legible in the mobile MMORPG's Character Record and does not manufacture progress through inspection.
+
+## Exact-head CI state
+
+Exact head: `5331162f2fd8df25a5a39092f8722efd321e205e`.
+
+- Full Verify [45086528965](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086528965): PASS.
+- Genesis Evidence Invariant [45086529037](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086529037): PASS.
+- PWA build [45086529021](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086529021): PASS.
+- Academy [45086528928](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086528928), Council [45086528957](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086528957), and Combat [45086528950](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086528950): PASS.
+- Quest Board mobile [45086529087](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086529087), Synthesis mobile [45086529040](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086529040), and Android [45086528936](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086528936): IN_PROGRESS at checkpoint capture. The new Character Record assertions are not yet independently verified until Quest Board mobile reaches a terminal result.
+- Browser [45086529124](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086529124): FAIL in Worker A-owned `scripts/verify-browser.py:254`. Offline PWA private recovery passed first (30 cached entries, two private publications, one notebook restore, one replay no-op, zero world mutation); the subsequent route expected hidden `Enter Forge` while the live HUD exposed `Enter Guild Hall` for the nearby Guild Hall. This path remains Worker A-owned and was not edited.
+- Live Source Archive [45086528961](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45086528961): FAIL. The public GitHub retrieval returned HTTP 502 where the acceptance expected 409; the shared service retained the failed attempt and created no draft. This is an upstream retrieval failure observed by the live integration check, not a failure in the changed mobile script.
+- Hosted preflight in the Source Archive workflow reported `ready`, with zero warnings and zero failures. It does not substitute for a local pre-edit receipt.
+
+## Process and authority
+
+- Root `AGENTS.md`, the complete shared protocol, Institutional Charter, World Projection Contract, Universal Agent Operating Contract, MMORPG Completion Contract, Codex pointer, and applicable nested instruction paths were inspected. No nested `AGENTS.md` was found under `game`, `test`, `scripts`, or the inspected `docs` paths.
+- The initial repository inventory was accidentally bundled before the sequential bootstrap; the required root instructions were then read sequentially and the baseline was restarted.
+- No local pre-edit receipt or local Node/Playwright/Gradle execution is claimed. Procedural compliance remains PARTIAL.
+- An exploratory branch `test/research-challenge-evidence-guard-run322-20261122` was created from the earlier Run 321 head before the current runtime branch's newer tests were discovered. Its sole test is redundant with coverage already present on the current branch; it has no PR and was not merged.
+- G0–G8 remain IN_PROGRESS. G9 remains NOT_STARTED. Founder trust remains NOT_ENROLLED.
+- No merge, release, deployment, Founder approval, truth verdict, XP award, or authority transition occurred.
+
+## Next execution
+
+1. Collect terminal Quest Board/Synthesis/Android results and inspect the new Character Record screenshots/receipt; repair only failures attributable to this change.
+2. Preserve Worker A's Browser and Android ownership; coordinate the known locator mismatch rather than changing those paths.
+3. Investigate the live Source Archive 502 only if it reproduces; retain the failure rather than rewriting it as success.
+4. Reconcile the 410-commit runtime stack against main path-by-path before any integration decision.
+
+---
+
 # Latest Checkpoint — Run 321
 
 Date: 2026-11-22
