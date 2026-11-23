@@ -8983,6 +8983,42 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         )
         assert recovery_unequip_event_id
 
+        # A forged inventory object must expose its exact Forge event even
+        # before any handoff history exists. Inspection is read-only.
+        expect(recovery_item.locator('[data-field-item-transfer-history]')).to_have_count(0)
+        recovery_forge_event_link = recovery_item.locator(
+            '[data-field-item-forge-event="' + recovery_forge_event_id + '"]'
+        )
+        expect(recovery_forge_event_link).to_have_count(1)
+        expect(recovery_forge_event_link).to_have_attribute(
+            'data-chronicle-event-id', recovery_forge_event_id
+        )
+        expect(recovery_forge_event_link).to_have_attribute('data-chronicle-source', 'world')
+        before_forge_event_inspection = authoritative_snapshot(inspection_page)
+        recovery_forge_event_link.tap()
+        expect(inspection_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        recovery_forge_event_card = inspection_page.locator(
+            '#sheet-content [data-event-id="world:' + recovery_forge_event_id + '"]'
+        )
+        expect(recovery_forge_event_card).to_have_count(1)
+        expect(recovery_forge_event_card).to_have_attribute('data-event-source', 'world')
+        after_forge_event_inspection = authoritative_snapshot(inspection_page)
+        assert shared_world_snapshot(after_forge_event_inspection) == shared_world_snapshot(before_forge_event_inspection), (
+            'Inspecting an inventory item’s exact Forge event must not mutate the accepted world.'
+        )
+        assert after_forge_event_inspection['xp'] == before_forge_event_inspection['xp'], (
+            'Forge-event inspection must award no XP.'
+        )
+        inspection_page.locator('#sheet-close').tap()
+        inspection_page.locator('#character-button').tap()
+        inspection_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        recovery_item = inspection_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Recovery Ledger')
+        expect(recovery_item).to_have_count(1)
+
         inspection_page.wait_for_function(
             """expected => {
               const select = document.querySelector('#sheet-content [data-transfer-recipient]');
