@@ -1,3 +1,67 @@
+# Latest Checkpoint — Run 327
+
+Date: 2026-11-22
+
+## Candidate and branch state
+
+- Runtime PR: [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), draft and unmerged.
+- Runtime branch: `feat/evidence-archive-visible-stream-order-20261120-run272`.
+- Exact runtime/test head: [c86ea31](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/c86ea31e90b7944efd1a4bbcfb48a95366da21c1).
+- Main base: `0d950c501cf128d828ae4f263cc05a9013d7e8c1`.
+- PR delta: 425 commits ahead, 0 behind; 50 changed paths.
+- Documentation child PR: [#722](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/722) was synchronized to the exact runtime head using two-parent merge commit [e2a4f3f](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/e2a4f3fd8ae44a86c6a7eb06eab458d47e603092), with runtime head as first parent and prior docs head `14218c0` as second parent. No rebase or force update.
+
+## Run 327 implementation
+
+The exact-head Quest Board mobile run on `9638377` passed the 320px journey but failed at 390px when the Witness challenge flow attempted to tap `#places-button` after the completed Contradiction Clerk interaction. The visible, non-modal Evidence Archive sheet remained open and its `#sheet-content` intercepted the tap. This was a mobile acceptance sequencing defect, not evidence that the runtime had lost world state.
+
+Commit [c86ea31](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/c86ea31e90b7944efd1a4bbcfb48a95366da21c1) changes only `scripts/verify-quest-board.py`. After the explicit Clerk report is retained and the evidence screenshot is captured, the journey closes the completed panel and asserts:
+- the sheet is hidden before the next world-map route;
+- the shared revision is unchanged;
+- XP is unchanged;
+- the retained event ID sequence is unchanged.
+
+The assertion protects the intended distinction: closing a UI panel is navigation, not a world event or reward. The next R&D challenge/author-response sequence remains a real two-session, actor-attributed event journey; the Witness challenge remains dissent, not adjudication, and the original report author alone receives the response action.
+
+## Exact-head CI state
+
+Exact head: `c86ea31e90b7944efd1a4bbcfb48a95366da21c1`.
+
+- Full Verify [45108946214](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946214): PASS. Hosted preflight was `ready`, with zero warnings and zero failures; Node tests, Python inspector, standalone PWA package build and bounded institutional exercise exited 0; verification report `passed=true`.
+- Genesis Evidence Invariant [45108946106](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946106): PASS.
+- PWA build [45108946187](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946187): PASS.
+- Live Source Archive [45108946125](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946125): PASS.
+- Academy [45108946215](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946215), Council [45108946160](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946160), and Combat [45108946201](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946201): PASS.
+- Quest Board mobile [45108946332](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946332), Synthesis mobile [45108946117](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946117), and Android [45108946352](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946352): IN_PROGRESS at checkpoint capture. No terminal mobile/Android result is claimed.
+- Browser [45108946369](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946369): FAIL in Worker A-owned `scripts/verify-browser.py`. Exact diagnostics: nearby `guild_hall`; visible `Enter Guild Hall`; hidden legacy `Enter Forge`; `enterInstitutionHidden=true`; `modalOpen=false`; private world online and movement enabled. Handoff posted to Worker A on [PR #472 comment 7091192741](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7091192741). Worker B did not edit Browser-owned paths.
+
+## Recovered mechanism review
+
+Read-only inspection of the current Alpha-1 seams:
+- `game/research-records.mjs` snapshots untrusted event-shaped input through own data descriptors, bounds the accepted arrays/objects, uses retained event positions, and requires unique earlier publication/proposal/report/challenge links. A supplied challenge resolution request is bounded; an author response must follow one valid earlier challenge and be authored by the original report actor.
+- `src/world/project.js` validates dense JSON event payloads and explicit parent references, calls host-provided observation/authorization verifiers, checks exact byte receipts, and only projects completion from accepted, authorized, executed, observed, successful events. Rejections and failures remain in history.
+- `src/evidence/content-addressed.js` verifies actual resolved bytes against the detached SHA-256 digest and byte length; a receipt establishes byte identity, not proposition truth.
+- `src/institution/decisions.mjs` keeps explicit Founder-only policy/disposition paths, exact evaluation-byte receipts, expected revisions, unique request IDs, bounded review windows and append-only decision history. This inspection does not establish Founder trust enrollment.
+- `game/shared-snapshot.mjs` rejects regressing revisions within a world and invalidates asynchronous callbacks across shared/private session transitions; cached snapshots remain read-only display, not canonical writes.
+- These are selective Alpha-1 adaptations of RAE/Relay/Decision Chamber boundaries. No donor repository was modified. Prior Run 322 reconnaissance on Guild, Command Center, TownSquare, AGP/VoxScript and RuneUX remains unchanged; README/demo claims are not treated as executable integration evidence.
+
+## Process, authority and limitations
+
+- Root `AGENTS.md`, complete shared protocol, Institutional Charter, Universal Agent Operating Contract, World Projection Contract, MMORPG Completion Contract, latest checkpoint/ledger, current PRs and Worker A handoffs were inspected. No nested `AGENTS.md` exists under `game/`, `scripts/`, `test/`, or `docs/` on the runtime head.
+- Bootstrap deviation: the initial repository inventory was accidentally bundled before the root instructions were read. The root instructions, shared protocol and Charter were then read sequentially and the baseline was restarted; this deviation is retained rather than described as full procedural compliance.
+- Both authorized Desktop Commander devices were Offline. No local pre-edit receipt or local Node/Playwright/Gradle execution is claimed. Hosted Full Verify preflight is post-edit evidence only. Procedural compliance remains PARTIAL.
+- G0–G8 remain IN_PROGRESS. G9 remains NOT_STARTED. Founder trust remains NOT_ENROLLED.
+- No merge, release, deployment, Founder approval, truth verdict, XP award or authority transition occurred.
+
+## Next execution
+
+1. Collect terminal Quest Board, Synthesis and Android results on exact head `c86ea31`; repair only failures attributable to Worker B's changed path.
+2. Preserve Worker A ownership of Browser and Android paths; use the exact handoff evidence already posted.
+3. Keep #722 synchronized to the moving #718 base through non-force two-parent merges only.
+4. Reconcile the 425-commit runtime stack against main path-by-path before any integration decision.
+
+---
+
 # Latest Checkpoint — Run 322
 
 Date: 2026-11-22
