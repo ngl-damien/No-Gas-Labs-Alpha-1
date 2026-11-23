@@ -27,6 +27,14 @@ The check asserts the visible skill explanations retain their limits (activity i
 
 This is a user-visible acceptance improvement, not a runtime mechanic or a new XP rule. It tests that R&D activity is legible in the mobile MMORPG's Character Record and does not manufacture progress through inspection.
 
+## Recovered donor reconnaissance (read-only)
+
+- **RAE** (`ngl-damien/recursive-artifact-engine`): inspected `src/evidence.js`, `src/runtime.js`, `src/authority.js`, and `src/cli.js`. Reusable mechanisms are bounded no-follow file reads, fresh byte observations, structured predicates with explicit VERIFIED/REFUTED/UNVERIFIABLE/UNSUPPORTED outcomes, stable observation IDs, and operation-specific signed grants with expiry, one-use nonce/replay rejection and revocation. Natural-language model claims remain PROPOSED; a receipt or self-hash is not a human signature or proof of truth.
+- **Mesh/Relay** (`ngl-damien/ngl-mesh`): inspected `integration/relay/README.md`, `RaeEvidenceBridge.java`, and `verify_bridge.py`. The bridge independently rechecks exact APK bytes/hash, imports RAE output as an external append-only system event, preserves the original parent, deduplicates by deterministic UUID, and records rejected-import failures without granting authority. The full Kotlin/Compose/Room mesh architecture is still explicitly inferred, not rebuilt or verified.
+- **Guild / Command Center / TownSquare / AGP:** `ai-guild-hardened-v0.2` is described as a Capacitor operations shell, not the cognition kernel; Command Center's README says its documentation is in progress; the recovered TownSquare repository contains only a minimal Markdown stub; VoxScriptNGL is described as a scriptwriting agent, while BroadcastNGL is only a generated repository summary at README level. These descriptions are not executable integration evidence.
+- **RuneUX / standalone Decision Chamber:** no owner-matched RuneUX or Decision Chamber repository was found in the 97 accessible `ngl-damien` repositories. The only RuneUX search result was an unrelated external repository and was excluded. Alpha-1's current `src/institution/decisions.mjs` is a separate deterministic decision store with host-authenticated Founder role checks, exact evaluation-byte receipts, explicit APPROVE/REJECT/DEFER dispositions and bounded review windows.
+- Integration implication: prefer RAE's structured observations/authority boundary and Relay's preserved parent + append-only UUID event semantics. Do not import donor dashboards or treat README claims, inferred Mesh architecture, or imported reports as canonical state. No donor repository was modified.
+
 ## Exact-head CI state
 
 Exact head: `5331162f2fd8df25a5a39092f8722efd321e205e`.
