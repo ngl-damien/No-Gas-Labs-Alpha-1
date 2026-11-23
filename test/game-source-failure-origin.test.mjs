@@ -380,7 +380,7 @@ test('an orphan retained publish event keeps later-capture absence UNKNOWN', asy
   assert.equal(quest.progress, 1);
   assert.equal(quest.complete, false);
   assert.equal(quest.action, null);
-  assert.match(quest.blockedReason, /missing a unique artifact\\/version link.*UNKNOWN/i);
+  assert.match(quest.blockedReason, /missing a unique artifact\/version link.*UNKNOWN/i);
   assert.equal(world.revision, revision);
   assert.equal(world.xp, xp);
   assert.equal(world.events.length, eventCount);
