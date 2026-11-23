@@ -9780,8 +9780,9 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             service_workers='block'
         )
         inventory_cache_context.add_init_script(
-            "raw => localStorage.setItem('ngl.common-ground.shared-snapshot.v1', raw)",
-            inventory_cache_snapshot_raw
+            "localStorage.setItem('ngl.common-ground.shared-snapshot.v1', "
+            + json.dumps(inventory_cache_snapshot_raw)
+            + ")"
         )
         inventory_cache_page = inventory_cache_context.new_page()
         inventory_cache_page_errors = []
