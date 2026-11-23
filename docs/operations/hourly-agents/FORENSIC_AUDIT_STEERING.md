@@ -11,6 +11,13 @@
 
 ---
 
+## Run 322 donor reconnaissance — evidence/authority boundaries
+
+- RAE executable sources were inspected: bounded no-follow byte reads, fresh structured observations, explicit predicate outcomes, and operation-specific signed grants with expiry/replay/revocation. A model claim or self-hash remains insufficient.
+- Mesh/Relay's host bridge independently rereads APK identity and imports RAE output as external append-only evidence with parent preservation, deterministic UUID deduplication and retained failures; full Compose/Room mesh remains inferred, not a verified build.
+- Guild's README describes a Capacitor operations shell, Command Center docs are in progress, TownSquare is a Markdown stub, and VoxScript/Broadcast evidence is README-level. No owner-matched RuneUX or Decision Chamber repository appears in the 97 accessible repositories; the unrelated public RuneUX result is excluded. Alpha-1's current deterministic Decision Chamber module is not a recovered donor.
+- Use RAE/Relay boundaries selectively; do not copy dashboards or promote README/inferred capabilities into canonical state. No donor repository was modified.
+
 ## Run 321 Worker B steering — Quest Board shares the validated R&D projection — 2026-11-22
 
 - Continue on existing draft runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `aa26bb0eaf460574aeb5dc2512be37ac4a037c94`; 405 ahead / 0 behind main, 48 changed paths. Do not create a competing runtime PR or merge the stack without path-by-path reconciliation.
