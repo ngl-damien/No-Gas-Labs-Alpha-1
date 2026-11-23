@@ -179,7 +179,10 @@ def authoritative_snapshot(page):
           validationStatus: event.validationStatus,
           validator: event.validator,
           sourceEventIds: event.sourceEventIds,
-          responseText: event.responseText
+          responseText: event.responseText,
+          resolutionRequest: event.resolutionRequest,
+          outcome: event.outcome,
+          status: event.status
         })),
         retainedEvents: world.events,
         draftCount: Array.isArray(world.drafts) ? world.drafts.length : -1,

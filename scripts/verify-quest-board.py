@@ -207,6 +207,15 @@ def authoritative_snapshot(page):
         revision: world.revision,
         xp: world.xp,
         eventIds: world.events.map(event => event.id),
+        eventRecords: world.events.map(event => ({
+          id: event.id,
+          type: event.type,
+          actorId: event.actor?.id,
+          actorRole: event.actor?.role,
+          locationId: event.locationId,
+          repeat: event.repeat,
+          historyPosition: Number.isSafeInteger(event?.historyPosition) ? event.historyPosition : null
+        })),
         eventHistoryPositions: world.events.map(event => Number.isSafeInteger(event?.historyPosition) ? event.historyPosition : null),
         // Draft/repair events and actor-private reports are intentionally not
         // present in every actor's publicWorld projection. Compare the common
@@ -1734,6 +1743,55 @@ def shared_world_snapshot(snapshot):
     # publicWorld redacts draft/repair events and actor-private reports from some roles.
     # Only the mutually visible retained event surface is comparable across sessions.
     return {key: snapshot[key] for key in ('revision', 'xp', 'mutuallyVisibleEventIds', 'creationVersions')}
+
+
+def assert_route_travel_records_only_discoveries(before, after, label):
+    before_ids = before['eventIds']
+    after_ids = after['eventIds']
+    assert after_ids[:len(before_ids)] == before_ids, (
+        label + ': retained event IDs must remain append-only during travel.'
+    )
+    new_records = after['eventRecords'][len(before_ids):]
+    assert after_ids[len(before_ids):] == [record['id'] for record in new_records], (
+        label + ': new public event records must match the appended event IDs.'
+    )
+    revision_delta = after['revision'] - before['revision']
+    assert revision_delta == len(new_records), (
+        label + ': every event appended during travel must be visible to the traveling actor.'
+    )
+    expected_positions = list(range(before['revision'] + 1, after['revision'] + 1))
+    actual_positions = [record['historyPosition'] for record in new_records]
+    assert actual_positions == expected_positions, (
+        label + ': discovery records must retain their exact append positions.'
+    )
+    assert after['viewerId'] == before['viewerId'] and after['viewerRole'] == before['viewerRole'], (
+        label + ': travel must remain attributed to the same actor.'
+    )
+    assert after['xp'] == before['xp'], label + ': discovery travel must award no XP.'
+    assert after['creationVersions'] == before['creationVersions'], (
+        label + ': discovery travel must not publish or revise artifacts.'
+    )
+    for record in new_records:
+        assert record['type'] == 'discover', (
+            label + ': travel may append discovery events only, not research, publication, or verdict events.'
+        )
+        assert record['actorId'] == before['viewerId'] and record['actorRole'] == before['viewerRole'], (
+            label + ': each discovery must be attributed to the traveling actor.'
+        )
+        assert record['locationId'] in {'relay', 'river', 'overlook', 'ruins'}, (
+            label + ': discovery must identify a known world location.'
+        )
+        repeat = record.get('repeat')
+        assert repeat is None or isinstance(repeat, bool), (
+            label + ': repeat-discovery metadata must remain optional boolean data.'
+        )
+    return {
+        'revisionDelta': revision_delta,
+        'discoveryEventIds': [record['id'] for record in new_records],
+        'discoveredLocations': sorted({record['locationId'] for record in new_records}),
+        'xpDelta': after['xp'] - before['xp'],
+        'appendOnly': True
+    }
 
 
 def assert_contradiction_ward_dossier(page, expected_text, expected_claim, expected_response,
@@ -5039,6 +5097,10 @@ def challenge_experiment_report_mobile(page, report_id, founder_actor_id, width,
       };
     }""", {'reportId': report_id, 'founderActorId': founder_actor_id})
     assert report_snapshot['actorId'] == founder_actor_id
+    arrival_snapshot = authoritative_snapshot(page)
+    route_travel = assert_route_travel_records_only_discoveries(
+        board_before, arrival_snapshot, 'Witness Quest Board route to Moonshot Field'
+    )
     report_card.get_by_role(
         'button', name='Challenge this report →', exact=True
     ).tap()
@@ -5047,8 +5109,11 @@ def challenge_experiment_report_mobile(page, report_id, founder_actor_id, width,
         "!document.querySelector('#sheet').hidden"
     )
     form_open = authoritative_snapshot(page)
-    assert shared_world_snapshot(form_open) == shared_world_snapshot(board_before), (
-        'Opening the challenge form from the retained Quest objective must remain read-only.'
+    assert shared_world_snapshot(form_open) == shared_world_snapshot(arrival_snapshot), (
+        'Opening the challenge form after route arrival must remain read-only.'
+    )
+    assert form_open['eventRecords'] == arrival_snapshot['eventRecords'], (
+        'Opening the challenge form must not rewrite any retained event details.'
     )
 
     resolution_request = (
@@ -5065,8 +5130,11 @@ def challenge_experiment_report_mobile(page, report_id, founder_actor_id, width,
     request_field.fill(resolution_request)
     expect(page.locator('#challenge-experiment-report')).to_be_enabled()
     before_submit = authoritative_snapshot(page)
-    assert shared_world_snapshot(before_submit) == shared_world_snapshot(board_before), (
+    assert shared_world_snapshot(before_submit) == shared_world_snapshot(arrival_snapshot), (
         'Filling a challenge and its requested next check must not mutate canonical state.'
+    )
+    assert before_submit['eventRecords'] == arrival_snapshot['eventRecords'], (
+        'Filling the challenge form must not rewrite any retained event details.'
     )
     page.locator('#challenge-experiment-report').tap()
     page.wait_for_function(
@@ -5185,6 +5253,8 @@ def challenge_experiment_report_mobile(page, report_id, founder_actor_id, width,
         'witnessCharacterRecord': character,
         'challengeRevisionDelta': 1,
         'challengeXpDelta': 0,
+        'routeTravel': route_travel,
+        'challengeFormReadOnly': True,
         'actorSeparation': 'distinct pseudonymous session IDs; not proof of distinct humans',
         'pageErrors': errors
     }
