@@ -3514,7 +3514,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
       typeof recovery.failureCode==='string'&&/^[A-Z0-9_]+$/.test(recovery.failureCode)&&
       Number.isSafeInteger(recovery.failurePosition)&&recovery.failurePosition>0&&
       Number.isSafeInteger(recovery.publicationPosition)&&recovery.publicationPosition>recovery.failurePosition&&
-      typeof recovery.repository==='string'&&/^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$/.test(recovery.repository)&&
+      typeof recovery.repository==='string'&&/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(recovery.repository)&&
       safeHash(recovery.commitSha,40)&&safePath(recovery.path)&&
       Number.isSafeInteger(recovery.version)&&recovery.version>0&&
       safeHash(recovery.sha256,64)&&safeHash(recovery.gitBlobSha,40)&&
