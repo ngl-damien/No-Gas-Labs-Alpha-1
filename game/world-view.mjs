@@ -405,7 +405,7 @@ function validSourceArchiveFailurePath(value){
  * records an operational outcome; it does not establish anything about source
  * truth, claim validity, XP, publication, execution, or authority.
  */
-export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_FAILURE_PAGE_SIZE,page=0}={}){
+export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_FAILURE_PAGE_SIZE,page=0,includeRecoveryLinks=false}={}){
  if(!world||typeof world!=='object'||isArraySafely(world)||ownDataValue(world,'schema')!=='ngl.world.v2')return null;
  let revisionDescriptor;
  try{revisionDescriptor=Object.getOwnPropertyDescriptor(world,'revision')}catch{return null}
@@ -616,6 +616,43 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   failureClassCount:item.failureClassCount,
   failureClassHistoryComplete
  }));
+ const recoveryLinks=[];
+ if(includeRecoveryLinks===true&&captureProjectionComplete){
+  const failuresByPublicationEventId=new Map();
+  for(const record of allRecords){
+   if(record.retryable!==true||record.laterCaptureStatus!=='observed'||!record.laterCapture)continue;
+   const publicationEventId=record.laterCapture.publicationEventId;
+   const group=failuresByPublicationEventId.get(publicationEventId)||[];
+   group.push(record);
+   failuresByPublicationEventId.set(publicationEventId,group);
+  }
+  for(const [publicationEventId,group] of failuresByPublicationEventId){
+   // A single publication cannot be assigned to multiple failure origins.
+   if(group.length!==1)continue;
+   const record=group[0];
+   recoveryLinks.push(Object.freeze({
+    failureEventId:record.eventId,
+    failurePosition:record.historyPosition,
+    attemptId:record.attemptId,
+    failureCode:record.failureCode,
+    actorId:record.actorId,
+    actorRole:record.actorRole,
+    publicationEventId,
+    publicationPosition:record.laterCapture.publicationPosition,
+    creationId:record.laterCapture.creationId,
+    version:record.laterCapture.version,
+    repository:record.laterCapture.repository,
+    commitSha:record.laterCapture.commitSha,
+    path:record.laterCapture.path,
+    fetchedAt:record.laterCapture.fetchedAt,
+    capturedAt:record.laterCapture.capturedAt,
+    captureId:record.laterCapture.captureId,
+    gitBlobSha:record.laterCapture.gitBlobSha,
+    sha256:record.laterCapture.sha256,
+    size:record.laterCapture.size
+   }));
+  }
+ }
  const boundedLimit=Number.isSafeInteger(limit)&&limit>=1&&limit<=100
   ?limit:SOURCE_ARCHIVE_FAILURE_PAGE_SIZE;
  if(!Number.isSafeInteger(page)||page<0||page>MAX_WORLD_EVENT_SCAN)return null;
@@ -645,7 +682,8 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   hasNewer:boundedPage>0,
   omittedCount:total-records.length,
   mostRecentVisibleRetryableFailure,
-  records:Object.freeze(records)
+  records:Object.freeze(records),
+  ...(includeRecoveryLinks===true?{recoveryLinks:Object.freeze(recoveryLinks)}:{})
  });
 }
 

@@ -3829,6 +3829,17 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
         paragraph('Source retrieval: '+dissent.sourceRetrieval+' · Independent verification: '+dissent.independentVerification+' · Model assertions: '+dissent.modelAssertions+' · Execution: '+dissent.execution+'. This item preserves disagreement; it is not evidence, a truth verdict, XP, approval or authority.','form-help')
       ]));
     }
+    if(item.sourceRecovery){
+      const recovery=item.sourceRecovery;
+      children.push(node('section',{class:'field-card','data-field-item-recovery':item.itemId},[
+        node('h4',{text:'RECOVERY LINEAGE · NOT SOURCE TRUTH'}),
+        paragraph('Original service-observed failure '+recovery.failureEventId+' · '+recovery.failureCode+' · append position '+recovery.failurePosition),
+        paragraph('Later server-rechecked capture '+recovery.repository+'@'+recovery.commitSha+'/'+recovery.path+' · publication event '+recovery.publicationEventId+' · artifact v'+recovery.version),
+        paragraph('Byte receipt: SHA-256 '+recovery.sha256+' · Git blob '+recovery.gitBlobSha+' · '+recovery.size+' bytes. This identifies the later capture only; it does not establish equality with the failed response, source truth, authorship, independent verification, execution, approval or authority.','form-help'),
+        button('Inspect original failure →',()=>onInspectEvent(recovery.failureEventId),{class:'list-button','data-field-item-recovery-failure':recovery.failureEventId}),
+        button('Inspect later publication →',()=>onInspectEvent(recovery.publicationEventId),{class:'list-button','data-field-item-recovery-publication':recovery.publicationEventId})
+      ]));
+    }
     if(item.action)children.push(button('Inspect source →',()=>followQuestAction(item.action),{class:'list-button'}));
     if(equipped)children.push(paragraph('Equipped in '+item.slotLabel+'. Unequip before creating a transfer offer.','form-help'));
     else if(item.transferOffer?.status==='offered'){

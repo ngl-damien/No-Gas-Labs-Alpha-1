@@ -1270,6 +1270,47 @@ export function getQuestTrail(world, viewer, options = {}) {
   const fieldEquipmentEvents = fieldItemState.equipmentEvents.filter(event =>
     event.actor?.id === actorId && event.actor?.role === actorRole
   );
+  const sourceArchiveRecoveryLinks = actorRole === 'founder' &&
+    Array.isArray(validFieldItemSourceEventIdsBySlot?.recoveryLinks)
+    ? validFieldItemSourceEventIdsBySlot.recoveryLinks.filter(link =>
+      link?.actorId === actorId && link?.actorRole === actorRole
+    ) : [];
+  const sourceArchiveRecoveryMilestones = sourceArchiveRecoveryLinks.map(link => {
+    const failureEvent = events.find(event =>
+      event?.id === link.failureEventId && event?.type === 'source-archive-attempt-failed' &&
+      sameResearchActor(event.actor, { id: actorId, role: actorRole })
+    );
+    const publicationEvent = events.find(event =>
+      event?.id === link.publicationEventId && event?.type === 'publish' &&
+      event?.creationId === link.creationId && event?.version === link.version &&
+      sameResearchActor(event.actor, { id: actorId, role: actorRole })
+    );
+    if (!failureEvent || !publicationEvent) return null;
+    const forgeEvent = fieldForgeEvents.find(event =>
+      event?.slotId === 'recovery' && event?.sourceEventId === publicationEvent.id
+    );
+    const equipEvent = forgeEvent ? fieldEquipmentEvents.find(event =>
+      event?.type === 'field-item-equipped' && event?.slotId === 'recovery' &&
+      event?.sourceEventId === forgeEvent.id
+    ) : null;
+    const evidenceEvents = [failureEvent, publicationEvent, forgeEvent, equipEvent]
+      .filter(Boolean)
+      .sort((left, right) => events.indexOf(left) - events.indexOf(right));
+    return Object.freeze({
+      ...trailMilestone(
+        'founder-source-archive-recovery-ledger-' + failureEvent.id,
+        'Forge and equip a Recovery Ledger from the linked later capture',
+        4,
+        evidenceEvents.map(event => event.id),
+        evidenceEvents,
+        equipEvent ? null : { type: 'location', id: 'forge' },
+        null,
+        'This objective requires one exact earlier service-observed retryable failure, one unique later server-rechecked publication, and the explicit actor-bound Forge and equip events. It records byte-retrieval lineage only; the receipt does not establish equality with the failed response, source truth, authorship, independent verification, execution, approval or authority. It awards no XP and does not count toward Questkeeper progression.'
+      ),
+      countsForQuestkeeper: false
+    });
+  }).filter(Boolean);
+
   const firstFieldEquipmentEvent = fieldEquipmentEvents[0] || null;
   const validAdversarialSourceIds = validFieldItemSourceEventIdsBySlot?.adversarial instanceof Set
     ? validFieldItemSourceEventIdsBySlot.adversarial : new Set();
@@ -2068,6 +2109,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       ),
       ...sourceArchiveFailureInvestigationMilestones,
       ...sourceArchiveLaterCaptureMilestones,
+      ...sourceArchiveRecoveryMilestones,
       trailMilestone(
         'founder-source-observation-challenge', 'Challenge another actor’s source observation', 1,
         sourceObservationChallenges.map(event => event.id), sourceObservationChallenges,

@@ -25,7 +25,8 @@ export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
   Object.freeze({id:'research',label:'Moonshot Compass',kinds:Object.freeze(['experiment-report','moonshot-proposal']),sourceTypes:Object.freeze(['moonshot-proposed','experiment-reported']),description:'A falsifiable proposal or retained attempt, including failure and inconclusive outcomes.'}),
   Object.freeze({id:'adversarial',label:'Contradiction Ward',kinds:Object.freeze(['experiment-challenge','source-observation-challenge']),sourceTypes:Object.freeze(['experiment-challenged','source-observation-challenged']),description:'A retained challenge to another actor’s experiment report or Source Observatory note; dissent remains unadjudicated.'}),
   Object.freeze({id:'collaboration',label:'Relay Sigil',kinds:Object.freeze(['guild-folio']),sourceTypes:Object.freeze(['collaborator-response-recorded']),description:'A source-bound collaborator response preserved for human review, not approval.'}),
-  Object.freeze({id:'restoration',label:'Repair Gloves',kinds:Object.freeze(['checked-repair']),sourceTypes:Object.freeze(['publish']),description:'A repair method linked to a checked publication sequence; it is not independent validation.'})
+  Object.freeze({id:'restoration',label:'Repair Gloves',kinds:Object.freeze(['checked-repair']),sourceTypes:Object.freeze(['publish']),description:'A repair method linked to a checked publication sequence; it is not independent validation.'}),
+  Object.freeze({id:'recovery',label:'Recovery Ledger',kinds:Object.freeze(['source-archive-recovery']),sourceTypes:Object.freeze(['publish']),description:'A later server-rechecked capture linked to one unique earlier service-observed retryable failure. It records retrieval lineage only; it is not source truth, independent verification or authority.'})
 ]);
 
 export const FIELD_ITEM_SOURCE_PAGE_SIZE = MAX_FIELD_EQUIPMENT_CHOICES;
@@ -703,10 +704,15 @@ export function projectCharacter(world, viewer, options = {}) {
     publications.find(event=>event.creationId===record.creationId&&event.version===record.version&&event.at===record.at)?.id
   ).filter(Boolean));
   const restorationSourceEvents=publications.filter(event=>restorationSourceIds.has(event.id));
+  const recoveryLinks=Array.isArray(validFieldItemSourceEventIdsBySlot.recoveryLinks)
+    ?validFieldItemSourceEventIdsBySlot.recoveryLinks:[];
+  const recoveryLinkByPublicationEventId=new Map(recoveryLinks.map(link=>[link.publicationEventId,link]));
+  const recoverySourceIds=new Set(recoveryLinkByPublicationEventId.keys());
+  const recoverySourceEvents=publications.filter(event=>recoverySourceIds.has(event.id));
   const sourceEventsByType={
     // Every retained publication version has its own immutable event and receipt.
-    // Checked-repair publications belong to Restoration rather than two slots.
-    publish:publications.filter(event=>!restorationSourceIds.has(event.id)),
+    // Checked-repair and failure-recovery publications belong to their specific slots.
+    publish:publications.filter(event=>!restorationSourceIds.has(event.id)&&!recoverySourceIds.has(event.id)),
     discover:discoverySourceEvents,
     contribute:contributionSourceEvents,
     report:reportSourceEvents,
@@ -763,12 +769,15 @@ export function projectCharacter(world, viewer, options = {}) {
       reference.creationId||event.creationId||event.sourceCreationId||event.evidenceCreationId||'retained activity';
   };
   const sourceItemForEvent=(event,slot)=>{
-    const kind=slot.id==='restoration'?'checked-repair':fieldItemKindByType[event.type];
+    const recoveryLink=slot.id==='recovery'?recoveryLinkByPublicationEventId.get(event.id):null;
+    const kind=slot.id==='restoration'?'checked-repair':slot.id==='recovery'?'source-archive-recovery':fieldItemKindByType[event.type];
     const reference=sourceReferenceForEvent(event);
     const sourceCreationId=reference.creationId;
     const sourceVersion=reference.version;
     const version=sourceCreationId&&sourceVersion?retainedVersions.get(versionKey(sourceCreationId,sourceVersion)):null;
-    const title=event.type==='publish'?'Publication · '+creationTitleForEvent(event)+' · v'+event.version:
+    const title=slot.id==='recovery'&&recoveryLink
+      ?'Recovery Ledger · '+recoveryLink.repository+'/'+recoveryLink.path+' · '+recoveryLink.commitSha.slice(0,8)
+      :event.type==='publish'?'Publication · '+creationTitleForEvent(event)+' · v'+event.version:
       event.type==='discover'?'Discovery · '+String(event.locationId):
       event.type==='contribute'?'Field note · '+creationTitleForEvent(event):
       event.type==='report'?'Report · '+creationTitleForEvent(event):
@@ -827,7 +836,8 @@ export function projectCharacter(world, viewer, options = {}) {
       eventId:event.id,kind,title,at:event.at,sourceCreationId,sourceVersion,
       receipt:version?.receipt&&typeof version.receipt.digest==='string'
         ?Object.freeze({digest:version.receipt.digest,size:version.receipt.size}):null,
-      action,dissent
+      action,dissent,
+      recovery:recoveryLink?Object.freeze({...recoveryLink}):null
     });
   };
   // Keep domain validation and cross-slot ambiguity checks, but retain only
@@ -837,13 +847,15 @@ export function projectCharacter(world, viewer, options = {}) {
   const sourceUseCounts = new Map();
   for (const slot of FIELD_EQUIPMENT_SLOTS) {
     const sourceEvents = slot.id === 'restoration' ? restorationSourceEvents
+      : slot.id === 'recovery' ? recoverySourceEvents
       : slot.sourceTypes.flatMap(type => sourceEventsByType[type] || []);
     const seen = new Set();
     const ids = new Set();
     for (const event of sourceEvents) {
       if (!event || !isSafeFieldItemReferenceId(event.id) || seen.has(event.id)) continue;
       seen.add(event.id);
-      const kind = slot.id === 'restoration' ? 'checked-repair' : fieldItemKindByType[event.type];
+      const kind = slot.id === 'restoration' ? 'checked-repair'
+        : slot.id === 'recovery' ? 'source-archive-recovery' : fieldItemKindByType[event.type];
       if (!kind || !slot.kinds.includes(kind) ||
           !validFieldItemSourceEventIdsBySlot[slot.id]?.has(event.id)) continue;
       ids.add(event.id);
@@ -1005,6 +1017,7 @@ export function projectCharacter(world, viewer, options = {}) {
       sourceCreationId:sourceItem.sourceCreationId??null,
       sourceVersion:sourceItem.sourceVersion??null,receipt:sourceItem.receipt??null,
       sourceDissent:sourceItem.dissent??null,
+      sourceRecovery:sourceItem.recovery??null,
       action:sourceItem.action??null,
       transferOffer:activeOffer?Object.freeze({...activeOffer}):null,
       transferHistory,
@@ -1065,6 +1078,7 @@ export function projectCharacter(world, viewer, options = {}) {
           itemId:item.itemId,title:item.title,slotLabel:item.slotLabel,eventId:item.eventId,
           sourceEventId:item.sourceEventId,sourceKind:item.sourceKind,
           sourceCreationId:item.sourceCreationId,sourceVersion:item.sourceVersion,
+          sourceRecovery:item.sourceRecovery??null,
           action:item.action,ownerId:item.ownerId,ownerRole:item.ownerRole
         })
       }))
