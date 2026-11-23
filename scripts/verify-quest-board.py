@@ -5570,7 +5570,7 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     creation_id, version = baseline['creationVersions'][-1]
     report_ids = []
     contribution_ids = []
-    for index in range(2):
+    for index in range(11):
         report = post_action(page, {
             'type': 'report',
             'creationId': creation_id,
@@ -5594,8 +5594,8 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
 
     after_actions = authoritative_snapshot(page)
     after_streams = evidence_archive_activity_collection_ids(page)
-    assert after_actions['revision'] == baseline['revision'] + 4, (
-        'Two reports and two contributions must append exactly four world events.'
+    assert after_actions['revision'] == baseline['revision'] + 22, (
+        'Eleven reports and eleven contributions must append exactly twenty-two world events.'
     )
     assert after_actions['xp'] == baseline['xp'], (
         'Self-reported archive activity must not manufacture XP.'
@@ -5644,8 +5644,8 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
 
     report_cards = report_stream.locator('[data-evidence-archive-activity-record="report"]')
     contribution_cards = contribution_stream.locator('[data-evidence-archive-activity-record="contribution"]')
-    expect(report_cards).to_have_count(len(after_streams['reports']))
-    expect(contribution_cards).to_have_count(len(after_streams['contributions']))
+    expect(report_cards).to_have_count(min(10, len(after_streams['reports'])))
+    expect(contribution_cards).to_have_count(min(10, len(after_streams['contributions'])))
     report_display_ids = report_cards.evaluate_all(
         "nodes => nodes.map(node => node.getAttribute('data-activity-record-id'))"
     )
@@ -5658,20 +5658,81 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     contribution_positions = contribution_cards.evaluate_all(
         "nodes => nodes.map(node => node.getAttribute('data-stream-position'))"
     )
-    assert report_display_ids == list(reversed(after_streams['reports'])), (
-        'Report cards must preserve actor-visible append order, newest first.'
+    assert report_display_ids == list(reversed(after_streams['reports']))[:10], (
+        'The first report page must preserve the newest ten actor-visible append positions.'
     )
-    assert contribution_display_ids == list(reversed(after_streams['contributions'])), (
-        'Contribution cards must preserve actor-visible append order, newest first.'
+    assert contribution_display_ids == list(reversed(after_streams['contributions']))[:10], (
+        'The first contribution page must preserve the newest ten actor-visible append positions.'
     )
     assert report_display_ids[:2] == list(reversed(report_ids))
     assert contribution_display_ids[:2] == list(reversed(contribution_ids))
-    assert report_positions == [str(position) for position in range(len(after_streams['reports']), 0, -1)]
-    assert contribution_positions == [str(position) for position in range(len(after_streams['contributions']), 0, -1)]
+    assert report_positions == [str(position) for position in range(len(after_streams['reports']), max(0, len(after_streams['reports']) - 10), -1)]
+    assert contribution_positions == [str(position) for position in range(len(after_streams['contributions']), max(0, len(after_streams['contributions']) - 10), -1)]
     expect(report_cards.first).to_have_attribute('data-record-status', 'linked')
     expect(contribution_cards.first).to_have_attribute('data-record-status', 'linked')
     expect(report_cards.first).to_contain_text('Retained self-reported activity')
     expect(contribution_cards.first).to_contain_text('Retained self-reported activity')
+
+    report_page_count = (len(after_streams['reports']) + 9) // 10
+    contribution_page_count = (len(after_streams['contributions']) + 9) // 10
+    for stream, records, record_type in (
+        (report_stream, after_streams['reports'], 'report'),
+        (contribution_stream, after_streams['contributions'], 'contribution')
+    ):
+        page_count = (len(records) + 9) // 10
+        expect(stream).to_have_attribute('data-stream-page', '1')
+        expect(stream).to_have_attribute('data-stream-page-count', str(page_count))
+        if page_count > 1:
+            older_button = stream.locator('[data-evidence-archive-page="older"]')
+            expect(older_button).to_have_count(1)
+            older_button.tap()
+            expect(stream).to_have_attribute('data-stream-page', '2')
+            older_page_ids = list(reversed(records))[10:20]
+            older_cards = stream.locator(
+                '[data-evidence-archive-activity-record="' + record_type + '"]'
+            )
+            expect(older_cards).to_have_count(len(older_page_ids))
+            actual_older_ids = older_cards.evaluate_all(
+                "nodes => nodes.map(node => node.getAttribute('data-activity-record-id'))"
+            )
+            assert actual_older_ids == older_page_ids, (
+                'Older ' + record_type + ' pages must preserve retained append order.'
+            )
+            older_event_matches = after_streams['sourceEvents'].get(older_page_ids[0], [])
+            assert len(older_event_matches) == 1, (
+                'An older ' + record_type + ' must retain one exact Chronicle source event.'
+            )
+            older_card = older_cards.first
+            older_artifact_link = older_card.locator('[data-evidence-archive-open="true"]')
+            expect(older_artifact_link).to_have_attribute('data-creation-id', creation_id)
+            expect(older_artifact_link).to_have_attribute('data-version', str(version))
+            older_source_link = older_card.locator('[data-evidence-archive-open-event="true"]')
+            expect(older_source_link).to_have_attribute(
+                'data-event-id', older_event_matches[0]['eventId']
+            )
+            newer_button = stream.locator('[data-evidence-archive-page="newer"]')
+            expect(newer_button).to_have_count(1)
+            newer_button.tap()
+            expect(stream).to_have_attribute('data-stream-page', '1')
+            first_page_ids = list(reversed(records))[:10]
+            returned_ids = stream.locator(
+                '[data-evidence-archive-activity-record="' + record_type + '"]'
+            ).evaluate_all(
+                "nodes => nodes.map(node => node.getAttribute('data-activity-record-id'))"
+            )
+            assert returned_ids == first_page_ids, (
+                'Returning to newer ' + record_type + ' activity must restore the same pinned page.'
+            )
+    pagination_after = authoritative_snapshot(page)
+    assert pagination_after['revision'] == inspection_before['revision'], (
+        'Evidence Archive pagination must not append world events.'
+    )
+    assert pagination_after['xp'] == inspection_before['xp'], (
+        'Evidence Archive pagination must not award XP.'
+    )
+    assert pagination_after['eventIds'] == inspection_before['eventIds'], (
+        'Evidence Archive pagination must preserve the retained event sequence.'
+    )
 
     legacy_activity_headings = page.locator('#sheet-content h3').evaluate_all(
         "nodes => nodes.filter(node => /^(Report|Contribution) ·/.test((node.textContent || '').trim()) && !node.closest('[data-evidence-archive-activity-stream]')).map(node => (node.textContent || '').trim())"
@@ -6535,8 +6596,12 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'contributionDisplayIds': contribution_display_ids,
         'contributionAppendPositions': contribution_positions,
         'orderingBasis': 'retained-append-position',
+        'activityPaginationVerified': True,
+        'activityPageSize': 10,
+        'reportPageCount': report_page_count,
+        'contributionPageCount': contribution_page_count,
         'scope': 'actor-visible-collection',
-        'submissionRevisionDelta': 4,
+        'submissionRevisionDelta': len(report_ids) + len(contribution_ids),
         'submissionXpDelta': after_actions['xp'] - baseline['xp'],
         'inspectionReadOnly': True,
         'offlineChronicleNavigation': True,
