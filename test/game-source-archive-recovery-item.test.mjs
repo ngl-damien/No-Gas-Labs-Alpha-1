@@ -372,3 +372,70 @@ test('client-reported, non-retryable, shared-failure and ambiguous-capture histo
   assert.equal(ambiguousCaptureProjection.captureProjectionComplete, false);
   assert.deepEqual(ambiguousCaptureProjection.recoveryLinks, []);
 });
+
+
+test('a pending Recovery Ledger offer exposes exact failure/capture lineage to its designated recipient before ownership changes', async () => {
+  const fixture = await worldWithFailure();
+  const capture = await publishSourceArchive(fixture.world);
+  const forged = await applyAction(capture.world, {
+    type: 'forge-field-item',
+    slotId: 'recovery',
+    sourceEventId: capture.publicationEvent.id
+  }, founder, { now: '2026-11-23T10:00:08.000Z' });
+  const forgeEvent = forged.world.events.at(-1);
+
+  const offered = await applyAction(forged.world, {
+    type: 'offer-field-item-transfer',
+    itemEventId: forgeEvent.id,
+    recipientId: witness.id,
+    recipientRole: witness.role
+  }, founder, { now: '2026-11-23T10:00:09.000Z', allowTransfers: true });
+  const offerEvent = offered.world.events.at(-1);
+  assert.equal(offerEvent.type, 'field-item-transfer-offered');
+  assert.equal(offerEvent.itemEventId, forgeEvent.id);
+  assert.equal(offerEvent.actor.id, founder.id);
+  assert.equal(offerEvent.recipientId, witness.id);
+  assert.equal(offerEvent.recipientRole, witness.role);
+
+  const recipient = projectCharacter(offered.world, witness);
+  assert.equal(recipient.fieldInventoryTotal, 0,
+    'A pending offer is not recipient ownership.');
+  assert.equal(recipient.fieldItemTransferOffers.length, 1);
+  const incoming = recipient.fieldItemTransferOffers[0];
+  assert.equal(incoming.offerId, offerEvent.offerId);
+  assert.equal(incoming.status, 'offered');
+  assert.equal(incoming.item.eventId, forgeEvent.id);
+  assert.equal(incoming.item.ownerId, founder.id);
+  assert.equal(incoming.item.ownerRole, founder.role);
+  assert.equal(incoming.item.creatorId, founder.id);
+  assert.equal(incoming.item.sourceKind, 'source-archive-recovery');
+  assert.deepEqual([
+    incoming.item.sourceRecovery.failureEventId,
+    incoming.item.sourceRecovery.publicationEventId
+  ], [fixture.failure.id, capture.publicationEvent.id]);
+  assert.equal(incoming.item.sourceRecovery.failureCode, fixture.failure.failureCode);
+  assert.equal(incoming.item.sourceRecovery.repository, repository);
+  assert.equal(incoming.item.sourceRecovery.commitSha, commitSha);
+  assert.equal(incoming.item.sourceRecovery.path, sourcePath);
+  assert.equal(incoming.item.sourceRecovery.sha256, capture.sha256);
+  assert.equal(incoming.item.sourceRecovery.gitBlobSha, capture.gitBlobSha);
+  assert.equal(incoming.item.sourceRecovery.size, capture.size);
+  assert.equal(incoming.item.transferHistory.length, 1);
+  assert.equal(incoming.item.transferHistory[0].offerId, offerEvent.offerId);
+  assert.equal(incoming.item.transferHistory[0].status, 'offered');
+  assert.equal(recipient.fieldItemTransferHistory.length, 1);
+  assert.equal(recipient.fieldItemTransferHistory[0].item.sourceRecovery.failureEventId, fixture.failure.id);
+  assert.equal(recipient.fieldItemTransferHistory[0].item.sourceRecovery.publicationEventId, capture.publicationEvent.id);
+
+  const objective = recoveryQuest(offered.world, fixture.failure.id);
+  assert.deepEqual([objective.progress, objective.target, objective.complete], [3, 4, false]);
+  assert.deepEqual(objective.evidenceIds, [fixture.failure.id, capture.publicationEvent.id, forgeEvent.id]);
+  assert.equal(offered.world.xp, capture.world.xp,
+    'Forging and offering the item do not award XP.');
+  const beforeProjection = structuredClone(offered.world);
+  projectCharacter(offered.world, founder);
+  projectCharacter(offered.world, witness);
+  assert.deepEqual(offered.world, beforeProjection,
+    'Showing the pending offer and its provenance is a read-only projection.');
+  await validateWorld(offered.world);
+});
