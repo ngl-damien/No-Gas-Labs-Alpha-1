@@ -260,6 +260,35 @@ test('unknown, wrong-type, or snapshot-excluded failure origins are rejected', a
 });
 
 
+test('a failure-only later-capture objective routes the Founder to the Evidence Archive without creating progress', async () => {
+  const fixture = await worldWithFailure();
+  const before = JSON.stringify(fixture.world);
+  const beforeXp = fixture.world.xp;
+  const projection = projectSourceArchiveFailureObjects(fixture.world);
+  assert.equal(projection.complete, true);
+  assert.equal(projection.captureProjectionComplete, true);
+  const record = projection.records.find(candidate => candidate.eventId === fixture.failure.id);
+  assert.ok(record);
+  assert.equal(record.laterCaptureStatus, 'not-observed');
+  assert.equal(record.laterCapture, null);
+
+  const quest = getQuestTrail(fixture.world, founder).find(candidate =>
+    candidate.id === 'founder-source-archive-later-capture'
+  );
+  assert.ok(quest);
+  assert.equal(quest.target, 2);
+  assert.equal(quest.progress, 1);
+  assert.equal(quest.complete, false);
+  assert.deepEqual(quest.evidenceIds, [fixture.failure.id]);
+  assert.deepEqual(quest.action, { type: 'location', id: 'evidence_archive' });
+  assert.equal(quest.countsForQuestkeeper, false);
+  assert.equal(fixture.world.xp, beforeXp);
+  assert.equal(JSON.stringify(fixture.world), before);
+  assert.equal(getQuestTrail(fixture.world, witness).some(candidate =>
+    candidate.id === 'founder-source-archive-later-capture'
+  ), false);
+});
+
 test('a later server-rechecked capture of the same pinned target completes a two-event Founder objective without claiming receipt equality or source truth', async () => {
   const fixture = await worldWithFailure();
   const beforeXp = fixture.world.xp;
