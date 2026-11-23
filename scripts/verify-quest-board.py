@@ -880,6 +880,22 @@ def assert_source_archive_objectives(page, role, proposal_progress, experiment_p
     expect(contrast).to_contain_text('do not adjudicate a claim')
 
 
+def assert_source_archive_later_capture_objective(page, progress, complete=False):
+    row = page.locator(
+        '#sheet-content [data-objective-id="founder-source-archive-later-capture"]'
+    )
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text('Capture the same pinned source after a recorded failure')
+    expect(row).to_contain_text(progress)
+    expect(row.locator('.quest-step-state')).to_have_text('RECORDED' if complete else 'OPEN')
+    route = row.get_by_role('button', name='Walk to Evidence Archive →', exact=True)
+    if complete:
+        expect(route).to_have_count(0)
+    else:
+        expect(route).to_be_visible()
+    return row
+
+
 def assert_experiment_dissent_objective(page, role, progress, complete, require_action=False):
     objective_id = (
         'witness-challenge-experiment-report'
@@ -7915,6 +7931,9 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         service_workers='block'
     )
     page = context.new_page()
+    inspection_context = None
+    inspection_page = None
+    inspection_errors = []
     cdp = context.new_cdp_session(page)
     cdp_contexts = {}
     cdp_frames = {}
@@ -8093,9 +8112,14 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
               requestId: event.requestId,
               requestIdDigest: event.requestIdDigest,
               actorId: event.actor?.id,
+              actorRole: event.actor?.role,
               path: event.path,
               failureCode: event.failureCode,
               draftId: event.draftId,
+              creationId: event.creationId,
+              version: event.version,
+              repository: event.repository,
+              commitSha: event.commitSha,
               publicRetentionAcknowledgementVersion: event.publicRetentionAcknowledgementVersion
             }))
           };
@@ -8227,6 +8251,104 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         assert failure.get('actor', {}).get('id') == 'damien'
         assert failure.get('actor', {}).get('role') == 'founder'
         assert 'requestId' not in failure, 'Chronicle must retain only the request digest, not the raw retry identifier.'
+
+        # Use a separate Founder client for the Quest Board/Archive inspection so
+        # this original Source Observatory page keeps its exact pending Relay action.
+        inspection_context = browser.new_context(
+            viewport={'width': 390, 'height': 844},
+            is_mobile=True,
+            has_touch=True,
+            service_workers='block'
+        )
+        inspection_page = inspection_context.new_page()
+        inspection_page.on('pageerror', lambda error: inspection_errors.append({
+            'name': getattr(error, 'name', None),
+            'message': str(error)
+        }))
+        inspection_page.goto(url, wait_until='networkidle')
+        inspection_page.locator('#start-shared').tap()
+        inspection_page.locator('#world').wait_for(state='visible')
+        inspection_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
+        )
+        inspection_page.locator('#login-button').tap()
+        inspection_page.locator('#founder-name').fill('Damien')
+        inspection_page.locator('#founder-key').fill('fake-browser-fixture-key-not-a-secret')
+        inspection_page.locator('#verify-founder').tap()
+        inspection_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+        )
+        open_quest_board(inspection_page)
+        route_board_before = authoritative_snapshot(inspection_page)
+        assert route_board_before['viewerRole'] == 'founder'
+        later_capture_row = assert_source_archive_later_capture_objective(
+            inspection_page, '1/2', complete=False
+        )
+        route_board_after = authoritative_snapshot(inspection_page)
+        assert shared_world_snapshot(route_board_after) == shared_world_snapshot(route_board_before), (
+            'Inspecting the incomplete later-capture objective must remain read-only.'
+        )
+        assert route_board_after['xp'] == route_board_before['xp'], (
+            'Quest inspection must not award XP before any later capture is published.'
+        )
+        evidence_archive_route = later_capture_row.get_by_role(
+            'button', name='Walk to Evidence Archive →', exact=True
+        )
+        evidence_archive_route.tap()
+        enter_nearby_institution(
+            inspection_page, 'evidence_archive', 'Evidence Archive', 'Evidence Archive'
+        )
+        failure_card = inspection_page.locator(
+            '[data-source-archive-failure-card="true"][data-source-archive-failure-event-id="' +
+            failure['id'] + '"]'
+        )
+        expect(failure_card).to_have_count(1)
+        expect(failure_card).to_have_attribute(
+            'data-source-archive-failure-capture-status', 'not-observed'
+        )
+        review_source_context = failure_card.locator(
+            '[data-source-archive-failure-open-observatory="true"]'
+        )
+        expect(review_source_context).to_have_count(1)
+        lead_before = authoritative_snapshot(inspection_page)
+        review_source_context.tap()
+        lead_form = inspection_page.locator('[data-source-observation-form="true"]')
+        expect(lead_form).to_have_count(1)
+        expect(lead_form).to_have_attribute(
+            'data-source-observation-prefill-origin', 'source-archive-failure'
+        )
+        expect(lead_form).to_have_attribute(
+            'data-source-observation-origin-failure-event-id', failure['id']
+        )
+        expect(lead_form).to_have_attribute('data-source-snapshot-complete', 'true')
+        expect(inspection_page.locator(
+            '[data-source-observation-prefill-disclosure="source-archive-failure"]'
+        )).to_contain_text(failure['id'])
+        lead_after = authoritative_snapshot(inspection_page)
+        assert shared_world_snapshot(lead_after) == shared_world_snapshot(lead_before), (
+            'Opening the exact failure-context lead must not create an observation or world event.'
+        )
+        assert lead_after['xp'] == lead_before['xp'], (
+            'Opening the unretained failure-context lead must award no XP.'
+        )
+        assert not inspection_errors, (
+            'Quest Board to Evidence Archive to Source Observatory lead produced page errors: ' +
+            json.dumps(inspection_errors)
+        )
+        retry_diagnostics['questRouteInspection'] = {
+            'objectiveId': 'founder-source-archive-later-capture',
+            'progressBeforeCapture': '1/2',
+            'destination': 'evidence_archive',
+            'failureEventId': failure['id'],
+            'failureCardCaptureStatus': 'not-observed',
+            'prefillOrigin': 'source-archive-failure',
+            'originFailureEventId': failure['id'],
+            'leadUnretained': True,
+            'readOnly': shared_world_snapshot(lead_after) == shared_world_snapshot(lead_before),
+            'xpDelta': lead_after['xp'] - lead_before['xp'],
+            'pageErrors': inspection_errors
+        }
+
         attempts_before_retry = (
             retry_attempts_path.read_text().strip() if retry_attempts_path.exists() else '<missing>'
         )
@@ -8439,6 +8561,153 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') === null"
         ), 'A confirmed result must clear the local pending receipt.'
 
+        retry_draft_id = response_summaries[1]['resultDraftId']
+        assert isinstance(retry_draft_id, str) and retry_draft_id, (
+            'The recovered server-rechecked draft must be explicitly published before the two-event objective completes.'
+        )
+        publication_response = post_action(page, {
+            'type': 'publish',
+            'draftId': retry_draft_id,
+            'expectedVersion': 0,
+            'requestId': 'source-retry-publish-after-failure'
+        })
+        publication_result = publication_response.get('result', {})
+        published_creation_id = publication_result.get('creationId')
+        assert isinstance(published_creation_id, str) and published_creation_id, (
+            'Explicit publication must return the exact retained creation ID.'
+        )
+        assert publication_result.get('version') == 1, (
+            'The recovered Source Archive draft must be explicitly published as version 1.'
+        )
+        after_publish = state_snapshot()
+        publication_events = [
+            event for event in after_publish['events']
+            if event.get('type') == 'publish'
+            and event.get('creationId') == published_creation_id
+            and event.get('version') == 1
+        ]
+        assert len(publication_events) == 1, (
+            'The recovered draft must create exactly one retained publication event.'
+        )
+        publication_event = publication_events[0]
+        publication_event_id = publication_event.get('id')
+        assert isinstance(publication_event_id, str) and publication_event_id, (
+            'The publication event must have an exact retained identity.'
+        )
+        assert publication_event.get('actorId') == 'damien' and publication_event.get('actorRole') == 'founder', (
+            'The later capture publication must remain bound to the original Founder actor.'
+        )
+        assert after_publish['revision'] == after_success['revision'] + 1, (
+            'Explicit publication must append exactly one world event after the retained failure and private draft.'
+        )
+        assert after_publish['xp'] == before['xp'] + 100, (
+            'The explicit publication reward is the only XP change; failure, draft creation, quest progress and inspection award none.'
+        )
+        assert [published_creation_id, 1] in after_publish['creationVersions'], (
+            'The exact published Source Archive version must be retained in the shared world.'
+        )
+        assert retry_draft_id not in after_publish['drafts'], (
+            'Publishing the recovered draft must remove it from the private draft collection.'
+        )
+        assert len(after_publish['failures']) == len(before['failures']) + 1, (
+            'The original failed attempt must remain in history after the later publication.'
+        )
+
+        # Refresh the independent mobile client from the server's accepted world.
+        inspection_page.reload(wait_until='networkidle')
+        inspection_page.locator('#start-shared').tap()
+        inspection_page.locator('#world').wait_for(state='visible')
+        inspection_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
+        )
+        if 'Founder' not in inspection_page.locator('#mode-label').inner_text():
+            inspection_page.locator('#login-button').tap()
+            inspection_page.locator('#founder-name').fill('Damien')
+            inspection_page.locator('#founder-key').fill('fake-browser-fixture-key-not-a-secret')
+            inspection_page.locator('#verify-founder').tap()
+            inspection_page.wait_for_function(
+                "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+            )
+        open_quest_board(inspection_page)
+        completed_board_before = authoritative_snapshot(inspection_page)
+        assert completed_board_before['revision'] == after_publish['revision']
+        assert completed_board_before['xp'] == after_publish['xp']
+        completed_row = assert_source_archive_later_capture_objective(
+            inspection_page, '2/2', complete=True
+        )
+        completed_board_after = authoritative_snapshot(inspection_page)
+        assert shared_world_snapshot(completed_board_after) == shared_world_snapshot(completed_board_before), (
+            'The completed two-event objective is a read-only projection of the retained failure and publication.'
+        )
+        assert completed_board_after['xp'] == before['xp'] + 100, (
+            'Completing and inspecting the quest must add no XP beyond the explicit publication reward.'
+        )
+        evidence_details = completed_row.locator('details.quest-evidence')
+        evidence_details.locator('summary').tap()
+        evidence_event_ids = evidence_details.locator(
+            '[data-quest-evidence-event-link]'
+        ).evaluate_all(
+            "(nodes) => nodes.map(node => node.getAttribute('data-quest-evidence-event-link'))"
+        )
+        assert evidence_event_ids == [failure['id'], publication_event_id], (
+            'The completed quest must link the exact original failure and exact later publication events: ' +
+            json.dumps(evidence_event_ids)
+        )
+        publication_link = evidence_details.locator(
+            '[data-quest-evidence-event-link="' + publication_event_id + '"]'
+        )
+        publication_entry = evidence_details.locator('li').filter(has=publication_link)
+        version_link = publication_entry.get_by_role(
+            'button', name='Open retained version 1 →', exact=True
+        )
+        expect(version_link).to_be_visible()
+        artifact_before = authoritative_snapshot(inspection_page)
+        version_link.tap()
+        version_receipt = inspection_page.locator(
+            '#sheet-content [data-creation-version-receipt="true"]'
+        )
+        expect(version_receipt).to_have_attribute('data-creation-version-receipt-status', 'validated')
+        expect(version_receipt).to_have_attribute('data-creation-version', '1')
+        artifact_after = authoritative_snapshot(inspection_page)
+        assert shared_world_snapshot(artifact_after) == shared_world_snapshot(artifact_before), (
+            'Opening the exact retained artifact version must remain read-only.'
+        )
+        assert artifact_after['xp'] == artifact_before['xp']
+
+        inspection_page.locator('#sheet-close').tap()
+        open_quest_board(inspection_page)
+        failure_chronicle = inspect_quest_evidence_event(
+            inspection_page,
+            'founder-source-archive-later-capture',
+            failure['id'],
+            'source-archive-attempt-failed',
+            out / 'source-archive-later-capture-failure-chronicle-390.png'
+        )
+        inspection_page.locator('#sheet-close').tap()
+        open_quest_board(inspection_page)
+        publication_chronicle = inspect_quest_evidence_event(
+            inspection_page,
+            'founder-source-archive-later-capture',
+            publication_event_id,
+            'publish',
+            out / 'source-archive-later-capture-publication-chronicle-390.png'
+        )
+        assert failure_chronicle['exactWorldEventOpened'] is True
+        assert publication_chronicle['exactWorldEventOpened'] is True
+        retry_diagnostics['afterPublish'] = after_publish
+        retry_diagnostics['publishedCreationId'] = published_creation_id
+        retry_diagnostics['publicationEventId'] = publication_event_id
+        retry_diagnostics['laterCaptureObjective'] = {
+            'progress': '2/2',
+            'evidenceEventIds': evidence_event_ids,
+            'exactArtifactVersionOpened': True,
+            'exactFailureChronicleOpened': failure_chronicle['exactWorldEventOpened'],
+            'exactPublicationChronicleOpened': publication_chronicle['exactWorldEventOpened'],
+            'xpDelta': after_publish['xp'] - before['xp']
+        }
+        retry_diagnostics['inspectionPageErrors'] = inspection_errors
+        (out / 'source-archive-retry-state.json').write_text(json.dumps(retry_diagnostics, indent=2))
+
         if page.locator('#sheet').is_visible():
             page.locator('#sheet-close').tap()
         # A pre-upgrade predicate receipt must survive the new 428 response and
@@ -8572,13 +8841,22 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'metadataOnlyPendingReceipt': True,
             'failureEventRetained': True,
             'privateDraftDelta': 1,
-            'publicationDelta': 0,
-            'xpDelta': 0,
+            'publicationDelta': 1,
+            'xpDelta': after_publish['xp'] - before['xp'],
+            'questRouteToEvidenceArchive': True,
+            'failureContextLeadReadOnly': True,
+            'laterCaptureObjectiveProgress': '2/2',
+            'exactArtifactVersionOpened': True,
+            'exactFailureChronicleOpened': True,
+            'exactPublicationChronicleOpened': True,
+            'inspectionPageErrors': inspection_errors,
             'pendingReceiptClearedAfterSuccess': True,
             'pageErrors': errors,
             'screenshot': screenshot.name
         }
     finally:
+        if inspection_context is not None:
+            inspection_context.close()
         context.close()
 
 

@@ -1181,7 +1181,7 @@ export function getQuestTrail(world, viewer, options = {}) {
         2,
         evidenceEvents.map(event => event.id),
         evidenceEvents,
-        statusUnknown || observed ? null : { type: 'location', id: 'source_observatory' },
+        statusUnknown || observed ? null : { type: 'location', id: 'evidence_archive' },
         blockedReason,
         interpretation
       ),
