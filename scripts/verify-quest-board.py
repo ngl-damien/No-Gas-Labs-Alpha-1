@@ -2126,6 +2126,281 @@ def publish_agp_issue_from_publication_house(page, out):
     }
 
 
+
+def publish_agp_followup_from_publication_house(page, out, initial_issue):
+    """Complete the linked correction quest through the 320px world UI."""
+    before = authoritative_snapshot(page)
+    assert before['viewerRole'] == 'founder', 'Only the authenticated Founder may publish an AGP follow-up.'
+    assert initial_issue['creationId'] and initial_issue['publicationEventId'], (
+        'The follow-up must start from the exact retained initial issue and publication event.'
+    )
+
+    source_before = page.evaluate("""async sourceId => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('AGP source edition read failed: ' + response.status);
+      const dto = await response.json();
+      const matches = (dto.world?.creations ?? []).filter(item => item?.id === sourceId);
+      const source = matches.length === 1 ? matches[0] : null;
+      const publications = source ? (dto.world?.events ?? []).filter(event =>
+        event?.type === 'publish' && event.creationId === source.id && event.version === 1
+      ) : [];
+      return {
+        matchCount: matches.length,
+        sourceHtml: source?.html ?? null,
+        sourceVersion: source?.version ?? null,
+        publicationCount: publications.length,
+        publicationEventId: publications.length === 1 ? publications[0].id : null
+      };
+    }""", initial_issue['creationId'])
+    assert source_before['matchCount'] == 1 and isinstance(source_before['sourceHtml'], str), (
+        'The original AGP issue must resolve to one retained creation with exact HTML bytes.'
+    )
+    assert source_before['sourceVersion'] == 1, 'The original edition must still be version 1.'
+    assert source_before['publicationCount'] == 1, (
+        'The original issue must have exactly one retained version-1 publication event.'
+    )
+    assert source_before['publicationEventId'] == initial_issue['publicationEventId'], (
+        'The follow-up must bind the exact publication event returned by the first journey.'
+    )
+
+    # The incomplete correction is a real Founder objective, not a UI-only suggestion.
+    open_quest_board(page)
+    board_before = authoritative_snapshot(page)
+    assert board_before['viewerRole'] == 'founder'
+    assert_board(page, 'founder')
+    objective = page.locator(
+        '#sheet-content [data-objective-id="founder-agp-follow-up-correction"]'
+    )
+    expect(objective).to_have_count(1)
+    expect(objective.locator('.quest-step-state')).to_have_text('OPEN')
+    expect(objective).to_contain_text('0/1')
+    route = objective.get_by_role(
+        'button', name='Walk to Publication House →', exact=True
+    )
+    expect(route).to_be_visible()
+    board_after = authoritative_snapshot(page)
+    assert board_after == board_before, (
+        'Reading the open follow-up objective must not create an event or award XP.'
+    )
+
+    route.tap()
+    enter_nearby_institution(page, 'publication_house', 'Publication House', 'Publication House')
+    issue_button = page.get_by_role(
+        'button',
+        name=initial_issue['issueTitle'] + ' · SATIRE ISSUE · v1',
+        exact=True
+    )
+    expect(issue_button).to_be_visible()
+    issue_button.tap()
+    follow_up_button = page.locator('#follow-up-satire-issue')
+    expect(follow_up_button).to_be_visible()
+    follow_up_button.tap()
+    expect(page.locator('#sheet-title')).to_have_text('America’s Got Problems · Issue Desk')
+    form = page.locator('#agp-issue-form')
+    expect(form).to_have_count(1)
+    expect(form).to_have_attribute('data-correction-of-creation-id', initial_issue['creationId'])
+    expect(form).to_have_attribute('data-correction-of-version', '1')
+    expect(form).to_have_attribute(
+        'data-correction-of-publication-event-id', initial_issue['publicationEventId']
+    )
+
+    title = 'America’s Got Problems · Mobile Acceptance Follow-up Issue 002'
+    correction_note = (
+        'Issue 001 omitted a material scope exclusion from its author-entered summary. '
+        'This separate edition records the correction and preserves the earlier bytes and dissent.'
+    )
+    page.locator('#agp-issue-title').fill(title)
+    page.locator('#agp-issue-headline').fill(
+        'The button that certified its own missing footnote · correction'
+    )
+    page.locator('#agp-factual-substrate').fill(
+        'The first edition omitted a scope exclusion from the author-entered summary; '
+        'the underlying contract is still not independently retrieved.'
+    )
+    page.locator('#agp-correction-note').fill(correction_note)
+
+    draft_before = authoritative_snapshot(page)
+    page.locator('#agp-create-draft').tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Give an idea a place.' && " +
+        "!!document.querySelector('#draft-area #preview-button')",
+        timeout=30000
+    )
+    expect(page.locator('#draft-area')).to_contain_text('PRIVATE DRAFT')
+    after_draft = authoritative_snapshot(page)
+    assert after_draft['revision'] == draft_before['revision'] + 1, (
+        'Creating the linked follow-up must append exactly one retained draft event.'
+    )
+    assert after_draft['xp'] == draft_before['xp'], (
+        'A linked follow-up draft must not award XP.'
+    )
+
+    page.locator('#preview-button').tap()
+    page.wait_for_function(
+        "() => document.querySelector('#portal')?.hidden === false && " +
+        "!!document.querySelector('#portal-publish')",
+        timeout=30000
+    )
+    expect(page.locator('#portal-publish')).to_be_visible()
+    page.locator('#portal-publish').tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet')?.hidden === true && " +
+        "document.querySelector('#portal')?.hidden === true",
+        timeout=30000
+    )
+    after_publish = authoritative_snapshot(page)
+    assert after_publish['revision'] == after_draft['revision'] + 1, (
+        'Explicit follow-up publication must append exactly one event after the retained draft.'
+    )
+    assert after_publish['xp'] == after_draft['xp'] + 100, (
+        'The follow-up earns only the ordinary publication reward; the quest adds no XP.'
+    )
+
+    issue_state = page.evaluate("""async ({sourceId, sourceHtml, followUpTitle}) => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('AGP follow-up state read failed: ' + response.status);
+      const dto = await response.json();
+      const creations = dto.world?.creations ?? [];
+      const events = dto.world?.events ?? [];
+      const sourceMatches = creations.filter(item => item?.id === sourceId);
+      const followUpMatches = creations.filter(item => item?.title === followUpTitle);
+      const source = sourceMatches.length === 1 ? sourceMatches[0] : null;
+      const followUp = followUpMatches.length === 1 ? followUpMatches[0] : null;
+      const sourcePublications = source ? events.filter(event =>
+        event?.type === 'publish' && event.creationId === source.id && event.version === 1
+      ) : [];
+      const followUpPublications = followUp ? events.filter(event =>
+        event?.type === 'publish' && event.creationId === followUp.id && event.version === 1
+      ) : [];
+      let issue = null;
+      const payload = followUp
+        ? /<script type="application\\/json" id="ngl-satire-issue-data">([\\s\\S]*?)<\\/script>/.exec(followUp.html ?? '')
+        : null;
+      if (payload) {
+        try { issue = JSON.parse(payload[1]); } catch {}
+      }
+      return {
+        sourceMatchCount: sourceMatches.length,
+        sourceVersion: source?.version ?? null,
+        sourceHtmlUnchanged: source?.html === sourceHtml,
+        sourcePublicationCount: sourcePublications.length,
+        sourcePublicationEventId: sourcePublications.length === 1 ? sourcePublications[0].id : null,
+        followUpMatchCount: followUpMatches.length,
+        followUpCreationId: followUp?.id ?? null,
+        followUpVersion: followUp?.version ?? null,
+        followUpPublicationCount: followUpPublications.length,
+        followUpPublication: followUpPublications.length === 1 ? {
+          id: followUpPublications[0].id,
+          actorId: followUpPublications[0].actor?.id ?? null,
+          actorRole: followUpPublications[0].actor?.role ?? null,
+          reward: followUpPublications[0].reward,
+          version: followUpPublications[0].version
+        } : null,
+        issue
+      };
+    }""", {
+        'sourceId': initial_issue['creationId'],
+        'sourceHtml': source_before['sourceHtml'],
+        'followUpTitle': title
+    })
+    assert issue_state['sourceMatchCount'] == 1 and issue_state['sourceVersion'] == 1, (
+        'The original issue must remain one unchanged version-1 creation.'
+    )
+    assert issue_state['sourceHtmlUnchanged'] is True, (
+        'Publishing a follow-up must preserve the original edition byte-for-byte.'
+    )
+    assert issue_state['sourcePublicationCount'] == 1 and (
+        issue_state['sourcePublicationEventId'] == initial_issue['publicationEventId']
+    ), 'The source publication identity must remain unique and unchanged.'
+    assert issue_state['followUpMatchCount'] == 1 and issue_state['followUpCreationId'], (
+        'The follow-up must be one distinct retained world object.'
+    )
+    assert issue_state['followUpCreationId'] != initial_issue['creationId'], (
+        'A separate follow-up issue, not a repair of the source creation, is required.'
+    )
+    assert issue_state['followUpVersion'] == 1 and issue_state['followUpPublicationCount'] == 1, (
+        'The new creation must have exactly one retained version-1 publication event.'
+    )
+    assert issue_state['issue'] and issue_state['issue']['schema'] == 'ngl.satire-issue.v2', (
+        'The published follow-up must use the validated v2 issue format.'
+    )
+    assert issue_state['issue']['correctionOf'] == {
+        'creationId': initial_issue['creationId'],
+        'version': 1,
+        'publicationEventId': initial_issue['publicationEventId']
+    }, 'The v2 issue must bind the exact earlier creation, edition and publication event.'
+    assert issue_state['issue']['correctionNote'] == correction_note, (
+        'The follow-up must preserve its bounded author-entered correction note.'
+    )
+    publication = issue_state['followUpPublication']
+    assert publication and publication['actorId'] == before['viewerId'] and (
+        publication['actorRole'] == 'founder'
+    ), 'The follow-up publication must remain attributed to the authenticated Founder session.'
+    assert publication['reward'] == 100 and publication['version'] == 1, (
+        'The follow-up carries only the ordinary version-1 publication reward.'
+    )
+    publication_event_ids = [
+        event_id for event_id in after_publish['eventIds']
+        if event_id not in after_draft['eventIds']
+    ]
+    assert len(publication_event_ids) == 1 and publication['id'] == publication_event_ids[0], (
+        'The exact follow-up publication event must be present in the accepted Founder snapshot.'
+    )
+
+    page.locator('#places-button').tap()
+    route = page.get_by_role('button', name='Walk to Quest Board', exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    enter_nearby_institution(page, 'quest_board', 'Quest Board', 'Quest Board')
+    board_before = authoritative_snapshot(page)
+    assert_board(page, 'founder')
+    objective = page.locator(
+        '#sheet-content [data-objective-id="founder-agp-follow-up-correction"]'
+    )
+    expect(objective).to_have_count(1)
+    expect(objective.locator('.quest-step-state')).to_have_text('RECORDED')
+    expect(objective).to_contain_text('1/1')
+    evidence = inspect_quest_evidence_event(
+        page,
+        'founder-agp-follow-up-correction',
+        publication['id'],
+        'publish',
+        out / 'agp-followup-correction-chronicle-320.png'
+    )
+    page.locator('#sheet-close').tap()
+    character_record = assert_research_character_record(
+        page,
+        'founder',
+        out / 'agp-followup-satirist-character-record-320.png',
+        expected_satirist_count=2
+    )
+    assert character_record['skills']['satirist'] == 2, (
+        'The Satirist skill must count both distinct retained AGP editions.'
+    )
+    return {
+        'sourceCreationId': initial_issue['creationId'],
+        'sourcePublicationEventId': initial_issue['publicationEventId'],
+        'sourceHtmlUnchanged': issue_state['sourceHtmlUnchanged'],
+        'followUpCreationId': issue_state['followUpCreationId'],
+        'followUpPublicationEventId': publication['id'],
+        'followUpObjectiveRecorded': True,
+        'exactChronicleEventOpened': evidence['exactWorldEventOpened'],
+        'draftRevisionDelta': 1,
+        'draftXpDelta': 0,
+        'publicationRevisionDelta': 1,
+        'publicationXpDelta': 100,
+        'satiristCount': character_record['skills']['satirist'],
+        'characterRecord': character_record,
+        'chronicle': evidence
+    }
+
+
 def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, out, server_state):
     witness_context = browser.new_context(
         viewport={'width': 390, 'height': 844},
@@ -5938,6 +6213,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
         source_archive_founder_chain = None
         source_archive_witness_chain = None
         agp_satirist_publication = None
+        agp_satirist_followup = None
         founder_fresh_client = None
         if width == 320:
             page.locator('#sheet-close').tap()
@@ -5968,6 +6244,9 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
                 page, source_archive_fixture, out, width, 'founder'
             )
             agp_satirist_publication = publish_agp_issue_from_publication_house(page, out)
+            agp_satirist_followup = publish_agp_followup_from_publication_house(
+                page, out, agp_satirist_publication
+            )
         else:
             assert source_archive_fixture and source_archive_fixture.get('fixtureOnly') is True, (
                 'The 390px journey must reuse the exact Source Archive published by the 320px journey.'
@@ -6079,6 +6358,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             'sourceArchiveFailureChronicle': failure_chronicle_result,
             'sourceArchiveFounderChain': source_archive_founder_chain,
             'agpSatiristPublication': agp_satirist_publication,
+            'agpSatiristFollowup': agp_satirist_followup,
             'sourceArchiveWitnessChain': source_archive_witness_chain,
             'founderFreshClientProgress': founder_fresh_client,
             'contradictionClerk': contradiction_clerk_result,
