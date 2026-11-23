@@ -5,6 +5,7 @@ import {projectCharacter,projectFieldItemSourcePage,createFieldItemSourcePager,F
 import { getQuestTrail } from '../game/quests.mjs';
 import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
 import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
+import { buildSatireIssueBody, SATIRE_ISSUE_INTENT_PREFIX, SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX } from '../game/artifacts.mjs';
 
 const founder={id:'f-1',role:'founder'};
 const witness={id:'w-1',role:'witness'};
@@ -770,6 +771,98 @@ test('character activity fails closed when actor role is missing or unsupported'
   const witnessRecord = projectCharacter(world, witnessActor);
   assert.equal(witnessRecord.xp, 0);
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'explorer').count, 1);
+});
+
+test('Satirist skill counts only uniquely retained America’s Got Problems editions without extra XP', async () => {
+  const start = createWorld({ id: 'character-satirist-projection', now: t1 });
+  const initialIssue = {
+    schema: 'ngl.satire-issue.v1',
+    headline: 'The invoice that promised to be free',
+    target: 'A public procurement promise',
+    factualSubstrate: 'The proposal states a fixed cost; the underlying contract has not been retrieved.',
+    sourceReferences: ['Author-entered test brief 001 · retrieval not performed'],
+    satiricalTreatment: 'The promise arrives wearing a tiny hard hat and carrying a blank invoice.',
+    strongestCounterargument: 'A fixed-price contract may be defensible when scope and risk are genuinely bounded.',
+    uncertainty: 'The scope, exclusions and risk allocation remain unknown.',
+    falsifier: 'An independently retrieved contract with complete scope and cost terms would weaken this criticism.'
+  };
+  const firstDraft = await applyAction(start, {
+    type: 'draft',
+    kind: 'custom',
+    title: 'America’s Got Problems · Issue 001',
+    intent: SATIRE_ISSUE_INTENT_PREFIX + ' · In-world satirical issue; author-entered references only.',
+    html: buildSatireIssueBody(initialIssue)
+  }, founder, { now: t2 });
+  assert.equal(projectCharacter(firstDraft.world, founder).skills.find(skill => skill.id === 'satirist')?.count, 0,
+    'a private issue draft is not a published Satirist record');
+  assert.equal(projectCharacter(firstDraft.world, founder).xp, 0);
+
+  const firstPublished = await applyAction(firstDraft.world, {
+    type: 'publish', draftId: firstDraft.result.draftId, expectedVersion: 0
+  }, founder, { now: t3 });
+  const firstPublication = firstPublished.world.events.find(event =>
+    event.type === 'publish' && event.creationId === firstPublished.result.creationId &&
+    event.version === 1
+  );
+  assert.ok(firstPublication, 'the first edition must have one retained publication event');
+  const firstRecord = projectCharacter(firstPublished.world, founder);
+  assert.equal(firstRecord.skills.find(skill => skill.id === 'satirist')?.count, 1);
+  assert.equal(firstRecord.xp, 100, 'the ordinary publication reward is the only XP');
+  assert.equal(firstRecord.worldXp, 100);
+  assert.equal(projectCharacter(firstPublished.world, witness).skills.find(skill => skill.id === 'satirist')?.count, 0,
+    'another role/session does not inherit the Founder’s Satirist count');
+
+  const followUpIssue = {
+    ...initialIssue,
+    schema: 'ngl.satire-issue.v2',
+    headline: 'The invoice that promised to be free · follow-up',
+    factualSubstrate: 'The earlier edition described a proposal; the underlying contract remains unretrieved.',
+    sourceReferences: ['Author-entered follow-up brief 002 · retrieval not performed'],
+    satiricalTreatment: 'The tiny hard hat is now a receipt holder, not a crown.',
+    correctionOf: {
+      creationId: firstPublished.result.creationId,
+      version: 1,
+      publicationEventId: firstPublication.id
+    },
+    correctionNote: 'This separate edition preserves the earlier text and clarifies that no contract was retrieved.'
+  };
+  const followUpDraft = await applyAction(firstPublished.world, {
+    type: 'draft',
+    kind: 'custom',
+    title: 'America’s Got Problems · Issue 002',
+    intent: SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX + ' · Separate linked follow-up edition.',
+    html: buildSatireIssueBody(followUpIssue)
+  }, founder, { now: t4 });
+  assert.equal(projectCharacter(followUpDraft.world, founder).skills.find(skill => skill.id === 'satirist')?.count, 1,
+    'a follow-up draft does not count before publication');
+
+  const followUpPublished = await applyAction(followUpDraft.world, {
+    type: 'publish', draftId: followUpDraft.result.draftId, expectedVersion: 0
+  }, founder, { now: t5 });
+  const finalRecord = projectCharacter(followUpPublished.world, founder);
+  assert.equal(finalRecord.skills.find(skill => skill.id === 'satirist')?.count, 2,
+    'the exact separately published follow-up edition is a second Satirist record');
+  assert.equal(finalRecord.xp, 200, 'Satirist progression adds no XP beyond two ordinary publications');
+  assert.equal(finalRecord.worldXp, 200);
+  assert.equal(projectCharacter(followUpPublished.world, witness).skills.find(skill => skill.id === 'satirist')?.count, 0);
+
+  const ambiguous = structuredClone(followUpPublished.world);
+  const followUpPublication = ambiguous.events.find(event =>
+    event.type === 'publish' && event.creationId === followUpPublished.result.creationId &&
+    event.version === 1
+  );
+  assert.ok(followUpPublication);
+  ambiguous.events.push({
+    ...followUpPublication,
+    id: 'duplicate-satire-publication',
+    at: followUpPublication.at
+  });
+  ambiguous.revision = ambiguous.events.length;
+  const ambiguousRecord = projectCharacter(ambiguous, founder);
+  assert.equal(ambiguousRecord.skills.find(skill => skill.id === 'satirist')?.count, 1,
+    'an ambiguous duplicate publication cannot mint a second Satirist record');
+  assert.equal(ambiguousRecord.xp, 100,
+    'the ambiguous second edition also earns no character XP');
 });
 
 test('Researcher skill counts attributed falsifiable proposals without awarding XP', () => {
