@@ -5601,10 +5601,10 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'Self-reported archive activity must not manufacture XP.'
     )
     assert after_streams['reports'] == baseline_streams['reports'] + report_ids, (
-        'The report collection must append only the two exact server-returned report IDs.'
+        'The report collection must append only the eleven exact server-returned report IDs.'
     )
     assert after_streams['contributions'] == baseline_streams['contributions'] + contribution_ids, (
-        'The contribution collection must append only the two exact server-returned contribution IDs.'
+        'The contribution collection must append only the eleven exact server-returned contribution IDs.'
     )
     page.wait_for_function(
         "expected => Number(document.querySelector('#world')?.dataset.worldRevision) >= expected",
@@ -5664,8 +5664,8 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     assert contribution_display_ids == list(reversed(after_streams['contributions']))[:10], (
         'The first contribution page must preserve the newest ten actor-visible append positions.'
     )
-    assert report_display_ids[:2] == list(reversed(report_ids))
-    assert contribution_display_ids[:2] == list(reversed(contribution_ids))
+    assert report_display_ids[:2] == list(reversed(report_ids[-2:]))
+    assert contribution_display_ids[:2] == list(reversed(contribution_ids[-2:]))
     assert report_positions == [str(position) for position in range(len(after_streams['reports']), max(0, len(after_streams['reports']) - 10), -1)]
     assert contribution_positions == [str(position) for position in range(len(after_streams['contributions']), max(0, len(after_streams['contributions']) - 10), -1)]
     expect(report_cards.first).to_have_attribute('data-record-status', 'linked')
