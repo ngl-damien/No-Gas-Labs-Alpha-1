@@ -9189,6 +9189,21 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         )
         expect(decline_chronicle_link).to_have_attribute('data-chronicle-event-id', recovery_decline_event_id)
 
+        def recovery_armor_bearer_count(page):
+            skill = page.locator('#sheet-content [data-skill-id="armor-bearer"]')
+            expect(skill).to_have_count(1)
+            count_text = skill.locator('p').first.inner_text().split(' recorded ', 1)[0]
+            assert count_text.isdigit(), 'Armor Bearer activity count must be a rendered integer: ' + skill.inner_text()
+            expect(skill).to_contain_text('no XP, mastery or NGL authority')
+            return int(count_text)
+
+        ownership_remained_with_founder_after_decline = founder_recovery_item.count() == 1
+        assert ownership_remained_with_founder_after_decline
+        founder_armor_bearer_before = recovery_armor_bearer_count(inspection_page)
+        witness_armor_bearer_before = recovery_armor_bearer_count(witness_page)
+
+        # The failure-investigation objective is complete from its own four
+        # retained events. Inspecting it remains read-only before any handoff.
         inspection_page.locator('#sheet-close').tap()
         open_quest_board(inspection_page)
         recovery_quest_after_decline = inspection_page.locator(
@@ -9202,6 +9217,343 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'Inspecting the completed Recovery Ledger objective must not mutate world state.'
         )
         assert founder_after_quest_inspection['xp'] == after_publish['xp']
+
+        # A refusal does not permanently strand the item. The Founder can make
+        # a new explicit offer; the same designated Witness can accept it.
+        inspection_page.locator('#sheet-close').tap()
+        inspection_page.locator('#character-button').tap()
+        inspection_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        founder_recovery_item = inspection_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Recovery Ledger')
+        expect(founder_recovery_item).to_have_count(1)
+        recovery_reoffer_selector = founder_recovery_item.locator('[data-transfer-recipient]')
+        expect(recovery_reoffer_selector).to_be_visible()
+        recovery_reoffer_selector.select_option(value=witness_id)
+        founder_recovery_item.locator('[data-offer-field-item]').tap()
+        founder_recovery_item = inspection_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Recovery Ledger')
+        expect(founder_recovery_item).to_have_count(1)
+        recovery_accept_offer_cancel = founder_recovery_item.locator('[data-cancel-field-item-transfer]')
+        expect(recovery_accept_offer_cancel).to_have_count(1)
+        recovery_accept_offer_id = recovery_accept_offer_cancel.get_attribute('data-cancel-field-item-transfer')
+        assert recovery_accept_offer_id and recovery_accept_offer_id != recovery_offer['offerId']
+        recovery_accept_offer_event_id = wait_for_retained_event_id(
+            inspection_page, 'field-item-transfer-offered', 'offerId',
+            recovery_accept_offer_id, founder_id, 'founder', timeout=15000
+        )
+        recovery_accept_offer = inspection_page.evaluate("""async expected => {
+          const response = await fetch('/api/state', {cache:'no-store', credentials:'same-origin'});
+          if (!response.ok) throw new Error('Could not inspect the second retained Recovery Ledger offer.');
+          const dto = await response.json();
+          const matches = dto.world.events.filter(event =>
+            event.id === expected.eventId &&
+            event.type === 'field-item-transfer-offered' &&
+            event.offerId === expected.offerId &&
+            event.itemEventId === expected.itemEventId &&
+            event.actor?.id === expected.actorId &&
+            event.actor?.role === 'founder' &&
+            event.recipientId === expected.recipientId &&
+            event.recipientRole === 'witness'
+          );
+          if (matches.length !== 1) throw new Error('Expected one exact second Recovery Ledger offer, found ' + matches.length);
+          return {eventId:matches[0].id,offerId:matches[0].offerId,itemEventId:matches[0].itemEventId};
+        }""", {
+            'eventId': recovery_accept_offer_event_id,
+            'offerId': recovery_accept_offer_id,
+            'itemEventId': recovery_forge_event_id,
+            'actorId': founder_id,
+            'recipientId': witness_id
+        })
+        assert recovery_accept_offer['offerId'] == recovery_accept_offer_id
+        assert recovery_accept_offer['eventId'] == recovery_accept_offer_event_id
+        reoffer_snapshot = authoritative_snapshot(inspection_page)
+        assert reoffer_snapshot['xp'] == after_publish['xp'], 'Re-offering a Recovery Ledger must award no XP.'
+        assert recovery_decline_event_id in reoffer_snapshot['eventIds'], 'The first refusal must remain in retained history.'
+
+        witness_page.reload(wait_until='networkidle')
+        witness_page.locator('#start-shared').tap()
+        witness_page.locator('#world').wait_for(state='visible')
+        witness_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
+        )
+        wait_for_shared_world_ready(witness_page)
+        witness_after_reoffer = authoritative_snapshot(witness_page)
+        assert witness_after_reoffer['viewerRole'] == 'witness'
+        assert witness_after_reoffer['viewerId'] == witness_id
+        assert recovery_decline_event_id in witness_after_reoffer['eventIds']
+        assert recovery_accept_offer_event_id in witness_after_reoffer['eventIds']
+        witness_page.locator('#character-button').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        incoming_recovery_offer = witness_page.locator(
+            '#sheet-content [data-field-transfer-offer="' + recovery_accept_offer_id + '"]'
+        )
+        expect(incoming_recovery_offer).to_have_count(1)
+        recovery_lineage = incoming_recovery_offer.locator('[data-field-item-recovery]')
+        expect(recovery_lineage).to_have_count(1)
+        expect(recovery_lineage).to_contain_text('RECOVERY LINEAGE · NOT SOURCE TRUTH')
+        expect(recovery_lineage).to_contain_text('Original service-observed failure ' + failure['id'])
+        expect(recovery_lineage).to_contain_text('Later server-rechecked capture ' + SOURCE_FIXTURE_REPOSITORY)
+        expect(recovery_lineage).to_contain_text('publication event ' + publication_event_id)
+        recovery_handoff_history = incoming_recovery_offer.locator('[data-field-item-transfer-history]')
+        expect(recovery_handoff_history).to_have_count(1)
+        expect(recovery_handoff_history).to_have_attribute('data-history-total', '2')
+        declined_handoff_entry = recovery_handoff_history.locator(
+            '[data-field-item-transfer-history-entry="' + recovery_offer['offerId'] + '"]'
+        )
+        expect(declined_handoff_entry).to_have_attribute('data-transfer-status', 'declined')
+        reoffered_handoff_entry = recovery_handoff_history.locator(
+            '[data-field-item-transfer-history-entry="' + recovery_accept_offer_id + '"]'
+        )
+        expect(reoffered_handoff_entry).to_have_attribute('data-transfer-status', 'offered')
+        recovery_accept_button = incoming_recovery_offer.locator('[data-accept-field-item-transfer]')
+        expect(recovery_accept_button).to_have_count(1)
+        witness_before_acceptance = authoritative_snapshot(witness_page)
+        recovery_accept_button.tap()
+        recovery_transfer_event_id = wait_for_retained_event_id(
+            witness_page, 'field-item-transferred', 'offerId',
+            recovery_accept_offer_id, witness_id, 'witness', timeout=15000
+        )
+        recovery_transfer_event = witness_page.evaluate("""async expected => {
+          const response = await fetch('/api/state', {cache:'no-store', credentials:'same-origin'});
+          if (!response.ok) throw new Error('Could not inspect the retained Recovery Ledger transfer.');
+          const dto = await response.json();
+          const matches = dto.world.events.filter(event =>
+            event.id === expected.eventId &&
+            event.type === 'field-item-transferred' &&
+            event.offerId === expected.offerId &&
+            event.itemEventId === expected.itemEventId &&
+            event.actor?.id === expected.recipientId &&
+            event.actor?.role === 'witness' &&
+            event.fromActorId === expected.senderId &&
+            event.fromActorRole === 'founder'
+          );
+          if (matches.length !== 1) throw new Error('Expected one exact accepted Recovery Ledger transfer, found ' + matches.length);
+          return {eventId:matches[0].id,offerId:matches[0].offerId,itemEventId:matches[0].itemEventId};
+        }""", {
+            'eventId': recovery_transfer_event_id,
+            'offerId': recovery_accept_offer_id,
+            'itemEventId': recovery_forge_event_id,
+            'recipientId': witness_id,
+            'senderId': founder_id
+        })
+        assert recovery_transfer_event['eventId'] == recovery_transfer_event_id
+        witness_after_acceptance = authoritative_snapshot(witness_page)
+        assert witness_after_acceptance['xp'] == witness_before_acceptance['xp'], (
+            'Accepting a Recovery Ledger transfer must not award XP.'
+        )
+        assert recovery_decline_event_id in witness_after_acceptance['eventIds']
+        assert recovery_transfer_event_id in witness_after_acceptance['eventIds']
+        witness_recovery_item = witness_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Recovery Ledger')
+        expect(witness_recovery_item).to_have_count(1)
+        expect(witness_recovery_item).to_contain_text('current owner ' + witness_id + ' (witness)')
+        expect(witness_recovery_item).to_contain_text('Original creator ' + founder_id)
+        recovery_lineage = witness_recovery_item.locator('[data-field-item-recovery]')
+        expect(recovery_lineage).to_have_count(1)
+        expect(recovery_lineage).to_contain_text(failure['id'])
+        expect(recovery_lineage).to_contain_text(publication_event_id)
+        recovery_handoff_history = witness_recovery_item.locator('[data-field-item-transfer-history]')
+        expect(recovery_handoff_history).to_have_attribute('data-history-total', '2')
+        declined_handoff_entry = recovery_handoff_history.locator(
+            '[data-field-item-transfer-history-entry="' + recovery_offer['offerId'] + '"]'
+        )
+        expect(declined_handoff_entry).to_have_attribute('data-transfer-status', 'declined')
+        accepted_handoff_entry = recovery_handoff_history.locator(
+            '[data-field-item-transfer-history-entry="' + recovery_accept_offer_id + '"]'
+        )
+        expect(accepted_handoff_entry).to_have_attribute('data-transfer-status', 'accepted')
+        decline_history_link = declined_handoff_entry.locator(
+            '[data-field-item-transfer-history-event-link="declined"]'
+        )
+        expect(decline_history_link).to_have_attribute('data-chronicle-event-id', recovery_decline_event_id)
+        accepted_history_link = accepted_handoff_entry.locator(
+            '[data-field-item-transfer-history-event-link="accepted"]'
+        )
+        expect(accepted_history_link).to_have_attribute('data-chronicle-event-id', recovery_transfer_event_id)
+
+        # The accepted transfer event is independently navigable from the item
+        # history; opening it changes neither the world nor the XP projection.
+        witness_before_transfer_chronicle = authoritative_snapshot(witness_page)
+        accepted_history_link.tap()
+        expect(witness_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        accepted_transfer_card = witness_page.locator(
+            '#sheet-content [data-event-id="world:' + recovery_transfer_event_id + '"]'
+        )
+        expect(accepted_transfer_card).to_have_count(1)
+        expect(accepted_transfer_card).to_have_attribute('data-event-source', 'world')
+        witness_after_transfer_chronicle = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(witness_after_transfer_chronicle) == shared_world_snapshot(witness_before_transfer_chronicle)
+        assert witness_after_transfer_chronicle['xp'] == witness_before_transfer_chronicle['xp']
+        witness_page.locator('#sheet-close').tap()
+        witness_page.locator('#character-button').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        witness_recovery_item = witness_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Recovery Ledger')
+        expect(witness_recovery_item).to_have_count(1)
+        witness_recovery_item.locator('[data-equip-forged-item]').tap()
+        recovery_recipient_equip_event_id = wait_for_retained_event_id(
+            witness_page, 'field-item-equipped', 'sourceEventId',
+            recovery_forge_event_id, witness_id, 'witness', timeout=15000
+        )
+        witness_after_equip = authoritative_snapshot(witness_page)
+        assert witness_after_equip['xp'] == after_publish['xp'], (
+            'Forge, equip, decline, re-offer, acceptance and recipient equip must be XP-neutral after publication.'
+        )
+        assert recovery_decline_event_id in witness_after_equip['eventIds']
+        assert recovery_transfer_event_id in witness_after_equip['eventIds']
+        assert recovery_recipient_equip_event_id in witness_after_equip['eventIds']
+        witness_recovery_item = witness_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Recovery Ledger')
+        expect(witness_recovery_item).to_have_count(1)
+        expect(witness_recovery_item).to_contain_text('current owner ' + witness_id + ' (witness)')
+        expect(witness_recovery_item).to_contain_text('Original creator ' + founder_id)
+        recovery_equipment_slot = witness_page.locator('#sheet-content [data-equipment-slot="recovery"]')
+        expect(recovery_equipment_slot).to_have_count(1)
+        expect(recovery_equipment_slot).to_contain_text('Equipped')
+        expect(recovery_equipment_slot.locator('[data-unequip-field-item="recovery"]')).to_have_count(1)
+        witness_armor_bearer_after = recovery_armor_bearer_count(witness_page)
+        assert witness_armor_bearer_after == witness_armor_bearer_before, (
+            'Receiving and equipping another actor’s item does not make the recipient its Armor Bearer.'
+        )
+        recovery_handoff_screenshot = out / 'recovery-ledger-accepted-handoff-390.png'
+        witness_page.screenshot(path=str(recovery_handoff_screenshot), full_page=True)
+
+        # Re-open the Founder projection after acceptance. The item leaves the
+        # sender's inventory, but both the earlier refusal and later acceptance
+        # remain in the sender's participant history.
+        inspection_page.reload(wait_until='networkidle')
+        inspection_page.locator('#start-shared').tap()
+        inspection_page.locator('#world').wait_for(state='visible')
+        inspection_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
+        )
+        if 'Founder' not in inspection_page.locator('#mode-label').inner_text():
+            inspection_page.locator('#login-button').tap()
+            inspection_page.locator('#founder-name').fill('Damien')
+            inspection_page.locator('#founder-key').fill('fake-browser-fixture-key-not-a-secret')
+            inspection_page.locator('#verify-founder').tap()
+            inspection_page.wait_for_function(
+                "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+            )
+        wait_for_shared_world_ready(inspection_page)
+        founder_after_recovery_handoff = authoritative_snapshot(inspection_page)
+        assert founder_after_recovery_handoff['viewerId'] == founder_id
+        assert founder_after_recovery_handoff['xp'] == after_publish['xp']
+        assert recovery_decline_event_id in founder_after_recovery_handoff['eventIds']
+        assert recovery_transfer_event_id in founder_after_recovery_handoff['eventIds']
+        assert recovery_recipient_equip_event_id in founder_after_recovery_handoff['eventIds']
+        inspection_page.locator('#character-button').tap()
+        inspection_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        founder_inventory_item = inspection_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Recovery Ledger')
+        expect(founder_inventory_item).to_have_count(0)
+        founder_history = inspection_page.locator('#sheet-content [data-field-item-participant-history="true"]')
+        expect(founder_history).to_have_count(1)
+        declined_participant_entry = founder_history.locator(
+            '[data-field-item-participant-history-entry="' + recovery_offer['offerId'] + '"]'
+        )
+        expect(declined_participant_entry).to_have_attribute('data-transfer-status', 'declined')
+        accepted_participant_entry = founder_history.locator(
+            '[data-field-item-participant-history-entry="' + recovery_accept_offer_id + '"]'
+        )
+        expect(accepted_participant_entry).to_have_attribute('data-transfer-status', 'accepted')
+        expect(accepted_participant_entry).to_contain_text('Current in-game owner ' + witness_id + ' (witness)')
+        accepted_participant_link = accepted_participant_entry.locator(
+            '[data-field-item-history-event-link="accepted"]'
+        )
+        expect(accepted_participant_link).to_have_attribute('data-chronicle-event-id', recovery_transfer_event_id)
+        founder_armor_bearer_after = recovery_armor_bearer_count(inspection_page)
+        assert founder_armor_bearer_after == founder_armor_bearer_before + 1, (
+            'The original bearer receives exactly one activity-derived Armor Bearer count after recipient acceptance and equip.'
+        )
+        ownership_transferred_to_witness = founder_inventory_item.count() == 0 and witness_recovery_item.count() == 1
+        assert ownership_transferred_to_witness
+        creator_preserved = 'Original creator ' + founder_id in witness_recovery_item.inner_text()
+        source_lineage_preserved = (
+            failure['id'] in witness_recovery_item.inner_text() and
+            publication_event_id in witness_recovery_item.inner_text()
+        )
+        assert creator_preserved and source_lineage_preserved
+        founder_after_handoff_record_inspection = authoritative_snapshot(inspection_page)
+        assert shared_world_snapshot(founder_after_handoff_record_inspection) == shared_world_snapshot(founder_after_recovery_handoff), (
+            'Inspecting the sender history and Armor Bearer projection must remain read-only.'
+        )
+        assert founder_after_handoff_record_inspection['xp'] == after_publish['xp']
+
+        inspection_page.locator('#sheet-close').tap()
+        open_quest_board(inspection_page)
+        founder_board_before = authoritative_snapshot(inspection_page)
+        recovery_objective_after_handoff = inspection_page.locator(
+            '#sheet-content [data-objective-id="' + recovery_objective_id + '"]'
+        )
+        expect(recovery_objective_after_handoff).to_have_count(1)
+        expect(recovery_objective_after_handoff).to_contain_text('4/4')
+        expect(recovery_objective_after_handoff.locator('.quest-step-state')).to_have_text('RECORDED')
+        founder_armor_bearer_objective = inspection_page.locator(
+            '#sheet-content [data-objective-id="founder-armor-bearer-delivery"]'
+        )
+        expect(founder_armor_bearer_objective).to_have_count(1)
+        expect(founder_armor_bearer_objective).to_contain_text('4/4')
+        expect(founder_armor_bearer_objective.locator('.quest-step-state')).to_have_text('RECORDED')
+        founder_armor_bearer_evidence = founder_armor_bearer_objective.locator('details.quest-evidence')
+        expect(founder_armor_bearer_evidence).to_have_count(1)
+        founder_armor_bearer_evidence.locator('summary').tap()
+        founder_armor_bearer_event_ids = founder_armor_bearer_evidence.locator(
+            '[data-quest-evidence-event-link]'
+        ).evaluate_all(
+            "(nodes) => nodes.map(node => node.getAttribute('data-quest-evidence-event-link'))"
+        )
+        assert founder_armor_bearer_event_ids == [
+            recovery_forge_event_id, recovery_equip_event_id,
+            recovery_transfer_event_id, recovery_recipient_equip_event_id
+        ], 'The Founder Armor Bearer objective must bind the exact four retained handoff events.'
+        founder_board_after = authoritative_snapshot(inspection_page)
+        assert shared_world_snapshot(founder_board_after) == shared_world_snapshot(founder_board_before), (
+            'Inspecting the completed Recovery Ledger and Armor Bearer objectives must be read-only.'
+        )
+        assert founder_board_after['xp'] == founder_board_before['xp']
+
+        inspection_page.locator('#sheet-close').tap()
+        open_quest_board(witness_page)
+        witness_board_before = authoritative_snapshot(witness_page)
+        witness_armor_bearer_objective = witness_page.locator(
+            '#sheet-content [data-objective-id="witness-armor-bearer-delivery"]'
+        )
+        expect(witness_armor_bearer_objective).to_have_count(1)
+        expect(witness_armor_bearer_objective).to_contain_text('2/4')
+        expect(witness_armor_bearer_objective.locator('.quest-step-state')).to_have_text('OPEN')
+        witness_armor_bearer_evidence = witness_armor_bearer_objective.locator('details.quest-evidence')
+        expect(witness_armor_bearer_evidence).to_have_count(1)
+        witness_armor_bearer_evidence.locator('summary').tap()
+        witness_armor_bearer_event_ids = witness_armor_bearer_evidence.locator(
+            '[data-quest-evidence-event-link]'
+        ).evaluate_all(
+            "(nodes) => nodes.map(node => node.getAttribute('data-quest-evidence-event-link'))"
+        )
+        assert witness_armor_bearer_event_ids == [
+            recovery_forge_event_id, recovery_recipient_equip_event_id
+        ], 'The recipient view must show only its own two retained handoff steps.'
+        witness_board_after = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(witness_board_after) == shared_world_snapshot(witness_board_before), (
+            'Inspecting the partial recipient Armor Bearer objective must be read-only.'
+        )
+        assert witness_board_after['xp'] == witness_board_before['xp']
+        witness_armor_bearer_after = recovery_armor_bearer_count(witness_page)
+        assert witness_armor_bearer_after == witness_armor_bearer_before
 
         assert not witness_errors, 'The Recovery Ledger recipient journey produced page errors: ' + json.dumps(witness_errors)
         retry_diagnostics['recoveryLedgerIncomingOffer'] = {
@@ -9370,6 +9722,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'exactArtifactVersionOpened': True,
             'exactFailureChronicleOpened': True,
             'exactPublicationChronicleOpened': True,
+            'recoveryLedgerAcceptedHandoff': retry_diagnostics['recoveryLedgerIncomingOffer'],
             'inspectionPageErrors': inspection_errors,
             'pendingReceiptClearedAfterSuccess': True,
             'pageErrors': errors,
