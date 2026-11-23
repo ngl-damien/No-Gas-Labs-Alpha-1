@@ -5,7 +5,7 @@ import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
 import { projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
 import { projectSourceObservationRecords, sourceObservationRequestMaterial } from '../game/research-records.mjs';
-import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from '../game/artifacts.mjs';
+import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, readGitHubSourceArchiveMetadata } from '../game/artifacts.mjs';
 
 const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
 const witness = { id: 'origin-witness', name: 'Witness', role: 'witness' };
@@ -267,7 +267,29 @@ test('a later server-rechecked capture of the same pinned target completes a two
   assert.equal(projection.captureProjectionComplete, true);
   const record = projection.records.find(candidate => candidate.eventId === fixture.failure.id);
   assert.ok(record);
-  assert.equal(record.laterCaptureStatus, 'observed');
+  const sourceCreation = captured.world.creations.find(creation => creation.id === captured.creationId);
+  const sourceMetadata = readGitHubSourceArchiveMetadata(sourceCreation.html);
+  const captureDiagnostics = {
+    creation: {
+      id: sourceCreation.id, kind: sourceCreation.kind, version: sourceCreation.version,
+      publishedAt: sourceCreation.publishedAt, intent: sourceCreation.intent,
+      metadata: {
+        retrievalMode: sourceMetadata.retrievalMode, repository: sourceMetadata.repository,
+        commitSha: sourceMetadata.commitSha, path: sourceMetadata.path,
+        fetchedAt: sourceMetadata.fetchedAt, capturedAt: sourceMetadata.capturedAt
+      }
+    },
+    publication: {
+      id: captured.publicationEvent.id, type: captured.publicationEvent.type,
+      creationId: captured.publicationEvent.creationId, version: captured.publicationEvent.version,
+      at: captured.publicationEvent.at, actor: captured.publicationEvent.actor
+    },
+    failure: {
+      id: fixture.failure.id, at: fixture.failure.at, actor: fixture.failure.actor,
+      repository: fixture.failure.repository, commitSha: fixture.failure.commitSha, path: fixture.failure.path
+    }
+  };
+  assert.equal(record.laterCaptureStatus, 'observed', JSON.stringify(captureDiagnostics));
   assert.equal(record.laterCaptureStatusLabel, 'LATER SERVER-RECHECKED CAPTURE OBSERVED');
   assert.equal(record.laterCaptureCount, 1);
   assert.equal(record.laterCapture.creationId, captured.creationId);
