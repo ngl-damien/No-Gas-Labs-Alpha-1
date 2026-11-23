@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
+import { createWorld, applyAction, validateWorld, publicWorld } from '../game/model.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
 import { projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
 import { projectSourceObservationRecords, sourceObservationRequestMaterial } from '../game/research-records.mjs';
@@ -529,3 +529,50 @@ test('later-capture matching fails closed when aggregate failure-by-capture comp
   assert.equal(JSON.stringify(world), beforeQuest);
 });
 
+
+test('partial public projections preserve server-assigned global failure positions without upgrading capture completeness', async () => {
+  const fixture = await worldWithFailure();
+  const partial = publicWorld(fixture.world, witness);
+  const before = JSON.stringify(partial);
+  const beforeXp = partial.xp;
+
+  const projection = projectSourceArchiveFailureObjects(partial);
+  assert.ok(projection);
+  assert.equal(projection.complete, false);
+  assert.equal(projection.unseenEventCount, fixture.world.events.length - partial.events.length);
+  assert.equal(projection.captureProjectionComplete, false);
+
+  const record = projection.records.find(candidate => candidate.eventId === fixture.failure.id);
+  assert.ok(record);
+  assert.equal(
+    record.historyPosition,
+    fixture.world.events.findIndex(event => event.id === fixture.failure.id) + 1
+  );
+  assert.equal(
+    record.visiblePosition,
+    partial.events.findIndex(event => event.id === fixture.failure.id) + 1
+  );
+  assert.notEqual(record.historyPosition, record.visiblePosition);
+  assert.equal(record.laterCaptureStatus, 'unknown');
+  assert.equal(record.laterCapture, null);
+
+  const founderQuest = getQuestTrail(partial, founder).find(candidate =>
+    candidate.id === 'founder-source-archive-later-capture'
+  );
+  assert.ok(founderQuest);
+  assert.equal(founderQuest.progress, 1);
+  assert.equal(founderQuest.complete, false);
+  assert.equal(founderQuest.action, null);
+  assert.match(founderQuest.blockedReason, /partial|incomplete|ambiguous/i);
+  assert.equal(partial.xp, beforeXp);
+  assert.equal(JSON.stringify(partial), before);
+
+  const malformed = structuredClone(partial);
+  const malformedFailure = malformed.events.find(event => event.id === fixture.failure.id);
+  malformedFailure.historyPosition = malformed.events[0].historyPosition;
+  assert.equal(
+    projectSourceArchiveFailureObjects(malformed),
+    null,
+    'duplicate or non-monotonic response-only history positions must not be trusted'
+  );
+});
