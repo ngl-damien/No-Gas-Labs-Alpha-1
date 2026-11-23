@@ -627,6 +627,13 @@ test('a server-observed Source Archive failure unlocks a Recovery Ledger whose p
   assert.equal(unequipEvent.actor.id, 'damien');
   assert.equal(unequipped.body.world.xp, 100);
 
+  // Reopen a clean stream after the earlier capture/Forge events so the next
+  // delivered world snapshot is the pending offer itself.
+  witnessStream.close();
+  const witnessOfferStream = await witness.stream();
+  streams.push(witnessOfferStream);
+  await witnessOfferStream.next('world');
+
   const offered = await founder.request('/api/action', {
     type: 'offer-field-item-transfer',
     itemEventId: forgeEvent.id,
@@ -658,12 +665,12 @@ test('a server-observed Source Archive failure unlocks a Recovery Ledger whose p
   assert.equal(pendingOffer.item.sourceRecovery.publicationEventId, publicationEvent.id);
   assert.equal(pendingOffer.item.sourceRecovery.sha256, capture.action.sha256);
 
-  const streamedOffer = await witnessStream.next('world');
+  const streamedOffer = await witnessOfferStream.next('world');
   assert.equal(streamedOffer.world.events.at(-1).id, offerEvent.id);
   const pendingRevision = offered.body.world.revision;
   const pendingEventIds = offered.body.world.events.map(event => event.id);
 
-  witnessStream.close();
+  witnessOfferStream.close();
   await current.server.closeGame();
   current = await startServer(dataDir, fetchImpl);
   servers.push(current.server);
