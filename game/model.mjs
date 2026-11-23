@@ -799,7 +799,7 @@ export function publicWorld(world,actor){
   // role filtering omitted. It permits positive matching only for event types
   // that cannot be Source Archive failures or publications; it never upgrades
   // a partial snapshot to canonical history or permits an absence conclusion.
-  if(sourceEventCount>0){
+  if(sourceEventCount>0&&sourceHistoryComplete){
     copy.historyCoverage=Object.freeze({
       schema:'ngl.public-world-history.v1',
       sourceComplete:sourceHistoryComplete,
