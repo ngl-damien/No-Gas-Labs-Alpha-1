@@ -4213,7 +4213,7 @@ test('a later shared server-rechecked Source Archive publication links the exact
   assert.ok(record);
   assert.equal(record.laterCaptureStatus, 'observed');
   assert.equal(record.laterCaptureCount, 1);
-  assert.equal(record.laterCapture.creationId, draft.body.result.draftId);
+  assert.equal(record.laterCapture.creationId, publication.body.result.creationId);
   assert.equal(record.laterCapture.version, 1);
   assert.equal(record.laterCapture.publicationEventId, state.world.events.at(-1).id);
   assert.equal(record.laterCapture.repository, failureEvent.repository);
