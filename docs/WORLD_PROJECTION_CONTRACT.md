@@ -54,6 +54,8 @@ Replay is idempotent by `event_id`.
 
 Verified revocations are replayed in event order. They block later executions using the revoked grant, and the quest projector applies the same boundary as the world reducer. A revocation does not silently erase earlier verified outcomes; the original event and its consequence remain auditable in history.
 
+- Shared R&D projection: Quest Board objective progress and Character Sheet research skills consume the same validated `projectResearchRecords` projection. Retained event positions order proposal → report → cross-actor challenge → original-author response and bind supplied evidence to one exact earlier published version. Strict UTC timestamps remain required metadata but do not order this chain. A challenge may omit optional evidence; if it supplies evidence, it must link. Unlinked, ambiguous, malformed, or reordered records remain in history but do not advance objective/skill projections. These activity counts do not establish truth, mastery, XP, approval, or authority.
+
 ## AOTA Codex navigation
 
 - Stage 10 keeps `guild_hall` as its owning institution but routes to the registered `guild-npc-synthesizer` NPC. The map preserves the exact NPC destination and still requires explicit Interact; the Synthesis Clerk workbench is advisory-only, does not invoke a model, and cannot write canonical state, grant authority, award progress, or certify truth/execution.
