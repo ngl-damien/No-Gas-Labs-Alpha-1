@@ -1,3 +1,27 @@
+## Run 347 — offline Field Kit sandbox-boundary acceptance repair — 2026-11-23
+
+**Candidate:** PR #718, exact head [eccb601](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/eccb6013de39808e81c58cdd14421a11a13af185), 511 ahead / 9 behind current main [21677d8](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/21677d88cb027f3d16adacf92dbdd0ec08e96dbd), 52 changed paths, draft/unmerged.
+
+| Gate | Status | Run 347 evidence and limit |
+|---|---|---|
+| G0 Product definition | IN_PROGRESS | No new Founder decision on supported Android baseline, initial player scale, production persistence model or release criteria. |
+| G1 Coherent playable loop | IN_PROGRESS | The Field Kit's Recovery Ledger already exposes its exact Forge Chronicle event. The cache-only mobile acceptance now explicitly tests the opaque artifact boundary, but Quest Board [45287768575](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45287768575) was still running; offline direct-link acceptance is not yet established. |
+| G2 Persistent character/world | IN_PROGRESS | No runtime persistence change. Existing restart evidence uses controlled fixtures and a temporary filesystem store, not production-host durability. |
+| G3 Authoritative multiplayer | IN_PROGRESS | No multiplayer change. Pseudonymous actor fixtures do not prove two distinct humans or production multiplayer. |
+| G4 Core RPG systems | IN_PROGRESS | No inventory, equipment, XP or reward rule changed. Exact Forge-event inspection remains read-only and XP-neutral. |
+| G5 Social/economic systems | IN_PROGRESS | No economy, groups/guild exchange, marketplace or player-trade change. |
+| G6 Persistent world/content | IN_PROGRESS | The inventory item remains a projection of retained Forge/source events. This run changes only acceptance diagnostics; it creates no canonical event, quest progress, approval or authority. |
+| G7 Android-first mobile | IN_PROGRESS | PWA package build [45287768830](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45287768830) PASS, deployment skipped. Council Chamber [45287768793](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45287768793) PASS at 320px/390px. Quest Board [45287768575], Synthesis [45287768581] and Academy [45287768711] were still in Playwright setup; Android [45287768664] was in the emulator journey. No physical-device acceptance or release APK. |
+| G8 Operational readiness | IN_PROGRESS | Full Verify [45287768566], Genesis [45287768902], Live Source Archive [45287768770], Combat [45287768595], Council [45287768793] and PWA build [45287768830] PASS. Browser [45287768579] FAILS the Worker A-owned Guild Hall prompt helper; exact handoff #456 comment 7116901436. Quest Board/Synthesis/Academy/Android have no terminal result at checkpoint capture. |
+| G9 Founder acceptance/release | NOT_STARTED | Founder trust NOT_ENROLLED. No runtime merge, release, deployment, Founder approval, truth verdict or authority transition. |
+
+**Change:** [eccb601](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/eccb6013de39808e81c58cdd14421a11a13af185) changes only `scripts/verify-quest-board.py`. It distinguishes the artifact iframe's expected opaque-origin serviceWorker/localStorage denials from unexpected page errors while proving `allow-same-origin` remains absent and both capabilities remain blocked. The new exact-head Quest Board result is pending; do not count it as a pass.
+
+**Mainline state:** #718 is 511 ahead / 9 behind current main `21677d8`. PR #429 is merged into main at `d08658d`. The nine main-only commits are governance skill instructions and a build receipt, not executable enforcement. No main merge or stack integration occurred.
+
+**Procedure:** manual bootstrap/nested instruction checks and hosted preflight completed. Desktop Commander devices Offline; no local pre-edit receipt or local tests. Hosted pre-edit and exact-head Full Verify preflight ready, warnings/failures empty. Procedural compliance PARTIAL.
+
+
 ## Run 346 — Field Kit offline acceptance harness repair — 2026-11-23
 
 **Candidate:** PR #718, exact head [41ce321](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/41ce321fa8199dc41d6d1a671cf372f97289d026), 510 commits ahead / 0 behind main, 52 changed paths, draft/unmerged.
