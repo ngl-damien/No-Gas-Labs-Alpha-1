@@ -7934,6 +7934,12 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
     inspection_context = None
     inspection_page = None
     inspection_errors = []
+    witness_context = None
+    witness_page = None
+    witness_errors = []
+    witness_context = None
+    witness_page = None
+    witness_errors = []
     cdp = context.new_cdp_session(page)
     cdp_contexts = {}
     cdp_frames = {}
@@ -8917,8 +8923,308 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'exactPublicationChronicleOpened': publication_chronicle['exactWorldEventOpened'],
             'xpDelta': after_publish['xp'] - before['xp']
         }
+        # The Recovery Ledger is a transferable world object, so its designated
+        # recipient must see the exact failure/capture lineage before deciding.
+        if inspection_page.locator('#sheet').is_visible():
+            inspection_page.locator('#sheet-close').tap()
+            inspection_page.wait_for_function("() => document.querySelector('#sheet')?.hidden === true")
+
+        witness_context, witness_page = start_witness_mobile_context(browser, url, 390)
+        witness_page.on('pageerror', lambda error: witness_errors.append(str(error)))
+        witness_before = authoritative_snapshot(witness_page)
+        founder_before_recovery = authoritative_snapshot(inspection_page)
+        founder_id = founder_before_recovery['viewerId']
+        witness_id = witness_before['viewerId']
+        assert founder_before_recovery['viewerRole'] == 'founder'
+        assert witness_before['viewerRole'] == 'witness'
+        assert witness_id != founder_id, 'The recipient must be a separate pseudonymous session.'
+
+        open_quest_board(inspection_page)
+        recovery_objective_id = 'founder-source-archive-recovery-ledger-' + failure['id']
+        recovery_objective = inspection_page.locator(
+            '#sheet-content [data-objective-id="' + recovery_objective_id + '"]'
+        )
+        expect(recovery_objective).to_have_count(1)
+        expect(recovery_objective).to_contain_text('2/4')
+        expect(recovery_objective.locator('.quest-step-state')).to_have_text('OPEN')
+        recovery_objective.get_by_role('button', name='Walk to Forge →', exact=True).tap()
+        enter_nearby_institution(inspection_page, 'forge', 'Forge', 'Forge')
+
+        recovery_forge_slot = inspection_page.locator('#sheet-content [data-forge-slot="recovery"]')
+        expect(recovery_forge_slot).to_have_count(1)
+        recovery_source = recovery_forge_slot.locator('[data-forge-choice="recovery"]')
+        recovery_source.select_option(value=publication_event_id)
+        recovery_forge_slot.locator('[data-forge-item="recovery"]').tap()
+        recovery_forge_event_id = wait_for_retained_event_id(
+            inspection_page, 'field-item-forged', 'sourceEventId',
+            publication_event_id, founder_id, 'founder', timeout=15000
+        )
+        assert recovery_forge_event_id
+
+        recovery_item = inspection_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Recovery Ledger')
+        expect(recovery_item).to_have_count(1)
+        recovery_item.locator('[data-equip-forged-item]').tap()
+        recovery_equip_event_id = wait_for_retained_event_id(
+            inspection_page, 'field-item-equipped', 'sourceEventId',
+            recovery_forge_event_id, founder_id, 'founder', timeout=15000
+        )
+        assert recovery_equip_event_id
+        inspection_page.locator(
+            '#sheet-content [data-equipment-slot="recovery"] [data-unequip-field-item="recovery"]'
+        ).tap()
+        recovery_unequip_event_id = wait_for_retained_event_id(
+            inspection_page, 'field-item-unequipped', 'slotId',
+            'recovery', founder_id, 'founder', timeout=15000
+        )
+        assert recovery_unequip_event_id
+
+        inspection_page.wait_for_function(
+            """expected => {
+              const select = document.querySelector('#sheet-content [data-transfer-recipient]');
+              return Boolean(select && Array.from(select.options).some(option =>
+                option.value === expected && option.getAttribute('data-role') === 'witness'));
+            }""",
+            arg=witness_id,
+            timeout=15000
+        )
+        recovery_item = inspection_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Recovery Ledger')
+        recovery_recipient = recovery_item.locator('[data-transfer-recipient]')
+        recovery_recipient.select_option(value=witness_id)
+        recovery_item.locator('[data-offer-field-item]').tap()
+        recovery_offer = inspection_page.evaluate("""async expected => {
+          const response = await fetch('/api/state', {cache:'no-store', credentials:'same-origin'});
+          if (!response.ok) throw new Error('Could not inspect the retained Recovery Ledger offer.');
+          const dto = await response.json();
+          const matches = dto.world.events.filter(event =>
+            event.type === 'field-item-transfer-offered' &&
+            event.itemEventId === expected.itemEventId &&
+            event.actor?.id === expected.actorId &&
+            event.recipientId === expected.recipientId &&
+            event.recipientRole === 'witness'
+          );
+          if (matches.length !== 1) throw new Error('Expected one exact Recovery Ledger offer, found ' + matches.length);
+          const event = matches[0];
+          return {eventId:event.id,offerId:event.offerId,recipientId:event.recipientId,recipientRole:event.recipientRole};
+        }""", {
+            'itemEventId': recovery_forge_event_id,
+            'actorId': founder_id,
+            'recipientId': witness_id
+        })
+        assert recovery_offer['offerId']
+        assert recovery_offer['recipientId'] == witness_id
+        assert recovery_offer['recipientRole'] == 'witness'
+        recovery_offer_event_id = wait_for_retained_event_id(
+            inspection_page, 'field-item-transfer-offered', 'itemEventId',
+            recovery_forge_event_id, founder_id, 'founder', timeout=15000
+        )
+        assert recovery_offer_event_id == recovery_offer['eventId']
+
+        # Rejoin the same Witness session so the offer is rendered from a fresh
+        # server snapshot, not a stale local Character Record.
+        witness_page.reload(wait_until='networkidle')
+        witness_page.locator('#start-shared').tap()
+        witness_page.locator('#world').wait_for(state='visible')
+        witness_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
+        )
+        wait_for_shared_world_ready(witness_page)
+        witness_after_rejoin = authoritative_snapshot(witness_page)
+        assert witness_after_rejoin['viewerRole'] == 'witness'
+        assert witness_after_rejoin['viewerId'] == witness_id, (
+            'Reloading the same browser context must preserve the pseudonymous recipient session.'
+        )
+
+        witness_page.locator('#character-button').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        incoming_recovery_offer = witness_page.locator(
+            '#sheet-content [data-field-transfer-offer="' + recovery_offer['offerId'] + '"]'
+        )
+        expect(incoming_recovery_offer).to_have_count(1)
+        recovery_lineage = incoming_recovery_offer.locator('[data-field-item-recovery]')
+        expect(recovery_lineage).to_have_count(1)
+        expect(recovery_lineage).to_contain_text('RECOVERY LINEAGE · NOT SOURCE TRUTH')
+        expect(recovery_lineage).to_contain_text('Original service-observed failure ' + failure['id'])
+        expect(recovery_lineage).to_contain_text('GITHUB_SOURCE_UNAVAILABLE')
+        expect(recovery_lineage).to_contain_text('Later server-rechecked capture ' + SOURCE_FIXTURE_REPOSITORY)
+        expect(recovery_lineage).to_contain_text(SOURCE_FIXTURE_COMMIT + '/' + SOURCE_RETRY_PATH)
+        expect(recovery_lineage).to_contain_text('publication event ' + publication_event_id)
+        expect(recovery_lineage).to_contain_text(SOURCE_FIXTURE_SHA256)
+        expect(recovery_lineage).to_contain_text(SOURCE_FIXTURE_GIT_BLOB_SHA)
+        expect(recovery_lineage).to_contain_text(str(len(SOURCE_FIXTURE_BYTES)) + ' bytes')
+        expect(recovery_lineage).to_contain_text('does not establish equality with the failed response')
+        expect(recovery_lineage).to_contain_text('independent verification')
+        failure_lineage_link = recovery_lineage.locator(
+            '[data-field-item-recovery-failure="' + failure['id'] + '"]'
+        )
+        publication_lineage_link = recovery_lineage.locator(
+            '[data-field-item-recovery-publication="' + publication_event_id + '"]'
+        )
+        expect(failure_lineage_link).to_have_count(1)
+        expect(failure_lineage_link).to_have_attribute('data-chronicle-event-id', failure['id'])
+        expect(failure_lineage_link).to_have_attribute('data-chronicle-source', 'world')
+        expect(publication_lineage_link).to_have_count(1)
+        expect(publication_lineage_link).to_have_attribute('data-chronicle-event-id', publication_event_id)
+        expect(publication_lineage_link).to_have_attribute('data-chronicle-source', 'world')
+        expect(incoming_recovery_offer.locator('[data-accept-field-item-transfer]')).to_have_count(1)
+        expect(incoming_recovery_offer.locator('[data-decline-field-item-transfer]')).to_have_count(1)
+        recovery_offer_screenshot = out / 'recovery-ledger-incoming-offer-390.png'
+        witness_page.screenshot(path=str(recovery_offer_screenshot), full_page=True)
+
+        # The designated recipient can inspect both exact events before making
+        # a decision. Chronicle navigation is read-only and grants no XP.
+        witness_before_lineage_inspection = authoritative_snapshot(witness_page)
+        failure_lineage_link.tap()
+        expect(witness_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        failure_event_card = witness_page.locator(
+            '#sheet-content [data-event-id="world:' + failure['id'] + '"]'
+        )
+        expect(failure_event_card).to_have_count(1)
+        expect(failure_event_card).to_have_attribute('data-event-source', 'world')
+        witness_after_failure_inspection = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(witness_after_failure_inspection) == shared_world_snapshot(witness_before_lineage_inspection)
+        assert witness_after_failure_inspection['xp'] == witness_before_lineage_inspection['xp']
+
+        witness_page.locator('#sheet-close').tap()
+        witness_page.locator('#character-button').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        incoming_recovery_offer = witness_page.locator(
+            '#sheet-content [data-field-transfer-offer="' + recovery_offer['offerId'] + '"]'
+        )
+        recovery_lineage = incoming_recovery_offer.locator('[data-field-item-recovery]')
+        publication_lineage_link = recovery_lineage.locator(
+            '[data-field-item-recovery-publication="' + publication_event_id + '"]'
+        )
+        witness_before_publication_inspection = authoritative_snapshot(witness_page)
+        publication_lineage_link.tap()
+        expect(witness_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        publication_event_card = witness_page.locator(
+            '#sheet-content [data-event-id="world:' + publication_event_id + '"]'
+        )
+        expect(publication_event_card).to_have_count(1)
+        expect(publication_event_card).to_have_attribute('data-event-source', 'world')
+        witness_after_publication_inspection = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(witness_after_publication_inspection) == shared_world_snapshot(witness_before_publication_inspection)
+        assert witness_after_publication_inspection['xp'] == witness_before_publication_inspection['xp']
+
+        # Refusal is an explicit retained outcome. It does not transfer ownership
+        # or count as an accepted Armor Bearer handoff.
+        witness_page.locator('#sheet-close').tap()
+        witness_page.locator('#character-button').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        incoming_recovery_offer = witness_page.locator(
+            '#sheet-content [data-field-transfer-offer="' + recovery_offer['offerId'] + '"]'
+        )
+        expect(incoming_recovery_offer).to_have_count(1)
+        xp_before_decline = authoritative_snapshot(witness_page)['xp']
+        incoming_recovery_offer.locator('[data-decline-field-item-transfer]').tap()
+        recovery_decline_event_id = wait_for_retained_event_id(
+            witness_page, 'field-item-transfer-declined', 'offerId',
+            recovery_offer['offerId'], witness_id, 'witness', timeout=15000
+        )
+        assert recovery_decline_event_id
+        expect(witness_page.locator(
+            '#sheet-content [data-field-transfer-offer="' + recovery_offer['offerId'] + '"]'
+        )).to_have_count(0)
+        witness_after_decline = authoritative_snapshot(witness_page)
+        assert recovery_decline_event_id in witness_after_decline['eventIds']
+        assert witness_after_decline['xp'] == xp_before_decline
+
+        # The sender still owns the exact same item. Its failure/capture lineage
+        # and the recipient's refusal remain inspectable from the Field Kit.
+        inspection_page.reload(wait_until='networkidle')
+        inspection_page.locator('#start-shared').tap()
+        inspection_page.locator('#world').wait_for(state='visible')
+        inspection_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
+        )
+        if 'Founder' not in inspection_page.locator('#mode-label').inner_text():
+            inspection_page.locator('#login-button').tap()
+            inspection_page.locator('#founder-name').fill('Damien')
+            inspection_page.locator('#founder-key').fill('fake-browser-fixture-key-not-a-secret')
+            inspection_page.locator('#verify-founder').tap()
+            inspection_page.wait_for_function(
+                "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+            )
+        wait_for_shared_world_ready(inspection_page)
+        founder_after_decline = authoritative_snapshot(inspection_page)
+        assert founder_after_decline['viewerId'] == founder_id
+        assert founder_after_decline['xp'] == after_publish['xp'], (
+            'Forge, equip, unequip, offer, inspection and decline are XP-neutral.'
+        )
+        inspection_page.locator('#character-button').tap()
+        inspection_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        founder_recovery_item = inspection_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Recovery Ledger')
+        expect(founder_recovery_item).to_have_count(1)
+        expect(founder_recovery_item).to_contain_text('current owner ' + founder_id + ' (founder)')
+        founder_recovery_lineage = founder_recovery_item.locator('[data-field-item-recovery]')
+        expect(founder_recovery_lineage).to_have_count(1)
+        expect(founder_recovery_lineage).to_contain_text(failure['id'])
+        expect(founder_recovery_lineage).to_contain_text(publication_event_id)
+        retained_handoff = founder_recovery_item.locator('[data-field-item-transfer-history]')
+        expect(retained_handoff).to_have_count(1)
+        declined_entry = retained_handoff.locator(
+            '[data-field-item-transfer-history-entry="' + recovery_offer['offerId'] + '"]'
+        )
+        expect(declined_entry).to_have_count(1)
+        expect(declined_entry).to_have_attribute('data-transfer-status', 'declined')
+        decline_chronicle_link = declined_entry.locator(
+            '[data-field-item-transfer-history-event-link="declined"]'
+        )
+        expect(decline_chronicle_link).to_have_attribute('data-chronicle-event-id', recovery_decline_event_id)
+
+        inspection_page.locator('#sheet-close').tap()
+        open_quest_board(inspection_page)
+        recovery_quest_after_decline = inspection_page.locator(
+            '#sheet-content [data-objective-id="' + recovery_objective_id + '"]'
+        )
+        expect(recovery_quest_after_decline).to_have_count(1)
+        expect(recovery_quest_after_decline).to_contain_text('4/4')
+        expect(recovery_quest_after_decline.locator('.quest-step-state')).to_have_text('RECORDED')
+        founder_after_quest_inspection = authoritative_snapshot(inspection_page)
+        assert shared_world_snapshot(founder_after_quest_inspection) == shared_world_snapshot(founder_after_decline), (
+            'Inspecting the completed Recovery Ledger objective must not mutate world state.'
+        )
+        assert founder_after_quest_inspection['xp'] == after_publish['xp']
+
+        assert not witness_errors, 'The Recovery Ledger recipient journey produced page errors: ' + json.dumps(witness_errors)
+        retry_diagnostics['recoveryLedgerIncomingOffer'] = {
+            'itemEventId': recovery_forge_event_id,
+            'equipEventId': recovery_equip_event_id,
+            'unequipEventId': recovery_unequip_event_id,
+            'offerEventId': recovery_offer_event_id,
+            'offerId': recovery_offer['offerId'],
+            'recipientSessionId': witness_id,
+            'recipientSessionIsDistinct': witness_id != founder_id,
+            'exactFailureEventId': failure['id'],
+            'exactPublicationEventId': publication_event_id,
+            'exactFailureChronicleOpened': True,
+            'exactPublicationChronicleOpened': True,
+            'declineEventId': recovery_decline_event_id,
+            'declineRetained': recovery_decline_event_id in founder_after_decline['eventIds'],
+            'ownershipRemainedWithFounder': founder_recovery_item.count() == 1,
+            'recoveryObjectiveAfterDecline': '4/4',
+            'xpDeltaAfterPublication': founder_after_quest_inspection['xp'] - after_publish['xp'],
+            'pageErrors': witness_errors,
+            'screenshot': recovery_offer_screenshot.name,
+            'identityQualification': 'separate pseudonymous session IDs; not proof of distinct humans'
+        }
         retry_diagnostics['inspectionPageErrors'] = inspection_errors
         (out / 'source-archive-retry-state.json').write_text(json.dumps(retry_diagnostics, indent=2))
+
 
         if page.locator('#sheet').is_visible():
             page.locator('#sheet-close').tap()
@@ -9067,6 +9373,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'screenshot': screenshot.name
         }
     finally:
+        if witness_context is not None:
+            witness_context.close()
         if inspection_context is not None:
             inspection_context.close()
         context.close()
