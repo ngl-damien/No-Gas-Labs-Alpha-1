@@ -1896,7 +1896,7 @@ function openCreation(id,requestedVersion=null,focusChallenge=false,{snapshot=wo
   title:selectedArtifact?.title??creation.title,
   intent:selectedArtifact?.intent??creation.intent,
   html:selectedArtifact?.html
-});const content=showSheet(creation.title,satireIssue?'AMERICA’S GOT PROBLEMS · SATIRE ISSUE':'A PLACE SOMEONE MADE');content.dataset.creationDetail='true';content.dataset.creationSnapshotRevision=Number.isSafeInteger(creationWorldSnapshot?.revision)&&creationWorldSnapshot.revision>=0?String(creationWorldSnapshot.revision):'unavailable';let sourceObservationList=null;function requireCurrentCreationSnapshot(){if(mode==='shared'&&(isSharedSnapshotStale()||!Number.isSafeInteger(creationWorldSnapshot?.revision)||!Number.isSafeInteger(world?.revision)||world.revision!==creationWorldSnapshot.revision))throw new Error('This artifact detail is pinned to an older or unavailable shared snapshot. Refresh it before recording new activity.');}function renderSourceObservations(){if(!sourceObservationList)return;sourceObservationList.replaceChildren(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS · v'+selectedVersion}));const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;sourceObservationList.append(attributionDisclosure);const records=projectSourceObservationRecords(creationWorldSnapshot.events,creationWorldSnapshot.creations,sourceObservationPositionOptions(creationWorldSnapshot)).filter(record=>record.creationId===id&&record.version===selectedVersion);if(!records.length){sourceObservationList.append(paragraph('No source observations are retained against this version. The empty state is intentional.','empty-note'));return;}for(const record of records){const githubCitation=parseGitHubSourceCitation(record.source);
+});const content=showSheet(creation.title,satireIssue?'AMERICA’S GOT PROBLEMS · SATIRE ISSUE':'A PLACE SOMEONE MADE');content.dataset.creationDetail='true';content.dataset.creationId=id;content.dataset.creationVersion=String(selectedVersion);content.dataset.creationSnapshotRevision=Number.isSafeInteger(creationWorldSnapshot?.revision)&&creationWorldSnapshot.revision>=0?String(creationWorldSnapshot.revision):'unavailable';let sourceObservationList=null;function requireCurrentCreationSnapshot(){if(mode==='shared'&&(isSharedSnapshotStale()||!Number.isSafeInteger(creationWorldSnapshot?.revision)||!Number.isSafeInteger(world?.revision)||world.revision!==creationWorldSnapshot.revision))throw new Error('This artifact detail is pinned to an older or unavailable shared snapshot. Refresh it before recording new activity.');}function renderSourceObservations(){if(!sourceObservationList)return;sourceObservationList.replaceChildren(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS · v'+selectedVersion}));const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;sourceObservationList.append(attributionDisclosure);const records=projectSourceObservationRecords(creationWorldSnapshot.events,creationWorldSnapshot.creations,sourceObservationPositionOptions(creationWorldSnapshot)).filter(record=>record.creationId===id&&record.version===selectedVersion);if(!records.length){sourceObservationList.append(paragraph('No source observations are retained against this version. The empty state is intentional.','empty-note'));return;}for(const record of records){const githubCitation=parseGitHubSourceCitation(record.source);
     const citationDisclosure=githubCitation
       ? paragraph('Client-reported unarchived citation metadata · commit '+githubCitation.commitSha+' · Git blob SHA-1 '+githubCitation.gitBlobSha+' · SHA-256 '+githubCitation.sha256+' · '+githubCitation.size+' bytes. These values are carried in the author-entered source text; the shared world cannot authenticate the browser fetch or any device-local capture. Hashes identify bytes only; they do not establish primary-source status, authorship, authority, or truth.','form-help')
       : null;
@@ -2024,7 +2024,7 @@ function openCreation(id,requestedVersion=null,focusChallenge=false,{snapshot=wo
   const version=node('select',{id:'version-select'});
   for(const v of availableVersions)version.append(node('option',{value:v.version,text:'Version '+v.version+(v.version===creation.version?' · current':' · retained original bytes')}));
   version.value=String(selectedVersion);
-  version.onchange=()=>{selectedVersion=Number(version.value);renderVersionReceipt();renderPublicationLineage();renderNotes();renderSourceObservations();syncChallengeTarget(true)};
+  version.onchange=()=>{selectedVersion=Number(version.value);content.dataset.creationVersion=String(selectedVersion);renderVersionReceipt();renderPublicationLineage();renderNotes();renderSourceObservations();syncChallengeTarget(true)};
   renderVersionReceipt();
   content.append(field('Version archive','version-select',version),publicationLineage,paragraph('Versions are flat retained documents. A SHA-256 receipt establishes exact bytes, not the truth of any claim inside.','form-help'),versionReceipt);
   renderPublicationLineage();if(creation.kind==='observatory'){content.append(paragraph('Record a falsifiable source note in this version’s Chronicle. The source class is author-selected; retrieval and independent verification remain NOT_PERFORMED.','form-help'),button('Record a source observation →',guarded(()=>{requireCurrentCreationSnapshot();openSourceObservation(id,selectedVersion,null,null,creationWorldSnapshot)}),{id:'source-observation-open',class:'secondary-button'}),sourceObservationList=node('div',{id:'source-observations'}));renderSourceObservations();}
@@ -3512,7 +3512,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
       value===value.trim()&&!value.startsWith('/')&&!value.includes('\\')&&
       value.split('/').every(segment=>segment&&segment!=='.'&&segment!=='..');
     const complete=recovery&&
-      safeEventId(recovery.failureEventId)&&safeEventId(recovery.publicationEventId)&&
+      safeEventId(recovery.failureEventId)&&safeEventId(recovery.publicationEventId)&&safeEventId(recovery.creationId)&&
       typeof recovery.failureCode==='string'&&/^[A-Z0-9_]+$/.test(recovery.failureCode)&&
       Number.isSafeInteger(recovery.failurePosition)&&recovery.failurePosition>0&&
       Number.isSafeInteger(recovery.publicationPosition)&&recovery.publicationPosition>recovery.failurePosition&&
@@ -3546,6 +3546,12 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
         'data-chronicle-event-id':recovery.publicationEventId,
         'data-chronicle-source':'world',
         'aria-label':'Inspect later server-rechecked publication in World Chronicle'
+      }),
+      button('Open exact captured artifact v'+recovery.version+' →',()=>openCreation(recovery.creationId,recovery.version),{
+        class:'list-button',
+        'data-field-item-recovery-artifact':recovery.creationId,
+        'data-field-item-recovery-artifact-version':String(recovery.version),
+        'aria-label':'Open the exact retained Recovery Ledger artifact version'
       })
     ])];
   };

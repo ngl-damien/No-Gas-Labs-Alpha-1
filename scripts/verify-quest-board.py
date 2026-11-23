@@ -9411,6 +9411,46 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             path=str(out / 'recovery-ledger-cache-only-390.png'),
             full_page=True
         )
+        # A cached Recovery Ledger is a navigable world object: open the exact
+        # retained artifact version and its publication Chronicle event offline.
+        cache_artifact_link = cache_offer.locator(
+            '[data-field-item-recovery-artifact="' + published_creation_id + '"]'
+        )
+        expect(cache_artifact_link).to_have_count(1)
+        expect(cache_artifact_link).to_have_attribute('data-field-item-recovery-artifact-version', '1')
+        cache_api_requests_before_artifact = list(cache_api_requests)
+        cache_artifact_link.tap()
+        cache_artifact_detail = cache_page.locator('#sheet-content[data-creation-detail="true"]')
+        expect(cache_artifact_detail).to_have_attribute('data-creation-id', published_creation_id)
+        expect(cache_artifact_detail).to_have_attribute('data-creation-version', '1')
+        expect(cache_artifact_detail.locator('[data-creation-version-receipt]')).to_have_attribute('data-creation-version', '1')
+        cache_artifact_publication_link = cache_artifact_detail.locator('#publication-chronicle-link')
+        expect(cache_artifact_publication_link).to_have_attribute(
+            'data-publication-chronicle-event-id', publication_event_id
+        )
+        cache_artifact_publication_link.tap()
+        expect(cache_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        cache_artifact_publication_card = cache_page.locator(
+            '#sheet-content [data-event-id="world:' + publication_event_id + '"]'
+        )
+        expect(cache_artifact_publication_card).to_have_count(1)
+        expect(cache_artifact_publication_card).to_have_attribute('data-event-source', 'world')
+        assert cache_api_requests == cache_api_requests_before_artifact, (
+            'Opening the exact retained artifact and publication event from the cached snapshot must not make network requests.'
+        )
+        cache_page.locator('#sheet-close').tap()
+        cache_page.locator('#character-button').tap()
+        cache_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        cache_offer = cache_page.locator(
+            '#sheet-content [data-field-transfer-offer="' + recovery_accept_offer_id + '"]'
+        )
+        expect(cache_offer).to_have_count(1)
+        cache_history = cache_offer.locator('[data-field-item-transfer-history]')
+        cache_declined_entry = cache_history.locator(
+            '[data-field-item-transfer-history-entry="' + recovery_offer['offerId'] + '"]'
+        )
         cache_declined_entry.locator(
             '[data-field-item-transfer-history-event-chain] summary'
         ).tap()
