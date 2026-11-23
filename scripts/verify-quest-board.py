@@ -7943,6 +7943,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
     witness_page = None
     witness_errors = []
     cache_context = None
+    inventory_cache_context = None
     cdp = context.new_cdp_session(page)
     cdp_contexts = {}
     cdp_frames = {}
@@ -9407,6 +9408,9 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             '#sheet-content [data-field-transfer-offer="' + recovery_accept_offer_id + '"]'
         )
         expect(cache_offer).to_have_count(1)
+        expect(cache_page.locator('#sheet-content [data-field-kit-root]')).to_have_attribute(
+            'data-field-kit-snapshot-revision', str(cached_world['revision'])
+        )
         cache_offer_forge_event_link = cache_offer.locator(
             '[data-field-offer-forge-event="' + recovery_forge_event_id + '"]'
         )
@@ -9477,7 +9481,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         cache_page.locator('#sheet-close').tap()
         cache_page.locator('#character-button').tap()
         cache_page.wait_for_function(
-            " () => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden "
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden "
         )
         cache_offer = cache_page.locator(
             '#sheet-content [data-field-transfer-offer="' + recovery_accept_offer_id + '"]'
@@ -9735,6 +9739,129 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         )
         recovery_handoff_screenshot = out / 'recovery-ledger-accepted-handoff-390.png'
         witness_page.screenshot(path=str(recovery_handoff_screenshot), full_page=True)
+        # The accepted Recovery Ledger remains directly inspectable from the
+        # recipient's owned inventory in a cache-only 320px session.
+        inventory_cache_snapshot_raw = witness_page.evaluate(
+            "() => localStorage.getItem('ngl.common-ground.shared-snapshot.v1')"
+        )
+        assert inventory_cache_snapshot_raw, 'The recipient must retain an accepted shared snapshot after equipping the item.'
+        inventory_cache_envelope = json.loads(inventory_cache_snapshot_raw)
+        inventory_cache_world = inventory_cache_envelope.get('world') or inventory_cache_envelope.get('snapshot')
+        assert isinstance(inventory_cache_world, dict)
+        assert inventory_cache_world.get('revision') == witness_after_equip['revision'], (
+            'The recipient cache must contain the exact accepted post-equip revision.'
+        )
+        inventory_cache_event_ids = {
+            event.get('id') for event in inventory_cache_world.get('events', [])
+            if isinstance(event, dict) and isinstance(event.get('id'), str)
+        }
+        assert recovery_forge_event_id in inventory_cache_event_ids
+        assert recovery_recipient_equip_event_id in inventory_cache_event_ids
+
+        inventory_cache_context = browser.new_context(
+            viewport={'width': 320, 'height': 844},
+            device_scale_factor=1,
+            is_mobile=True,
+            has_touch=True,
+            service_workers='block'
+        )
+        inventory_cache_context.add_init_script(
+            "raw => localStorage.setItem('ngl.common-ground.shared-snapshot.v1', raw)",
+            inventory_cache_snapshot_raw
+        )
+        inventory_cache_page = inventory_cache_context.new_page()
+        inventory_cache_page_errors = []
+        inventory_cache_api_requests = []
+
+        def capture_inventory_cache_api_request(request):
+            if '/api/' in request.url or request.url.endswith('/api'):
+                inventory_cache_api_requests.append({
+                    'method': request.method,
+                    'url': request.url
+                })
+
+        inventory_cache_page.on('pageerror', lambda error: inventory_cache_page_errors.append(str(error)))
+        inventory_cache_page.goto(url, wait_until='networkidle')
+        inventory_cache_context.set_offline(True)
+        inventory_cache_page.locator('#start-shared').tap()
+        inventory_cache_page.wait_for_function(
+            "() => document.querySelector('#world')?.dataset.sharedSnapshotCacheOnly === 'true'"
+        )
+        inventory_cache_page.locator('#character-button').tap()
+        expect(inventory_cache_page.locator('#sheet-title')).to_have_text('Character & field record')
+        inventory_cache_field_kit = inventory_cache_page.locator('#sheet-content [data-field-kit-root]')
+        expect(inventory_cache_field_kit).to_have_attribute(
+            'data-field-kit-snapshot-revision', str(inventory_cache_world['revision'])
+        )
+        inventory_cache_forge_link = inventory_cache_page.locator(
+            '#sheet-content [data-field-item-forge-event="' + recovery_forge_event_id + '"]'
+        )
+        expect(inventory_cache_forge_link).to_have_count(1)
+        expect(inventory_cache_forge_link).to_have_attribute(
+            'data-chronicle-event-id', recovery_forge_event_id
+        )
+        expect(inventory_cache_forge_link).to_have_attribute('data-chronicle-source', 'world')
+        inventory_cache_item_card = inventory_cache_forge_link.locator(
+            'xpath=ancestor::*[@data-field-item-id][1]'
+        )
+        expect(inventory_cache_item_card).to_have_count(1)
+        expect(inventory_cache_item_card).to_contain_text('current owner ' + witness_id + ' (witness)')
+        expect(inventory_cache_item_card.locator('[data-unequip-field-item]')).to_be_disabled()
+
+        inventory_cache_before = inventory_cache_page.evaluate("""() => ({
+          raw: localStorage.getItem('ngl.common-ground.shared-snapshot.v1'),
+          pending: localStorage.getItem('ngl.common-ground.pending-shared-action.v1'),
+          revision: document.querySelector('#world')?.dataset.sharedSnapshotRevision ?? null,
+          cacheOnly: document.querySelector('#world')?.dataset.sharedSnapshotCacheOnly ?? null
+        })""")
+        inventory_cache_page.on('request', capture_inventory_cache_api_request)
+        inventory_cache_api_requests_before = list(inventory_cache_api_requests)
+        inventory_cache_forge_link.tap()
+        expect(inventory_cache_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        inventory_cache_forge_card = inventory_cache_page.locator(
+            '#sheet-content [data-event-id="world:' + recovery_forge_event_id + '"]'
+        )
+        expect(inventory_cache_forge_card).to_have_count(1)
+        expect(inventory_cache_forge_card).to_have_attribute('data-event-source', 'world')
+        expect(inventory_cache_page.locator('#sheet-content')).to_have_attribute(
+            'data-chronicle-snapshot-revision', str(inventory_cache_world['revision'])
+        )
+        assert inventory_cache_api_requests == inventory_cache_api_requests_before, (
+            'Opening the owned item Forge event from a cached snapshot must not make additional API requests.'
+        )
+        inventory_cache_after = inventory_cache_page.evaluate("""() => ({
+          raw: localStorage.getItem('ngl.common-ground.shared-snapshot.v1'),
+          pending: localStorage.getItem('ngl.common-ground.pending-shared-action.v1'),
+          revision: document.querySelector('#world')?.dataset.sharedSnapshotRevision ?? null,
+          cacheOnly: document.querySelector('#world')?.dataset.sharedSnapshotCacheOnly ?? null
+        })""")
+        assert inventory_cache_after == inventory_cache_before, (
+            'Inspecting the owned inventory Forge event offline must leave the accepted cache and pending-action store unchanged.'
+        )
+        assert not any(request['method'].upper() == 'POST' for request in inventory_cache_api_requests)
+        assert not inventory_cache_page_errors, inventory_cache_page_errors
+        assert inventory_cache_page.evaluate(
+            "() => document.documentElement.scrollWidth <= window.innerWidth"
+        ), 'The 320px cached inventory Chronicle must not create horizontal overflow.'
+        inventory_cache_page.screenshot(
+            path=str(out / 'recovery-ledger-owned-inventory-forge-chronicle-cache-only-320.png'),
+            full_page=True
+        )
+        retry_diagnostics['recoveryLedgerOwnedInventoryCacheOnly'] = {
+            'viewportWidth': 320,
+            'viewerRole': 'witness',
+            'itemForgeEventId': recovery_forge_event_id,
+            'snapshotRevision': inventory_cache_world['revision'],
+            'exactForgeEventOpened': True,
+            'readOnly': inventory_cache_after == inventory_cache_before,
+            'apiRequestsDuringInspection': len(inventory_cache_api_requests) - len(inventory_cache_api_requests_before),
+            'pendingActionStored': inventory_cache_after['pending'] is not None,
+            'equippedActionDisabled': True,
+            'inspectionXPDelta': 0,
+            'horizontalOverflow': False,
+            'pageErrors': inventory_cache_page_errors
+        }
+
 
         # Re-open the Founder projection after acceptance. The item leaves the
         # sender's inventory, but both the earlier refusal and later acceptance
@@ -10057,6 +10184,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'screenshot': screenshot.name
         }
     finally:
+        if inventory_cache_context is not None:
+            inventory_cache_context.close()
         if cache_context is not None:
             cache_context.close()
         if witness_context is not None:

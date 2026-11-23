@@ -3478,6 +3478,12 @@ function refreshForgePanels(){
   if(kitRoot)kitRoot.replaceWith(buildFieldKitSection({onChange:refreshForgePanels}));
 }
 function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=openWorldChronicle}={}){
+  const fieldKitSnapshot=world;
+  const inspectFieldKitEvent=eventId=>onInspectEvent(eventId,{snapshot:fieldKitSnapshot});
+  const safeChronicleEventId=value=>typeof value==='string'&&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value)&&
+    !['constructor','prototype','__proto__'].includes(value)
+    ?value:null;
   const cachedSharedSnapshotReadOnly=mode==='shared'&&sharedSnapshotCacheOnly;
   const historyPageContext={
     mode,
@@ -3493,7 +3499,12 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
     fieldItemTransferHistoryPage:historyPageIndex
   });
   const historyPage=record.fieldItemTransferHistoryPageInfo;
-  const section=node('section',{'data-field-kit-root':'true'});
+  const fieldKitSnapshotRevision=Number.isSafeInteger(fieldKitSnapshot?.revision)&&fieldKitSnapshot.revision>=0
+    ?String(fieldKitSnapshot.revision):'unavailable';
+  const section=node('section',{
+    'data-field-kit-root':'true',
+    'data-field-kit-snapshot-revision':fieldKitSnapshotRevision
+  });
   section.append(node('h3',{class:'section-title',text:'FIELD KIT · EQUIPMENT AND INVENTORY'}));
   section.append(paragraph('Equip only items currently owned by this actor. Unequipped items can be offered to one active shared-world recipient; only that recipient can accept or decline. Acceptance changes current ownership; decline preserves the sender as owner. Original creator/source provenance remains immutable. Transfers grant no XP, combat statistics or authority.','form-help'));
   if(cachedSharedSnapshotReadOnly)section.append(paragraph('Cached shared snapshot only. This Field Kit is read-only until the live server revalidates this session. Inventory and retained handoff history remain inspectable; equipment and transfer actions are disabled.','form-help'));
@@ -3533,21 +3544,21 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
       paragraph('Original service-observed failure '+recovery.failureEventId+' · '+recovery.failureCode+' · append position '+recovery.failurePosition),
       paragraph('Later server-rechecked capture '+recovery.repository+'@'+recovery.commitSha+'/'+recovery.path+' · publication event '+recovery.publicationEventId+' · append position '+recovery.publicationPosition+' · artifact v'+recovery.version),
       paragraph('Byte receipt: SHA-256 '+recovery.sha256+' · Git blob '+recovery.gitBlobSha+' · '+recovery.size+' bytes. This identifies the later capture only; it does not establish equality with the failed response, source truth, authorship, independent verification, execution, approval or authority.','form-help'),
-      button('Inspect original failure →',()=>onInspectEvent(recovery.failureEventId),{
+      button('Inspect original failure →',()=>inspectFieldKitEvent(recovery.failureEventId),{
         class:'list-button',
         'data-field-item-recovery-failure':recovery.failureEventId,
         'data-chronicle-event-id':recovery.failureEventId,
         'data-chronicle-source':'world',
         'aria-label':'Inspect original service-observed failure in World Chronicle'
       }),
-      button('Inspect later publication →',()=>onInspectEvent(recovery.publicationEventId),{
+      button('Inspect later publication →',()=>inspectFieldKitEvent(recovery.publicationEventId),{
         class:'list-button',
         'data-field-item-recovery-publication':recovery.publicationEventId,
         'data-chronicle-event-id':recovery.publicationEventId,
         'data-chronicle-source':'world',
         'aria-label':'Inspect later server-rechecked publication in World Chronicle'
       }),
-      button('Open exact captured artifact v'+recovery.version+' →',()=>openCreation(recovery.creationId,recovery.version),{
+      button('Open exact captured artifact v'+recovery.version+' →',()=>openCreation(recovery.creationId,recovery.version,false,{snapshot:fieldKitSnapshot}),{
         class:'list-button',
         'data-field-item-recovery-artifact':recovery.creationId,
         'data-field-item-recovery-artifact-version':String(recovery.version),
@@ -3579,12 +3590,13 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
         }
         const eventLinks=[];
         const appendEventLink=(kind,label,eventId)=>{
-          if(typeof eventId!=='string'||!eventId.trim())return;
-          eventLinks.push(button(label+' →',()=>onInspectEvent(eventId),{
+          const safeId=safeChronicleEventId(eventId);
+          if(!safeId)return;
+          eventLinks.push(button(label+' →',()=>inspectFieldKitEvent(safeId),{
             class:'list-button',
             'data-field-item-transfer-history-event-link':kind,
             'data-field-item-transfer-history-offer':entry.offerId,
-            'data-chronicle-event-id':eventId,
+            'data-chronicle-event-id':safeId,
             'data-chronicle-source':'world',
             'aria-label':label+' in World Chronicle'
           }));
@@ -3653,11 +3665,23 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
     for(const offer of incoming){
       const sender=presence.find(player=>player.actorId===offer.fromActorId&&player.role===offer.fromActorRole);
       const item=offer.item;
-      const card=node('article',{class:'field-card','data-field-transfer-offer':offer.offerId},[
+      const offerChildren=[
         node('h3',{text:item?.title||'Field item'}),
         paragraph('Offered by '+(sender?.name||offer.fromActorId)+' ('+offer.fromActorRole+'). Only this recipient session can accept or decline.'),
-        paragraph('Original creator '+(item?.creatorId||'unknown')+' · source event '+(item?.sourceEventId||offer.itemEventId)),
-        ...handoffHistoryNodes(item),
+        paragraph('Original creator '+(item?.creatorId||'unknown')+' · source event '+(item?.sourceEventId||offer.itemEventId))
+      ];
+      const offerForgeEventId=safeChronicleEventId(offer.itemEventId);
+      if(offerForgeEventId&&item?.eventId===offerForgeEventId){
+        offerChildren.push(button('Inspect Forge event →',()=>inspectFieldKitEvent(offerForgeEventId),{
+          class:'list-button',
+          'data-field-offer-forge-event':offerForgeEventId,
+          'data-chronicle-event-id':offerForgeEventId,
+          'data-chronicle-source':'world',
+          'aria-label':'Inspect the original Forge event for '+(item.title||'this field item')+' in World Chronicle'
+        }));
+      }
+      offerChildren.push(...handoffHistoryNodes(item));
+      offerChildren.push(
         button('Accept transfer',guarded(async()=>{
           await act({type:'accept-field-item-transfer',offerId:offer.offerId});
           toast('Accepted transfer retained. Current ownership changed; no XP changed.');
@@ -3668,7 +3692,8 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
           toast('Decline retained. Current ownership unchanged; no XP changed.');
           onChange();
         }),{class:'secondary-button','data-decline-field-item-transfer':offer.offerId,...(cachedSharedSnapshotReadOnly?{disabled:true}:{})})
-      ]);
+      );
+      const card=node('article',{class:'field-card','data-field-transfer-offer':offer.offerId},offerChildren);
       offersSection.append(card);
     }
     section.append(offersSection);
@@ -3725,12 +3750,13 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
       ]);
       const eventChainLinks=[];
       const appendHandoffEventLink=(kind,label,eventId)=>{
-        if(typeof eventId!=='string'||!eventId.trim())return;
-        eventChainLinks.push(button(label+' →',()=>onInspectEvent(eventId),{
+        const safeId=safeChronicleEventId(eventId);
+        if(!safeId)return;
+        eventChainLinks.push(button(label+' →',()=>inspectFieldKitEvent(safeId),{
           class:'list-button',
           'data-field-item-history-event-link':kind,
           'data-field-item-history-offer':entry.offerId,
-          'data-chronicle-event-id':eventId,
+          'data-chronicle-event-id':safeId,
           'data-chronicle-source':'world',
           'aria-label':label+' in World Chronicle'
         }));
@@ -3857,11 +3883,8 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
       paragraph('Original creator '+item.creatorId+' ('+item.creatorRole+') · source type '+item.sourceKind+' · retained source event '+item.sourceEventId)
     ];
     if(item.receipt)children.push(node('small',{text:'Source SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));
-    const forgeEventId=typeof item.eventId==='string'&&
-      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(item.eventId)&&
-      !['constructor','prototype','__proto__'].includes(item.eventId)
-      ?item.eventId:null;
-    if(forgeEventId)children.push(button('Inspect Forge event →',()=>onInspectEvent(forgeEventId),{
+    const forgeEventId=safeChronicleEventId(item.eventId);
+    if(forgeEventId)children.push(button('Inspect Forge event →',()=>inspectFieldKitEvent(forgeEventId),{
       class:'list-button',
       'data-field-item-forge-event':forgeEventId,
       'data-chronicle-event-id':forgeEventId,
