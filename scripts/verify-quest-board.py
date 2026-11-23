@@ -1892,7 +1892,7 @@ def assert_deliberator_character_record(page, role, expected_rounds, screenshot,
     }
 
 
-def assert_research_character_record(page, role, screenshot):
+def assert_research_character_record(page, role, screenshot, expected_satirist_count=0):
     before = authoritative_snapshot(page)
     assert before['viewerRole'] == role, 'The R&D Character Record must remain actor-scoped.'
     character_button = page.locator('#character-button')
@@ -1904,6 +1904,11 @@ def assert_research_character_record(page, role, screenshot):
         timeout=30000
     )
 
+    satirist_record_label = (
+        'published America’s Got Problems issue edition'
+        if expected_satirist_count == 1
+        else 'published America’s Got Problems issue editions'
+    )
     expected_skills = [
         ('researcher', 'Researcher', 1, 'retained falsifiable proposals',
          'not a validated discovery or experiment result'),
@@ -1915,7 +1920,9 @@ def assert_research_character_record(page, role, screenshot):
          'not correctness or adjudication'),
         ('experiment-responder', 'Experiment Responder', 0,
          'original-author responses to uniquely linked experiment challenges',
-         'not truth, reproduction, adjudication, approval, or XP')
+         'not truth, reproduction, adjudication, approval, or XP'),
+        ('satirist', 'Satirist', expected_satirist_count, satirist_record_label,
+         'not factual accuracy, satire quality, source retrieval, independent verification, external publication, mastery, XP or NGL authority')
     ]
     observed = {}
     for skill_id, label, count, record_label, boundary in expected_skills:
@@ -1946,6 +1953,176 @@ def assert_research_character_record(page, role, screenshot):
         'xpUnchanged': after['xp'] == before['xp'],
         'viewportWidth': viewport_width,
         'screenshot': screenshot.name
+    }
+
+
+
+
+
+def publish_agp_issue_from_publication_house(page, out):
+    """Publish one real AGP edition through its world location and verify actor-scoped progression."""
+    before = authoritative_snapshot(page)
+    assert before['viewerRole'] == 'founder', 'Only the authenticated Founder may publish an AGP issue.'
+    viewport_width = page.evaluate("() => window.innerWidth")
+    assert viewport_width == 320, 'The Publication House issue journey must run at 320 CSS pixels.'
+
+    if not page.locator('#sheet').is_hidden():
+        page.locator('#sheet-close').tap()
+        expect(page.locator('#sheet')).to_be_hidden()
+    wait_for_shared_world_ready(page)
+    page.locator('#places-button').tap()
+    route = page.get_by_role('button', name='Walk to Publication House', exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    enter_nearby_institution(page, 'publication_house', 'Publication House', 'Publication House')
+    expect(page.locator('#sheet-title')).to_have_text('Publication House')
+    draft_issue = page.locator('#publication-house-draft-issue')
+    expect(draft_issue).to_be_visible()
+    draft_issue.tap()
+    expect(page.locator('#sheet-title')).to_have_text('America’s Got Problems · Issue Desk')
+    expect(page.locator('#agp-issue-form')).to_have_count(1)
+
+    title = 'America’s Got Problems · Mobile Acceptance Issue'
+    page.locator('#agp-issue-title').fill(title)
+    page.locator('#agp-issue-headline').fill('The button that certifies its own evidence')
+    page.locator('#agp-issue-target').fill('Self-referential public claims')
+    page.locator('#agp-factual-substrate').fill(
+        'This acceptance fixture records an author-entered description; no external source was retrieved.'
+    )
+    page.locator('#agp-source-references').fill(
+        'Mobile acceptance fixture · retrieval not performed'
+    )
+    page.locator('#agp-satirical-treatment').fill(
+        'A button wearing a tiny judge’s wig certifies itself by pointing at its own label.'
+    )
+    page.locator('#agp-counterargument').fill(
+        'A bounded internal process can still be useful when independent evidence and external review are available.'
+    )
+    page.locator('#agp-uncertainty').fill(
+        'No external source or independent observation is included.'
+    )
+    page.locator('#agp-falsifier').fill(
+        'An independently retrieved record contradicting the factual substrate would trigger a correction.'
+    )
+
+    draft_before = authoritative_snapshot(page)
+    page.locator('#agp-create-draft').tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Give an idea a place.' && "
+        "!!document.querySelector('#draft-area #preview-button')",
+        timeout=30000
+    )
+    expect(page.locator('#draft-area')).to_contain_text('PRIVATE DRAFT')
+    after_draft = authoritative_snapshot(page)
+    assert after_draft['revision'] == draft_before['revision'] + 1, (
+        'The explicit AGP draft action must append exactly one retained event.'
+    )
+    assert after_draft['xp'] == draft_before['xp'], (
+        'A private AGP draft must not award XP.'
+    )
+
+    page.locator('#preview-button').tap()
+    page.wait_for_function(
+        "() => document.querySelector('#portal')?.hidden === false && "
+        "!!document.querySelector('#portal-publish')",
+        timeout=30000
+    )
+    expect(page.locator('#portal-publish')).to_be_visible()
+    page.locator('#portal-publish').tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet')?.hidden === true && "
+        "document.querySelector('#portal')?.hidden === true",
+        timeout=30000
+    )
+    after_publish = authoritative_snapshot(page)
+    assert after_publish['revision'] == after_draft['revision'] + 1, (
+        'Explicit publication must append one event after the retained draft.'
+    )
+    assert after_publish['xp'] == after_draft['xp'] + 100, (
+        'The issue earns only the existing fixed publication reward.'
+    )
+
+    issue_state = page.evaluate("""async title => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('AGP publication state read failed: ' + response.status);
+      const dto = await response.json();
+      const matches = (dto.world?.creations ?? []).filter(item => item?.title === title);
+      const creation = matches.length === 1 ? matches[0] : null;
+      const publications = creation ? (dto.world?.events ?? []).filter(event =>
+        event?.type === 'publish' && event.creationId === creation.id && event.version === 1
+      ) : [];
+      return {
+        matchCount: matches.length,
+        creationId: creation?.id ?? null,
+        version: creation?.version ?? null,
+        publicationCount: publications.length,
+        publications: publications.map(event => ({
+          id: event.id,
+          actorId: event.actor?.id ?? null,
+          actorRole: event.actor?.role ?? null,
+          reward: event.reward,
+          version: event.version
+        }))
+      };
+    }""", title)
+    assert issue_state['matchCount'] == 1 and issue_state['creationId'], (
+        'The published AGP edition must be one unambiguous retained world object.'
+    )
+    assert issue_state['version'] == 1 and issue_state['publicationCount'] == 1, (
+        'The issue must resolve to exactly one retained version-1 publication event.'
+    )
+    publication = issue_state['publications'][0]
+    publication_event_ids = [
+        event_id for event_id in after_publish['eventIds']
+        if event_id not in after_draft['eventIds']
+    ]
+    assert len(publication_event_ids) == 1 and publication['id'] == publication_event_ids[0], (
+        'The exact publication event must be present in the accepted Founder snapshot.'
+    )
+    assert publication['actorId'] == before['viewerId'] and publication['actorRole'] == 'founder', (
+        'The publication must remain attributed to the authenticated Founder session.'
+    )
+    assert publication['reward'] == 100 and publication['version'] == 1, (
+        'The retained edition must carry only the ordinary version-1 publication reward.'
+    )
+
+    # Re-enter the actual world location and confirm that the published issue is listed there.
+    page.locator('#places-button').tap()
+    route = page.get_by_role('button', name='Walk to Publication House', exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    enter_nearby_institution(page, 'publication_house', 'Publication House', 'Publication House')
+    issue_button = page.get_by_role(
+        'button', name=title + ' · SATIRE ISSUE · v1', exact=True
+    )
+    expect(issue_button).to_be_visible()
+    publication_house_screenshot = out / 'agp-publication-house-issue-320.png'
+    page.screenshot(path=str(publication_house_screenshot), full_page=True)
+    page.locator('#sheet-close').tap()
+
+    character_record = assert_research_character_record(
+        page,
+        'founder',
+        out / 'agp-satirist-character-record-320.png',
+        expected_satirist_count=1
+    )
+    return {
+        'issueTitle': title,
+        'creationId': issue_state['creationId'],
+        'publicationEventId': publication['id'],
+        'routeThroughPublicationHouse': True,
+        'previewedBeforePublication': True,
+        'listedAsSatireIssueWorldObject': True,
+        'draftRevisionDelta': 1,
+        'draftXpDelta': 0,
+        'publicationRevisionDelta': 1,
+        'publicationXpDelta': 100,
+        'satiristCount': character_record['skills']['satirist'],
+        'characterRecord': character_record,
+        'publicationHouseScreenshot': publication_house_screenshot.name
     }
 
 
@@ -5760,6 +5937,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
 
         source_archive_founder_chain = None
         source_archive_witness_chain = None
+        agp_satirist_publication = None
         founder_fresh_client = None
         if width == 320:
             page.locator('#sheet-close').tap()
@@ -5789,6 +5967,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             contradiction_clerk_result = run_contradiction_clerk_mobile_journey(
                 page, source_archive_fixture, out, width, 'founder'
             )
+            agp_satirist_publication = publish_agp_issue_from_publication_house(page, out)
         else:
             assert source_archive_fixture and source_archive_fixture.get('fixtureOnly') is True, (
                 'The 390px journey must reuse the exact Source Archive published by the 320px journey.'
@@ -5843,6 +6022,9 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             source_archive_witness_chain = run_source_archive_quest_chain(
                 page, 'witness', source_archive_fixture, out, '390'
             )
+            assert source_archive_witness_chain['researchCharacterRecord']['skills']['satirist'] == 0, (
+                'The Witness can inspect shared AGP publications but does not inherit the Founder’s Satirist skill.'
+            )
             contradiction_clerk_result = run_contradiction_clerk_mobile_journey(
                 page, source_archive_fixture, out, width, 'witness'
             )
@@ -5896,6 +6078,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             'sourceArchiveFailure': source_archive_failure,
             'sourceArchiveFailureChronicle': failure_chronicle_result,
             'sourceArchiveFounderChain': source_archive_founder_chain,
+            'agpSatiristPublication': agp_satirist_publication,
             'sourceArchiveWitnessChain': source_archive_witness_chain,
             'founderFreshClientProgress': founder_fresh_client,
             'contradictionClerk': contradiction_clerk_result,
