@@ -1,3 +1,49 @@
+## Run 343 — Recovery Ledger restart boundary and mobile navigation hardening — 2026-11-23
+
+**Candidate:** draft PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), exact head [52a4764](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/52a476457317c46d425083854ebbe8a5cb474df7), 498 ahead / 0 behind main, 52 changed paths. Main remains `0d950c501`; PR #718 is open/draft/unmerged.
+
+| Gate | Status | Run 343 evidence and limit |
+|---|---|---|
+| G0 Product definition | IN_PROGRESS | No new Founder decision on player scale, Android baseline, server/persistence model or acceptance criteria. |
+| G1 Coherent playable loop | IN_PROGRESS | New server restart integration proves the Recovery Ledger sequence failure → restart → later server-rechecked fixture publication → Founder Forge → equip. Exact-head Quest Board rerun for the sheet-close fix is pending. |
+| G2 Persistent character/world | IN_PROGRESS | Test commit [db48597](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/db485972bb7299930f8e26e23cdc78bd8dca4f88) proves the exact failure event survives server restart and links to the later publication. A Witness forge attempt is rejected without revision/XP change. This is a temporary local filesystem-store test, not production-host durability. |
+| G3 Authoritative multiplayer | IN_PROGRESS | Founder and Witness projections are actor-scoped; pseudonymous sessions do not prove distinct humans or production multiplayer. |
+| G4 Core RPG | IN_PROGRESS | Recovery objective advances 2/4 → 3/4 → 4/4 from retained failure/publication/Forge/equip events. Only explicit publication earns +100 XP; failure, draft, Forge, equip and quest completion add none. No mastery or authority inferred. |
+| G5 Social/economic | IN_PROGRESS | No economy, marketplace, pricing or trade change. |
+| G6 Persistent world/content | IN_PROGRESS | Original failure and later publication remain linked; a client cannot manufacture the Founder-only item source. Fixture byte lineage is not source truth or independent verification. |
+| G7 Android-first mobile | IN_PROGRESS | PWA build PASS; Synthesis Clerk and Council Chamber PASS at 320px/390px. Android emulator has no terminal JUnit/physical-device result. |
+| G8 Operational readiness | IN_PROGRESS | Full Verify [45237250400](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45237250400) PASS on parent `db485972`: hosted preflight ready, warnings/failures 0, Node 1,545/1,545, Python inspector/PWA/institutional exercise exit 0. Genesis [45237250394], live Source Archive [45237250585], PWA [45237250923] (deploy skipped), Combat [45237250563], Academy [45237250780], Synthesis [45237250754] and Council [45237250657] PASS. Quest Board [45237250447] FAILS because an open Skills sheet intercepts Places; commit [52a4764](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/52a476457317c46d425083854ebbe8a5cb474df7) adds the real sheet-close action, but exact-head rerun is pending. Browser [45237250712] FAILS the Worker A-owned Guild Hall prompt; handoff [#456 comment 7110211990](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/456#issuecomment-7110211990). |
+| G9 Founder acceptance/release | NOT_STARTED | Founder trust NOT_ENROLLED. No merge, release, deployment, Founder approval, truth verdict or authority transition. |
+
+**Test evidence:** the new restart regression is TAP test #951 and passes in the 1,545-test suite on `db485972`. It uses a controlled mock GitHub Contents API fixture. Synthesis's offline/re-entry transports are synthetic browser events; Council's distinct actor IDs are pseudonymous. Neither proves physical-device connectivity or two human participants.
+
+**Procedure:** both authorized Desktop Commander devices Offline; no local pre-edit preflight or local Node/Playwright/Gradle run. Hosted preflight on parent `db485972` is post-edit evidence. Procedural compliance PARTIAL. No nested AGENTS found in the checked game/test/scripts/docs paths.
+
+**Next:** verify exact head 52a4764; inspect Android's terminal emulator result; keep Browser and Android-owned repairs with Worker A; reconcile the 498-commit runtime stack path-by-path before integration.
+
+---
+
+## Run 342 — Recovery Ledger handoff acceptance expansion — 2026-11-23
+
+| Gate | Status | Run 342 evidence and limit |
+|---|---|---|
+| G0 Product definition | IN_PROGRESS | No new Founder product decision. |
+| G1 Coherent playable loop | IN_PROGRESS | Mobile acceptance expanded to a declined offer followed by a new accepted offer and recipient equip. The final Quest Board rerun did not pass. |
+| G2 Persistent character/world | IN_PROGRESS | Refusal remains in history; creator/source lineage remains immutable. No runtime source changed. |
+| G3 Authoritative multiplayer | IN_PROGRESS | Designated pseudonymous Witness session only; not proof of distinct humans. |
+| G4 Core RPG | IN_PROGRESS | Offer/decline/accept/equip/inspection remain XP-neutral; no authority or mastery inferred. |
+| G5 Social/economic | IN_PROGRESS | No economy or marketplace change. |
+| G6 Persistent world/content | IN_PROGRESS | Failure and refusal history retained; Recovery Ledger describes retrieval/byte lineage, not truth. |
+| G7 Android-first mobile | IN_PROGRESS | Quest Board mobile acceptance failed; Android run [45230054618](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45230054618) was superseded/cancelled. |
+| G8 Operational readiness | IN_PROGRESS | Full Verify on prior head `37209f6` passed 1,544 Node tests, Python inspector, PWA build and institutional exercise; it was not exact-head evidence for `723af8d`. Quest Board [45230054888](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45230054888) failed on a strict locator with two transfer-history summaries. Browser [45228163666](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45228163666) failed the Worker A-owned Guild Hall prompt. |
+| G9 Founder acceptance/release | NOT_STARTED | Founder trust NOT_ENROLLED; no merge/release/approval/authority transition. |
+
+**Change:** commit `723af8d` expanded the accepted/declined transfer-history details before opening their exact Chronicle links. The subsequent run exposed a separate locator ambiguity; the current script uses entry-scoped history selectors. The later 320px/390px run exposed a further open-sheet navigation issue, addressed by 52a4764 but not yet reverified.
+
+---
+
+**History preservation:** [`checkpoint-history/through-run-320.md`](checkpoint-history/through-run-320.md) now contains the recovered legacy checkpoint blob from runtime head `52a4764`. Its observed checkpoint headings span Runs 308–249; narrative entries for Runs 309–320 were absent from the recovered source. The completion ledger includes per-run gate records through Run 320; no missing narrative is inferred.
+
 ## Run 341 — Recovery Ledger offer acceptance observation race — 2026-11-23
 
 **Candidate:** draft runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), exact head [03dd7fe](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/03dd7feed86206fda322dde4a486e6ff7e3e0ef6); 475 commits ahead / 0 behind main, 51 changed paths.
