@@ -9407,6 +9407,14 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             '#sheet-content [data-field-transfer-offer="' + recovery_accept_offer_id + '"]'
         )
         expect(cache_offer).to_have_count(1)
+        cache_offer_forge_event_link = cache_offer.locator(
+            '[data-field-offer-forge-event="' + recovery_forge_event_id + '"]'
+        )
+        expect(cache_offer_forge_event_link).to_have_count(1)
+        expect(cache_offer_forge_event_link).to_have_attribute(
+            'data-chronicle-event-id', recovery_forge_event_id
+        )
+        expect(cache_offer_forge_event_link).to_have_attribute('data-chronicle-source', 'world')
         expect(cache_page.locator('#sheet-content [data-field-kit-root]')).to_contain_text(
             'Cached shared snapshot only'
         )
@@ -9443,6 +9451,38 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
                 })
 
         cache_page.on('request', capture_cache_api_request)
+        cache_api_requests_before_forge = list(cache_api_requests)
+        cache_offer_forge_event_link.tap()
+        expect(cache_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        cache_offer_forge_event_card = cache_page.locator(
+            '#sheet-content [data-event-id="world:' + recovery_forge_event_id + '"]'
+        )
+        expect(cache_offer_forge_event_card).to_have_count(1)
+        expect(cache_offer_forge_event_card).to_have_attribute('data-event-source', 'world')
+        expect(cache_page.locator('#sheet-content')).to_have_attribute(
+            'data-chronicle-snapshot-revision', str(cached_world['revision'])
+        )
+        assert cache_api_requests == cache_api_requests_before_forge, (
+            'Inspecting the incoming item Forge event from the cached snapshot must not make network requests.'
+        )
+        cache_after_forge = cache_page.evaluate("""() => ({
+          raw: localStorage.getItem('ngl.common-ground.shared-snapshot.v1'),
+          pending: localStorage.getItem('ngl.common-ground.pending-shared-action.v1'),
+          revision: document.querySelector('#world')?.dataset.sharedSnapshotRevision ?? null,
+          cacheOnly: document.querySelector('#world')?.dataset.sharedSnapshotCacheOnly ?? null
+        })""")
+        assert cache_after_forge == cache_before, (
+            'Opening the exact incoming-offer Forge event offline must leave the cached snapshot and pending-action store unchanged.'
+        )
+        cache_page.locator('#sheet-close').tap()
+        cache_page.locator('#character-button').tap()
+        cache_page.wait_for_function(
+            " () => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden "
+        )
+        cache_offer = cache_page.locator(
+            '#sheet-content [data-field-transfer-offer="' + recovery_accept_offer_id + '"]'
+        )
+        expect(cache_offer).to_have_count(1)
         cache_page.screenshot(
             path=str(out / 'recovery-ledger-cache-only-390.png'),
             full_page=True
