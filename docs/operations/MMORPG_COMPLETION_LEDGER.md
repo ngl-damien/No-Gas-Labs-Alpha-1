@@ -1,3 +1,20 @@
+## Run 342 — Recovery Ledger re-offer and Armor Bearer mobile acceptance (current head verification pending)
+
+Date: 2026-11-23. Canonical runtime PR: #718, branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `723af8df0e1922eeeb6158087e12dfbe8f81ceb8`. The branch is 492 commits ahead of `main`, zero behind, with 51 changed paths. Run 342 changed only `scripts/verify-quest-board.py`; no runtime source module was modified.
+
+The 390px Recovery Ledger mobile journey now exercises one item through both a retained refusal and a later accepted handoff: the first designated offer is declined; the Founder retains ownership; a new unique offer to the same Witness is accepted; the Witness equips the exact item; creator and failure/publication lineage remain unchanged; the declined and accepted outcomes remain in transfer history; both Chronicle links are explicitly opened; the Founder and Witness Armor Bearer projections are checked as 4/4 and 2/4 respectively; and offer/accept/equip/inspection actions are checked for XP neutrality. The test asserts the Armor Bearer skill as activity only, with no XP, mastery or NGL authority.
+
+The first exact-head Quest Board run on `37209f6` (run [45228163561](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45228163561)) reached the accepted transfer history and then timed out when the test tried to tap an accepted Chronicle link inside a collapsed `details` element. The log identifies a Playwright visibility timeout at `scripts/verify-quest-board.py:9388`; it did not report a transfer rejection. Commit `723af8d` expands the item transfer-history details before opening the accepted and declined Chronicle links. Exact-head rerun [45230054888](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45230054888) is queued; do not call the expanded handoff verified until that run completes.
+
+Prior exact head `37209f6` Full Verify [45228163815](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45228163815) passed hosted preflight (ready, zero warnings/failures), 1,544 Node tests, Python inspector, PWA package build and institutional exercise. Genesis, live Source Archive, PWA build (deployment skipped), Combat Yard, Synthesis Clerk, Academy and Council mobile workflows also passed on `37209f6`. These results do not transfer to `723af8d` until its own exact-head workflows finish.
+
+Known independent blockers: Browser run [45228163666](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45228163666) still fails in Worker A-owned `scripts/verify-browser.py`: Guild Hall is the exact nearby location and the visible action is `Enter Guild Hall`, while a hidden secondary control still says `Enter Forge`. The exact handoff is on [PR #456 comment 7108866168](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/456#issuecomment-7108866168). The previous Android run was cancelled by the superseding commit; exact-head Android run [45230054618](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45230054618) is still in progress after debug APK assembly.
+
+Operational qualification: both authorized Desktop Commander devices were Offline. No local pre-edit preflight or local Node/Playwright/Gradle run was possible. Hosted preflight passed on prior exact head `37209f6`; current-head `723af8d` verification remains pending. Procedural compliance is PARTIAL. No merge, release, deployment, Founder acceptance, source-truth verdict or authority transition occurred.
+
+Next: inspect exact-head Quest Board rerun; repair only Worker B-owned test/runtime paths if it exposes an attributable defect; keep Browser/Android handoffs with Worker A; then reconcile PR #718 path-by-path before any integration decision.
+
+
 ## Run 341 — Recovery Ledger offer acceptance observation race — 2026-11-23
 
 **Candidate:** draft runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), exact head [03dd7fe](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/03dd7feed86206fda322dde4a486e6ff7e3e0ef6); 475 commits ahead / 0 behind main, 51 changed paths.
