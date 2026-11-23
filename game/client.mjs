@@ -3857,6 +3857,17 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
       paragraph('Original creator '+item.creatorId+' ('+item.creatorRole+') · source type '+item.sourceKind+' · retained source event '+item.sourceEventId)
     ];
     if(item.receipt)children.push(node('small',{text:'Source SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));
+    const forgeEventId=typeof item.eventId==='string'&&
+      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(item.eventId)&&
+      !['constructor','prototype','__proto__'].includes(item.eventId)
+      ?item.eventId:null;
+    if(forgeEventId)children.push(button('Inspect Forge event →',()=>onInspectEvent(forgeEventId),{
+      class:'list-button',
+      'data-field-item-forge-event':forgeEventId,
+      'data-chronicle-event-id':forgeEventId,
+      'data-chronicle-source':'world',
+      'aria-label':'Inspect the Forge event for '+(item.title||'this field item')+' in World Chronicle'
+    }));
     children.push(...handoffHistoryNodes(item));
     if(item.sourceDissent){
       const dissent=item.sourceDissent;
