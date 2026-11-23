@@ -3501,77 +3501,128 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
   section.append(paragraph(equippedSlotCount+' equipped slot'+(equippedSlotCount===1?'':'s')+' · Armor-Bearer field kit. This is not combat power or mastery.','form-help'));
   if(armorer)section.append(paragraph(armorer.count+' distinct item'+(armorer.count===1?'':'s')+' equipped at least once · Armorer practice. This is not combat power or mastery.','form-help'));
   if(armorBearer)section.append(paragraph(armorBearer.count+' accepted transfer step'+(armorBearer.count===1?'':'s')+' to another actor · Armor Bearer support. Session identities are pseudonymous; this grants no XP, combat power or NGL authority.','form-help'));
-  const handoffHistoryNodes=item=>{
-    if(!Array.isArray(item?.transferHistory)||!item.transferHistory.length)return [];
-    const historyRows=item.transferHistory.map(entry=>{
-      const direction=entry.fromActorId+' ('+entry.fromActorRole+') → '+
-        entry.recipientId+' ('+entry.recipientRole+')';
-      const status=entry.status==='accepted'?'Accepted':
-        entry.status==='cancelled'?'Cancelled':
-        entry.status==='declined'?'Declined':'Pending';
-      const details=[
-        paragraph(direction+' · '+status),
-        paragraph('Offer event '+entry.offerEventId+' · '+entry.offeredAt)
-      ];
-      if(entry.status==='accepted'&&entry.transferEventId){
-        details.push(paragraph('Accepted transfer event '+entry.transferEventId+' · '+entry.transferredAt));
-      }else if(entry.status==='cancelled'&&entry.cancelEventId){
-        details.push(paragraph('Cancellation event '+entry.cancelEventId+' · '+entry.cancelledAt));
-      }else if(entry.status==='declined'&&entry.declineEventId){
-        details.push(paragraph('Recipient decline event '+entry.declineEventId+' · '+entry.declinedAt));
-      }else if(entry.status==='offered'){
-        details.push(paragraph('Only the designated recipient session can accept or decline this offer.','form-help'));
-      }
-      const eventLinks=[];
-      const appendEventLink=(kind,label,eventId)=>{
-        if(typeof eventId!=='string'||!eventId.trim())return;
-        eventLinks.push(button(label+' →',()=>onInspectEvent(eventId),{
-          class:'list-button',
-          'data-field-item-transfer-history-event-link':kind,
-          'data-field-item-transfer-history-offer':entry.offerId,
-          'data-chronicle-event-id':eventId,
-          'data-chronicle-source':'world',
-          'aria-label':label+' in World Chronicle'
-        }));
-      };
-      appendEventLink('source','Inspect source activity',item.sourceEventId);
-      appendEventLink('forge','Inspect Forge event',item.eventId);
-      appendEventLink('offer','Inspect offer event',entry.offerEventId);
-      if(entry.status==='accepted')
-        appendEventLink('accepted','Inspect recipient acceptance',entry.transferEventId);
-      else if(entry.status==='cancelled')
-        appendEventLink('cancelled','Inspect sender cancellation',entry.cancelEventId);
-      else if(entry.status==='declined')
-        appendEventLink('declined','Inspect recipient refusal',entry.declineEventId);
-      if(eventLinks.length){
-        const eventChain=node('details',{
-          'data-field-item-transfer-history-event-chain':entry.offerId
-        });
-        eventChain.append(node('summary',{
-          text:'Inspect retained event chain · '+eventLinks.length+' events'
-        }));
-        eventChain.append(...eventLinks);
-        details.push(eventChain);
-      }
-      return node('li',{
-        'data-field-item-transfer-history-entry':entry.offerId,
-        'data-transfer-status':entry.status
-      },details);
-    });
-    const nodes=[node('section',{
+  const recoveryLineageNodes=item=>{
+    if(item?.sourceKind!=='source-archive-recovery')return [];
+    const recovery=item.sourceRecovery;
+    const safeEventId=value=>typeof value==='string'&&value.length>0&&value.length<=128&&value.trim()===value;
+    const safeHash=(value,length)=>typeof value==='string'&&new RegExp('^[a-f0-9]{'+length+'}$').test(value);
+    const safePath=value=>typeof value==='string'&&value.length>0&&value.length<=1024&&
+      value===value.trim()&&!value.startsWith('/')&&!value.includes('\\')&&
+      value.split('/').every(segment=>segment&&segment!=='.'&&segment!=='..');
+    const complete=recovery&&
+      safeEventId(recovery.failureEventId)&&safeEventId(recovery.publicationEventId)&&
+      typeof recovery.failureCode==='string'&&/^[A-Z0-9_]+$/.test(recovery.failureCode)&&
+      Number.isSafeInteger(recovery.failurePosition)&&recovery.failurePosition>0&&
+      Number.isSafeInteger(recovery.publicationPosition)&&recovery.publicationPosition>recovery.failurePosition&&
+      typeof recovery.repository==='string'&&/^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$/.test(recovery.repository)&&
+      safeHash(recovery.commitSha,40)&&safePath(recovery.path)&&
+      Number.isSafeInteger(recovery.version)&&recovery.version>0&&
+      safeHash(recovery.sha256,64)&&safeHash(recovery.gitBlobSha,40)&&
+      Number.isSafeInteger(recovery.size)&&recovery.size>=0;
+    if(!complete)return [node('section',{
       class:'field-card',
-      'data-field-item-transfer-history':item.itemId,
-      'data-history-total':String(item.transferHistoryTotal)
+      'data-field-item-recovery-unavailable':item.itemId
     },[
-      node('h4',{text:'HANDOFF HISTORY'}),
-      paragraph('Validated retained offers and outcomes in append order. This is in-game custody history, not proof of distinct humans or institutional authority.','form-help'),
-      node('ol',{},historyRows)
+      node('h4',{text:'RECOVERY LINEAGE UNAVAILABLE'}),
+      paragraph('The exact failure/capture chain is incomplete in this view. Do not infer a source match, source truth, independent verification, approval or authority from this item. Refresh the shared snapshot or inspect its retained source events before deciding.','form-help')
     ])];
-    if(Number.isSafeInteger(item.transferHistoryOmittedCount)&&item.transferHistoryOmittedCount>0){
-      nodes.push(paragraph('Showing the latest '+item.transferHistory.length+' of '+
-        item.transferHistoryTotal+' retained handoff attempts; '+item.transferHistoryOmittedCount+
-        ' older attempts remain in Chronicle.','form-help'));
+    return [node('section',{class:'field-card','data-field-item-recovery':item.itemId},[
+      node('h4',{text:'RECOVERY LINEAGE · NOT SOURCE TRUTH'}),
+      paragraph('Original service-observed failure '+recovery.failureEventId+' · '+recovery.failureCode+' · append position '+recovery.failurePosition),
+      paragraph('Later server-rechecked capture '+recovery.repository+'@'+recovery.commitSha+'/'+recovery.path+' · publication event '+recovery.publicationEventId+' · append position '+recovery.publicationPosition+' · artifact v'+recovery.version),
+      paragraph('Byte receipt: SHA-256 '+recovery.sha256+' · Git blob '+recovery.gitBlobSha+' · '+recovery.size+' bytes. This identifies the later capture only; it does not establish equality with the failed response, source truth, authorship, independent verification, execution, approval or authority.','form-help'),
+      button('Inspect original failure →',()=>onInspectEvent(recovery.failureEventId),{
+        class:'list-button',
+        'data-field-item-recovery-failure':recovery.failureEventId,
+        'data-chronicle-event-id':recovery.failureEventId,
+        'data-chronicle-source':'world',
+        'aria-label':'Inspect original service-observed failure in World Chronicle'
+      }),
+      button('Inspect later publication →',()=>onInspectEvent(recovery.publicationEventId),{
+        class:'list-button',
+        'data-field-item-recovery-publication':recovery.publicationEventId,
+        'data-chronicle-event-id':recovery.publicationEventId,
+        'data-chronicle-source':'world',
+        'aria-label':'Inspect later server-rechecked publication in World Chronicle'
+      })
+    ])];
+  };
+  const handoffHistoryNodes=item=>{
+    const nodes=[];
+    if(Array.isArray(item?.transferHistory)&&item.transferHistory.length){
+      const historyRows=item.transferHistory.map(entry=>{
+        const direction=entry.fromActorId+' ('+entry.fromActorRole+') → '+
+          entry.recipientId+' ('+entry.recipientRole+')';
+        const status=entry.status==='accepted'?'Accepted':
+          entry.status==='cancelled'?'Cancelled':
+          entry.status==='declined'?'Declined':'Pending';
+        const details=[
+          paragraph(direction+' · '+status),
+          paragraph('Offer event '+entry.offerEventId+' · '+entry.offeredAt)
+        ];
+        if(entry.status==='accepted'&&entry.transferEventId){
+          details.push(paragraph('Accepted transfer event '+entry.transferEventId+' · '+entry.transferredAt));
+        }else if(entry.status==='cancelled'&&entry.cancelEventId){
+          details.push(paragraph('Cancellation event '+entry.cancelEventId+' · '+entry.cancelledAt));
+        }else if(entry.status==='declined'&&entry.declineEventId){
+          details.push(paragraph('Recipient decline event '+entry.declineEventId+' · '+entry.declinedAt));
+        }else if(entry.status==='offered'){
+          details.push(paragraph('Only the designated recipient session can accept or decline this offer.','form-help'));
+        }
+        const eventLinks=[];
+        const appendEventLink=(kind,label,eventId)=>{
+          if(typeof eventId!=='string'||!eventId.trim())return;
+          eventLinks.push(button(label+' →',()=>onInspectEvent(eventId),{
+            class:'list-button',
+            'data-field-item-transfer-history-event-link':kind,
+            'data-field-item-transfer-history-offer':entry.offerId,
+            'data-chronicle-event-id':eventId,
+            'data-chronicle-source':'world',
+            'aria-label':label+' in World Chronicle'
+          }));
+        };
+        appendEventLink('source','Inspect source activity',item.sourceEventId);
+        appendEventLink('forge','Inspect Forge event',item.eventId);
+        appendEventLink('offer','Inspect offer event',entry.offerEventId);
+        if(entry.status==='accepted')
+          appendEventLink('accepted','Inspect recipient acceptance',entry.transferEventId);
+        else if(entry.status==='cancelled')
+          appendEventLink('cancelled','Inspect sender cancellation',entry.cancelEventId);
+        else if(entry.status==='declined')
+          appendEventLink('declined','Inspect recipient refusal',entry.declineEventId);
+        if(eventLinks.length){
+          const eventChain=node('details',{
+            'data-field-item-transfer-history-event-chain':entry.offerId
+          });
+          eventChain.append(node('summary',{
+            text:'Inspect retained event chain · '+eventLinks.length+' events'
+          }));
+          eventChain.append(...eventLinks);
+          details.push(eventChain);
+        }
+        return node('li',{
+          'data-field-item-transfer-history-entry':entry.offerId,
+          'data-transfer-status':entry.status
+        },details);
+      });
+      nodes.push(node('section',{
+        class:'field-card',
+        'data-field-item-transfer-history':item.itemId,
+        'data-history-total':String(item.transferHistoryTotal)
+      },[
+        node('h4',{text:'HANDOFF HISTORY'}),
+        paragraph('Validated retained offers and outcomes in append order. This is in-game custody history, not proof of distinct humans or institutional authority.','form-help'),
+        node('ol',{},historyRows)
+      ]));
+      if(Number.isSafeInteger(item.transferHistoryOmittedCount)&&item.transferHistoryOmittedCount>0){
+        nodes.push(paragraph('Showing the latest '+item.transferHistory.length+' of '+
+          item.transferHistoryTotal+' retained handoff attempts; '+item.transferHistoryOmittedCount+
+          ' older attempts remain in Chronicle.','form-help'));
+      }
     }
+    // The same immutable source lineage is visible to the sender, designated
+    // recipient and later custodians, including before a pending offer is accepted.
+    nodes.push(...recoveryLineageNodes(item));
     return nodes;
   };
   for(const slot of record.equipment){
@@ -3827,17 +3878,6 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
         ...(dissent.responseEventId
           ?[paragraph('Author response event: '+dissent.responseEventId+' · response ID: '+dissent.responseId+' · history position '+dissent.responseHistoryPosition)]:[]),
         paragraph('Source retrieval: '+dissent.sourceRetrieval+' · Independent verification: '+dissent.independentVerification+' · Model assertions: '+dissent.modelAssertions+' · Execution: '+dissent.execution+'. This item preserves disagreement; it is not evidence, a truth verdict, XP, approval or authority.','form-help')
-      ]));
-    }
-    if(item.sourceRecovery){
-      const recovery=item.sourceRecovery;
-      children.push(node('section',{class:'field-card','data-field-item-recovery':item.itemId},[
-        node('h4',{text:'RECOVERY LINEAGE · NOT SOURCE TRUTH'}),
-        paragraph('Original service-observed failure '+recovery.failureEventId+' · '+recovery.failureCode+' · append position '+recovery.failurePosition),
-        paragraph('Later server-rechecked capture '+recovery.repository+'@'+recovery.commitSha+'/'+recovery.path+' · publication event '+recovery.publicationEventId+' · artifact v'+recovery.version),
-        paragraph('Byte receipt: SHA-256 '+recovery.sha256+' · Git blob '+recovery.gitBlobSha+' · '+recovery.size+' bytes. This identifies the later capture only; it does not establish equality with the failed response, source truth, authorship, independent verification, execution, approval or authority.','form-help'),
-        button('Inspect original failure →',()=>onInspectEvent(recovery.failureEventId),{class:'list-button','data-field-item-recovery-failure':recovery.failureEventId}),
-        button('Inspect later publication →',()=>onInspectEvent(recovery.publicationEventId),{class:'list-button','data-field-item-recovery-publication':recovery.publicationEventId})
       ]));
     }
     if(item.action)children.push(button('Inspect source →',()=>followQuestAction(item.action),{class:'list-button'}));
