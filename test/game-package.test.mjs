@@ -98,7 +98,7 @@ test('service-worker installation rotates the offline shell and precaches Charac
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261123-source-archive-recovery-ledger-67');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261123-role-filtered-recovery-offers-68');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'),
     'Character Sheet to exact World Chronicle navigation must remain available in the offline shell');
   assert.ok(precachedUrls.includes('https://ngl.test/character-sheet.mjs'),
@@ -169,7 +169,7 @@ test('installation remains bounded when Cache Storage open or shell precache sta
 });
 
 test('activation deletes only stale NGL shell caches and claims clients', async () => {
-  const current='ngl-common-ground-shell-20261123-source-archive-recovery-ledger-67';
+  const current='ngl-common-ground-shell-20261123-role-filtered-recovery-offers-68';
   const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
   const deleted=[];
   let claimed=false;
@@ -189,7 +189,7 @@ test('activation deletes only stale NGL shell caches and claims clients', async 
 });
 
 test('activation preserves allowlisted optional artwork before deleting prior NGL shell caches', async () => {
-  const current='ngl-common-ground-shell-20261123-source-archive-recovery-ledger-67';
+  const current='ngl-common-ground-shell-20261123-role-filtered-recovery-offers-68';
   const previous='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-20';
   const older='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-16';
   const coverUrl='https://ngl.test/assets/comic/cover_a.jpg';
@@ -234,7 +234,7 @@ test('activation preserves allowlisted optional artwork before deleting prior NG
 });
 
 test('activation remains bounded and claims clients when optional-asset migration stalls', async () => {
-  const current='ngl-common-ground-shell-20261123-source-archive-recovery-ledger-67';
+  const current='ngl-common-ground-shell-20261123-role-filtered-recovery-offers-68';
   const previous='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-20';
   const fastTimeout=(callback,milliseconds,...args)=>setTimeout(callback,Math.min(milliseconds,20),...args);
   let claimed=false;
@@ -874,7 +874,7 @@ test('the dated project-state snapshot is optional and its cached copy remains r
 });
 
 test('activation carries the optional dated project-state snapshot forward without copying private APIs', async () => {
-  const current = 'ngl-common-ground-shell-20261123-source-archive-recovery-ledger-67';
+  const current = 'ngl-common-ground-shell-20261123-role-filtered-recovery-offers-68';
   const previous = 'ngl-common-ground-shell-previous';
   const snapshotUrl = 'https://ngl.test/project-state.json';
   const privateUrl = 'https://ngl.test/api/state';
