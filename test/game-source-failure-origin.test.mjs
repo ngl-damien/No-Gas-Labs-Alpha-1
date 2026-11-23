@@ -65,6 +65,7 @@ async function publishSourceArchive(world, {
   path = 'test/fixtures/failure-ledger.mjs',
   fetchedAt = '2026-11-22T10:00:05.000Z',
   capturedAt = '2026-11-22T10:00:06.000Z',
+  draftedAt = capturedAt,
   publishedAt = '2026-11-22T10:00:07.000Z',
   retrievalMode = 'server-rechecked'
 } = {}) {
@@ -88,7 +89,7 @@ async function publishSourceArchive(world, {
     type: 'draft', kind: 'custom', title: 'Source Archive capture',
     intent: GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' · ' + retrievalMode + ' projection fixture',
     html
-  }, founder, { now: capturedAt });
+  }, founder, { now: draftedAt });
   const published = await applyAction(draft.world, {
     type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
   }, founder, { now: publishedAt });
@@ -396,9 +397,106 @@ test('later-capture projection fails closed when aggregate retained-version scan
   const projection = projectSourceArchiveFailureObjects(world);
   assert.equal(projection.complete, true);
   assert.equal(projection.captureProjectionComplete, false);
+  assert.equal(projection.captureProjectionReason, 'retained-version-scan-budget-exhausted');
   const record = projection.records.find(candidate => candidate.eventId === fixture.failure.id);
   assert.ok(record);
   assert.equal(record.laterCaptureStatus, 'unknown');
   assert.equal(record.laterCaptureCount, null);
   assert.equal(record.laterCapture, null);
 });
+
+test('later-capture matching fails closed when aggregate failure-by-capture comparisons exceed their budget', async () => {
+  const fixture = await worldWithFailure();
+  const later = await publishSourceArchive(fixture.world);
+  const earlier = await publishSourceArchive(fixture.world, {
+    fetchedAt: '2026-11-22T09:59:58.000Z',
+    capturedAt: '2026-11-22T09:59:59.000Z',
+    draftedAt: '2026-11-22T10:00:04.000Z',
+    publishedAt: '2026-11-22T10:00:08.000Z'
+  });
+
+  const baseEvents = fixture.world.events.filter(event => event.id !== fixture.failure.id);
+  const baseEventIds = new Set(baseEvents.map(event => event.id));
+  const captureDraftEvent = later.world.events.find(event =>
+    event.type === 'draft' && !baseEventIds.has(event.id)
+  );
+  assert.ok(captureDraftEvent);
+
+  const failureEvents = [structuredClone(fixture.failure)];
+  for (let index = 1; index < 317; index++) {
+    const suffix = String(index).padStart(3, '0');
+    failureEvents.push({
+      ...structuredClone(fixture.failure),
+      id: 'source-archive-failure-budget-' + suffix,
+      attemptId: 'source-archive-attempt-budget-' + suffix,
+      requestIdDigest: createHash('sha256').update('source-archive-request-budget-' + suffix).digest('hex'),
+      actionDigest: createHash('sha256').update('source-archive-action-budget-' + suffix).digest('hex')
+    });
+  }
+
+  const earlierCreation = earlier.world.creations.find(creation => creation.id === earlier.creationId);
+  assert.ok(earlierCreation);
+  const extraCreations = [];
+  const extraPublications = [];
+  for (let index = 1; index < 317; index++) {
+    const suffix = String(index).padStart(3, '0');
+    const creationId = 'source-capture-budget-' + suffix;
+    const creation = structuredClone(earlierCreation);
+    creation.id = creationId;
+    creation.version = 1;
+    creation.publishedAt = earlier.publicationEvent.at;
+    creation.versions = [];
+    extraCreations.push(creation);
+
+    const publication = structuredClone(earlier.publicationEvent);
+    publication.id = 'source-capture-publication-budget-' + suffix;
+    publication.creationId = creationId;
+    publication.version = 1;
+    publication.at = earlier.publicationEvent.at;
+    publication.requestId = 'source-capture-publication-request-budget-' + suffix;
+    publication.actionFingerprint = createHash('sha256')
+      .update('source-capture-publication-action-budget-' + suffix).digest('hex');
+    if (publication.actionResult && typeof publication.actionResult === 'object') {
+      publication.actionResult = { ...publication.actionResult, creationId, version: 1 };
+    }
+    extraPublications.push(publication);
+  }
+
+  const world = structuredClone(later.world);
+  world.creations.push(...extraCreations);
+  world.events = [
+    ...baseEvents.map(event => structuredClone(event)),
+    ...failureEvents,
+    structuredClone(captureDraftEvent),
+    structuredClone(later.publicationEvent),
+    ...extraPublications
+  ];
+  world.revision = world.events.length;
+  world.updatedAt = later.publicationEvent.at;
+  world.xp = fixture.world.xp + (317 * 100);
+
+  const projection = projectSourceArchiveFailureObjects(world);
+  assert.equal(projection.complete, true);
+  assert.equal(projection.captureProjectionComplete, false);
+  assert.equal(projection.captureProjectionReason, 'capture-match-scan-budget-exhausted');
+  const latestFailure = failureEvents.at(-1);
+  const record = projection.records.find(candidate => candidate.eventId === latestFailure.id);
+  assert.ok(record);
+  assert.equal(record.laterCaptureStatus, 'unknown');
+  assert.equal(record.laterCaptureCount, null);
+  assert.equal(record.laterCapture, null);
+
+  const beforeQuest = JSON.stringify(world);
+  const quest = getQuestTrail(world, founder).find(candidate =>
+    candidate.id === 'founder-source-archive-later-capture'
+  );
+  assert.ok(quest);
+  assert.equal(quest.progress, 1);
+  assert.equal(quest.target, 2);
+  assert.equal(quest.complete, false);
+  assert.equal(quest.action, null);
+  assert.deepEqual(quest.evidenceIds, [latestFailure.id]);
+  assert.match(quest.blockedReason, /bounded later-capture matching budget.*UNKNOWN.*No capture or absence is inferred/i);
+  assert.equal(JSON.stringify(world), beforeQuest);
+});
+
