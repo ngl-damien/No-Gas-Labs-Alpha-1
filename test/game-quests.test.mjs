@@ -3641,6 +3641,54 @@ test('experiment challenge response quest is actor-scoped and counts only linked
   }
 });
 
+test('experiment challenge response quest rejects partially supplied or unavailable optional evidence references', () => {
+  const malformedReferences = [
+    { evidenceCreationId: 'evidence-1' },
+    { evidenceVersion: 1 },
+    { evidenceCreationId: 'missing-evidence', evidenceVersion: 1 }
+  ];
+
+  for (const [index, evidenceReference] of malformedReferences.entries()) {
+    const world = experimentQuestWorld({ reportActor: founder });
+    world.xp = 37;
+    const challenge = {
+      id: 'malformed-evidence-challenge-event-' + index,
+      type: 'experiment-challenged',
+      challengeId: 'malformed-evidence-challenge-' + index,
+      reportId: 'report-1',
+      moonshotId: 'moon-1',
+      actor: witness,
+      at: '2026-10-28T17:04:00.000Z',
+      challengeType: 'methodology',
+      challengeText: 'The challenge carries an incomplete or unavailable artifact reference.',
+      ...evidenceReference
+    };
+    world.events.push(challenge, {
+      id: 'malformed-evidence-response-event-' + index,
+      type: 'experiment-challenge-responded',
+      responseId: 'malformed-evidence-response-' + index,
+      challengeId: challenge.challengeId,
+      reportId: challenge.reportId,
+      moonshotId: challenge.moonshotId,
+      actor: founder,
+      at: '2026-10-28T17:05:00.000Z',
+      responseText: 'This retained reply cannot repair an invalid challenge reference.'
+    });
+
+    const beforeProjection = structuredClone(world);
+    const objective = getQuestTrail(world, founder)
+      .find(item => item.id === 'founder-experiment-challenge-response');
+    assert.ok(objective);
+    assert.equal(objective.progress, 0, 'malformed evidence must not be reclassified as evidence-free');
+    assert.equal(objective.complete, false);
+    assert.deepEqual(objective.evidenceIds, []);
+    assert.equal(objective.action, null);
+    assert.match(objective.blockedReason, /another actor must retain a valid challenge/i);
+    assert.equal(world.xp, 37);
+    assert.deepEqual(world, beforeProjection, 'invalid challenge/response history remains read-only');
+  }
+});
+
 test('experiment response quest withholds progress and navigation for ambiguous or invalid response history', () => {
   const world = experimentQuestWorld({ reportActor: founder });
   world.xp = 37;
