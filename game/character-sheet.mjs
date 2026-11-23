@@ -644,6 +644,9 @@ export function projectCharacter(world, viewer, options = {}) {
 
   const validFieldItemSourceEventIdsBySlot=projectValidFieldItemSourceEventIds(world);
   const questTrail = getQuestTrail(world, viewer, { validFieldItemSourceEventIdsBySlot });
+  const satireIssueObjective = questTrail.find(item => item.id === 'founder-agp-satire-issue');
+  const satireIssuePublicationCount = Array.isArray(satireIssueObjective?.evidenceIds)
+    ? satireIssueObjective.evidenceIds.length : 0;
   // Source-specific milestones can classify the same retained action as a broader
   // objective. Keep the extra Quest Board detail without double-counting that action
   // as another Questkeeper skill increment.
@@ -1142,6 +1145,14 @@ export function projectCharacter(world, viewer, options = {}) {
       count: publications.length,
       record: 'version-matched published versions',
       basis: 'Unique Founder publication events matched to retained artifact versions and timestamps.'
+    },
+    {
+      id: 'satirist',
+      label: 'Satirist',
+      count: satireIssuePublicationCount,
+      record: 'published America’s Got Problems issue editions',
+      recordSingular: 'published America’s Got Problems issue edition',
+      basis: 'Unique Founder publication events matched to retained canonical America’s Got Problems issue artifacts, including separately published follow-up editions. Drafts do not count. This records publication activity, not factual accuracy, satire quality, source retrieval, independent verification, external publication, mastery, XP or NGL authority.'
     },
     {
       id: 'explorer',
