@@ -348,6 +348,61 @@ test('client-reported or different-target Source Archive publications do not cou
   assert.equal(pathRecord.laterCapture, null);
 });
 
+test('inherited Source Archive metadata cannot be treated as proof that no later capture exists', async () => {
+  const fixture = await worldWithFailure();
+  const captured = await publishSourceArchive(fixture.world);
+  const creation = captured.world.creations.find(item => item.id === captured.creationId);
+  assert.ok(creation);
+
+  const hidden = {
+    kind: creation.kind,
+    intent: creation.intent,
+    html: creation.html
+  };
+  delete creation.kind;
+  delete creation.intent;
+  delete creation.html;
+  let getterCalls = 0;
+  const inheritedMetadata = Object.create(null);
+  Object.defineProperties(inheritedMetadata, {
+    kind: { get() { getterCalls += 1; return hidden.kind; } },
+    intent: { get() { getterCalls += 1; return hidden.intent; } },
+    html: { get() { getterCalls += 1; return hidden.html; } }
+  });
+  Object.setPrototypeOf(creation, inheritedMetadata);
+
+  const revision = captured.world.revision;
+  const xp = captured.world.xp;
+  const eventCount = captured.world.events.length;
+  const projection = projectSourceArchiveFailureObjects(captured.world);
+  assert.ok(projection);
+  assert.equal(projection.complete, true, 'the retained event array itself remains complete');
+  assert.equal(
+    projection.captureProjectionComplete,
+    false,
+    'an exotic retained artifact object must prevent a false absence conclusion'
+  );
+  const record = projection.records.find(candidate => candidate.eventId === fixture.failure.id);
+  assert.ok(record);
+  assert.equal(record.laterCaptureStatus, 'unknown');
+  assert.equal(record.laterCapture, null);
+  assert.equal(getterCalls, 0, 'classification must not execute inherited getters');
+
+  const quest = getQuestTrail(captured.world, founder).find(candidate =>
+    candidate.id === 'founder-source-archive-later-capture'
+  );
+  assert.ok(quest);
+  assert.equal(quest.progress, 1);
+  assert.equal(quest.complete, false);
+  assert.equal(quest.action, null);
+  assert.match(quest.blockedReason, /incomplete|ambiguous|unknown/i);
+  assert.equal(getterCalls, 0, 'quest projection must preserve the no-getter boundary');
+  assert.equal(captured.world.revision, revision);
+  assert.equal(captured.world.xp, xp);
+  assert.equal(captured.world.events.length, eventCount);
+  assert.equal(Object.getPrototypeOf(creation), inheritedMetadata);
+});
+
 test('pre-failure captures, partial history, and duplicate publication bindings fail closed', async () => {
   const base = await worldWithPublishedObservatory();
   const earlier = await publishSourceArchive(base.world, {
