@@ -1,21 +1,21 @@
-## Run 344 — Recovery Ledger artifact navigation — 2026-11-23
+## Run 344 — Recovery Ledger exact-artifact navigation — 2026-11-23
 
 **Candidate:** PR #718, exact head [c721c13](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/c721c13a43e0617a539e6392f69b68a45eca08d0), 503 ahead / 0 behind main, 52 changed paths, draft/unmerged.
 
 | Gate | Status | Run 344 evidence and limit |
 |---|---|---|
 | G0 Product definition | IN_PROGRESS | No new Founder decision on player scale, Android baseline, persistence model or release criteria. |
-| G1 Coherent playable loop | IN_PROGRESS | The Recovery Ledger item now has a direct exact-artifact navigation control; offline cached-snapshot acceptance is still running, so this new path is not yet certified. |
-| G2 Persistent character/world | IN_PROGRESS | The control resolves a retained creation/version from the accepted snapshot and is read-only. No new event, XP, ownership or authority. Existing restart test remains fixture-backed temporary-filesystem evidence, not production-host durability. |
-| G3 Authoritative multiplayer | IN_PROGRESS | Founder/Witness projections and handoff remain actor-scoped. Session IDs are pseudonymous; no distinct-human or production multiplayer claim. |
-| G4 Core RPG | IN_PROGRESS | Existing Recovery Ledger objective remains based on retained failure/publication/Forge/equip events. Artifact and Chronicle inspection are XP-neutral. |
+| G1 Coherent playable loop | IN_PROGRESS | The Recovery Ledger Field Kit item opens its exact retained artifact and publication Chronicle event; Quest Board mobile acceptance passed. Source retrieval is still fixture-backed for this chain. |
+| G2 Persistent character/world | IN_PROGRESS | Artifact navigation works from a cached shared snapshot and leaves the cache unchanged. Existing restart test remains temporary-filesystem fixture evidence, not production-host durability. |
+| G3 Authoritative multiplayer | IN_PROGRESS | Founder/Witness projections and item handoff remain actor-scoped. Session IDs are pseudonymous; no distinct-human or production multiplayer claim. |
+| G4 Core RPG | IN_PROGRESS | Existing Recovery Ledger objective remains based on retained failure/publication/Forge/equip events. Inspection is XP-neutral; Combat Yard fixture actions grant combat XP only while world XP remains unchanged. |
 | G5 Social/economic | IN_PROGRESS | No economy, marketplace, pricing or trade change. |
-| G6 Persistent world/content | IN_PROGRESS | The Recovery Ledger Field Kit panel now links its retained artifact version and exact publication event. Source receipt remains a byte-identity record, not source truth or independent verification. |
-| G7 Android-first mobile | IN_PROGRESS | PWA build PASS (deployment skipped); Council and Academy PASS at 320px/390px. Quest Board/Synthesis/Combat mobile runs and Android emulator run are still in progress at checkpoint capture. No APK release or physical-device acceptance. |
-| G8 Operational readiness | IN_PROGRESS | Full Verify [45246191598] PASS; hosted preflight ready, warnings/failures 0. Genesis [45246191616], Live Source Archive [45246191557], Council [45246191560], Academy rerun [45246191570] pass. Browser [45246191622] FAILs Worker A-owned Guild Hall prompt mismatch; handoff #456 comment 7111319193. |
+| G6 Persistent world/content | IN_PROGRESS | The Recovery Ledger item is now a navigable world object linked to an exact artifact version and publication event. Source receipt remains byte identity, not source truth or independent verification. |
+| G7 Android-first mobile | IN_PROGRESS | Quest Board, Council, Academy rerun, Synthesis and Combat pass at 320px/390px; PWA build passes (deployment skipped). Android emulator journey remains in progress; no release APK or physical-device acceptance. |
+| G8 Operational readiness | IN_PROGRESS | Full Verify, Genesis, Live Source Archive, PWA build, Council, Academy rerun, Quest Board, Synthesis and Combat pass. Browser [45246191622](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45246191622) FAILs Worker A-owned Guild Hall prompt mismatch; handoff #456 comment 7111319193. |
 | G9 Founder acceptance/release | NOT_STARTED | Founder trust NOT_ENROLLED. No runtime merge, release, deployment, Founder approval, truth verdict or authority transition. |
 
-**Change:** [c721c13](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/c721c13a43e0617a539e6392f69b68a45eca08d0) modifies `game/client.mjs` and `scripts/verify-quest-board.py`. The offline cached-Witness artifact navigation test is pending run 45246191856. No claim is made that it passed before the workflow completes.
+**Change:** [c721c13](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/c721c13a43e0617a539e6392f69b68a45eca08d0) modifies `game/client.mjs` and `scripts/verify-quest-board.py`. Exact artifact/publication navigation passed in the cached Witness mobile journey; fixture and provenance limits remain.
 
 **Procedure:** hosted pre-edit and exact-head preflight receipts both report ready with zero warnings/failures. Desktop Commander devices were Offline; local pre-edit preflight and local tests were not available. Procedural compliance PARTIAL.
 
