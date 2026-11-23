@@ -98,7 +98,7 @@ test('service-worker installation rotates the offline shell and precaches Charac
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261123-partial-failure-global-position-64');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261123-source-archive-plain-records-65');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'),
     'Character Sheet to exact World Chronicle navigation must remain available in the offline shell');
   assert.ok(precachedUrls.includes('https://ngl.test/character-sheet.mjs'),

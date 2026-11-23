@@ -1171,6 +1171,8 @@ export function getQuestTrail(world, viewer, options = {}) {
         ? 'The bounded later-capture matching budget was exhausted; status remains UNKNOWN. No capture or absence is inferred.'
         : captureProjectionReason === 'retained-version-scan-budget-exhausted'
           ? 'The bounded retained-version scan budget was exhausted; status remains UNKNOWN. No capture or absence is inferred.'
+          : captureProjectionReason === 'unsafe-retained-version-object'
+          ? 'A retained Source Archive version has an unsafe object shape; later-capture status remains UNKNOWN. No capture or absence is inferred.'
           : 'The accepted Source Archive history is partial, incomplete, or ambiguous; refresh and inspect the Evidence Archive before treating a later capture as absent. No capture is inferred.';
     const evidenceEvents = observed ? [failureEvent, publicationEvent] : [failureEvent];
     const interpretation = 'This objective links one service-observed failure to a later explicitly published server-rechecked capture of the same repository, full commit SHA, and path. The expected response body is not retained; the later capture records bytes fetched later and is not proof of source truth, claim accuracy, authorship, independent verification, approval, or authority. The two-event game objective grants no XP.';

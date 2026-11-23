@@ -247,6 +247,13 @@ const SOURCE_ARCHIVE_FAILURE_STATUS_LABELS=Object.freeze({
 const SOURCE_ARCHIVE_FAILURE_PAGE_SIZE=12;
 const SOURCE_ARCHIVE_FAILURE_CAPTURE_MATCH_BUDGET=100_000;
 
+function isPlainProjectionRecord(value){
+ try{
+  const prototype=Object.getPrototypeOf(value);
+  return prototype===Object.prototype||prototype===null;
+ }catch{return false;}
+}
+
 function projectServerRecheckedSourceArchivePublications(world,events,eventCount,eventIdCounts){
  let complete=true;
  const creations=ownDataValue(world,'creations');
@@ -260,7 +267,9 @@ function projectServerRecheckedSourceArchivePublications(world,events,eventCount
  let reason=null;
  for(let creationIndex=0;creationIndex<creationCount;creationIndex++){
   const creation=ownDataValue(creations,String(creationIndex));
-  if(!creation||typeof creation!=='object'||isArraySafely(creation)){complete=false;continue;}
+  if(!creation||typeof creation!=='object'||isArraySafely(creation)||!isPlainProjectionRecord(creation)){
+   complete=false;reason||='unsafe-retained-version-object';continue;
+  }
   if(unsafeOwnAccessor(creation,'id')){complete=false;continue;}
   const creationId=ownDataValue(creation,'id');
   if(typeof creationId!=='string'||!creationId.trim()||creationId.length>128){complete=false;continue;}
@@ -281,15 +290,15 @@ function projectServerRecheckedSourceArchivePublications(world,events,eventCount
   scannedVersionCount+=versionCount;
   for(let versionIndex=0;versionIndex<=priorVersionCount;versionIndex++){
    const version=versionIndex===priorVersionCount?creation:ownDataValue(priorVersions,String(versionIndex));
-   if(!version||typeof version!=='object'||isArraySafely(version)){complete=false;continue;}
+   if(!version||typeof version!=='object'||isArraySafely(version)||!isPlainProjectionRecord(version)){
+    complete=false;reason||='unsafe-retained-version-object';sourceCreationIds.add(creationId);continue;
+   }
+   if(['kind','intent','html'].some(key=>unsafeOwnAccessor(version,key))){
+    complete=false;reason||='unsafe-retained-version-object';sourceCreationIds.add(creationId);continue;
+   }
    const kind=ownDataValue(version,'kind')??ownDataValue(creation,'kind');
    const intent=ownDataValue(version,'intent');
    const html=ownDataValue(version,'html');
-   if(kind==='custom'&&(unsafeOwnAccessor(version,'intent')||unsafeOwnAccessor(version,'html'))){
-    complete=false;
-    sourceCreationIds.add(creationId);
-    continue;
-   }
    const hasSourceArchiveSignal=
     (typeof intent==='string'&&intent.startsWith(GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX))||
     (typeof html==='string'&&html.includes('data-ngl-source-archive="v1"'));

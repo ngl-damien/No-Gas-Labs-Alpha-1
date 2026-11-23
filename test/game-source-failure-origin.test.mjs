@@ -382,6 +382,7 @@ test('inherited Source Archive metadata cannot be treated as proof that no later
     false,
     'an exotic retained artifact object must prevent a false absence conclusion'
   );
+  assert.equal(projection.captureProjectionReason, 'unsafe-retained-version-object');
   const record = projection.records.find(candidate => candidate.eventId === fixture.failure.id);
   assert.ok(record);
   assert.equal(record.laterCaptureStatus, 'unknown');
@@ -395,7 +396,7 @@ test('inherited Source Archive metadata cannot be treated as proof that no later
   assert.equal(quest.progress, 1);
   assert.equal(quest.complete, false);
   assert.equal(quest.action, null);
-  assert.match(quest.blockedReason, /incomplete|ambiguous|unknown/i);
+  assert.match(quest.blockedReason, /unsafe object shape.*UNKNOWN/i);
   assert.equal(getterCalls, 0, 'quest projection must preserve the no-getter boundary');
   assert.equal(captured.world.revision, revision);
   assert.equal(captured.world.xp, xp);
