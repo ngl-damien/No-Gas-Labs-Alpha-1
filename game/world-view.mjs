@@ -254,7 +254,45 @@ function isPlainProjectionRecord(value){
  }catch{return false;}
 }
 
-function projectServerRecheckedSourceArchivePublications(world,events,eventCount,eventIdCounts){
+function hasTrustedRoleFilteredHistoryCoverage(world,revision,eventCount){
+ try{
+  const descriptor=Object.getOwnPropertyDescriptor(world,'historyCoverage');
+  if(!descriptor||!Object.hasOwn(descriptor,'value'))return false;
+  const marker=descriptor.value;
+  if(!isPlainProjectionRecord(marker))return false;
+  const expectedKeys=[
+   'schema','sourceComplete','sourceEventCount','suppliedEventCount',
+   'omittedEventCount','omittedEventTypes','viewerRole'
+  ];
+  const markerKeys=Reflect.ownKeys(marker);
+  if(markerKeys.length!==expectedKeys.length||markerKeys.some(key=>!expectedKeys.includes(key)))return false;
+  const read=key=>{
+   const field=Object.getOwnPropertyDescriptor(marker,key);
+   return field&&Object.hasOwn(field,'value')?field.value:undefined;
+  };
+  const omittedTypes=read('omittedEventTypes');
+  if(!isPlainProjectionRecord(omittedTypes))return false;
+  const allowedTypes=new Set(['draft','repair','message-reported']);
+  const omittedKeys=Reflect.ownKeys(omittedTypes);
+  let omittedCount=0;
+  for(const key of omittedKeys){
+   if(typeof key!=='string'||!allowedTypes.has(key))return false;
+   const field=Object.getOwnPropertyDescriptor(omittedTypes,key);
+   if(!field||!Object.hasOwn(field,'value')||!Number.isSafeInteger(field.value)||field.value<0)return false;
+   omittedCount+=field.value;
+  }
+  const declaredOmitted=read('omittedEventCount');
+  return read('schema')==='ngl.public-world-history.v1'&&
+   read('sourceComplete')===true&&
+   read('sourceEventCount')===revision&&
+   read('suppliedEventCount')===eventCount&&
+   declaredOmitted===revision-eventCount&&
+   read('viewerRole')==='witness'&&
+   declaredOmitted>0&&omittedCount===declaredOmitted;
+ }catch{return false;}
+}
+
+function projectServerRecheckedSourceArchivePublications(world,events,eventCount,eventIdCounts,historyPositions){
  let complete=true;
  const creations=ownDataValue(world,'creations');
  if(!isArraySafely(creations))return {complete:false,captures:[],reason:null};
@@ -381,7 +419,7 @@ function projectServerRecheckedSourceArchivePublications(world,events,eventCount
   if(version.metadata.retrievalMode==='SERVER_RECHECKED'){
    captures.push(Object.freeze({
     creationId:version.creationId,version:version.version,publicationEventId:eventId,
-    publicationPosition:publication.index+1,actorId,
+    publicationPosition:historyPositions?.[publication.index]??publication.index+1,actorId,
     repository:version.metadata.repository,commitSha:version.metadata.commitSha,path:version.metadata.path,
     fetchedAt:version.metadata.fetchedAt,capturedAt:version.metadata.capturedAt,
     captureId:version.metadata.captureId,gitBlobSha:version.metadata.gitBlobSha,
@@ -540,11 +578,20 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
  for(const group of failureClassGroups.values()){
   for(const item of group)item.failureClassCount=group.length;
  }
- const captureScan=projectServerRecheckedSourceArchivePublications(world,events,eventCount,eventIdCounts);
+ const retainedHistoryPositions=historyPositions.map((position,index)=>
+  position??(complete?index+1:null)
+ );
+ const roleFilteredPartial=!complete&&hasExplicitHistoryPositions&&
+  hasTrustedRoleFilteredHistoryCoverage(world,revision,eventCount);
+ const captureScan=projectServerRecheckedSourceArchivePublications(
+  world,events,eventCount,eventIdCounts,retainedHistoryPositions
+ );
  let captureProjectionComplete=complete&&invalidCount===0&&captureScan.complete;
- let captureProjectionReason=captureScan.reason||null;
+ let recoveryLinkScanComplete=(complete||roleFilteredPartial)&&invalidCount===0&&captureScan.complete;
+ let captureProjectionReason=captureScan.reason||
+  (!complete?(roleFilteredPartial?'role-filtered-partial-history':'partial-history'):null);
  const capturesByFailureId=new Map();
- if(captureProjectionComplete){
+ if(recoveryLinkScanComplete){
   // Index only exact source targets first. The remaining per-failure checks are
   // globally budgeted so a large same-target history cannot trigger O(F×C)
   // work without a hard stop.
@@ -558,7 +605,7 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   let comparisonCount=0;
   for(const item of projected){
    const failureAt=Date.parse(item.record.at);
-   const failurePosition=item.index+1;
+   const failurePosition=item.record.historyPosition??item.index+1;
    const targetKey=JSON.stringify([
     item.record.actorId,item.record.repository,item.record.commitSha,item.record.path
    ]);
@@ -567,6 +614,7 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
    for(const capture of candidates){
     if(comparisonCount>=SOURCE_ARCHIVE_FAILURE_CAPTURE_MATCH_BUDGET){
      captureProjectionComplete=false;
+     recoveryLinkScanComplete=false;
      captureProjectionReason='capture-match-scan-budget-exhausted';
      break;
     }
@@ -577,19 +625,35 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
      matches.push(capture);
      if(matches.length>1){
       captureProjectionComplete=false;
+      recoveryLinkScanComplete=false;
       captureProjectionReason='ambiguous-capture-matches';
       break;
      }
     }
    }
-   if(!captureProjectionComplete)break;
+   if(!recoveryLinkScanComplete)break;
    capturesByFailureId.set(item.record.eventId,matches);
   }
  }
- if(!captureProjectionComplete)capturesByFailureId.clear();
+ if(recoveryLinkScanComplete){
+  const failuresByPublicationEventId=new Map();
+  for(const [failureEventId,matches] of capturesByFailureId){
+   if(matches.length!==1)continue;
+   const publicationEventId=matches[0].publicationEventId;
+   const group=failuresByPublicationEventId.get(publicationEventId)||[];
+   group.push(failureEventId);
+   failuresByPublicationEventId.set(publicationEventId,group);
+  }
+  if([...failuresByPublicationEventId.values()].some(group=>group.length>1)){
+   captureProjectionComplete=false;
+   recoveryLinkScanComplete=false;
+   captureProjectionReason='ambiguous-capture-origin-assignment';
+  }
+ }
+ if(!recoveryLinkScanComplete)capturesByFailureId.clear();
  for(const item of projected){
   const matches=capturesByFailureId.get(item.record.eventId)||[];
-  const observed=captureProjectionComplete&&matches.length===1;
+  const observed=recoveryLinkScanComplete&&matches.length===1;
   const notObserved=captureProjectionComplete&&matches.length===0;
   const capture=observed?matches[0]:null;
   item.record=Object.freeze({
@@ -617,10 +681,10 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   failureClassHistoryComplete
  }));
  const recoveryLinks=[];
- if(includeRecoveryLinks===true&&captureProjectionComplete){
+ if(includeRecoveryLinks===true&&recoveryLinkScanComplete){
   const failuresByPublicationEventId=new Map();
   for(const record of allRecords){
-   if(record.retryable!==true||record.laterCaptureStatus!=='observed'||!record.laterCapture)continue;
+   if(record.laterCaptureStatus!=='observed'||!record.laterCapture)continue;
    const publicationEventId=record.laterCapture.publicationEventId;
    const group=failuresByPublicationEventId.get(publicationEventId)||[];
    group.push(record);
@@ -628,7 +692,7 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   }
   for(const [publicationEventId,group] of failuresByPublicationEventId){
    // A single publication cannot be assigned to multiple failure origins.
-   if(group.length!==1)continue;
+   if(group.length!==1||group[0].retryable!==true)continue;
    const record=group[0];
    recoveryLinks.push(Object.freeze({
     failureEventId:record.eventId,
@@ -669,6 +733,7 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   available:true,
   complete,
   captureProjectionComplete,
+  recoveryLinkScanComplete,
   captureProjectionReason,
   unseenEventCount:revision-eventCount,
   total,
