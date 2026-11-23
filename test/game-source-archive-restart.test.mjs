@@ -29,8 +29,8 @@ function sourceArchiveCaptureFixture(source) {
     fetchImpl, calls, sourceBytesBase64: bytes.toString('base64') };
 }
 
-function makeClient(origin) {
-  let cookie = '';
+function makeClient(origin, initialCookie = '') {
+  let cookie = initialCookie;
   return {
     get cookie() { return cookie; },
     async request(path, body) {
@@ -369,7 +369,7 @@ test('GitHub retrieval failures remain in Chronicle and the same request can ret
 });
 
 
-test('a server-observed Source Archive failure survives restart and unlocks its actor-scoped Recovery Ledger', async t => {
+test('a server-observed Source Archive failure unlocks a Recovery Ledger whose pending Armor Bearer handoff survives another restart', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-source-archive-recovery-restart-'));
   const source = 'export const RECOVERY_LEDGER_RESTART = true;\n';
   const capture = sourceArchiveCaptureFixture(source);
@@ -385,9 +385,11 @@ test('a server-observed Source Archive failure survives restart and unlocks its 
     return capture.fetchImpl(url, options);
   };
   const servers = [];
+  const streams = [];
   let current = await startServer(dataDir, fetchImpl);
   servers.push(current.server);
   t.after(async () => {
+    for (const stream of streams) stream.close();
     for (const server of servers.reverse()) await server.closeGame().catch(() => {});
     await rm(dataDir, { recursive: true, force: true });
   });
@@ -396,6 +398,14 @@ test('a server-observed Source Archive failure survives restart and unlocks its 
   const firstLogin = await founder.request('/api/login', { key: FOUNDER_KEY, name: 'Damien' });
   assert.equal(firstLogin.response.status, 200);
   assert.equal(firstLogin.body.viewer.role, 'founder');
+
+  // Preserve one pseudonymous Witness cookie so the designated recipient can
+  // rejoin with the same actor identity after both service restarts.
+  const witnessSeed = makeClient(current.origin);
+  const witnessSeedState = (await witnessSeed.request('/api/state')).body;
+  assert.equal(witnessSeedState.viewer.role, 'witness');
+  const witnessId = witnessSeedState.viewer.id;
+  const witnessCookie = witnessSeed.cookie;
 
   const failed = await founder.request('/api/action', {
     ...capture.action,
@@ -432,10 +442,15 @@ test('a server-observed Source Archive failure survives restart and unlocks its 
   assert.equal(resumedLogin.response.status, 200);
   assert.equal(resumedLogin.body.viewer.role, 'founder');
 
-  const witness = makeClient(current.origin);
+  let witness = makeClient(current.origin, witnessCookie);
   const witnessInitial = (await witness.request('/api/state')).body;
   assert.equal(witnessInitial.viewer.role, 'witness');
+  assert.equal(witnessInitial.viewer.id, witnessId,
+    'the same opaque Witness cookie restores the same pseudonymous actor after restart');
   assert.equal(witnessInitial.world.events.some(event => event.id === failure.id), true);
+  const witnessStream = await witness.stream();
+  streams.push(witnessStream);
+  await witnessStream.next('world');
 
   const afterRestart = (await founder.request('/api/state')).body;
   assert.equal(afterRestart.world.events.filter(event =>
@@ -597,4 +612,227 @@ test('a server-observed Source Archive failure survives restart and unlocks its 
   assert.equal(completedQuest.countsForQuestkeeper, false);
   assert.equal(attempts, 2);
   assert.equal(capture.calls.length, 1, 'the restarted capture is the only successful fixture retrieval');
+
+  // The Recovery Ledger is now a real field item, not just a completed quest.
+  // Offer it to the rejoined Witness, restart again while the offer is pending,
+  // and require the exact recipient to accept the same retained offer.
+  const unequipped = await founder.request('/api/action', {
+    type: 'unequip-field-item',
+    slotId: 'recovery',
+    requestId: 'source-archive-recovery-restart-founder-unequip-007'
+  });
+  assert.equal(unequipped.response.status, 200, JSON.stringify(unequipped.body));
+  const unequipEvent = unequipped.body.world.events.at(-1);
+  assert.equal(unequipEvent.type, 'field-item-unequipped');
+  assert.equal(unequipEvent.actor.id, 'damien');
+  assert.equal(unequipped.body.world.xp, 100);
+
+  const offered = await founder.request('/api/action', {
+    type: 'offer-field-item-transfer',
+    itemEventId: forgeEvent.id,
+    recipientId: witnessId,
+    recipientRole: 'witness',
+    requestId: 'source-archive-recovery-restart-founder-offer-008'
+  });
+  assert.equal(offered.response.status, 200, JSON.stringify(offered.body));
+  const offerEvent = offered.body.world.events.at(-1);
+  assert.equal(offerEvent.type, 'field-item-transfer-offered');
+  assert.equal(offerEvent.actor.id, 'damien');
+  assert.equal(offerEvent.itemEventId, forgeEvent.id);
+  assert.equal(offerEvent.recipientId, witnessId);
+  assert.equal(offerEvent.recipientRole, 'witness');
+  assert.equal(offered.body.world.xp, 100);
+
+  const founderPending = projectCharacter(offered.body.world, offered.body.viewer);
+  const witnessPending = projectCharacter(offered.body.world, witnessInitial.viewer);
+  assert.equal(founderPending.fieldInventoryTotal, 1);
+  assert.equal(witnessPending.fieldInventoryTotal, 0,
+    'an offer is not a transfer of ownership');
+  const pendingOffer = witnessPending.fieldItemTransferOffers.find(item =>
+    item.offerId === offerEvent.offerId
+  );
+  assert.ok(pendingOffer);
+  assert.equal(pendingOffer.status, 'offered');
+  assert.equal(pendingOffer.item.sourceKind, 'source-archive-recovery');
+  assert.equal(pendingOffer.item.sourceRecovery.failureEventId, failure.id);
+  assert.equal(pendingOffer.item.sourceRecovery.publicationEventId, publicationEvent.id);
+  assert.equal(pendingOffer.item.sourceRecovery.sha256, capture.action.sha256);
+
+  const streamedOffer = await witnessStream.next('world');
+  assert.equal(streamedOffer.world.events.at(-1).id, offerEvent.id);
+  const pendingRevision = offered.body.world.revision;
+  const pendingEventIds = offered.body.world.events.map(event => event.id);
+
+  witnessStream.close();
+  await current.server.closeGame();
+  current = await startServer(dataDir, fetchImpl);
+  servers.push(current.server);
+
+  founder = makeClient(current.origin);
+  const founderLoginAfterSecondRestart = await founder.request('/api/login', {
+    key: FOUNDER_KEY,
+    name: 'Damien'
+  });
+  assert.equal(founderLoginAfterSecondRestart.response.status, 200);
+  assert.equal(founderLoginAfterSecondRestart.body.viewer.role, 'founder');
+  assert.equal(founderLoginAfterSecondRestart.body.viewer.id, 'damien');
+
+  witness = makeClient(current.origin, witnessCookie);
+  const witnessAfterSecondRestart = (await witness.request('/api/state')).body;
+  assert.equal(witnessAfterSecondRestart.viewer.id, witnessId);
+  assert.equal(witnessAfterSecondRestart.viewer.role, 'witness');
+  assert.deepEqual(witnessAfterSecondRestart.presence, [],
+    'restart clears ephemeral presence but preserves the pseudonymous actor identity');
+  assert.equal(witnessAfterSecondRestart.world.revision, pendingRevision);
+  assert.deepEqual(witnessAfterSecondRestart.world.events.map(event => event.id), pendingEventIds);
+  assert.equal(witnessAfterSecondRestart.world.xp, 100);
+
+  const witnessStreamAfterSecondRestart = await witness.stream();
+  streams.push(witnessStreamAfterSecondRestart);
+  const witnessRejoined = await witnessStreamAfterSecondRestart.next('world');
+  assert.equal(witnessRejoined.world.revision, pendingRevision);
+  assert.deepEqual(witnessRejoined.world.events.map(event => event.id), pendingEventIds);
+
+  const restoredPending = projectCharacter(
+    witnessAfterSecondRestart.world,
+    witnessAfterSecondRestart.viewer
+  ).fieldItemTransferOffers.find(item => item.offerId === offerEvent.offerId);
+  assert.ok(restoredPending, 'the pending offer is reconstructed from retained events after restart');
+  assert.equal(restoredPending.status, 'offered');
+  assert.equal(restoredPending.fromActorId, 'damien');
+  assert.equal(restoredPending.recipientId, witnessId);
+  assert.equal(restoredPending.item.sourceRecovery.failureEventId, failure.id);
+  assert.equal(restoredPending.item.sourceRecovery.publicationEventId, publicationEvent.id);
+
+  const unrelated = makeClient(current.origin);
+  const unrelatedState = (await unrelated.request('/api/state')).body;
+  assert.equal(unrelatedState.viewer.role, 'witness');
+  assert.notEqual(unrelatedState.viewer.id, witnessId);
+  const wrongRecipient = await unrelated.request('/api/action', {
+    type: 'accept-field-item-transfer',
+    offerId: offerEvent.offerId,
+    requestId: 'source-archive-recovery-restart-unrelated-accept-009'
+  });
+  assert.equal(wrongRecipient.response.status, 409);
+  assert.equal(wrongRecipient.body.error.code, 'FIELD_ITEM_TRANSFER_NOT_ADDRESSED');
+  const afterWrongRecipient = (await witness.request('/api/state')).body;
+  assert.equal(afterWrongRecipient.world.revision, pendingRevision);
+  assert.deepEqual(afterWrongRecipient.world.events.map(event => event.id), pendingEventIds);
+  assert.equal(afterWrongRecipient.world.xp, 100);
+
+  const acceptAction = {
+    type: 'accept-field-item-transfer',
+    offerId: offerEvent.offerId,
+    requestId: 'source-archive-recovery-restart-witness-accept-010'
+  };
+  const accepted = await witness.request('/api/action', acceptAction);
+  assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
+  const transferEvent = accepted.body.world.events.at(-1);
+  assert.equal(transferEvent.type, 'field-item-transferred');
+  assert.equal(transferEvent.offerId, offerEvent.offerId);
+  assert.equal(transferEvent.itemId, forgeEvent.itemId);
+  assert.equal(transferEvent.itemEventId, forgeEvent.id);
+  assert.equal(transferEvent.fromActorId, 'damien');
+  assert.equal(transferEvent.fromActorRole, 'founder');
+  assert.equal(transferEvent.actor.id, witnessId);
+  assert.equal(accepted.body.world.xp, 100);
+
+  const acceptedStreamSnapshot = await witnessStreamAfterSecondRestart.next('world');
+  assert.equal(acceptedStreamSnapshot.world.events.at(-1).id, transferEvent.id);
+
+  const acceptedReplay = await witness.request('/api/action', acceptAction);
+  assert.equal(acceptedReplay.response.status, 200);
+  assert.equal(acceptedReplay.body.idempotentReplay, true);
+  assert.equal(acceptedReplay.body.world.revision, accepted.body.world.revision);
+  assert.equal(acceptedReplay.body.world.events.filter(event =>
+    event.type === 'field-item-transferred'
+  ).length, 1);
+  assert.equal(acceptedReplay.body.world.xp, 100);
+
+  const recipientEquipped = await witness.request('/api/action', {
+    type: 'equip-field-item',
+    slotId: 'recovery',
+    sourceEventId: forgeEvent.id,
+    requestId: 'source-archive-recovery-restart-witness-equip-011'
+  });
+  assert.equal(recipientEquipped.response.status, 200, JSON.stringify(recipientEquipped.body));
+  const recipientEquipEvent = recipientEquipped.body.world.events.at(-1);
+  assert.equal(recipientEquipEvent.type, 'field-item-equipped');
+  assert.equal(recipientEquipEvent.actor.id, witnessId);
+  assert.equal(recipientEquipEvent.sourceEventId, forgeEvent.id);
+  assert.equal(recipientEquipped.body.world.xp, 100);
+
+  const equippedStreamSnapshot = await witnessStreamAfterSecondRestart.next('world');
+  assert.equal(equippedStreamSnapshot.world.events.at(-1).id, recipientEquipEvent.id);
+
+  const finalWorld = recipientEquipped.body.world;
+  const founderViewer = founderLoginAfterSecondRestart.body.viewer;
+  const witnessViewer = witnessAfterSecondRestart.viewer;
+  const founderFinal = projectCharacter(finalWorld, founderViewer);
+  const witnessFinal = projectCharacter(finalWorld, witnessViewer);
+  assert.equal(founderFinal.fieldInventoryTotal, 0);
+  assert.equal(witnessFinal.fieldInventoryTotal, 1);
+  const transferredItem = witnessFinal.fieldInventory.find(item =>
+    item.eventId === forgeEvent.id
+  );
+  assert.ok(transferredItem);
+  assert.equal(transferredItem.sourceKind, 'source-archive-recovery');
+  assert.equal(transferredItem.creatorId, 'damien');
+  assert.equal(transferredItem.ownerId, witnessId);
+  assert.equal(transferredItem.sourceRecovery.failureEventId, failure.id);
+  assert.equal(transferredItem.sourceRecovery.publicationEventId, publicationEvent.id);
+  assert.equal(transferredItem.sourceRecovery.sha256, capture.action.sha256);
+  assert.equal(transferredItem.transferHistory.length, 1);
+  assert.equal(transferredItem.transferHistory[0].status, 'accepted');
+  assert.equal(transferredItem.transferHistory[0].transferEventId, transferEvent.id);
+  assert.equal(witnessFinal.equipment.find(slot => slot.id === 'recovery').source.eventId, forgeEvent.id);
+
+  const founderArmorBearer = getQuestTrail(finalWorld, founderViewer).find(item =>
+    item.id === 'founder-armor-bearer-delivery'
+  );
+  assert.ok(founderArmorBearer);
+  assert.deepEqual(
+    [founderArmorBearer.progress, founderArmorBearer.target, founderArmorBearer.complete],
+    [4, 4, true]
+  );
+  assert.deepEqual(founderArmorBearer.evidenceIds, [
+    forgeEvent.id, equipEvent.id, transferEvent.id, recipientEquipEvent.id
+  ]);
+  assert.equal(founderArmorBearer.countsForQuestkeeper, false);
+
+  const witnessArmorBearer = getQuestTrail(finalWorld, witnessViewer).find(item =>
+    item.id === 'witness-armor-bearer-delivery'
+  );
+  assert.ok(witnessArmorBearer);
+  assert.deepEqual(
+    [witnessArmorBearer.progress, witnessArmorBearer.target, witnessArmorBearer.complete],
+    [2, 4, false]
+  );
+  assert.deepEqual(witnessArmorBearer.evidenceIds, [forgeEvent.id, recipientEquipEvent.id]);
+
+  const completedRecoveryQuest = getQuestTrail(finalWorld, founderViewer).find(item =>
+    item.id === recoveryQuestId
+  );
+  assert.ok(completedRecoveryQuest);
+  assert.deepEqual(
+    [completedRecoveryQuest.progress, completedRecoveryQuest.target, completedRecoveryQuest.complete],
+    [4, 4, true]
+  );
+  assert.deepEqual(completedRecoveryQuest.evidenceIds, [
+    failure.id, publicationEvent.id, forgeEvent.id, equipEvent.id
+  ]);
+  assert.equal(getQuestTrail(finalWorld, witnessViewer).some(item =>
+    item.id === recoveryQuestId
+  ), false);
+  assert.equal(finalWorld.xp, 100,
+    'publication is the only XP-producing action across both restart boundaries');
+  assert.equal(finalWorld.events.filter(event =>
+    event.type === 'source-archive-attempt-failed'
+  ).length, 1);
+  assert.equal(finalWorld.events.filter(event =>
+    event.type === 'field-item-transferred'
+  ).length, 1);
+  assert.equal(attempts, 2);
+  assert.equal(capture.calls.length, 1,
+    'the successful later capture is the only successful fixture retrieval');
 });
