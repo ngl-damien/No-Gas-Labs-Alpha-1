@@ -8312,6 +8312,36 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         expect(review_source_context).to_have_count(1)
         lead_before = authoritative_snapshot(inspection_page)
         review_source_context.tap()
+        prepared_lead = inspection_page.locator(
+            '[data-source-observatory-prefill-lead="true"]'
+        )
+        expect(prepared_lead).to_have_count(1)
+        expect(prepared_lead).to_have_attribute(
+            'data-source-observatory-prefill-origin', 'source-archive-failure'
+        )
+        expect(prepared_lead).to_contain_text(failure['id'])
+        observatory_after = authoritative_snapshot(inspection_page)
+        assert shared_world_snapshot(observatory_after) == shared_world_snapshot(lead_before), (
+            'Opening the exact failure-context lead must remain read-only.'
+        )
+        assert observatory_after['xp'] == lead_before['xp'], (
+            'Opening the unretained failure-context lead must award no XP.'
+        )
+
+        # The prepared lead is not yet an observation. Select the exact retained
+        # Observatory publication/version before the editable form can open.
+        target_key = observatory_fixture['creationId'] + '@' + str(observatory_fixture['version'])
+        target_card = inspection_page.locator(
+            '[data-source-observatory-target="' + target_key + '"]'
+        )
+        expect(target_card).to_have_count(1)
+        record_lead = target_card.locator(
+            '[data-source-observatory-record-lead="' + target_key + '"]'
+        )
+        expect(record_lead).to_have_count(1)
+        expect(record_lead).to_be_visible()
+        record_lead.tap()
+
         lead_form = inspection_page.locator('[data-source-observation-form="true"]')
         expect(lead_form).to_have_count(1)
         expect(lead_form).to_have_attribute(
@@ -8320,16 +8350,22 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         expect(lead_form).to_have_attribute(
             'data-source-observation-origin-failure-event-id', failure['id']
         )
+        expect(lead_form).to_have_attribute(
+            'data-source-observation-creation-id', observatory_fixture['creationId']
+        )
+        expect(lead_form).to_have_attribute(
+            'data-source-observation-version', str(observatory_fixture['version'])
+        )
         expect(lead_form).to_have_attribute('data-source-snapshot-complete', 'true')
         expect(inspection_page.locator(
             '[data-source-observation-prefill-disclosure="source-archive-failure"]'
         )).to_contain_text(failure['id'])
         lead_after = authoritative_snapshot(inspection_page)
-        assert shared_world_snapshot(lead_after) == shared_world_snapshot(lead_before), (
-            'Opening the exact failure-context lead must not create an observation or world event.'
+        assert shared_world_snapshot(lead_after) == shared_world_snapshot(observatory_after), (
+            'Selecting the exact retained version and opening its prefilled form must remain read-only.'
         )
-        assert lead_after['xp'] == lead_before['xp'], (
-            'Opening the unretained failure-context lead must award no XP.'
+        assert lead_after['xp'] == observatory_after['xp'], (
+            'Opening the unretained failure-context form must award no XP.'
         )
         assert not inspection_errors, (
             'Quest Board to Evidence Archive to Source Observatory lead produced page errors: ' +
