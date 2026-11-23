@@ -669,6 +669,11 @@ test('a server-observed Source Archive failure unlocks a Recovery Ledger whose p
   assert.equal(streamedOffer.world.events.at(-1).id, offerEvent.id);
   const pendingRevision = offered.body.world.revision;
   const pendingEventIds = offered.body.world.events.map(event => event.id);
+  const pendingPublicEventIds = offered.body.world.events
+    .filter(event => event.type !== 'draft')
+    .map(event => event.id);
+  assert.equal(pendingEventIds.length - pendingPublicEventIds.length, 1,
+    'the Founder retains one private draft event that is intentionally absent from the Witness projection');
 
   witnessOfferStream.close();
   await current.server.closeGame();
@@ -691,14 +696,23 @@ test('a server-observed Source Archive failure unlocks a Recovery Ledger whose p
   assert.deepEqual(witnessAfterSecondRestart.presence, [],
     'restart clears ephemeral presence but preserves the pseudonymous actor identity');
   assert.equal(witnessAfterSecondRestart.world.revision, pendingRevision);
-  assert.deepEqual(witnessAfterSecondRestart.world.events.map(event => event.id), pendingEventIds);
+  assert.deepEqual(witnessAfterSecondRestart.world.events.map(event => event.id), pendingPublicEventIds);
+  assert.equal(witnessAfterSecondRestart.world.events.some(event => event.type === 'draft'), false);
+  assert.equal(witnessAfterSecondRestart.world.drafts.length, 0,
+    'the Witness projection does not expose the Founder\'s private draft');
   assert.equal(witnessAfterSecondRestart.world.xp, 100);
+
+  const founderAfterSecondRestart = (await founder.request('/api/state')).body;
+  assert.equal(founderAfterSecondRestart.world.revision, pendingRevision);
+  assert.deepEqual(founderAfterSecondRestart.world.events.map(event => event.id), pendingEventIds);
+  assert.equal(founderAfterSecondRestart.world.drafts.length, 1,
+    'the Founder retains the private draft across the same restart');
 
   const witnessStreamAfterSecondRestart = await witness.stream();
   streams.push(witnessStreamAfterSecondRestart);
   const witnessRejoined = await witnessStreamAfterSecondRestart.next('world');
   assert.equal(witnessRejoined.world.revision, pendingRevision);
-  assert.deepEqual(witnessRejoined.world.events.map(event => event.id), pendingEventIds);
+  assert.deepEqual(witnessRejoined.world.events.map(event => event.id), pendingPublicEventIds);
 
   const restoredPending = projectCharacter(
     witnessAfterSecondRestart.world,
@@ -724,7 +738,7 @@ test('a server-observed Source Archive failure unlocks a Recovery Ledger whose p
   assert.equal(wrongRecipient.body.error.code, 'FIELD_ITEM_TRANSFER_NOT_ADDRESSED');
   const afterWrongRecipient = (await witness.request('/api/state')).body;
   assert.equal(afterWrongRecipient.world.revision, pendingRevision);
-  assert.deepEqual(afterWrongRecipient.world.events.map(event => event.id), pendingEventIds);
+  assert.deepEqual(afterWrongRecipient.world.events.map(event => event.id), pendingPublicEventIds);
   assert.equal(afterWrongRecipient.world.xp, 100);
 
   const acceptAction = {
@@ -772,7 +786,12 @@ test('a server-observed Source Archive failure unlocks a Recovery Ledger whose p
   const equippedStreamSnapshot = await witnessStreamAfterSecondRestart.next('world');
   assert.equal(equippedStreamSnapshot.world.events.at(-1).id, recipientEquipEvent.id);
 
-  const finalWorld = recipientEquipped.body.world;
+  const finalFounderState = (await founder.request('/api/state')).body;
+  const finalWorld = finalFounderState.world;
+  assert.equal(finalWorld.revision, recipientEquipped.body.world.revision);
+  assert.equal(finalWorld.events.some(event => event.type === 'draft'), true);
+  assert.equal(recipientEquipped.body.world.events.some(event => event.type === 'draft'), false,
+    'the transferred public item does not make the Founder\'s private draft visible to the Witness');
   const founderViewer = founderLoginAfterSecondRestart.body.viewer;
   const witnessViewer = witnessAfterSecondRestart.viewer;
   const founderFinal = projectCharacter(finalWorld, founderViewer);
