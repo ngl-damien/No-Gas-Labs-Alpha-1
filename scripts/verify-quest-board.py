@@ -9795,7 +9795,11 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
                     'url': request.url
                 })
 
-        inventory_cache_page.on('pageerror', lambda error: inventory_cache_page_errors.append(str(error)))
+        inventory_cache_page.on('pageerror', lambda error: inventory_cache_page_errors.append({
+            'name': getattr(error, 'name', None),
+            'message': str(error),
+            'stack': getattr(error, 'stack', None)
+        }))
         inventory_cache_page.goto(url, wait_until='networkidle')
         inventory_cache_context.set_offline(True)
         inventory_cache_page.locator('#start-shared').tap()
@@ -9858,7 +9862,77 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'Inspecting the owned inventory Forge event offline must leave the accepted cache and pending-action store unchanged.'
         )
         assert not any(request['method'].upper() == 'POST' for request in inventory_cache_api_requests)
-        assert not inventory_cache_page_errors, inventory_cache_page_errors
+
+        # The Chronicle page contains the deliberately opaque artifact frame.
+        # Classify only its exact storage/service-worker denials as sandbox
+        # boundary events; every other uncaught page error remains a hard failure.
+        inventory_cache_artifact_frame_element = inventory_cache_page.locator('#artifact-frame')
+        expect(inventory_cache_artifact_frame_element).to_have_count(1)
+        inventory_cache_sandbox_attribute = inventory_cache_artifact_frame_element.get_attribute('sandbox') or ''
+        inventory_cache_sandbox_tokens = set(inventory_cache_sandbox_attribute.split())
+        assert 'allow-scripts' in inventory_cache_sandbox_tokens
+        assert 'allow-same-origin' not in inventory_cache_sandbox_tokens, (
+            'The offline artifact must retain its opaque-origin sandbox; do not add allow-same-origin.'
+        )
+        inventory_cache_artifact_frames = [
+            frame for frame in inventory_cache_page.frames
+            if frame != inventory_cache_page.main_frame
+        ]
+        assert len(inventory_cache_artifact_frames) == 1, (
+            'The cached Chronicle must retain exactly one isolated artifact frame: ' +
+            json.dumps([
+                {'name': frame.name, 'url': frame.url}
+                for frame in inventory_cache_artifact_frames
+            ], sort_keys=True)
+        )
+        inventory_cache_artifact_frame = inventory_cache_artifact_frames[0]
+        inventory_cache_artifact_frame_url = inventory_cache_artifact_frame.url
+        assert inventory_cache_artifact_frame_url in ('about:blank', 'about:srcdoc'), (
+            'The artifact must remain an inline opaque-origin document: ' +
+            inventory_cache_artifact_frame_url
+        )
+        inventory_cache_sandbox_probe = inventory_cache_artifact_frame.evaluate("""() => {
+          let serviceWorkerAccess = 'accessible';
+          try { void navigator.serviceWorker; } catch (error) { serviceWorkerAccess = error.name; }
+          let localStorageAccess = 'accessible';
+          try { void localStorage; } catch (error) { localStorageAccess = error.name; }
+          return { origin: self.origin, serviceWorkerAccess, localStorageAccess };
+        }""")
+        assert inventory_cache_sandbox_probe == {
+            'origin': 'null',
+            'serviceWorkerAccess': 'SecurityError',
+            'localStorageAccess': 'SecurityError'
+        }, (
+            'The artifact must retain an opaque origin and deny both storage capabilities: ' +
+            json.dumps(inventory_cache_sandbox_probe, sort_keys=True)
+        )
+        expected_inventory_cache_sandbox_denials = {
+            "Failed to read the 'serviceWorker' property from 'Navigator': "
+            "Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag.",
+            "Failed to read the 'localStorage' property from 'Window': "
+            "The document is sandboxed and lacks the 'allow-same-origin' flag."
+        }
+        unexpected_inventory_cache_page_errors = [
+            error for error in inventory_cache_page_errors
+            if error.get('name') != 'SecurityError'
+            or error.get('message') not in expected_inventory_cache_sandbox_denials
+        ]
+        observed_inventory_cache_denials = [
+            error.get('message') for error in inventory_cache_page_errors
+        ]
+        assert len(observed_inventory_cache_denials) == len(set(observed_inventory_cache_denials)), (
+            'An opaque artifact may emit each expected denial at most once: ' +
+            json.dumps(inventory_cache_page_errors, sort_keys=True)
+        )
+        assert not unexpected_inventory_cache_page_errors, (
+            'Only exact opaque-artifact storage/service-worker denials may be classified as sandbox boundaries: ' +
+            json.dumps({
+                'pageErrors': inventory_cache_page_errors,
+                'unexpectedPageErrors': unexpected_inventory_cache_page_errors,
+                'sandboxAttribute': inventory_cache_sandbox_attribute,
+                'sandboxProbe': inventory_cache_sandbox_probe
+            }, sort_keys=True)
+        )
         assert inventory_cache_page.evaluate(
             "() => document.documentElement.scrollWidth <= window.innerWidth"
         ), 'The 320px cached inventory Chronicle must not create horizontal overflow.'
@@ -9878,6 +9952,11 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'equippedActionDisabled': True,
             'inspectionXPDelta': 0,
             'horizontalOverflow': False,
+            'sandboxAttribute': inventory_cache_sandbox_attribute,
+            'sandboxFrameUrl': inventory_cache_artifact_frame_url,
+            'sandboxProbe': inventory_cache_sandbox_probe,
+            'expectedSandboxDenials': observed_inventory_cache_denials,
+            'unexpectedPageErrors': unexpected_inventory_cache_page_errors,
             'pageErrors': inventory_cache_page_errors
         }
 
