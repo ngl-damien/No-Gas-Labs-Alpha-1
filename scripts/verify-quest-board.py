@@ -8992,14 +8992,23 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         recovery_recipient = recovery_item.locator('[data-transfer-recipient]')
         recovery_recipient.select_option(value=witness_id)
         recovery_item.locator('[data-offer-field-item]').tap()
+        # The UI action is asynchronous. Wait for its exact server-retained event
+        # before issuing a separate state read; otherwise a fast read can race
+        # the action request and observe the pre-offer revision.
+        recovery_offer_event_id = wait_for_retained_event_id(
+            inspection_page, 'field-item-transfer-offered', 'itemEventId',
+            recovery_forge_event_id, founder_id, 'founder', timeout=15000
+        )
         recovery_offer = inspection_page.evaluate("""async expected => {
           const response = await fetch('/api/state', {cache:'no-store', credentials:'same-origin'});
           if (!response.ok) throw new Error('Could not inspect the retained Recovery Ledger offer.');
           const dto = await response.json();
           const matches = dto.world.events.filter(event =>
             event.type === 'field-item-transfer-offered' &&
+            event.id === expected.eventId &&
             event.itemEventId === expected.itemEventId &&
             event.actor?.id === expected.actorId &&
+            event.actor?.role === 'founder' &&
             event.recipientId === expected.recipientId &&
             event.recipientRole === 'witness'
           );
@@ -9007,6 +9016,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
           const event = matches[0];
           return {eventId:event.id,offerId:event.offerId,recipientId:event.recipientId,recipientRole:event.recipientRole};
         }""", {
+            'eventId': recovery_offer_event_id,
             'itemEventId': recovery_forge_event_id,
             'actorId': founder_id,
             'recipientId': witness_id
@@ -9014,11 +9024,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         assert recovery_offer['offerId']
         assert recovery_offer['recipientId'] == witness_id
         assert recovery_offer['recipientRole'] == 'witness'
-        recovery_offer_event_id = wait_for_retained_event_id(
-            inspection_page, 'field-item-transfer-offered', 'itemEventId',
-            recovery_forge_event_id, founder_id, 'founder', timeout=15000
-        )
-        assert recovery_offer_event_id == recovery_offer['eventId']
+        assert recovery_offer['eventId'] == recovery_offer_event_id
 
         # Rejoin the same Witness session so the offer is rendered from a fresh
         # server snapshot, not a stale local Character Record.
