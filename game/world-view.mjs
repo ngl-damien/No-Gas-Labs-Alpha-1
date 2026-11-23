@@ -459,6 +459,7 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
    observedBy==='shared-source-archive-service'&&boundedWorldText(semantics,300);
   if(!valid){invalidCount++;continue;}
   projected.push({
+   index,
    requestKey:JSON.stringify([requestIdDigest,actionDigest]),
    record:Object.freeze({
     id:'source-archive-failure:'+eventId,
