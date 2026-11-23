@@ -585,14 +585,24 @@ test('experiment report challenges use composite actor identity in the model and
   const crossRoleWitness={...witness,id:founder.id,name:'Witness role collision'};
   const action={
     type:'challenge-experiment-report',reportId:report.result.reportId,
-    challengeType:'methodology',challengeText:'The procedure omits a reproducible measurement setting.'
+    challengeType:'methodology',challengeText:'The procedure omits a reproducible measurement setting.',
+    resolutionRequest:'Repeat the procedure with the missing measurement setting retained.'
   };
   const challenged=await applyAction(report.world,action,crossRoleWitness,{now:'2026-10-17T12:00:03.000Z'});
   const event=challenged.world.events.at(-1);
   assert.equal(event.type,'experiment-challenged');
   assert.equal(event.actor.id,founder.id);
   assert.equal(event.actor.role,'witness');
+  assert.equal(event.resolutionRequest,action.resolutionRequest);
   await validateWorld(challenged.world);
+  await assert.rejects(
+    applyAction(report.world,{...action,resolutionRequest:undefined},crossRoleWitness,{now:'2026-10-17T12:00:03.000Z'}),
+    error=>error.code==='INVALID_INPUT'
+  );
+  await assert.rejects(
+    applyAction(report.world,{...action,resolutionRequest:'x'.repeat(1001)},crossRoleWitness,{now:'2026-10-17T12:00:03.000Z'}),
+    error=>error.code==='TOO_LARGE'
+  );
   const projected=projectResearchRecords(challenged.world.events,challenged.world.creations)
     .find(record=>record.type==='experiment-challenged'&&record.challengeId===event.challengeId);
   assert.equal(projected?._projection.targetReportStatus,'linked');

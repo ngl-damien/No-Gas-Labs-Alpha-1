@@ -1706,10 +1706,28 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
     reportId: report.body.result.reportId,
     challengeType: 'missing-evidence',
     challengeText: 'The report lacks the measurement settings needed to reproduce the attempt.',
+    resolutionRequest: 'Repeat the procedure with the missing measurement settings retained and report the result.',
     evidenceCreationId: published.result.creationId,
     evidenceVersion: 1,
     requestId: 'experiment-challenge-retry-001'
   };
+  const missingResolutionRequest = { ...challengeAction, requestId: 'experiment-challenge-missing-resolution-001' };
+  delete missingResolutionRequest.resolutionRequest;
+  const missingResolution = await founder.request('/api/action', missingResolutionRequest);
+  assert.equal(missingResolution.response.status, 400, JSON.stringify(missingResolution.body));
+  assert.equal(missingResolution.body.error.code, 'INVALID_INPUT');
+  const afterMissingResolution = await founder.request('/api/state');
+  assert.equal(afterMissingResolution.body.world.events.filter(event => event.type === 'experiment-challenged').length, 0,
+    'a challenge without a concrete resolution request must not append an event');
+
+  const oversizedResolutionRequest = {
+    ...challengeAction,
+    resolutionRequest: 'x'.repeat(1001),
+    requestId: 'experiment-challenge-oversized-resolution-001'
+  };
+  const oversizedResolution = await founder.request('/api/action', oversizedResolutionRequest);
+  assert.equal(oversizedResolution.response.status, 413, JSON.stringify(oversizedResolution.body));
+  assert.equal(oversizedResolution.body.error.code, 'TOO_LARGE');
   const first = await founder.request('/api/action', challengeAction);
   assert.equal(first.response.status, 200, JSON.stringify(first.body));
   assert.equal(first.body.idempotentReplay, false);
@@ -1733,6 +1751,7 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   assert.equal(challenges[0].reportId, reports[0].reportId);
   assert.equal(challenges[0].evidenceCreationId, published.result.creationId);
   assert.equal(challenges[0].evidenceVersion, 1);
+  assert.equal(challenges[0].resolutionRequest, challengeAction.resolutionRequest);
   assert.equal(challenges[0].actor.role, 'founder');
   assert.equal(challenges[0].outcome, undefined);
   assert.equal(challenges[0].status, undefined);
@@ -1769,6 +1788,7 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   assert.equal(afterRestart.length, 1);
   assert.equal(afterRestart[0].evidenceCreationId, published.result.creationId);
   assert.equal(afterRestart[0].evidenceVersion, 1);
+  assert.equal(afterRestart[0].resolutionRequest, challengeAction.resolutionRequest);
   await restarted.closeGame();
   restarted = null;
 });

@@ -56,6 +56,7 @@ const challenge = (overrides = {}) => ({
   moonshotId: 'moonshot-1',
   challengeType: 'missing-evidence',
   challengeText: 'The method cannot be reproduced from the supplied record.',
+  resolutionRequest: 'Repeat the procedure with a retained measurement record.',
   actor: { id: 'founder-1', role: 'founder', name: 'Founder' },
   at: '2026-10-28T17:02:00.000Z',
   ...overrides
@@ -160,6 +161,36 @@ test('unique, earlier research records receive only explicit chronological links
   assert.equal(byId.get('challenge-event-1')._projection.targetReportStatus, 'linked');
   assert.equal(byId.get('challenge-event-1')._projection.challengeStatus, 'linked');
   assert.deepEqual(projected.map(event => event.id), ['challenge-event-1', 'report-event-1', 'proposal-event-1']);
+});
+
+test('experiment challenge resolution requests are bounded when present; legacy records remain inspectable', () => {
+  const request = 'Repeat the procedure with the missing measurement settings retained.';
+  const valid = project([proposal(), report(), challenge({ resolutionRequest: request })])
+    .find(event => event.id === 'challenge-event-1');
+  assert.equal(valid._projection.challengeStatus, 'linked');
+  assert.equal(valid.resolutionRequest, request);
+
+  const legacyEvent = challenge();
+  delete legacyEvent.resolutionRequest;
+  const legacy = project([proposal(), report(), legacyEvent])
+    .find(event => event.id === 'challenge-event-1');
+  assert.equal(legacy._projection.challengeStatus, 'linked',
+    'older retained challenges remain readable without rewriting their history');
+
+  for (const [label, resolutionRequest] of [
+    ['empty', ''], ['whitespace', '   '], ['null', null], ['non-text', 7],
+    ['oversized', 'x'.repeat(1001)]
+  ]) {
+    const invalid = project([proposal(), report(), challenge({ resolutionRequest })])
+      .find(event => event.id === 'challenge-event-1');
+    assert.equal(invalid._projection.challengeStatus, 'invalid-challenge', label);
+  }
+
+  const malformedChallenge = challenge({ resolutionRequest: '   ' });
+  const response = project([proposal(), report(), malformedChallenge, challengeResponseEvent()])
+    .find(event => event.type === 'experiment-challenge-responded');
+  assert.equal(response._projection.targetChallengeStatus, 'unavailable',
+    'a malformed challenge cannot anchor an original-author response');
 });
 
 test('research links and Archive order follow retained append positions when clocks regress', () => {
