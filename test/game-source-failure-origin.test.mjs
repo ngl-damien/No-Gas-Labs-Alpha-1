@@ -370,3 +370,35 @@ test('pre-failure captures, partial history, and duplicate publication bindings 
   assert.equal(ambiguousRecord.laterCaptureStatus, 'unknown');
   assert.equal(ambiguousRecord.laterCapture, null);
 });
+
+test('later-capture projection fails closed when aggregate retained-version scan exceeds its budget', async () => {
+  const fixture = await worldWithFailure();
+  const captured = await publishSourceArchive(fixture.world);
+  const completeProjection = projectSourceArchiveFailureObjects(captured.world);
+  const completeRecord = completeProjection.records.find(candidate => candidate.eventId === fixture.failure.id);
+  assert.equal(completeRecord.laterCaptureStatus, 'observed');
+
+  const world = structuredClone(captured.world);
+  for (const suffix of ['a', 'b']) {
+    const id = 'unrelated-history-' + suffix;
+    world.creations.push({
+      id,
+      kind: 'loom',
+      intent: '',
+      html: '',
+      version: 50_001,
+      versions: Array.from({ length: 50_000 }, (_, index) => ({
+        id, version: index + 1, kind: 'loom', intent: '', html: ''
+      }))
+    });
+  }
+
+  const projection = projectSourceArchiveFailureObjects(world);
+  assert.equal(projection.complete, true);
+  assert.equal(projection.captureProjectionComplete, false);
+  const record = projection.records.find(candidate => candidate.eventId === fixture.failure.id);
+  assert.ok(record);
+  assert.equal(record.laterCaptureStatus, 'unknown');
+  assert.equal(record.laterCaptureCount, null);
+  assert.equal(record.laterCapture, null);
+});

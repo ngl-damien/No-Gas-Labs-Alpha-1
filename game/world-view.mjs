@@ -255,6 +255,7 @@ function projectServerRecheckedSourceArchivePublications(world,events,eventCount
  const sourceVersions=new Map();
  const sourceCreationIds=new Set();
  const creationIdCounts=new Map();
+ let scannedVersionCount=0;
  for(let creationIndex=0;creationIndex<creationCount;creationIndex++){
   const creation=ownDataValue(creations,String(creationIndex));
   if(!creation||typeof creation!=='object'||isArraySafely(creation)){complete=false;continue;}
@@ -267,6 +268,14 @@ function projectServerRecheckedSourceArchivePublications(world,events,eventCount
   if(priorVersions!==undefined&&!isArraySafely(priorVersions)){complete=false;continue;}
   const priorVersionCount=priorVersions===undefined?0:ownDataValue(priorVersions,'length');
   if(!Number.isSafeInteger(priorVersionCount)||priorVersionCount<0||priorVersionCount>MAX_WORLD_EVENT_SCAN){complete=false;continue;}
+  const versionCount=priorVersionCount+1;
+  if(versionCount>MAX_WORLD_EVENT_SCAN-scannedVersionCount){
+   // Per-creation limits alone multiply across the world. Exhaustion makes every
+   // later-capture conclusion UNKNOWN and withholds even an otherwise-found link.
+   complete=false;
+   break;
+  }
+  scannedVersionCount+=versionCount;
   for(let versionIndex=0;versionIndex<=priorVersionCount;versionIndex++){
    const version=versionIndex===priorVersionCount?creation:ownDataValue(priorVersions,String(versionIndex));
    if(!version||typeof version!=='object'||isArraySafely(version)){complete=false;continue;}
