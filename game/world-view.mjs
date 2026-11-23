@@ -245,17 +245,19 @@ const SOURCE_ARCHIVE_FAILURE_STATUS_LABELS=Object.freeze({
  SOURCE_ARCHIVE_BUILD_FAILED:'RETRYABLE · ARCHIVE BUILD FAILED'
 });
 const SOURCE_ARCHIVE_FAILURE_PAGE_SIZE=12;
+const SOURCE_ARCHIVE_FAILURE_CAPTURE_MATCH_BUDGET=100_000;
 
 function projectServerRecheckedSourceArchivePublications(world,events,eventCount,eventIdCounts){
  let complete=true;
  const creations=ownDataValue(world,'creations');
- if(!isArraySafely(creations))return {complete:false,captures:[]};
+ if(!isArraySafely(creations))return {complete:false,captures:[],reason:null};
  const creationCount=ownDataValue(creations,'length');
- if(!Number.isSafeInteger(creationCount)||creationCount<0||creationCount>MAX_WORLD_EVENT_SCAN)return {complete:false,captures:[]};
+ if(!Number.isSafeInteger(creationCount)||creationCount<0||creationCount>MAX_WORLD_EVENT_SCAN)return {complete:false,captures:[],reason:null};
  const sourceVersions=new Map();
  const sourceCreationIds=new Set();
  const creationIdCounts=new Map();
  let scannedVersionCount=0;
+ let reason=null;
  for(let creationIndex=0;creationIndex<creationCount;creationIndex++){
   const creation=ownDataValue(creations,String(creationIndex));
   if(!creation||typeof creation!=='object'||isArraySafely(creation)){complete=false;continue;}
@@ -273,6 +275,7 @@ function projectServerRecheckedSourceArchivePublications(world,events,eventCount
    // Per-creation limits alone multiply across the world. Exhaustion makes every
    // later-capture conclusion UNKNOWN and withholds even an otherwise-found link.
    complete=false;
+   reason='retained-version-scan-budget-exhausted';
    break;
   }
   scannedVersionCount+=versionCount;
@@ -372,7 +375,7 @@ function projectServerRecheckedSourceArchivePublications(world,events,eventCount
    }));
   }
  }
- return {complete,captures:Object.freeze(captures)};
+ return {complete,captures:Object.freeze(captures),reason};
 }
 
 
@@ -505,24 +508,51 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
  }
  const captureScan=projectServerRecheckedSourceArchivePublications(world,events,eventCount,eventIdCounts);
  let captureProjectionComplete=complete&&invalidCount===0&&captureScan.complete;
+ let captureProjectionReason=captureScan.reason||null;
  const capturesByFailureId=new Map();
  if(captureProjectionComplete){
+  // Index only exact source targets first. The remaining per-failure checks are
+  // globally budgeted so a large same-target history cannot trigger O(F×C)
+  // work without a hard stop.
+  const capturesByTarget=new Map();
+  for(const capture of captureScan.captures){
+   const key=JSON.stringify([capture.actorId,capture.repository,capture.commitSha,capture.path]);
+   const bucket=capturesByTarget.get(key)||[];
+   bucket.push(capture);
+   capturesByTarget.set(key,bucket);
+  }
+  let comparisonCount=0;
   for(const item of projected){
    const failureAt=Date.parse(item.record.at);
    const failurePosition=item.index+1;
-   const matches=captureScan.captures.filter(capture=>
-    capture.actorId===item.record.actorId&&
-    capture.repository===item.record.repository&&
-    capture.commitSha===item.record.commitSha&&
-    capture.path===item.record.path&&
-    capture.publicationPosition>failurePosition&&
-    Date.parse(capture.fetchedAt)>failureAt&&
-    Date.parse(capture.capturedAt)>failureAt
-   );
-   if(matches.length>1)captureProjectionComplete=false;
+   const targetKey=JSON.stringify([
+    item.record.actorId,item.record.repository,item.record.commitSha,item.record.path
+   ]);
+   const candidates=capturesByTarget.get(targetKey)||[];
+   const matches=[];
+   for(const capture of candidates){
+    if(comparisonCount>=SOURCE_ARCHIVE_FAILURE_CAPTURE_MATCH_BUDGET){
+     captureProjectionComplete=false;
+     captureProjectionReason='capture-match-scan-budget-exhausted';
+     break;
+    }
+    comparisonCount+=1;
+    if(capture.publicationPosition>failurePosition&&
+       Date.parse(capture.fetchedAt)>failureAt&&
+       Date.parse(capture.capturedAt)>failureAt){
+     matches.push(capture);
+     if(matches.length>1){
+      captureProjectionComplete=false;
+      captureProjectionReason='ambiguous-capture-matches';
+      break;
+     }
+    }
+   }
+   if(!captureProjectionComplete)break;
    capturesByFailureId.set(item.record.eventId,matches);
   }
  }
+ if(!captureProjectionComplete)capturesByFailureId.clear();
  for(const item of projected){
   const matches=capturesByFailureId.get(item.record.eventId)||[];
   const observed=captureProjectionComplete&&matches.length===1;
@@ -568,6 +598,7 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   available:true,
   complete,
   captureProjectionComplete,
+  captureProjectionReason,
   unseenEventCount:revision-eventCount,
   total,
   invalidCount,
