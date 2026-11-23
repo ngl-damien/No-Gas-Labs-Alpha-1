@@ -272,17 +272,24 @@ export function retainedWorldEventHistoryOptions(world, eventsInput) {
 }
 
 /**
- * Response-only global positions may be imported as canonical history only
- * when they describe the complete stream exactly (1..revision). Actor-filtered
- * snapshots retain gaps and must never be promoted to canonical world state.
+ * Response-only global positions and role-filtered coverage metadata may be
+ * imported as canonical history only when they describe the complete stream
+ * exactly (1..revision). Actor-filtered snapshots retain gaps and must never
+ * be promoted to canonical world state.
  */
 export function stripCompleteResponseHistoryPositions(world) {
   let events;
   let revision;
+  let hasCoverageMetadata = false;
   try {
     const source = world ?? {};
+    const coverageDescriptor = Object.getOwnPropertyDescriptor(source, 'historyCoverage');
+    if (coverageDescriptor) {
+      if (!Object.hasOwn(coverageDescriptor, 'value')) return { status: 'invalid', world };
+      hasCoverageMetadata = true;
+    }
     const eventsDescriptor = Object.getOwnPropertyDescriptor(source, 'events');
-    if (!eventsDescriptor) return { status: 'absent', world };
+    if (!eventsDescriptor) return { status: hasCoverageMetadata ? 'invalid' : 'absent', world };
     if (!Object.hasOwn(eventsDescriptor, 'value') || !Array.isArray(eventsDescriptor.value)) {
       return { status: 'invalid', world };
     }
@@ -306,7 +313,7 @@ export function stripCompleteResponseHistoryPositions(world) {
     catch { return { status: 'invalid', world }; }
     if (descriptor) hasMetadata = true;
   }
-  if (!hasMetadata) return { status: 'absent', world };
+  if (!hasMetadata) return { status: hasCoverageMetadata ? 'invalid' : 'absent', world };
 
   const positions = retainedWorldEventHistoryPositions(world, events);
   if (!Number.isSafeInteger(revision) || revision !== events.length ||
@@ -328,8 +335,12 @@ export function stripCompleteResponseHistoryPositions(world) {
     canonicalEvents.push(copy);
   }
   let canonicalWorld;
-  try { canonicalWorld = { ...world, events: canonicalEvents }; }
-  catch { return { status: 'invalid', world }; }
+  try {
+    canonicalWorld = { ...world, events: canonicalEvents };
+    delete canonicalWorld.historyCoverage;
+  } catch {
+    return { status: 'invalid', world };
+  }
   return { status: 'stripped', world: canonicalWorld };
 }
 
