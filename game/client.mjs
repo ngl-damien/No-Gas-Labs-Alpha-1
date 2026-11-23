@@ -3478,6 +3478,7 @@ function refreshForgePanels(){
   if(kitRoot)kitRoot.replaceWith(buildFieldKitSection({onChange:refreshForgePanels}));
 }
 function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=openWorldChronicle}={}){
+  const cachedSharedSnapshotReadOnly=mode==='shared'&&sharedSnapshotCacheOnly;
   const historyPageContext={
     mode,
     worldId:world?.id,
@@ -3495,6 +3496,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
   const section=node('section',{'data-field-kit-root':'true'});
   section.append(node('h3',{class:'section-title',text:'FIELD KIT · EQUIPMENT AND INVENTORY'}));
   section.append(paragraph('Equip only items currently owned by this actor. Unequipped items can be offered to one active shared-world recipient; only that recipient can accept or decline. Acceptance changes current ownership; decline preserves the sender as owner. Original creator/source provenance remains immutable. Transfers grant no XP, combat statistics or authority.','form-help'));
+  if(cachedSharedSnapshotReadOnly)section.append(paragraph('Cached shared snapshot only. This Field Kit is read-only until the live server revalidates this session. Inventory and retained handoff history remain inspectable; equipment and transfer actions are disabled.','form-help'));
   const armorer=record.skills.find(skill=>skill.id==='armorer');
   const armorBearer=record.skills.find(skill=>skill.id==='armor-bearer');
   const equippedSlotCount=record.equipment.filter(slot=>slot.source).length;
@@ -3634,7 +3636,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
       await act({type:'unequip-field-item',slotId:slot.id});
       toast('Field item unequipped. Its forge history remains; no XP changed.');
       onChange();
-    }),{class:'list-button','data-unequip-field-item':slot.id}));
+    }),{class:'list-button','data-unequip-field-item':slot.id,...(cachedSharedSnapshotReadOnly?{disabled:true}:{})}));
     section.append(card);
   }
   const incoming=record.fieldItemTransferOffers.filter(offer=>
@@ -3654,12 +3656,12 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
           await act({type:'accept-field-item-transfer',offerId:offer.offerId});
           toast('Accepted transfer retained. Current ownership changed; no XP changed.');
           onChange();
-        }),{class:'list-button','data-accept-field-item-transfer':offer.offerId}),
+        }),{class:'list-button','data-accept-field-item-transfer':offer.offerId,...(cachedSharedSnapshotReadOnly?{disabled:true}:{})}),
         button('Decline transfer',guarded(async()=>{
           await act({type:'decline-field-item-transfer',offerId:offer.offerId});
           toast('Decline retained. Current ownership unchanged; no XP changed.');
           onChange();
-        }),{class:'secondary-button','data-decline-field-item-transfer':offer.offerId})
+        }),{class:'secondary-button','data-decline-field-item-transfer':offer.offerId,...(cachedSharedSnapshotReadOnly?{disabled:true}:{})})
       ]);
       offersSection.append(card);
     }
@@ -3889,13 +3891,13 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
         await act({type:'cancel-field-item-transfer',offerId:item.transferOffer.offerId});
         toast('Transfer offer cancelled; current ownership did not change.');
         onChange();
-      }),{class:'list-button','data-cancel-field-item-transfer':item.transferOffer.offerId}));
+      }),{class:'list-button','data-cancel-field-item-transfer':item.transferOffer.offerId,...(cachedSharedSnapshotReadOnly?{disabled:true}:{})}));
     }else{
       children.push(button('Equip item',guarded(async()=>{
         await act({type:'equip-field-item',slotId:item.slotId,sourceEventId:item.eventId});
         toast('Forged item equipped in its matching slot. No XP or authority changed.');
         onChange();
-      }),{class:'list-button','data-equip-forged-item':item.itemId}));
+      }),{class:'list-button','data-equip-forged-item':item.itemId,...(cachedSharedSnapshotReadOnly?{disabled:true}:{})}));
       if(mode==='shared'&&recipients.length){
         const selector=node('select',{
           'aria-label':'Transfer recipient for '+item.title,
@@ -3915,7 +3917,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
           await act({type:'offer-field-item-transfer',itemEventId:item.eventId,recipientId,recipientRole});
           toast('Transfer offer retained. Only the designated recipient can accept; no XP changed.');
           onChange();
-        }),{class:'list-button','data-offer-field-item':item.itemId}));
+        }),{class:'list-button','data-offer-field-item':item.itemId,...(cachedSharedSnapshotReadOnly?{disabled:true}:{})}));
       }else if(mode==='shared'){
         children.push(paragraph('No other active shared player is currently available to receive an offer.','form-help'));
       }else{
@@ -3927,6 +3929,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
   return section;
 }
 function buildFieldForgeSection(){
+  const cachedSharedSnapshotReadOnly=mode==='shared'&&sharedSnapshotCacheOnly;
   const section=node('section',{'data-field-forge-root':'true'});
   const pageContext={
     mode,
@@ -3945,6 +3948,7 @@ function buildFieldForgeSection(){
   const forgedSources=new Set(record.forgedSourceEventIds||[]);
   section.append(node('h3',{class:'section-title',text:'PLAYER FIELD FORGE'}));
   section.append(paragraph('Turn one of your own earlier retained activity records into a personal field item. Each source can be forged once. Accepted offers can change the current owner only after recipient acceptance; original creator/source provenance remains unchanged. Items are not consumed and transfers grant no XP, combat statistics or authority.','form-help'));
+  if(cachedSharedSnapshotReadOnly)section.append(paragraph('Cached shared snapshot only. Source lists are inspectable offline; forging is disabled until the live server revalidates this session.','form-help'));
   for(const slot of record.equipment){
     const sources=record.fieldItemSources?.[slot.id]||[];
     const page=record.fieldItemSourcePageInfo?.[slot.id]||{
@@ -4008,7 +4012,7 @@ function buildFieldForgeSection(){
         await act({type:'forge-field-item',slotId:slot.id,sourceEventId});
         toast('Personal field item forged from your own retained activity. No XP or authority changed.');
         refreshForgePanels();
-      }),{class:'primary-button','data-forge-item':slot.id}));
+      }),{class:'primary-button','data-forge-item':slot.id,...(cachedSharedSnapshotReadOnly?{disabled:true}:{})}));
     }
     section.append(card);
   }

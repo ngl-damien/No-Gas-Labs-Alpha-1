@@ -7937,6 +7937,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
     witness_context = None
     witness_page = None
     witness_errors = []
+    cache_context = None
     cdp = context.new_cdp_session(page)
     cdp_contexts = {}
     cdp_frames = {}
@@ -9313,6 +9314,142 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         expect(reoffered_handoff_entry).to_have_attribute('data-transfer-status', 'offered')
         recovery_accept_button = incoming_recovery_offer.locator('[data-accept-field-item-transfer]')
         expect(recovery_accept_button).to_have_count(1)
+        cached_shared_snapshot_raw = witness_page.evaluate(
+            "() => localStorage.getItem('ngl.common-ground.shared-snapshot.v1')"
+        )
+        assert isinstance(cached_shared_snapshot_raw, str) and cached_shared_snapshot_raw, (
+            'The live Witness session must have written its accepted shared snapshot before cache-only replay.'
+        )
+        cached_shared_snapshot = json.loads(cached_shared_snapshot_raw)
+        cached_world = cached_shared_snapshot.get('world', {})
+        cached_event_ids = {
+            event.get('id') for event in cached_world.get('events', [])
+            if isinstance(event, dict)
+        }
+        assert cached_shared_snapshot.get('viewer', {}).get('id') == witness_id
+        assert cached_shared_snapshot.get('viewer', {}).get('role') == 'witness'
+        assert cached_world.get('revision') == witness_after_reoffer['revision']
+        assert recovery_decline_event_id in cached_event_ids
+        assert recovery_accept_offer_event_id in cached_event_ids
+
+        # A separate, unauthenticated browser receives only the last public
+        # snapshot. It may inspect the exact pending offer and retained refusal,
+        # but it must not present live-session actions as available.
+        cache_context = browser.new_context(
+            viewport={'width': 390, 'height': 844},
+            is_mobile=True,
+            has_touch=True,
+            service_workers='block'
+        )
+        cache_context.add_init_script(
+            "localStorage.setItem('ngl.common-ground.shared-snapshot.v1', " +
+            json.dumps(cached_shared_snapshot_raw) + ");"
+        )
+        cache_page = cache_context.new_page()
+        cache_page_errors = []
+        cache_page.on('pageerror', lambda error: cache_page_errors.append(str(error)))
+        cache_page.goto(url, wait_until='networkidle')
+        cache_context.set_offline(True)
+        cache_page.locator('#start-shared').tap()
+        cache_page.wait_for_function(
+            """() => document.querySelector('#mode-label')?.textContent === 'Shared snapshot · read-only' &&
+                document.querySelector('#world')?.dataset.sharedSnapshotCacheOnly === 'true'""",
+            timeout=15000
+        )
+        cache_page.locator('#character-button').tap()
+        cache_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        cache_offer = cache_page.locator(
+            '#sheet-content [data-field-transfer-offer="' + recovery_accept_offer_id + '"]'
+        )
+        expect(cache_offer).to_have_count(1)
+        expect(cache_page.locator('#sheet-content [data-field-kit-root]')).to_contain_text(
+            'Cached shared snapshot only'
+        )
+        cache_accept = cache_offer.locator('[data-accept-field-item-transfer]')
+        cache_decline = cache_offer.locator('[data-decline-field-item-transfer]')
+        expect(cache_accept).to_be_disabled()
+        expect(cache_decline).to_be_disabled()
+        cache_history = cache_offer.locator('[data-field-item-transfer-history]')
+        expect(cache_history).to_have_attribute('data-history-total', '2')
+        cache_declined_entry = cache_history.locator(
+            '[data-field-item-transfer-history-entry="' + recovery_offer['offerId'] + '"]'
+        )
+        cache_reoffered_entry = cache_history.locator(
+            '[data-field-item-transfer-history-entry="' + recovery_accept_offer_id + '"]'
+        )
+        expect(cache_declined_entry).to_have_attribute('data-transfer-status', 'declined')
+        expect(cache_reoffered_entry).to_have_attribute('data-transfer-status', 'offered')
+        cache_before = cache_page.evaluate("""() => ({
+          raw: localStorage.getItem('ngl.common-ground.shared-snapshot.v1'),
+          pending: localStorage.getItem('ngl.common-ground.pending-shared-action.v1'),
+          revision: document.querySelector('#world')?.dataset.sharedSnapshotRevision ?? null,
+          cacheOnly: document.querySelector('#world')?.dataset.sharedSnapshotCacheOnly ?? null
+        })""")
+        assert cache_before['pending'] is None
+        assert cache_before['revision'] == str(cached_world['revision'])
+        assert cache_before['cacheOnly'] == 'true'
+        cache_api_requests = []
+
+        def capture_cache_api_request(request):
+            if request.url.startswith(url.rstrip('/') + '/api/'):
+                cache_api_requests.append({
+                    'method': request.method,
+                    'path': request.url.split('?', 1)[0][len(url.rstrip('/')):]
+                })
+
+        cache_page.on('request', capture_cache_api_request)
+        cache_page.screenshot(
+            path=str(out / 'recovery-ledger-cache-only-390.png'),
+            full_page=True
+        )
+        cache_declined_entry.locator(
+            '[data-field-item-transfer-history-event-chain] summary'
+        ).tap()
+        cache_decline_link = cache_declined_entry.locator(
+            '[data-field-item-transfer-history-event-link="declined"]'
+        )
+        expect(cache_decline_link).to_be_visible()
+        cache_decline_link.tap()
+        expect(cache_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        cache_decline_card = cache_page.locator(
+            '#sheet-content [data-event-id="world:' + recovery_decline_event_id + '"]'
+        )
+        expect(cache_decline_card).to_have_count(1)
+        expect(cache_decline_card).to_have_attribute('data-event-source', 'world')
+        cache_after = cache_page.evaluate("""() => ({
+          raw: localStorage.getItem('ngl.common-ground.shared-snapshot.v1'),
+          pending: localStorage.getItem('ngl.common-ground.pending-shared-action.v1'),
+          revision: document.querySelector('#world')?.dataset.sharedSnapshotRevision ?? null,
+          cacheOnly: document.querySelector('#world')?.dataset.sharedSnapshotCacheOnly ?? null
+        })""")
+        assert cache_after == cache_before, (
+            'Offline offer and Chronicle inspection must leave the cached snapshot and pending-action store unchanged.'
+        )
+        assert not any(request['method'] == 'POST' for request in cache_api_requests), (
+            'Cache-only inspection must not send a shared action.'
+        )
+        assert not cache_page_errors, (
+            'The cache-only Field Kit journey must not produce browser errors: ' +
+            json.dumps(cache_page_errors)
+        )
+        cache_only_recovery_offer = {
+            'viewerRole': 'witness',
+            'offerId': recovery_accept_offer_id,
+            'declinedOfferId': recovery_offer['offerId'],
+            'pendingOfferVisible': True,
+            'declinedAndReofferedHistoryVisible': True,
+            'acceptDisabled': True,
+            'declineDisabled': True,
+            'declinedChronicleOpenedOffline': True,
+            'apiRequests': cache_api_requests,
+            'cacheUnchanged': cache_after == cache_before,
+            'pendingActionStored': cache_after['pending'] is not None,
+            'pageErrors': cache_page_errors,
+            'screenshot': 'recovery-ledger-cache-only-390.png'
+        }
+
         witness_before_acceptance = authoritative_snapshot(witness_page)
         recovery_accept_button.tap()
         recovery_transfer_event_id = wait_for_retained_event_id(
@@ -9780,12 +9917,15 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'exactFailureChronicleOpened': True,
             'exactPublicationChronicleOpened': True,
             'recoveryLedgerAcceptedHandoff': retry_diagnostics['recoveryLedgerIncomingOffer'],
+            'cacheOnlyRecoveryOffer': cache_only_recovery_offer,
             'inspectionPageErrors': inspection_errors,
             'pendingReceiptClearedAfterSuccess': True,
             'pageErrors': errors,
             'screenshot': screenshot.name
         }
     finally:
+        if cache_context is not None:
+            cache_context.close()
         if witness_context is not None:
             witness_context.close()
         if inspection_context is not None:
