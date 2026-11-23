@@ -7,6 +7,20 @@ const date = now => new Date(now ?? Date.now()).toISOString();
 const fail = (code, message, status = 400) => {
   throw Object.assign(new Error(message), { code, status });
 };
+function hasDenseRetainedEventHistory(events) {
+  try {
+    for (let index = 0; index < events.length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(events, String(index));
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true ||
+          !descriptor.value || typeof descriptor.value !== 'object' || Array.isArray(descriptor.value)) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 const RETRYABILITY = Object.freeze({
   GITHUB_SOURCE_UNAVAILABLE: true,
   SOURCE_CAPTURE_MISMATCH: false,
@@ -48,7 +62,7 @@ export function recordSourceArchiveAttemptFailure(original, actor, details, { no
       original.revision < 0 || !Array.isArray(original.events) || !isStrictTimestamp(original.updatedAt)) {
     fail('INVALID_WORLD', 'Source Archive failure requires a valid current world snapshot.');
   }
-  if (original.revision !== original.events.length) {
+  if (original.revision !== original.events.length || !hasDenseRetainedEventHistory(original.events)) {
     fail('INVALID_WORLD', 'Source Archive failure requires a complete retained event history.');
   }
   if (original.revision >= Number.MAX_SAFE_INTEGER) {
