@@ -950,6 +950,60 @@ test('Adversary skill counts unique challenges to another actor’s earlier vali
   assert.equal(selfRecord.skills.find(skill => skill.id === 'adversary').count, 0);
 });
 
+test('Adversary and Experiment Responder skills reject malformed present resolution requests while legacy challenges remain readable', () => {
+  const proposal = event('resolution-request-proposal', 'moonshot-proposed', witness, t1, {
+    moonshotId: 'resolution-request-moonshot',
+    title: 'A bounded question',
+    hypothesis: 'The stated condition predicts an observation.',
+    falsifier: 'A controlled observation contradicts the prediction.',
+    evidenceNeeded: 'A retained repeat measurement.'
+  });
+  const report = event('resolution-request-report', 'experiment-reported', witness, t2, {
+    reportId: 'resolution-request-report-id',
+    moonshotId: 'resolution-request-moonshot',
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The result remains inconclusive.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const legacyChallenge = event('resolution-request-legacy-challenge', 'experiment-challenged', founder, t3, {
+    challengeId: 'resolution-request-legacy-challenge-id',
+    reportId: 'resolution-request-report-id',
+    moonshotId: 'resolution-request-moonshot',
+    challengeType: 'methodology',
+    challengeText: 'The report omits a reproducible measurement setting.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const legacyWorld = { xp: 0, creations: [], events: [proposal, report, legacyChallenge] };
+  const before = structuredClone(legacyWorld);
+  assert.equal(projectCharacter(legacyWorld, founder).skills.find(skill => skill.id === 'adversary').count, 1,
+    'legacy challenges without the new field remain readable and countable under prior linkage rules');
+
+  const malformedChallenge = {
+    ...legacyChallenge,
+    id: 'resolution-request-malformed-challenge',
+    challengeId: 'resolution-request-malformed-challenge-id',
+    resolutionRequest: '   ',
+    at: t4
+  };
+  const response = event('resolution-request-malformed-response', 'experiment-challenge-responded', witness, t5, {
+    responseId: 'resolution-request-malformed-response-id',
+    challengeId: malformedChallenge.challengeId,
+    reportId: report.reportId,
+    moonshotId: report.moonshotId,
+    responseText: 'The requested measurement is still unavailable.'
+  });
+  const malformedWorld = { ...legacyWorld, events: [proposal, report, malformedChallenge, response] };
+  assert.equal(projectCharacter(malformedWorld, founder).skills.find(skill => skill.id === 'adversary').count, 0,
+    'a present whitespace-only resolution request cannot count as adversarial activity');
+  assert.equal(projectCharacter(malformedWorld, witness).skills.find(skill => skill.id === 'experiment-responder').count, 0,
+    'an invalid challenge cannot anchor original-author response progress');
+  assert.equal(projectCharacter(malformedWorld, witness).xp, 0);
+  assert.deepEqual(legacyWorld, before, 'the projection remains read-only and preserves legacy history');
+});
+
 test('Researcher and Adversary skills follow retained experiment append order through clock regression', () => {
   const proposal = event('clock-regression-proposal', 'moonshot-proposed', founder, t3, {
     moonshotId: 'clock-regression-moonshot',

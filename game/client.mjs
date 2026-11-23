@@ -4772,7 +4772,8 @@ function openExperimentChallenge(report){
     node('option',{value:'scope',text:'Scope or applicability concern'}),
     node('option',{value:'other',text:'Other challenge'})
   ]);
-  const challengeText=node('textarea',{id:'experiment-challenge-text',maxlength:'1000',rows:'4',placeholder:'State the specific gap, counterexample, or reason this report should not be accepted as verified.'});
+  const challengeText=node('textarea',{id:'experiment-challenge-text',maxlength:'1000',rows:'4',required:'required',placeholder:'State the specific gap, counterexample, or reason this report should not be accepted as verified.'});
+  const resolutionRequest=node('textarea',{id:'experiment-challenge-resolution-request',maxlength:'1000',rows:'3',required:'required',placeholder:'Name the concrete next test, observation, retained artifact, or condition that would address this challenge.'});
   const evidenceSource=node('select',{id:'experiment-challenge-evidence-source'},[]);
   evidenceSource.append(node('option',{value:'',text:'No retained artifact linked'}));
   for(const creation of (Array.isArray(world.creations)?world.creations:[])){
@@ -4800,9 +4801,10 @@ function openExperimentChallenge(report){
   form.append(
     field('Challenge category','experiment-challenge-type',challengeType),
     field('Challenge / counterargument','experiment-challenge-text',challengeText),
+    field('Requested resolution · up to 1000 Unicode code points','experiment-challenge-resolution-request',resolutionRequest),
     field('Optional retained evidence artifact','experiment-challenge-evidence-source',evidenceSource),
     field('Evidence version','experiment-challenge-evidence-version',evidenceVersion),
-    paragraph('A linked artifact identifies retained bytes only. A different actor ID is service attribution, not proof of a different real-world person or independent witness.','form-help'),
+    paragraph('The request names a next check; it is not evidence that the check occurred, a verdict, approval, or authority. A linked artifact identifies retained bytes only. A different actor ID is service attribution, not proof of a different real-world person or independent witness.','form-help'),
     node('div',{class:'button-row'},[submit])
   );
   content.append(form);
@@ -4815,10 +4817,11 @@ function openExperimentChallenge(report){
         reportId:report.reportId,
         challengeType:challengeType.value,
         challengeText:challengeText.value.trim(),
+        resolutionRequest:resolutionRequest.value.trim(),
         evidenceCreationId:((Array.isArray(world.creations)?world.creations:[]).find(creation=>creation.id===evidenceSource.value))?.id??null,
         evidenceVersion:evidenceSource.value?Number(evidenceVersion.value):null
       });
-      toast('Challenge retained · dissent preserved · not adjudicated · no XP awarded.');
+      toast('Challenge and requested next check retained · dissent preserved · not adjudicated · no XP awarded.');
       openMoonshotField();
     }finally{submit.disabled=false;}
   });
@@ -4829,8 +4832,26 @@ function openExperimentChallengeResponse(report,challenge){
     openMoonshotField(report?.moonshotId||null,challenge?.challengeId||null);
     return;
   }
+  const projectedChallenge=projectResearchRecords(
+    Array.isArray(world?.events)?world.events:[],
+    Array.isArray(world?.creations)?world.creations:[]
+  ).find(record=>record?.type==='experiment-challenged'&&record.challengeId===challenge?.challengeId);
+  if(projectedChallenge?._projection?.challengeStatus!=='linked'){
+    toast('This retained challenge is invalid or unlinked; it cannot anchor a response or progress.',true);
+    openMoonshotField(report?.moonshotId||null,challenge?.challengeId||null);
+    return;
+  }
+  const resolutionRequest=typeof challenge?.resolutionRequest==='string'&&challenge.resolutionRequest.trim()
+    ? challenge.resolutionRequest : null;
   const content=showSheet('Respond to experiment challenge','AUTHOR RESPONSE · NOT ADJUDICATION');
   content.append(paragraph('Preserve the original report author’s account beside this exact challenge. A response is append-only: it does not edit the report, resolve the dispute, verify the experiment, award XP, or grant authority.'));
+  content.append(node('p',{
+    class:'form-help',
+    'data-experiment-challenge-resolution-request':'true',
+    text:resolutionRequest
+      ? 'Requested resolution: '+resolutionRequest
+      : 'No resolution request was recorded for this legacy challenge.'
+  }));
   const form=node('form',{class:'field-card','data-experiment-challenge-response-form':'true'},[]);
   const responseText=node('textarea',{id:'experiment-challenge-response-text',maxlength:'1000',rows:'4',required:'required',placeholder:'Respond to the specific challenge. State what you can support and what remains unresolved.'});
   const submit=node('button',{id:'respond-experiment-challenge',class:'primary-button',type:'submit',text:'Preserve author response'});
@@ -4856,6 +4877,11 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
   const content=showSheet('Moonshot Field','BOUNDED RESEARCH · PROPOSALS ARE NOT RESULTS');
   content.dataset.moonshotSnapshotRevision=moonshotSnapshotRevision===null?'unavailable':String(moonshotSnapshotRevision);
   content.dataset.moonshotSnapshotFreshness=mode==='shared'?(isSharedSnapshotStale()?'stale':'current'):'private';
+  const projectedResearchRecords=projectResearchRecords(
+    Array.isArray(moonshotSnapshot?.events)?moonshotSnapshot.events:[],
+    Array.isArray(moonshotSnapshot?.creations)?moonshotSnapshot.creations:[]
+  );
+  const projectedResearchByEventId=new Map(projectedResearchRecords.map(record=>[record.id,record]));
   content.append(paragraph('Create a bounded research proposal with a hypothesis, a falsification condition, and the evidence needed. Founder and Witness can propose. Saving retains the question; it does not execute an experiment, award XP, establish truth, or authorize world changes.'));
   const sourceAnalystObjective = focusLocalNpcRoleId === 'source-analyst' && viewer?.id && viewer?.role
     ? getQuestTrail(world, viewer).find(item => item.id === viewer.role + '-source-archive-contrast')
@@ -5338,11 +5364,20 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
       }
       const challenges=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='experiment-challenged'&&event.reportId===report.reportId);
       for(const challenge of challenges){
-        const challengeCard=node('div',{class:'field-card','data-research-activity-id':challenge.challengeId,'data-research-event-id':challenge.id,tabindex:'-1'},[
+        const projectedChallenge=projectedResearchByEventId.get(challenge.id);
+        const challengeStatus=projectedChallenge?._projection?.challengeStatus||'unavailable';
+        const challengeCard=node('div',{
+          class:'field-card',
+          'data-research-activity-id':challenge.challengeId,
+          'data-research-event-id':challenge.id,
+          'data-experiment-challenge-status':challengeStatus,
+          tabindex:'-1'
+        },[
           node('h4',{text:'Retained challenge'}),
-          node('span',{class:'pill',text:'DISSENT · NOT ADJUDICATED'}),
+          node('span',{class:'pill',text:challengeStatus==='linked'?'DISSENT · NOT ADJUDICATED':'DISSENT · UNLINKED HISTORY'}),
           paragraph('Challenge category: '+String(challenge.challengeType||'other').replaceAll('-',' ')),
           paragraph('Counterargument: '+(challenge.challengeText||'not recorded')),
+          paragraph('Requested resolution: '+(typeof challenge.resolutionRequest==='string'&&challenge.resolutionRequest.trim()?challenge.resolutionRequest:'Not recorded in this legacy challenge.'),'form-help'),
           paragraph('Submitted by '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')+' · '+(challenge.at||'time unavailable'),'form-help')
         ]);
         if(focusRecordTarget
@@ -5355,7 +5390,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
         }else challengeCard.append(paragraph('No retained artifact is linked to this challenge.','evidence-warning'));
         const responses=(Array.isArray(world.events)?world.events:[])
           .filter(event=>event?.type==='experiment-challenge-responded'&&event.challengeId===challenge.challengeId);
-        if(responses.length===1){
+        if(responses.length===1&&challengeStatus==='linked'){
           const response=responses[0];
           if(response.reportId===report.reportId&&response.moonshotId===report.moonshotId&&sameResearchActor(response.actor,report.actor)){
             const responseCard=node('div',{class:'field-card','data-research-activity-id':response.responseId,'data-research-event-id':response.id,tabindex:'-1'},[
@@ -5369,12 +5404,17 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
           }else{
             challengeCard.append(paragraph('The response does not bind unambiguously to this report and author; no reply is selected.','evidence-warning'));
           }
+        }else if(responses.length===1){
+          challengeCard.append(paragraph('A response exists in history, but this challenge is not validly linked; no reply is selected.','evidence-warning'));
         }else if(responses.length===0){
-          if(sameResearchActor(report.actor,viewer)){
+          if(challengeStatus!=='linked'){
+            challengeCard.append(paragraph('This retained challenge is invalid or unlinked; it cannot anchor a response or progress.','evidence-warning'));
+          }else if(sameResearchActor(report.actor,viewer)){
             challengeCard.append(button('Respond to this challenge →',()=>openExperimentChallengeResponse(report,challenge),{class:'list-button'}));
           }else challengeCard.append(paragraph('No original-author response retained yet.','form-help'));
         }else challengeCard.append(paragraph('Response history is ambiguous; no reply is selected.','evidence-warning'));
         reportCard.append(challengeCard);
+      }        reportCard.append(challengeCard);
       }
       if(!sameResearchActor(report.actor,viewer))reportCard.append(button('Challenge this report →',()=>openExperimentChallenge(report),{class:'list-button'}));
       card.append(reportCard);

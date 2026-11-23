@@ -106,7 +106,7 @@ const actionFields = {
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'evaluate-source-archive-predicate': ['type', 'creationId', 'version', 'publicRetentionAcknowledgementVersion', 'predicateKind', 'literal', 'requestId'],
-  'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
+  'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'resolutionRequest', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'respond-experiment-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
   'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'sourceSnapshotRevision', 'sourceSnapshotReceipt', 'originFailureEventId', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId'],
@@ -285,6 +285,7 @@ function preflightAction(input) {
       requiredId(input.reportId, 'Experiment report ID');
       if (!challengeTypes.has(input.challengeType)) fail('INVALID_CHALLENGE_TYPE', 'Choose a bounded challenge category.');
       preflightText(input.challengeText, 1000, 'Challenge text', { required: true });
+      preflightText(input.resolutionRequest, 1000, 'Resolution request', { required: true });
       const hasEvidenceId = input.evidenceCreationId !== undefined && input.evidenceCreationId !== null;
       const hasEvidenceVersion = input.evidenceVersion !== undefined && input.evidenceVersion !== null;
       if (hasEvidenceId !== hasEvidenceVersion) fail('INVALID_EVIDENCE', 'Choose both a retained challenge-evidence artifact and version, or neither.');

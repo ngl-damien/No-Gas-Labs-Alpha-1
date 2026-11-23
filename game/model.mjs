@@ -1,7 +1,7 @@
 import {createArtifact,readSatireIssueArtifact,findSatireIssuePublication,indexSatireIssuePublications,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX,evaluateGitHubSourceArchivePredicate,GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR} from './artifacts.mjs';
 import {COMBAT_EVENT_TYPES, projectCombatHistory, resolveCombatMove} from './combat.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
-import {SOURCE_OBSERVATION_SOURCE_KINDS,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor,hasSourcePredicatePublicRetentionAcknowledgement,stripCompleteResponseHistoryPositions,isValidSourceObservationBinding,isValidSourceFailureEventId} from './research-records.mjs';
+import {SOURCE_OBSERVATION_SOURCE_KINDS,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,sourceObservationRequestMaterial,projectResearchRecords,retainedWorldEventHistoryOptions,sameResearchActor,hasSourcePredicatePublicRetentionAcknowledgement,stripCompleteResponseHistoryPositions,isValidSourceObservationBinding,isValidSourceFailureEventId} from './research-records.mjs';
 import {projectCollaboratorPackets,isExactCollaboratorSourceRecord} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateCollaboratorResponseSnapshot} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS,MAX_FIELD_INVENTORY_ITEMS} from './character-sheet.mjs';
@@ -369,9 +369,14 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const matches=world.events.filter(e=>e.type==='experiment-reported'&&e.reportId===reportId);
       if(matches.length!==1||!isStrictTimestamp(matches[0].at)||world.events.indexOf(matches[0])<0)fail('NOT_FOUND','A retained earlier experiment report is required before challenging it.',404);
       const report=matches[0];
+      const reportProjection=projectResearchRecords(world.events,world.creations,retainedWorldEventHistoryOptions(world,world.events))
+        .find(record=>record?.type==='experiment-reported'&&record.reportId===reportId);
+      if(reportProjection?._projection?.proposalStatus!=='linked'||reportProjection?._projection?.reportIdUnique!==true)
+        fail('INVALID_CHALLENGE_TARGET','A uniquely linked earlier experiment report is required before challenging it.',409);
       if(sameResearchActor(report.actor,who))fail('SELF_CHALLENGE','A different session actor (ID and role) must challenge this report.',409);
       if(!challengeTypes.has(action.challengeType))fail('INVALID_CHALLENGE_TYPE','Choose a bounded challenge category.');
       const challengeText=text(action.challengeText,1000,'Challenge text');
+      const resolutionRequest=text(action.resolutionRequest,1000,'Resolution request');
       const hasEvidenceId=action.evidenceCreationId!==undefined&&action.evidenceCreationId!==null;
       const hasEvidenceVersion=action.evidenceVersion!==undefined&&action.evidenceVersion!==null;
       if(hasEvidenceId!==hasEvidenceVersion)fail('INVALID_EVIDENCE','Choose both a retained challenge-evidence artifact and version, or neither.');
@@ -384,7 +389,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       }
       const challengeId=uid('experiment-challenge');
       result={challengeId};
-      recordEvent('experiment-challenged',{challengeId,reportId,moonshotId:report.moonshotId,challengeType:action.challengeType,challengeText,evidenceCreationId,evidenceVersion});
+      recordEvent('experiment-challenged',{challengeId,reportId,moonshotId:report.moonshotId,challengeType:action.challengeType,challengeText,resolutionRequest,evidenceCreationId,evidenceVersion});
       break;
     }
     case 'respond-experiment-challenge':{
@@ -392,6 +397,10 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const challenges=world.events.filter(item=>item.type==='experiment-challenged'&&item.challengeId===challengeId);
       if(challenges.length!==1)fail('NOT_FOUND','A unique retained experiment challenge is required before responding.',404);
       const challenge=challenges[0];
+      const challengeProjection=projectResearchRecords(world.events,world.creations,retainedWorldEventHistoryOptions(world,world.events))
+        .find(record=>record?.type==='experiment-challenged'&&record.challengeId===challengeId);
+      if(challengeProjection?._projection?.challengeStatus!=='linked')
+        fail('INVALID_CHALLENGE_TARGET','A uniquely linked valid challenge is required before an author response.',409);
       const challengeIndex=world.events.indexOf(challenge);
       const reports=world.events.filter(item=>item.type==='experiment-reported'&&item.reportId===challenge.reportId);
       if(reports.length!==1)fail('NOT_FOUND','The challenged experiment report is unavailable or ambiguous.',404);

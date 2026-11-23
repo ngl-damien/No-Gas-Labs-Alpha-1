@@ -509,14 +509,21 @@ export function projectResearchRecords(input, retainedCreations = [], {
     if (!proposal || proposal.index >= index) return;
     reportById.set(event.reportId, { event, index });
   });
-  const challengeDetailsAreValid = event =>
-    !unsafeEvents.has(event) &&
-    event?.type === 'experiment-challenged' &&
-    hasText(event.actor?.id) &&
-    ['founder', 'witness'].includes(event.actor.role) &&
-    EXPERIMENT_CHALLENGE_TYPES.has(event.challengeType) &&
-    hasText(event.challengeText) &&
-    Array.from(event.challengeText).length <= 1000;
+  const challengeDetailsAreValid = event => {
+    const hasResolutionRequest = Object.hasOwn(event, 'resolutionRequest');
+    const resolutionRequestValid = !hasResolutionRequest ||
+      (hasText(event.resolutionRequest) &&
+        event.resolutionRequest.trim() === event.resolutionRequest &&
+        Array.from(event.resolutionRequest).length <= 1000);
+    return !unsafeEvents.has(event) &&
+      event?.type === 'experiment-challenged' &&
+      hasText(event.actor?.id) &&
+      ['founder', 'witness'].includes(event.actor.role) &&
+      EXPERIMENT_CHALLENGE_TYPES.has(event.challengeType) &&
+      hasText(event.challengeText) &&
+      Array.from(event.challengeText).length <= 1000 &&
+      resolutionRequestValid;
+  };
   const challengeEvidenceIsValid = (event, evidenceStatus) =>
     evidenceStatus === 'linked' ||
     (evidenceStatus === 'not-provided' &&

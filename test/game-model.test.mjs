@@ -606,6 +606,16 @@ test('experiment report challenges use composite actor identity in the model and
   const projected=projectResearchRecords(challenged.world.events,challenged.world.creations)
     .find(record=>record.type==='experiment-challenged'&&record.challengeId===event.challengeId);
   assert.equal(projected?._projection.targetReportStatus,'linked');
+  assert.equal(projected?._projection.challengeStatus,'linked');
+  const malformedChallengeWorld=structuredClone(challenged.world);
+  malformedChallengeWorld.events.at(-1).resolutionRequest='   ';
+  await assert.rejects(
+    applyAction(malformedChallengeWorld,{
+      type:'respond-experiment-challenge',challengeId:event.challengeId,
+      responseText:'The missing measurement setting is still unavailable.'
+    },founder,{now:'2026-10-17T12:00:04.000Z'}),
+    error=>error.code==='INVALID_CHALLENGE_TARGET'
+  );
   await assert.rejects(
     applyAction(report.world,action,founder,{now:'2026-10-17T12:00:03.000Z'}),
     error=>error.code==='SELF_CHALLENGE'

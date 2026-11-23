@@ -371,13 +371,6 @@ export function projectCharacter(world, viewer, options = {}) {
       ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome);
   });
   const experimentReports = mine(validExperimentReports, viewer);
-  const challengeCounts = new Map();
-  for (const event of allEvents) {
-    if (event?.type === 'experiment-challenged' && typeof event.challengeId === 'string') {
-      challengeCounts.set(event.challengeId, (challengeCounts.get(event.challengeId) || 0) + 1);
-    }
-  }
-  const reportById = new Map(validExperimentReports.map(event => [event.reportId, event]));
   const retainedVersions = retainedVersionIndex(world);
   const retainedPublications = retainedPublicationEvents(world);
   const retainedPublicationByVersion = new Map(retainedPublications.map(event => [
@@ -460,34 +453,19 @@ export function projectCharacter(world, viewer, options = {}) {
     'publish', world?.methods, allEvents, ['creationId', 'version'], viewer,
     event => event.version > 1 && retainedPublicationIds.has(event.id) && hasUniquePriorRepair(event)
   );
-  const experimentChallenges = events.filter(event => {
-    const report = reportById.get(event?.reportId);
-    const reportPosition = report ? (positionByEvent.get(report) ?? -1) : -1;
-    const challengePosition = positionByEvent.get(event) ?? -1;
-    if (event.type !== 'experiment-challenged' ||
-        typeof event.challengeId !== 'string' || challengeCounts.get(event.challengeId) !== 1 ||
-        typeof event.reportId !== 'string' || !report ||
-        typeof event.moonshotId !== 'string' || report.moonshotId !== event.moonshotId ||
-        sameResearchActor(report.actor, event.actor) ||
-        !['founder', 'witness'].includes(report.actor?.role) ||
-        !['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'].includes(event.challengeType) ||
-        typeof event.challengeText !== 'string' || !event.challengeText.trim() ||
-        Array.from(event.challengeText).length > 1000 ||
-        reportPosition < 0 || challengePosition <= reportPosition ||
-        !isStrictTimestamp(event.at) || !isStrictTimestamp(report.at)) return false;
-
-    const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
-    const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
-    if (hasEvidenceId !== hasEvidenceVersion) return false;
-    if (!hasEvidenceId && (
-      (event.evidenceCreationId !== undefined && event.evidenceCreationId !== null) ||
-      (event.evidenceVersion !== undefined && event.evidenceVersion !== null)
-    )) return false;
-    if (hasEvidenceId) {
-      if (!hasEarlierPublishedVersionForEvent(event.evidenceCreationId, event.evidenceVersion, event)) return false;
-    }
-    return true;
-  });
+  // Quest Board, Evidence Archive and Character Sheet share one fail-closed
+  // research projection; malformed present resolution requests cannot mint skill.
+  const experimentResearchRecords = projectResearchRecords(
+    world?.events, world?.creations, retainedWorldEventHistoryOptions(world, world?.events)
+  );
+  const experimentChallenges = experimentResearchRecords.filter(record =>
+    record?.type === 'experiment-challenged' &&
+    record?._projection?.recordSafe === true &&
+    record?._projection?.eventIdUnique === true &&
+    record?._projection?.proposalStatus === 'linked' &&
+    record?._projection?.challengeStatus === 'linked' &&
+    sameResearchActor(record.actor, viewer)
+  );
   const studyIdCounts = new Map();
   for (const event of allEvents) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const publishedStudyVersions = retainedPublishedVersionKeys;
@@ -592,9 +570,7 @@ export function projectCharacter(world, viewer, options = {}) {
   const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
     (record.challenges || []).flatMap(challenge => challenge.responses || [])
   ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
-  // Reuse the defensive experiment-research projection so a response counts
-  // only when its unique event, challenge, report, actor and chronology link.
-  const experimentResearchRecords = projectResearchRecords(world?.events, world?.creations, retainedWorldEventHistoryOptions(world, world?.events));
+  // The same projection above also binds original-author responses and source predicates.
   const experimentChallengeResponses = experimentResearchRecords.filter(record =>
     record?.type === 'experiment-challenge-responded' &&
     record?._projection?.targetChallengeStatus === 'linked' &&
