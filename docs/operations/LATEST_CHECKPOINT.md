@@ -32,7 +32,9 @@ Exact head: `c86ea31e90b7944efd1a4bbcfb48a95366da21c1`.
 - PWA build [45108946187](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946187): PASS.
 - Live Source Archive [45108946125](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946125): PASS.
 - Academy [45108946215](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946215), Council [45108946160](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946160), and Combat [45108946201](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946201): PASS.
-- Quest Board mobile [45108946332](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946332), Synthesis mobile [45108946117](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946117), and Android [45108946352](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946352): IN_PROGRESS at checkpoint capture. No terminal mobile/Android result is claimed.
+- Quest Board mobile [45108946332](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946332): PASS at 320px/390px; artifact [14788943037](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946332/artifacts/14788943037). Both primary journeys reported `pageErrors=[]`; the 390px path passed the new close-panel/read-only revision-XP-event-ID assertions and completed the Witness challenge → original Founder response loop.
+- Synthesis mobile [45108946117](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946117): PASS at 320px/390px; artifact [14788343453](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946117/artifacts/14788343453). Its source-archive/Relay retry subjourney reports two sandboxed iframe `SecurityError` diagnostics because the fixture lacks `allow-same-origin`; the workflow still passed and its primary journeys have no page errors.
+- Android [45108946352](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946352): IN_PROGRESS in the offline-world emulator journey after hosted preflight, SDK/Gradle setup, project-state snapshot and debug APK assembly. No terminal JUnit/instrumentation result or APK artifact is claimed.
 - Browser [45108946369](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946369): FAIL in Worker A-owned `scripts/verify-browser.py`. Exact diagnostics: nearby `guild_hall`; visible `Enter Guild Hall`; hidden legacy `Enter Forge`; `enterInstitutionHidden=true`; `modalOpen=false`; private world online and movement enabled. Handoff posted to Worker A on [PR #472 comment 7091192741](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7091192741). Worker B did not edit Browser-owned paths.
 
 ## Recovered mechanism review
@@ -55,7 +57,7 @@ Read-only inspection of the current Alpha-1 seams:
 
 ## Next execution
 
-1. Collect terminal Quest Board, Synthesis and Android results on exact head `c86ea31`; repair only failures attributable to Worker B's changed path.
+1. Collect the terminal Android JUnit/emulator result on exact head `c86ea31`; repair only failures attributable to Android-owned paths through Worker A, without crossing ownership.
 2. Preserve Worker A ownership of Browser and Android paths; use the exact handoff evidence already posted.
 3. Keep #722 synchronized to the moving #718 base through non-force two-parent merges only.
 4. Reconcile the 425-commit runtime stack against main path-by-path before any integration decision.
