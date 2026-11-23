@@ -9549,7 +9549,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         declined_handoff_entry = recovery_handoff_history.locator(
             '[data-field-item-transfer-history-entry="' + recovery_offer['offerId'] + '"]'
         )
-        recovery_handoff_history.locator('summary').tap()
+        declined_handoff_entry.locator('[data-field-item-transfer-history-event-chain] summary').tap()
         decline_history_link = declined_handoff_entry.locator(
             '[data-field-item-transfer-history-event-link="declined"]'
         )
