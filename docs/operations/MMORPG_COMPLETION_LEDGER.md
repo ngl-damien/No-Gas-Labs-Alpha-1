@@ -1,3 +1,28 @@
+## Run 327 — close completed NPC panel before the next R&D route — 2026-11-22
+
+**Candidate:** draft runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), exact head [c86ea31](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/c86ea31e90b7944efd1a4bbcfb48a95366da21c1), main base `0d950c501cf128d828ae4f263cc05a9013d7e8c1`; 425 commits ahead / 0 behind, 50 changed paths.
+
+| Gate | Status | Run 327 evidence and limit |
+|---|---|---|
+| G0 Product definition | IN_PROGRESS | No new Founder decision on supported devices, player scale, server model, or acceptance criteria. |
+| G1 Coherent playable loop | IN_PROGRESS | The mobile acceptance sequence now closes the completed Evidence Archive/Contradiction Clerk panel before returning to the Quest Board for the R&D challenge loop. This repairs test navigation; it is not a new runtime feature or a Founder-accepted end-to-end product. |
+| G2 Persistent character/world | IN_PROGRESS | The close-panel step asserts identical shared revision, XP and retained event IDs before/after. Existing R&D challenge and author-response events remain append-position-linked; no persistence architecture change was made. |
+| G3 Authoritative multiplayer | IN_PROGRESS | The R&D journey uses separate pseudonymous browser sessions. Session IDs do not prove distinct humans or production multiplayer scale. |
+| G4 Core RPG | IN_PROGRESS | No XP, inventory, mastery or reward rule changed. Research/dissent/response remain activity records, not mastery or truth. |
+| G5 Social/economic | IN_PROGRESS | No new economy, marketplace, moderation or pricing capability. |
+| G6 Persistent world/content | IN_PROGRESS | Existing Moonshot/experiment/dissent/author-response records remain visible and actor-scoped. The new panel-close assertion preserves the world history rather than generating progress. |
+| G7 Android-first | IN_PROGRESS | Android Alpha-1 [45108946352](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946352) was still in progress; no terminal emulator/JUnit or physical-device result. |
+| G8 Operational readiness | IN_PROGRESS | Full Verify [45108946214](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946214), Genesis [45108946106](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946106), PWA [45108946187](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946187), Source Archive [45108946125](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946125), Academy [45108946215](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946215), Council [45108946160](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946160), and Combat [45108946201](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946201) PASS. Quest Board [45108946332](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946332) and Synthesis [45108946117](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946117) remained in progress. Browser [45108946369](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45108946369) fails in Worker A-owned Guild Hall/Forge locator; no Worker B change to that path. |
+| G9 Founder acceptance/release | NOT_STARTED | PR #718 remains draft/unmerged; Founder trust NOT_ENROLLED. No merge, release, deployment, or Founder acceptance. |
+
+**Test-first evidence:** Quest Board run [45107185378](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45107185378) on parent head `9638377` reproduced the 390px pointer-interception failure after the 320px journey passed. Commit [c86ea31](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/c86ea31e90b7944efd1a4bbcfb48a95366da21c1) closes the completed side panel and proves the close action leaves revision, XP and event IDs unchanged. Exact-head Quest Board result is still pending at this record.
+
+**Procedural compliance:** PARTIAL. The initial inventory was accidentally bundled before root AGENTS; root instructions, shared protocol and Charter were subsequently read sequentially and the baseline restarted. Both authorized Desktop Commander devices were Offline, so no local pre-edit receipt or local Node/Playwright/Gradle execution exists. Hosted Full Verify preflight passed post-edit with warnings/failures empty; this is not a local pre-edit receipt.
+
+**Authority and evidence:** No donor repository changed. No model assertion, NPC response, receipt, browser session, or test result is promoted to truth or authority. No XP, approval, Founder trust, merge, release, or deployment occurred.
+
+---
+
 ## Run 322 — Mobile Character Record R&D acceptance — 2026-11-22
 
 **Candidate:** draft runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), exact head `5331162f2fd8df25a5a39092f8722efd321e205e`, main base `0d950c501cf128d828ae4f263cc05a9013d7e8c1`; 410 commits ahead / 0 behind, 48 changed paths.
