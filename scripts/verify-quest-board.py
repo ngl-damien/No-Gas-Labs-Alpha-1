@@ -504,6 +504,11 @@ def enter_nearby_institution(page, place_id, accessible_name, title, timeout=300
 
 def open_quest_board(page):
     page.bring_to_front()
+    # A prior Character Sheet/Skills panel can cover the HUD Places control.
+    # Close it through the real sheet affordance before starting a new route.
+    if not page.locator('#sheet').is_hidden():
+        page.locator('#sheet-close').tap()
+        expect(page.locator('#sheet')).to_be_hidden()
     wait_for_shared_world_ready(page)
     page.locator('#places-button').tap()
     route = page.get_by_role('button', name='Walk to Quest Board', exact=True)
