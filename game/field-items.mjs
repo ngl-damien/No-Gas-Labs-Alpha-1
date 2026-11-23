@@ -163,14 +163,15 @@ function retainedPublicationContext(world, history, eventCounts) {
 export function projectValidFieldItemSourceEventIds(world) {
   const empty = Object.freeze({
     ...Object.fromEntries(Object.keys(FIELD_ITEM_SOURCE_TYPES).map(slotId => [slotId, new Set()])),
-    recoveryLinks: Object.freeze([])
+    recoveryLinks: Object.freeze([]),
+    recoveryLinkScanComplete: false
   });
   try {
     const history = rows(world?.events);
     const eventCounts = uniqueEventCounts(history);
     const positionByEvent = new Map(history.map((event, index) => [event, index]));
     const failureProjection = projectSourceArchiveFailureObjects(world, { includeRecoveryLinks: true });
-    const projectedRecoveryLinks = failureProjection?.captureProjectionComplete === true &&
+    const projectedRecoveryLinks = failureProjection?.recoveryLinkScanComplete === true &&
       Array.isArray(failureProjection.recoveryLinks) ? failureProjection.recoveryLinks : [];
     const { retainedByVersion, matchedPublicationIds } =
       retainedPublicationContext(world, history, eventCounts);
