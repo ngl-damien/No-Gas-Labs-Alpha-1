@@ -5,6 +5,7 @@ import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
 import { projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
 import { projectSourceObservationRecords, sourceObservationRequestMaterial } from '../game/research-records.mjs';
+import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from '../game/artifacts.mjs';
 
 const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
 const witness = { id: 'origin-witness', name: 'Witness', role: 'witness' };
@@ -36,7 +37,7 @@ function failureEvent(id = 'source-archive-failure-event-1', at = '2026-11-22T10
   };
 }
 
-async function worldWithFailure() {
+async function worldWithPublishedObservatory() {
   const start = createWorld({ id: 'source-failure-origin-world', now: '2026-11-22T10:00:00.000Z' });
   const draft = await applyAction(start, {
     type: 'draft', kind: 'observatory', title: 'Source Observatory',
@@ -45,12 +46,57 @@ async function worldWithFailure() {
   const published = await applyAction(draft.world, {
     type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
   }, founder, { now: '2026-11-22T10:00:02.000Z' });
-  const world = structuredClone(published.world);
+  return { world: published.world, creationId: published.result.creationId };
+}
+
+async function worldWithFailure() {
+  const base = await worldWithPublishedObservatory();
+  const world = structuredClone(base.world);
   const failure = failureEvent();
   world.events.push(failure);
   world.revision = world.events.length;
   world.updatedAt = failure.at;
-  return { world, creationId: published.result.creationId, failure };
+  return { ...base, world, failure };
+}
+
+async function publishSourceArchive(world, {
+  repository = 'ngl-damien/No-Gas-Labs-Alpha-1',
+  commitSha = 'f'.repeat(40),
+  path = 'test/fixtures/failure-ledger.mjs',
+  fetchedAt = '2026-11-22T10:00:05.000Z',
+  capturedAt = '2026-11-22T10:00:06.000Z',
+  publishedAt = '2026-11-22T10:00:07.000Z',
+  retrievalMode = 'server-rechecked'
+} = {}) {
+  const bytes = Buffer.from('export const ARCHIVE_RECOVERY = "later-capture";\\n', 'utf8');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const gitBlobSha = createHash('sha1')
+    .update(Buffer.from('blob ' + bytes.length + '\\0'))
+    .update(bytes)
+    .digest('hex');
+  const html = await buildGitHubSourceArchiveBody({
+    schema: 'ngl.github-source-capture.v1',
+    retrievalMode,
+    captureId: JSON.stringify([repository, commitSha, path, sha256]),
+    repository, commitSha, path,
+    permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
+    gitBlobSha, sha256, size: bytes.length,
+    fetchedAt, capturedAt, bytesBase64: bytes.toString('base64'),
+    text: bytes.toString('utf8'), integrityStatus: 'hashes-match'
+  });
+  const draft = await applyAction(world, {
+    type: 'draft', kind: 'custom', title: 'Source Archive capture',
+    intent: GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' · ' + retrievalMode + ' projection fixture',
+    html
+  }, founder, { now: capturedAt });
+  const published = await applyAction(draft.world, {
+    type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
+  }, founder, { now: publishedAt });
+  return {
+    world: published.world,
+    creationId: published.result.creationId,
+    publicationEvent: published.world.events.at(-1)
+  };
 }
 
 function actionFor(world, creationId, options = {}) {
@@ -210,4 +256,117 @@ test('unknown, wrong-type, or snapshot-excluded failure origins are rejected', a
     }),
     error => error.code === 'SOURCE_FAILURE_ORIGIN_PREDATES_SNAPSHOT'
   );
+});
+
+
+test('a later server-rechecked capture of the same pinned target completes a two-event Founder objective without claiming receipt equality or source truth', async () => {
+  const fixture = await worldWithFailure();
+  const beforeXp = fixture.world.xp;
+  const captured = await publishSourceArchive(fixture.world);
+  const projection = projectSourceArchiveFailureObjects(captured.world);
+  assert.equal(projection.captureProjectionComplete, true);
+  const record = projection.records.find(candidate => candidate.eventId === fixture.failure.id);
+  assert.ok(record);
+  assert.equal(record.laterCaptureStatus, 'observed');
+  assert.equal(record.laterCaptureStatusLabel, 'LATER SERVER-RECHECKED CAPTURE OBSERVED');
+  assert.equal(record.laterCaptureCount, 1);
+  assert.equal(record.laterCapture.creationId, captured.creationId);
+  assert.equal(record.laterCapture.version, 1);
+  assert.equal(record.laterCapture.publicationEventId, captured.publicationEvent.id);
+  assert.equal(record.laterCapture.repository, fixture.failure.repository);
+  assert.equal(record.laterCapture.commitSha, fixture.failure.commitSha);
+  assert.equal(record.laterCapture.path, fixture.failure.path);
+  assert.ok(Date.parse(record.laterCapture.fetchedAt) > Date.parse(fixture.failure.at));
+  assert.ok(Date.parse(record.laterCapture.capturedAt) > Date.parse(fixture.failure.at));
+  assert.ok(record.laterCapture.publicationPosition > record.historyPosition);
+  assert.equal(projection.mostRecentVisibleRetryableFailure.eventId, fixture.failure.id);
+
+  const beforeQuest = JSON.stringify(captured.world);
+  const quest = getQuestTrail(captured.world, founder).find(candidate =>
+    candidate.id === 'founder-source-archive-later-capture'
+  );
+  assert.ok(quest);
+  assert.equal(quest.title, 'Capture the same pinned source after a recorded failure');
+  assert.equal(quest.target, 2);
+  assert.equal(quest.progress, 2);
+  assert.equal(quest.complete, true);
+  assert.deepEqual(quest.evidenceIds, [fixture.failure.id, captured.publicationEvent.id]);
+  assert.equal(quest.countsForQuestkeeper, false);
+  assert.match(quest.interpretation, /same repository.*full commit SHA.*path.*expected.*not retained.*not proof.*no XP/i);
+  assert.equal(JSON.stringify(captured.world), beforeQuest);
+  assert.equal(captured.world.xp, beforeXp + 100);
+
+  assert.equal(getQuestTrail(captured.world, witness).some(candidate =>
+    candidate.id === 'founder-source-archive-later-capture'
+  ), false);
+});
+
+test('client-reported or different-target Source Archive publications do not count as later server captures', async () => {
+  const fixture = await worldWithFailure();
+  const clientReported = await publishSourceArchive(fixture.world, { retrievalMode: 'client-reported' });
+  const clientProjection = projectSourceArchiveFailureObjects(clientReported.world);
+  const clientRecord = clientProjection.records.find(candidate => candidate.eventId === fixture.failure.id);
+  assert.equal(clientProjection.captureProjectionComplete, true);
+  assert.equal(clientRecord.laterCaptureStatus, 'not-observed');
+  assert.equal(clientRecord.laterCapture, null);
+
+  const differentPath = await publishSourceArchive(fixture.world, { path: 'test/fixtures/other-source.mjs' });
+  const pathProjection = projectSourceArchiveFailureObjects(differentPath.world);
+  const pathRecord = pathProjection.records.find(candidate => candidate.eventId === fixture.failure.id);
+  assert.equal(pathProjection.captureProjectionComplete, true);
+  assert.equal(pathRecord.laterCaptureStatus, 'not-observed');
+  assert.equal(pathRecord.laterCapture, null);
+});
+
+test('pre-failure captures, partial history, and duplicate publication bindings fail closed', async () => {
+  const base = await worldWithPublishedObservatory();
+  const earlier = await publishSourceArchive(base.world, {
+    fetchedAt: '2026-11-22T10:00:02.100Z',
+    capturedAt: '2026-11-22T10:00:02.200Z',
+    publishedAt: '2026-11-22T10:00:02.500Z'
+  });
+  const earlierWorld = structuredClone(earlier.world);
+  const failure = failureEvent();
+  earlierWorld.events.push(failure);
+  earlierWorld.revision = earlierWorld.events.length;
+  earlierWorld.updatedAt = failure.at;
+  const earlierProjection = projectSourceArchiveFailureObjects(earlierWorld);
+  const earlierRecord = earlierProjection.records.find(candidate => candidate.eventId === failure.id);
+  assert.equal(earlierProjection.captureProjectionComplete, true);
+  assert.equal(earlierRecord.laterCaptureStatus, 'not-observed');
+
+  const fixture = await worldWithFailure();
+  const partialWorld = structuredClone(fixture.world);
+  partialWorld.revision += 1;
+  const partialProjection = projectSourceArchiveFailureObjects(partialWorld);
+  const partialRecord = partialProjection.records.find(candidate => candidate.eventId === fixture.failure.id);
+  assert.equal(partialProjection.complete, false);
+  assert.equal(partialProjection.captureProjectionComplete, false);
+  assert.equal(partialRecord.laterCaptureStatus, 'unknown');
+  const partialQuest = getQuestTrail(partialWorld, founder).find(candidate =>
+    candidate.id === 'founder-source-archive-later-capture'
+  );
+  assert.ok(partialQuest);
+  assert.equal(partialQuest.progress, 1);
+  assert.equal(partialQuest.complete, false);
+  assert.equal(partialQuest.action, null);
+  assert.match(partialQuest.blockedReason, /partial|incomplete|ambiguous/i);
+
+  const later = await publishSourceArchive(fixture.world);
+  const ambiguousWorld = structuredClone(later.world);
+  const originalPublication = ambiguousWorld.events.find(event =>
+    event.id === later.publicationEvent.id
+  );
+  ambiguousWorld.events.push({
+    ...originalPublication,
+    id: 'duplicate-source-archive-publication-1'
+  });
+  ambiguousWorld.revision = ambiguousWorld.events.length;
+  const ambiguousProjection = projectSourceArchiveFailureObjects(ambiguousWorld);
+  const ambiguousRecord = ambiguousProjection.records.find(candidate =>
+    candidate.eventId === fixture.failure.id
+  );
+  assert.equal(ambiguousProjection.captureProjectionComplete, false);
+  assert.equal(ambiguousRecord.laterCaptureStatus, 'unknown');
+  assert.equal(ambiguousRecord.laterCapture, null);
 });
