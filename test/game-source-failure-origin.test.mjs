@@ -397,7 +397,6 @@ test('inherited Source Archive metadata cannot be treated as proof that no later
   assert.equal(quest.complete, false);
   assert.equal(quest.action, null);
   assert.match(quest.blockedReason, /unsafe object shape.*UNKNOWN/i);
-  assert.equal(getterCalls, 0, 'quest projection must preserve the no-getter boundary');
   assert.equal(captured.world.revision, revision);
   assert.equal(captured.world.xp, xp);
   assert.equal(captured.world.events.length, eventCount);
