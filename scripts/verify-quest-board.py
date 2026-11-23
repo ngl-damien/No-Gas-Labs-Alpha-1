@@ -9361,6 +9361,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         expect(recovery_lineage).to_contain_text(publication_event_id)
         recovery_handoff_history = witness_recovery_item.locator('[data-field-item-transfer-history]')
         expect(recovery_handoff_history).to_have_attribute('data-history-total', '2')
+        recovery_handoff_history.locator('summary').tap()
         declined_handoff_entry = recovery_handoff_history.locator(
             '[data-field-item-transfer-history-entry="' + recovery_offer['offerId'] + '"]'
         )
@@ -9377,6 +9378,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             '[data-field-item-transfer-history-event-link="accepted"]'
         )
         expect(accepted_history_link).to_have_attribute('data-chronicle-event-id', recovery_transfer_event_id)
+        expect(accepted_history_link).to_be_visible()
         decline_history_link = declined_handoff_entry.locator(
             '[data-field-item-transfer-history-event-link="declined"]'
         )
@@ -9407,9 +9409,11 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         declined_handoff_entry = recovery_handoff_history.locator(
             '[data-field-item-transfer-history-entry="' + recovery_offer['offerId'] + '"]'
         )
+        recovery_handoff_history.locator('summary').tap()
         decline_history_link = declined_handoff_entry.locator(
             '[data-field-item-transfer-history-event-link="declined"]'
         )
+        expect(decline_history_link).to_be_visible()
         witness_before_decline_chronicle = authoritative_snapshot(witness_page)
         decline_history_link.tap()
         expect(witness_page.locator('#sheet-title')).to_have_text('World Chronicle')
