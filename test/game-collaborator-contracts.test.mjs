@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { projectCollaboratorPackets, getCollaboratorRecordTargets, matchesCollaboratorRecordTarget } from '../game/collaborator-contracts.mjs';
+import { projectCollaboratorPackets, getCollaboratorRecordTargets, matchesCollaboratorRecordTarget, isExactCollaboratorSourceRecord } from '../game/collaborator-contracts.mjs';
+import { projectResearchRecords } from '../game/research-records.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -448,4 +449,49 @@ test('collaborator prompt discloses the actual omitted-ID cap', () => {
     const payload = JSON.parse(packet.packetJson);
     assert.ok(payload.omittedEventIds.length <= 64, packet.id);
   }
+});
+
+
+test('linked original-author response is included in bounded collaborator packets as attributed speech', () => {
+  const world = researchWorld();
+  const responseEvent = {
+    id: 'response-event-1',
+    type: 'experiment-challenge-responded',
+    responseId: 'response-1',
+    challengeId: 'challenge-1',
+    reportId: 'report-1',
+    moonshotId: 'moonshot-1',
+    actor: witness,
+    at: '2026-10-29T04:03:00.000Z',
+    responseText: 'The observation remains reported; I have not supplied the missing control.'
+  };
+  world.events.push(responseEvent);
+  world.revision += 1;
+  const before = structuredClone(world);
+  const packets = Object.fromEntries(projectCollaboratorPackets(world).map(packet => [packet.id, packet]));
+  const expectedRefs = ['proposal-event-1', 'report-event-1', 'challenge-event-1', 'response-event-1'];
+  assert.deepEqual(packets.synthesizer.inputRefs, expectedRefs,
+    'Synthesis must receive the exact original-author response beside the challenge it answers.');
+  assert.ok(packets.adversary.inputRefs.includes('response-event-1'),
+    'The adversary must inspect the attributed reply as well as the challenge.');
+  const responseProjection = projectResearchRecords(world.events, world.creations)
+    .find(record => record.type === 'experiment-challenge-responded');
+  const payload = JSON.parse(packets.synthesizer.packetJson);
+  const compactResponse = payload.inputRecords.find(record => record.eventId === 'response-event-1');
+  assert.ok(compactResponse);
+  assert.equal(compactResponse.responseSemantics, 'attributed-speech-not-adjudication');
+  assert.equal(compactResponse.challengeId, 'challenge-1');
+  assert.equal(compactResponse.reportId, 'report-1');
+  assert.equal(compactResponse.responseText, responseEvent.responseText);
+  assert.equal(isExactCollaboratorSourceRecord(compactResponse, responseProjection), true);
+  assert.equal(payload.authority, 'advisory-only');
+  assert.equal(payload.mayWriteCanonicalState, false);
+  assert.equal(payload.mayGrantAuthority, false);
+  assert.equal(payload.mayAwardProgress, false);
+  assert.equal(payload.mayCertifyTruthOrExecution, false);
+  const archivistTarget = getCollaboratorRecordTargets(packets.archivist)
+    .find(target => target.eventId === 'response-event-1');
+  assert.ok(archivistTarget);
+  assert.equal(matchesCollaboratorRecordTarget(responseEvent, archivistTarget), true);
+  assert.deepEqual(world, before, 'collaborator projection must not mutate retained response history');
 });
