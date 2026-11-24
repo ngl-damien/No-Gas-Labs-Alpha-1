@@ -3312,6 +3312,130 @@ test('world canvas publishes renderer-local player, camera and route telemetry w
 });
 
 
+test('TownSquare pending reports become actor-scoped map objects until a retained Founder review replaces them', async () => {
+  const project = worldViewModule.projectTownSquareReviewObjects;
+  const projectPointer = pixelWorldViewModule.projectTownSquareReviewPointerTarget;
+  assert.equal(typeof project, 'function');
+  assert.equal(typeof projectPointer, 'function');
+
+  const base = Date.parse('2026-11-24T12:00:00.000Z');
+  const at = offset => new Date(base + offset).toISOString();
+  const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const author = { id: 'pending-map-author', name: 'Message Author', role: 'witness' };
+  const reporter = { id: 'pending-map-reporter', name: 'Reporting Witness', role: 'witness' };
+  const unrelated = { id: 'pending-map-unrelated', name: 'Unrelated Witness', role: 'witness' };
+  const created = createWorld({ id: 'town-square-pending-review-map', now: at(0) });
+  const posted = await applyAction(created, {
+    type: 'post-message', text: 'A public message with a private pending report.'
+  }, author, { now: at(1000) });
+  const reportDetails = 'PRIVATE PENDING REPORT DETAILS';
+  const reported = await applyAction(posted.world, {
+    type: 'report-message', messageId: posted.result.messageId,
+    reason: 'privacy', details: reportDetails
+  }, reporter, { now: at(2000) });
+  const postEvent = posted.world.events.at(-1);
+  const reportEvent = reported.world.events.at(-1);
+  const before = structuredClone(reported.world);
+
+  const founderProjection = project(publicWorld(reported.world, founder), founder);
+  const reporterProjection = project(publicWorld(reported.world, reporter), reporter);
+  const authorProjection = project(publicWorld(reported.world, author), author);
+  const unrelatedProjection = project(publicWorld(reported.world, unrelated), unrelated);
+
+  for (const projection of [founderProjection, reporterProjection]) {
+    assert.equal(projection.historyStatus, 'actor-visible-links-validated');
+    assert.equal(projection.totalCount, 1);
+    assert.equal(projection.objects.length, 1);
+    const object = projection.objects[0];
+    assert.equal(object.id, reportEvent.id);
+    assert.equal(object.eventId, reportEvent.id);
+    assert.equal(object.reportId, reported.result.reportId);
+    assert.deepEqual(object.sourceEventIds, [postEvent.id, reportEvent.id]);
+    assert.equal(object.status, 'awaiting-founder-review');
+    assert.equal(object.type, 'town-square-review');
+    assert.equal(object.mapVisible, true);
+    assert.equal(Object.hasOwn(object, 'details'), false);
+    assert.equal(Object.hasOwn(object, 'note'), false);
+    assert.equal(JSON.stringify(object).includes(reportDetails), false);
+    assert.ok(Object.isFrozen(object));
+    assert.ok(Object.isFrozen(object.sourceEventIds));
+    const pointerTarget = projectPointer(
+      { x: 195, y: 422 }, { x: object.x, y: object.y }, 1, 390, 844, projection.objects
+    );
+    assert.deepEqual(pointerTarget, { id: reportEvent.id, eventId: reportEvent.id });
+  }
+  assert.deepEqual(reporterProjection.objects, founderProjection.objects,
+    'Founder and reporting Witness must receive the same deterministic pending-report marker');
+  for (const projection of [authorProjection, unrelatedProjection]) {
+    assert.equal(projection.totalCount, 0);
+    assert.equal(projection.objects.length, 0,
+      'the original message author and unrelated Witness must not receive a private report marker');
+    assert.equal(projection.historyStatus, 'actor-visible-links-validated');
+  }
+
+  let interaction = null;
+  const view = Object.create(WorldView.prototype);
+  view.player = { x: founderProjection.objects[0].x, y: founderProjection.objects[0].y + 10 };
+  view.world = reported.world;
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.townSquareReviewObjects = founderProjection.objects;
+  view.callbacks = { onInteract: value => { interaction = value; }, onDiscover: () => {} };
+  view.cancelRoute = () => {};
+  view.interact(reportEvent.id, 'town-square-review');
+  assert.deepEqual(interaction, {
+    type: 'town-square-review',
+    eventId: reportEvent.id,
+    reportId: reported.result.reportId
+  }, 'the pending map object opens its exact retained report event without creating an action');
+
+  const founderPost = await applyAction(reported.world, {
+    type: 'post-message', text: 'A Founder-authored report cannot be self-reviewed.'
+  }, founder, { now: at(3000) });
+  const selfReported = await applyAction(founderPost.world, {
+    type: 'report-message', messageId: founderPost.result.messageId,
+    reason: 'other', details: 'Founder self-review boundary fixture.'
+  }, founder, { now: at(4000) });
+  const founderWithSelfReport = project(publicWorld(selfReported.world, founder), founder);
+  assert.equal(founderWithSelfReport.totalCount, 1,
+    'a Founder-authored report remains visible in Commons but is not offered as a reviewable map objective');
+  assert.equal(founderWithSelfReport.objects[0].reportId, reported.result.reportId);
+
+  const reviewed = await applyAction(selfReported.world, {
+    type: 'review-message-report', reportId: reported.result.reportId,
+    note: 'Recorded as a process step, not a factual verdict.'
+  }, founder, { now: at(5000) });
+  const reviewEvent = reviewed.world.events.at(-1);
+  const founderAfter = project(publicWorld(reviewed.world, founder), founder);
+  const reporterAfter = project(publicWorld(reviewed.world, reporter), reporter);
+  for (const projection of [founderAfter, reporterAfter]) {
+    assert.equal(projection.totalCount, 1);
+    assert.equal(projection.objects.length, 1);
+    assert.equal(projection.objects[0].eventId, reviewEvent.id,
+      'the pending report marker must be replaced by the exact retained Founder review event');
+    assert.equal(projection.objects[0].status, 'process-record-not-adjudication');
+    assert.deepEqual(projection.objects[0].sourceEventIds, [
+      postEvent.id, reportEvent.id, reviewEvent.id
+    ]);
+  }
+  assert.deepEqual(founderAfter.objects, reporterAfter.objects);
+
+  const malformed = structuredClone(reported.world);
+  const malformedReport = malformed.events.find(event =>
+    event.type === 'message-reported' && event.reportId === reported.result.reportId
+  );
+  malformedReport.messageId = 'missing-retained-message';
+  const malformedProjection = project(malformed, founder);
+  assert.equal(malformedProjection.objects.length, 0,
+    'a pending report without its exact retained message must fail closed');
+  assert.equal(malformedProjection.historyStatus, 'actor-visible-links-incomplete');
+
+  assert.deepEqual(reported.world, before, 'projection and map inspection must not mutate canonical history');
+  assert.equal(reported.world.xp, 0, 'pending-report and review map inspection is XP-neutral');
+  assert.equal(reviewed.world.xp, 0, 'recording a process review does not award XP');
+});
+
+
 test('TownSquare process-review map objects are exact, actor-scoped, and read-only', async () => {
   const project = worldViewModule.projectTownSquareReviewObjects;
   const projectPointer = pixelWorldViewModule.projectTownSquareReviewPointerTarget;

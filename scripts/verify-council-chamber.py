@@ -958,6 +958,61 @@ def run_town_square_report_review(browser, url, out, width):
         if report_one_id == report_two_id:
             raise AssertionError('Independent report events must have distinct IDs.')
 
+        founder_before_review = read_shared_state(founder_page)
+        report_events_before = [
+            event for event in founder_before_review['world']['events']
+            if event.get('type') == 'message-reported' and event.get('reportId') == report_one_id
+        ]
+        if len(report_events_before) != 1:
+            raise AssertionError('The pending map object must bind one exact retained report event.')
+        pending_report_event = report_events_before[0]
+        pending_report_details = 'Please review the retained message as a process matter; no verdict is requested.'
+
+        def assert_pending_report_map_object(page, label):
+            canvas = page.locator('#world')
+            page.wait_for_function(
+                """expected => {
+                  const canvas = document.querySelector('#world');
+                  const objects = JSON.parse(canvas?.dataset.townSquareReviewObjects || '[]');
+                  return objects.some(object =>
+                    object.eventId === expected && object.status === 'awaiting-founder-review'
+                  );
+                }""",
+                arg=pending_report_event['id'],
+                timeout=15000
+            )
+            expect(canvas).to_have_attribute('data-town-square-review-count', '1')
+            expect(canvas).to_have_attribute('data-town-square-review-visible-count', '1')
+            expect(canvas).to_have_attribute(
+                'data-town-square-review-history-status', 'actor-visible-links-validated'
+            )
+            objects = canvas.evaluate(
+                "canvas => JSON.parse(canvas.dataset.townSquareReviewObjects || '[]')"
+            )
+            if len(objects) != 1 or objects[0].get('eventId') != pending_report_event['id'] or \
+                    objects[0].get('status') != 'awaiting-founder-review':
+                raise AssertionError(label + ' must receive the exact pending report map object: ' + json.dumps(objects))
+            if set(objects[0]) != {'id', 'eventId', 'x', 'y', 'status'}:
+                raise AssertionError(label + ' pending map object must expose only navigation identity, coordinates and status.')
+            control = page.locator(
+                '[data-town-square-review-control="' + pending_report_event['id'] + '"]'
+            )
+            expect(control).to_have_count(1)
+            expect(control).to_have_text('P')
+            expect(control).to_have_attribute(
+                'data-town-square-review-status', 'awaiting-founder-review'
+            )
+            control_label = control.get_attribute('aria-label') or ''
+            serialized = json.dumps(objects) + control_label
+            if pending_report_details in serialized or 'pending TownSquare report' not in control_label:
+                raise AssertionError(label + ' pending map marker must not expose private report text and must name its bounded action.')
+            return objects
+
+        founder_pending_map = assert_pending_report_map_object(founder_page, 'Founder')
+        reporter_pending_map = assert_pending_report_map_object(reporter_page, 'reporter')
+        if founder_pending_map != reporter_pending_map:
+            raise AssertionError('Founder and reporting Witness must receive the same deterministic pending report marker.')
+
         reporter_page.wait_for_function(
             """messageId => document.querySelector('[data-commons-own-report="' + messageId + '"]')?.dataset.commonsOwnReportStatus === 'awaiting-founder-review'""",
             arg=message_one_id,
