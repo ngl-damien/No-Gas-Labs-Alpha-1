@@ -19,7 +19,7 @@ import {renderGitHubDecisionGate,renderGitHubSourceReader,shouldRenderGitHubDeci
 import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
 import {MAX_PACKET_OMITTED_IDS,projectCollaboratorPackets,getCollaboratorRecordTargets,matchesCollaboratorRecordTarget} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
-import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
+import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_FOUNDER_ACTOR_ID,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
 registerOfflineShell();
 const sharedSnapshotAcceptance=createSharedSnapshotAcceptanceGuard();
@@ -226,6 +226,9 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
         paragraph(message.myReport.reason+' · '+message.myReport.details),
         paragraph('Status reflects an explicit Founder-session process record, not a factual verdict, independent finding, moderation outcome, or NGL authority.')
       );
+      if(message.myReport.reviewWarning){
+        reportStatus.append(paragraph(message.myReport.reviewWarning,'evidence-warning'));
+      }
       if(message.myReport.reviewNote){
         reportStatus.append(paragraph('Founder session review note: '+message.myReport.reviewNote));
       }
@@ -283,14 +286,16 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
     }
     content.append(card);
   }
-  if(viewer.role==='founder'&&feed.pendingReports.length){
+  if(viewer.id===COMMONS_FOUNDER_ACTOR_ID&&viewer.role==='founder'&&(feed.pendingReports.length||feed.reviewHistoryWarning)){
     const panel=node('section',{id:'commons-pending-reports',class:'field-card'});
-    panel.append(node('h3',{text:'PENDING FOUNDER REVIEW · '+feed.pendingReportTotal}));
+    panel.append(node('h3',{text:feed.pendingReports.length?'PENDING FOUNDER REVIEW · '+feed.pendingReportTotal:'FOUNDER REVIEW HISTORY · STATUS UNAVAILABLE'}));
     panel.append(paragraph('Review notes are private to the reporting actor and Founder session. Recording a review does not change message visibility or establish factual truth, adjudication, or NGL authority.','form-help'));
+    if(feed.reviewHistoryWarning)panel.append(paragraph(feed.reviewHistoryWarning,'evidence-warning'));
     for(const report of feed.pendingReports){
       const item=node('details',{'data-commons-pending-report':report.reportId});
       item.append(node('summary',{text:report.reason+' · '+report.reporter.name+' → '+report.messageAuthor.name}));
       item.append(paragraph(report.details),paragraph(report.messageText,'form-help'));
+      if(report.reviewWarning)item.append(paragraph(report.reviewWarning,'evidence-warning'));
       if(report.canReview){
         const noteId='commons-review-note-'+report.reportId;
         const note=node('textarea',{id:noteId,rows:'2',maxlength:'500',placeholder:'Process note only; do not assert an unsupported verdict.',value:preserveInputs?(preservedValues.get(noteId)||''):''});
@@ -299,7 +304,7 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
           renderCommonsContent(content,{preserveInputs:false});
           toast('Founder session review recorded; message visibility is unchanged.');
         }),{class:'secondary-button','data-commons-review':report.reportId}));
-      }else{
+      }else if(!report.reviewWarning){
         item.append(paragraph('Self-review is blocked for this Founder session. A different authorized reviewer is not enrolled; this report remains pending.','form-help'));
       }
       panel.append(item);

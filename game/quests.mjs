@@ -5,7 +5,7 @@ import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssueP
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceArchivePredicateContrasts, projectSourceObservationRecords, sameResearchActor, retainedWorldEventHistoryOptions } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
-import { projectCommonsMessages, projectTownSquare, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
+import { COMMONS_FOUNDER_ACTOR_ID, projectCommonsMessages, projectCommonsReportReviewHistory, projectTownSquare, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
 import { projectSourceArchiveFailureObjects } from './world-view.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
@@ -370,7 +370,7 @@ function hasCompleteFounderHistorySnapshot(world, events) {
   }
 }
 
-function projectFounderCommonsReportReviewMilestone(world, viewer, events, validEventIds) {
+function projectFounderCommonsReportReviewMilestone(world, viewer, events) {
   const interpretation = 'This Founder-only objective records a Founder-session process review of a private Commons report from another actor. The retained review event is a process record, not a factual verdict. It is complete only when the exact retained original message, report and Founder review events are uniquely linked and append-ordered. It does not establish factual truth, moderation, independent review, evidence certification, approval, distinct-human identity or NGL authority. It grants no XP; NPCs, collaborators, models and UI cannot create or complete it.';
   // publicWorld() attaches historyCoverage to complete shared snapshots too.
   // Accept only a dense, revision-matched Founder receipt with zero omissions;
@@ -386,83 +386,9 @@ function projectFounderCommonsReportReviewMilestone(world, viewer, events, valid
     );
   }
 
-  const postsByMessageId = new Map();
-  const reportsById = new Map();
-  const reviewsByReportId = new Map();
-  const reviewIdCounts = new Map();
-  const append = (map, key, record) => {
-    const records = map.get(key) || [];
-    records.push(record);
-    map.set(key, records);
-  };
-
-  for (let index = 0; index < events.length; index += 1) {
-    const event = events[index];
-    if (event?.type === 'message-posted' && isSafeCommonsReviewReferenceId(event.messageId)) {
-      append(postsByMessageId, event.messageId, { event, index });
-    } else if (event?.type === 'message-reported' && isSafeCommonsReviewReferenceId(event.reportId)) {
-      append(reportsById, event.reportId, { event, index });
-    } else if (event?.type === 'message-report-reviewed') {
-      if (isSafeCommonsReviewReferenceId(event.reviewId)) {
-        reviewIdCounts.set(event.reviewId, (reviewIdCounts.get(event.reviewId) || 0) + 1);
-      }
-      if (isSafeCommonsReviewReferenceId(event.reportId)) {
-        append(reviewsByReportId, event.reportId, { event, index });
-      }
-    }
-  }
-
-  const validReviews = [];
-  let invalidReviewHistory = false;
-  for (const [reportId, reviewRecords] of reviewsByReportId) {
-    if (reviewRecords.length !== 1) {
-      invalidReviewHistory = true;
-      continue;
-    }
-    const { event: reviewEvent, index: reviewIndex } = reviewRecords[0];
-    const reportRecords = reportsById.get(reportId) || [];
-    const postRecords = postsByMessageId.get(reviewEvent.messageId) || [];
-    const reportRecord = reportRecords.length === 1 ? reportRecords[0] : null;
-    const postRecord = postRecords.length === 1 ? postRecords[0] : null;
-    const reportEvent = reportRecord?.event;
-    const postEvent = postRecord?.event;
-    const reportActor = reportEvent?.actor;
-    const postActor = postEvent?.actor;
-    const reviewActor = reviewEvent?.actor;
-    const valid = isSafeCommonsReviewReferenceId(reviewEvent.id) &&
-      validEventIds.has(reviewEvent.id) &&
-      isSafeCommonsReviewReferenceId(reportId) &&
-      isSafeCommonsReviewReferenceId(reviewEvent.messageId) &&
-      isSafeCommonsReviewReferenceId(reviewEvent.reviewId) &&
-      reviewIdCounts.get(reviewEvent.reviewId) === 1 &&
-      reportRecords.length === 1 &&
-      postRecords.length === 1 &&
-      validEventIds.has(reportEvent?.id) &&
-      validEventIds.has(postEvent?.id) &&
-      reviewEvent.messageId === reportEvent?.messageId &&
-      reviewActor?.id === viewer.id &&
-      reviewActor?.role === 'founder' &&
-      !(reportActor?.id === viewer.id && reportActor?.role === viewer.role) &&
-      ['founder', 'witness'].includes(reportActor?.role) &&
-      isSafeCommonsReviewReferenceId(reportActor?.id) &&
-      ['founder', 'witness'].includes(postActor?.role) &&
-      isSafeCommonsReviewReferenceId(postActor?.id) &&
-      !(reportActor.id === postActor.id && reportActor.role === postActor.role) &&
-      typeof reviewEvent.note === 'string' &&
-      reviewEvent.note.trim().length > 0 &&
-      isStrictTimestamp(postEvent?.at) &&
-      isStrictTimestamp(reportEvent?.at) &&
-      isStrictTimestamp(reviewEvent.at) &&
-      postRecord.index < reportRecord.index &&
-      reportRecord.index < reviewIndex;
-    if (!valid) {
-      invalidReviewHistory = true;
-      continue;
-    }
-    validReviews.push({ event: reviewEvent, index: reviewIndex });
-  }
-
-  const firstValidReview = validReviews[0]?.event ?? null;
+  const reviewHistory = projectCommonsReportReviewHistory(world);
+  const firstValidReview = reviewHistory.validReviews[0]?.event ?? null;
+  const invalidReviewHistory = reviewHistory.invalidReviewHistory;
   let action = null;
   let blockedReason = null;
   if (!firstValidReview && invalidReviewHistory) {
@@ -1420,8 +1346,8 @@ export function getQuestTrail(world, viewer, options = {}) {
   const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
   const commonsMessages = projectCommonsMessages(world, { id: actorId, role: actorRole });
   const firstCommonsMessage = commonsMessages[0] || null;
-  const founderCommonsReportReviewMilestone = actorRole === 'founder'
-    ? projectFounderCommonsReportReviewMilestone(world, viewer, events, validEventIds)
+  const founderCommonsReportReviewMilestone = actorRole === 'founder' && actorId === COMMONS_FOUNDER_ACTOR_ID
+    ? projectFounderCommonsReportReviewMilestone(world, viewer, events)
     : null;
   const guildMembership = currentPlayerGuildMembership(world, viewer, events);
   const guildLeadershipHandoffs = guildLeadershipHandoffEvents(

@@ -22,13 +22,13 @@ import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
 import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, hasSourcePredicatePublicRetentionAcknowledgement, stripCompleteResponseHistoryPositions, isValidSourceObservationBinding, isValidSourceFailureEventId } from './research-records.mjs';
-import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
+import { COMMONS_FOUNDER_ACTOR_ID, COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
 import { PLACES, PLAYER_MOVE_SPEED, findRoute, isWalkable , COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
-const CONFIG = Object.freeze({ founderId: 'damien', actors: [
-  { id: 'damien', roles: ['founder'], kind: 'human' },
+const CONFIG = Object.freeze({ founderId: COMMONS_FOUNDER_ACTOR_ID, actors: [
+  { id: COMMONS_FOUNDER_ACTOR_ID, roles: ['founder'], kind: 'human' },
   { id: 'local-forge', roles: ['executor'], kind: 'local-process' },
   { id: 'local-byte-verifier', roles: ['observer'], kind: 'local-process' }
 ] });

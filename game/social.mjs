@@ -2,6 +2,7 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { projectResearchRecords, projectSourceObservationRecords, retainedWorldEventHistoryPositions, retainedWorldEventHistoryOptions } from './research-records.mjs';
 
 export const COMMONS_CHANNEL = 'commons';
+export const COMMONS_FOUNDER_ACTOR_ID = 'damien';
 export const COMMONS_MESSAGE_LIMIT = 280;
 export const COMMONS_POSTS_PER_MINUTE = 5;
 export const COMMONS_REPORTS_PER_MINUTE = 5;
@@ -52,6 +53,166 @@ const COMMONS_FORBIDDEN_IDS = new Set(['constructor', 'prototype', '__proto__'])
 function validCommonsProjectionId(value) {
   return typeof value === 'string' && COMMONS_ID_PATTERN.test(value) &&
     !COMMONS_FORBIDDEN_IDS.has(value);
+}
+
+const COMMONS_REVIEW_NOTE_LIMIT = 500;
+const COMMONS_REVIEW_HISTORY_WARNING =
+  'A retained Commons report/review link is invalid or ambiguous; inspect its exact Chronicle history. No review is treated as recorded.';
+
+/**
+ * Validate Founder-session report reviews against their exact retained source
+ * events. This read-only projection is shared by TownSquare and the Quest Board
+ * so their status and progress cannot disagree on malformed history.
+ */
+export function projectCommonsReportReviewHistory(world) {
+  const events = eventsOf(world);
+  const eventIdCounts = new Map();
+  const postsByMessageId = new Map();
+  const reportsById = new Map();
+  const reviewsByReportId = new Map();
+  const reviewIdCounts = new Map();
+  const highWaterBefore = new Array(events.length);
+  const invalidTimestampBefore = new Array(events.length);
+  let highWater = -Infinity;
+  let priorTimestampsValid = true;
+  let invalidReviewHistory = false;
+  const append = (map, key, record) => {
+    const records = map.get(key) || [];
+    records.push(record);
+    map.set(key, records);
+  };
+
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    highWaterBefore[index] = highWater;
+    invalidTimestampBefore[index] = !priorTimestampsValid;
+    if (typeof event?.id === 'string') {
+      eventIdCounts.set(event.id, (eventIdCounts.get(event.id) || 0) + 1);
+    }
+    if (event?.type === 'message-posted' && validCommonsProjectionId(event.messageId)) {
+      append(postsByMessageId, event.messageId, { event, index });
+    } else if (event?.type === 'message-reported' && validCommonsProjectionId(event.reportId)) {
+      append(reportsById, event.reportId, { event, index });
+    } else if (event?.type === 'message-report-reviewed') {
+      if (validCommonsProjectionId(event.reportId)) {
+        append(reviewsByReportId, event.reportId, { event, index });
+      } else {
+        invalidReviewHistory = true;
+      }
+      if (validCommonsProjectionId(event.reviewId)) {
+        reviewIdCounts.set(event.reviewId, (reviewIdCounts.get(event.reviewId) || 0) + 1);
+      } else {
+        invalidReviewHistory = true;
+      }
+    }
+
+    if (isStrictTimestamp(event?.at)) {
+      const eventAt = Date.parse(event.at);
+      if (Number.isFinite(eventAt)) highWater = Math.max(highWater, eventAt);
+      else priorTimestampsValid = false;
+    } else {
+      priorTimestampsValid = false;
+    }
+  }
+
+  const validActor = actor => {
+    const key = commonsActorKey(actor);
+    return key !== null &&
+      validCommonsProjectionId(actor.id) &&
+      (actor.role !== 'founder' || actor.id === COMMONS_FOUNDER_ACTOR_ID);
+  };
+  const invalidReportIds = new Set();
+  for (const [reportId, reportRecords] of reportsById) {
+    if (reportRecords.length !== 1) {
+      invalidReportIds.add(reportId);
+      invalidReviewHistory = true;
+    }
+  }
+
+  const validReviews = [];
+  for (const [reportId, reviewRecords] of reviewsByReportId) {
+    if (reviewRecords.length !== 1) {
+      invalidReportIds.add(reportId);
+      invalidReviewHistory = true;
+      continue;
+    }
+    const { event: reviewEvent, index: reviewIndex } = reviewRecords[0];
+    const reportRecords = reportsById.get(reportId) || [];
+    const postRecords = postsByMessageId.get(reviewEvent.messageId) || [];
+    const reportRecord = reportRecords.length === 1 ? reportRecords[0] : null;
+    const postRecord = postRecords.length === 1 ? postRecords[0] : null;
+    const reportEvent = reportRecord?.event;
+    const postEvent = postRecord?.event;
+    const reportActor = reportEvent?.actor;
+    const postActor = postEvent?.actor;
+    const reviewActor = reviewEvent?.actor;
+    const note = reviewEvent.note;
+    const valid = validCommonsProjectionId(reviewEvent.id) &&
+      eventIdCounts.get(reviewEvent.id) === 1 &&
+      validCommonsProjectionId(reportId) &&
+      validCommonsProjectionId(reviewEvent.messageId) &&
+      validCommonsProjectionId(reviewEvent.reviewId) &&
+      reviewIdCounts.get(reviewEvent.reviewId) === 1 &&
+      reportRecords.length === 1 &&
+      postRecords.length === 1 &&
+      validCommonsProjectionId(reportEvent?.id) &&
+      eventIdCounts.get(reportEvent.id) === 1 &&
+      validCommonsProjectionId(postEvent?.id) &&
+      eventIdCounts.get(postEvent.id) === 1 &&
+      reviewEvent.messageId === reportEvent?.messageId &&
+      reportEvent.messageId === postEvent?.messageId &&
+      reviewActor?.id === COMMONS_FOUNDER_ACTOR_ID &&
+      reviewActor?.role === 'founder' &&
+      validActor(reportActor) &&
+      validActor(postActor) &&
+      !(reportActor.id === reviewActor.id && reportActor.role === reviewActor.role) &&
+      !(reportActor.id === postActor.id && reportActor.role === postActor.role) &&
+      postEvent.channel === COMMONS_CHANNEL &&
+      typeof postEvent.text === 'string' &&
+      postEvent.text === postEvent.text.trim() &&
+      postEvent.text.length > 0 &&
+      Array.from(postEvent.text).length <= COMMONS_MESSAGE_LIMIT &&
+      COMMONS_REASONS.includes(reportEvent.reason) &&
+      typeof reportEvent.details === 'string' &&
+      reportEvent.details === reportEvent.details.trim() &&
+      reportEvent.details.length > 0 &&
+      Array.from(reportEvent.details).length <= COMMONS_REVIEW_NOTE_LIMIT &&
+      typeof note === 'string' &&
+      note === note.trim() &&
+      note.length > 0 &&
+      Array.from(note).length <= COMMONS_REVIEW_NOTE_LIMIT &&
+      isStrictTimestamp(postEvent.at) &&
+      isStrictTimestamp(reportEvent.at) &&
+      isStrictTimestamp(reviewEvent.at) &&
+      !invalidTimestampBefore[postRecord.index] &&
+      !invalidTimestampBefore[reportRecord.index] &&
+      !invalidTimestampBefore[reviewIndex] &&
+      Date.parse(postEvent.at) >= highWaterBefore[postRecord.index] &&
+      Date.parse(reportEvent.at) >= highWaterBefore[reportRecord.index] &&
+      Date.parse(reviewEvent.at) >= highWaterBefore[reviewIndex] &&
+      postRecord.index < reportRecord.index &&
+      reportRecord.index < reviewIndex;
+    if (!valid) {
+      invalidReportIds.add(reportId);
+      invalidReviewHistory = true;
+      continue;
+    }
+    validReviews.push(Object.freeze({
+      reportId,
+      event: reviewEvent,
+      index: reviewIndex,
+      reportEvent,
+      reportIndex: reportRecord.index,
+      postEvent,
+      postIndex: postRecord.index
+    }));
+  }
+
+  return Object.freeze({
+    validReviews: Object.freeze(validReviews),
+    invalidReportIds: Object.freeze([...invalidReportIds]),
+    invalidReviewHistory
+  });
 }
 
 /**
@@ -117,16 +278,17 @@ function normalizeMutedAuthors(value, viewer) {
  */
 export function projectTownSquare(world, viewer, options = {}) {
   const events = eventsOf(world);
-  const founder = viewer?.role === 'founder';
+  const founder = viewer?.role === 'founder' && viewer?.id === COMMONS_FOUNDER_ACTOR_ID;
   const viewerKey = commonsActorKey(viewer);
   const mutedAuthors = normalizeMutedAuthors(options?.mutedAuthors, viewer);
   const mutedKeys = new Set(mutedAuthors.map(commonsActorKey));
   const latest = latestModerationRecords(world);
+  const reviewHistory = projectCommonsReportReviewHistory(world);
+  const validReviewsByReport = new Map(reviewHistory.validReviews.map(record => [record.reportId, record]));
+  const invalidReviewReportIds = new Set(reviewHistory.invalidReportIds);
   const posts = [];
   const postsById = new Map();
   const reportsByMessage = new Map();
-  const reportsById = new Map();
-  const reviewsByReport = new Map();
   const reports = [];
 
   for (let index = 0; index < events.length; index += 1) {
@@ -139,13 +301,9 @@ export function projectTownSquare(world, viewer, options = {}) {
       (founder || (viewerKey !== null && commonsActorKey(event.actor) === viewerKey))) {
       const record = { event, index };
       reports.push(record);
-      reportsById.set(event.reportId, record);
       const list = reportsByMessage.get(event.messageId) || [];
       list.push(record);
       reportsByMessage.set(event.messageId, list);
-    } else if (event?.type === 'message-report-reviewed' &&
-      (founder || reportsById.has(event.reportId))) {
-      reviewsByReport.set(event.reportId, { event, index });
     }
   }
 
@@ -167,21 +325,23 @@ export function projectTownSquare(world, viewer, options = {}) {
       const ownReportRecord = viewerKey === null
         ? null
         : [...messageReports].reverse().find(report => commonsActorKey(report.event.actor) === viewerKey) ?? null;
-      const reportReview = ownReportRecord
-        ? reviewsByReport.get(ownReportRecord.event.reportId) ?? null
-        : null;
+      const reportId = ownReportRecord?.event.reportId ?? null;
+      const reportReview = reportId ? validReviewsByReport.get(reportId) ?? null : null;
+      const reviewUnavailable = reportId ? invalidReviewReportIds.has(reportId) : false;
+      const reviewWarning = reviewUnavailable ? COMMONS_REVIEW_HISTORY_WARNING : null;
       const subsequentModeration = ownReportRecord && moderation?.index > ownReportRecord.index
         ? moderation
         : null;
       const myReport = ownReportRecord ? {
-        reportId: ownReportRecord.event.reportId,
+        reportId,
         reason: ownReportRecord.event.reason,
         details: ownReportRecord.event.details,
         at: ownReportRecord.event.at,
-        status: reportReview ? 'founder-review-recorded' : 'awaiting-founder-review',
+        status: reportReview ? 'founder-review-recorded' : reviewUnavailable ? 'review-status-unavailable' : 'awaiting-founder-review',
         reviewId: reportReview?.event.reviewId ?? null,
         reviewNote: reportReview?.event.note ?? null,
         reviewAt: reportReview?.event.at ?? null,
+        reviewWarning,
         subsequentModerationEventId: subsequentModeration?.event.id ?? null,
         subsequentModerationDisposition: subsequentModeration?.event.disposition ?? null
       } : null;
@@ -209,18 +369,26 @@ export function projectTownSquare(world, viewer, options = {}) {
       };
     });
 
-  const pending = founder ? reports.filter(report =>
-    !reviewsByReport.has(report.event.reportId)
-  ).sort((a, b) => b.index - a.index) : [];
+  const seenPendingReportIds = new Set();
+  const pending = founder ? reports.filter(report => {
+    const reportId = report.event.reportId;
+    if (!validCommonsProjectionId(reportId) || seenPendingReportIds.has(reportId) ||
+        validReviewsByReport.has(reportId)) return false;
+    seenPendingReportIds.add(reportId);
+    return true;
+  }).sort((a, b) => b.index - a.index) : [];
   const pendingReports = pending.slice(0, 100).map(({ event }) => {
     const post = postsById.get(event.messageId)?.event;
+    const reviewUnavailable = invalidReviewReportIds.has(event.reportId);
     return {
       reportId: event.reportId,
       messageId: event.messageId,
       reason: event.reason,
       details: event.details,
       at: event.at,
-      canReview: !(event.actor?.id === viewer?.id && event.actor?.role === viewer?.role),
+      reviewStatus: reviewUnavailable ? 'review-status-unavailable' : 'awaiting-founder-review',
+      reviewWarning: reviewUnavailable ? COMMONS_REVIEW_HISTORY_WARNING : null,
+      canReview: !reviewUnavailable && !(event.actor?.id === viewer?.id && event.actor?.role === viewer?.role),
       reporter: {
         id: event.actor?.id ?? '',
         name: event.actor?.name ?? 'Unknown actor',
@@ -244,6 +412,7 @@ export function projectTownSquare(world, viewer, options = {}) {
     omittedMessageCount: Math.max(0, posts.length - recentPosts.length),
     pendingReportTotal: pending.length,
     omittedPendingReportCount: Math.max(0, pending.length - pendingReports.length),
+    reviewHistoryWarning: reviewHistory.invalidReviewHistory ? COMMONS_REVIEW_HISTORY_WARNING : null,
     canPost: true,
     founder
   };
