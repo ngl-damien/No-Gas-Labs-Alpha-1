@@ -552,11 +552,26 @@ function validateHistory(world) {
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), experimentChallenges = new Map(), experimentResponseIds = new Set(), respondedExperimentChallengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
   const eventPositions = new Map(), eventById = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
   // Keep collaborator snapshot counts identical to the role-redacted public-world projection.
-  const commonsReportsById = buildCommonsReportIndex(world.events);
+  const commonsReportsById = new Map();
+  for (const source of world.events) {
+    if (source?.type === 'message-reported' && typeof source.reportId === 'string') {
+      commonsReportsById.set(source.reportId, source);
+    }
+  }
+  const isPrivateCommonsEventFor = (source, actor) => {
+    if (actor?.role === 'founder') return false;
+    if (source?.type === 'message-reported') {
+      return source.actor?.id !== actor?.id || source.actor?.role !== actor?.role;
+    }
+    if (source?.type === 'message-report-reviewed') {
+      const report = commonsReportsById.get(source.reportId);
+      return report?.actor?.id !== actor?.id || report?.actor?.role !== actor?.role;
+    }
+    return false;
+  };
   const visibleEventCountFor = (actor, endIndex) => world.events.slice(0, endIndex).filter(source =>
     actor?.role === 'founder' ||
-    (!['draft', 'repair'].includes(source.type) &&
-      !isPrivateCommonsHistoryEvent(source, actor, commonsReportsById))
+    (!['draft', 'repair'].includes(source.type) && !isPrivateCommonsEventFor(source, actor))
   ).length;
   const sourceObservationIds = new Set(), sourceObservationById = new Map(), sourceObservationChallengeIds = new Set(), sourceObservationChallengeById = new Map(), sourceObservationResponseIds = new Set(), respondedSourceObservationChallengeIds = new Set(), sourceArchivePredicateIds = new Set();
   const sourceArchiveAttemptIds = new Set(), sourceArchiveFailureBindings = new Map(), sourceArchiveFailureOutcomes = new Set();
