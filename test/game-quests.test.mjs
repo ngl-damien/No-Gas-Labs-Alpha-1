@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestObjectiveActionable, FIELD_ITEM_SOURCE_TYPES, createQuestEvidenceEventLinkResolver } from '../game/quests.mjs';
 import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
-import { projectGuildFieldSatchel } from '../game/social.mjs';
+import { COMMONS_FOUNDER_ACTOR_ID, projectGuildFieldSatchel } from '../game/social.mjs';
 import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
 import { buildSatireIssueBody, createArtifact, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from '../game/artifacts.mjs';
 
@@ -4979,6 +4979,7 @@ test('Founder Commons report-review quest fails closed on self-review, invalid l
 
 
 test('Witness Quest Board exposes only the exact Founder review of that Witness session’s Commons report', async () => {
+  const commonsFounder = { id: COMMONS_FOUNDER_ACTOR_ID, name: 'Commons Founder', role: 'founder' };
   const author = { id: 'commons-review-author', name: 'Commons Review Author', role: 'witness' };
   const reporter = { id: 'commons-review-reporter', name: 'Commons Review Reporter', role: 'witness' };
   const otherReporter = { id: 'commons-review-other-reporter', name: 'Other Commons Reporter', role: 'witness' };
@@ -4997,7 +4998,7 @@ test('Witness Quest Board exposes only the exact Founder review of that Witness 
     type: 'review-message-report',
     reportId: reported.result.reportId,
     note: 'Founder process review only; not a factual verdict.'
-  }, founder, { now: '2026-11-24T01:03:00.000Z' });
+  }, commonsFounder, { now: '2026-11-24T01:03:00.000Z' });
   const reviewEvent = reviewed.world.events.at(-1);
 
   const otherPost = await applyAction(reviewed.world, {
@@ -5043,7 +5044,7 @@ test('Witness Quest Board exposes only the exact Founder review of that Witness 
   assert.equal(getQuestTrail(publicWorld(otherReport.world, author), author).some(item =>
     item.id === 'witness-commons-report-review-received'
   ), false, 'the message author does not receive another actor’s private report objective');
-  assert.equal(getQuestTrail(publicWorld(otherReport.world, founder), founder).some(item =>
+  assert.equal(getQuestTrail(publicWorld(otherReport.world, commonsFounder), commonsFounder).some(item =>
     item.id === 'witness-commons-report-review-received'
   ), false, 'the Founder retains the separate Founder-only review objective');
   assert.equal(getQuestTrail(reporterSnapshot, reporter).some(item =>
@@ -5052,7 +5053,7 @@ test('Witness Quest Board exposes only the exact Founder review of that Witness 
 
   const tampered = structuredClone(otherReport.world);
   const reviewIndex = tampered.events.findIndex(event => event.id === reviewEvent.id);
-  tampered.events[reviewIndex].actor = { ...founder, id: 'forged-founder' };
+  tampered.events[reviewIndex].actor = { ...commonsFounder, id: 'forged-founder' };
   const blocked = getQuestTrail(tampered, reporter).find(item =>
     item.id === 'witness-commons-report-review-received'
   );
