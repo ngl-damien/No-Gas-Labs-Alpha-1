@@ -1,6 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { sameResearchActor } from './research-records.mjs';
 import { GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
+import { COMMONS_FOUNDER_ACTOR_ID, projectCommonsReportReviewHistory } from './social.mjs';
 
 export const WORLD_WIDTH=1600,WORLD_HEIGHT=1000,PLAYER_MOVE_SPEED=175,MAX_FRAME_DELTA_SECONDS=0.25;
 export const COMBAT_YARD_ACTION_RADIUS=160;
@@ -226,8 +227,194 @@ function institutionActivityLabel(count,unit='records'){
 }
 
 const WORLD_OBJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+function safeTownSquareReviewObjects(view) {
+  return Array.isArray(view?.townSquareReviewObjects) ? view.townSquareReviewObjects : [];
+}
+
 const boundedWorldText = (value, max) => typeof value === 'string' &&
   value.trim().length > 0 && Array.from(value).length <= max;
+
+const COMMONS_REVIEW_MAP_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const COMMONS_REVIEW_MAP_FORBIDDEN_IDS = new Set(['constructor', 'prototype', '__proto__']);
+const MAX_TOWNSQUARE_REVIEW_MAP_OBJECTS = 16;
+const COMMONS_REVIEW_EVENT_FIELDS = Object.freeze([
+  'id', 'type', 'messageId', 'reportId', 'reviewId', 'actor', 'at',
+  'channel', 'text', 'reason', 'details', 'note'
+]);
+
+function safeCommonsReviewMapId(value) {
+  return typeof value === 'string' && COMMONS_REVIEW_MAP_ID.test(value) &&
+    !COMMONS_REVIEW_MAP_FORBIDDEN_IDS.has(value);
+}
+
+function copySafeCommonsReviewEvent(event) {
+  if (!isPlainProjectionRecord(event)) return null;
+  const copy = Object.create(null);
+  for (const key of COMMONS_REVIEW_EVENT_FIELDS) {
+    let descriptor;
+    try { descriptor = Object.getOwnPropertyDescriptor(event, key); } catch { return null; }
+    if (!descriptor) continue;
+    if (!Object.hasOwn(descriptor, 'value')) return null;
+    if (key !== 'actor') {
+      copy[key] = descriptor.value;
+      continue;
+    }
+    const sourceActor = descriptor.value;
+    if (sourceActor === null || sourceActor === undefined) {
+      copy.actor = sourceActor;
+      continue;
+    }
+    if (!isPlainProjectionRecord(sourceActor)) return null;
+    const actor = Object.create(null);
+    for (const actorKey of ['id', 'role']) {
+      let actorDescriptor;
+      try { actorDescriptor = Object.getOwnPropertyDescriptor(sourceActor, actorKey); } catch { return null; }
+      if (!actorDescriptor) continue;
+      if (!Object.hasOwn(actorDescriptor, 'value')) return null;
+      actor[actorKey] = actorDescriptor.value;
+    }
+    copy.actor = actor;
+  }
+  return copy;
+}
+
+function hasCompleteTownSquareFounderHistory(world, events) {
+  try {
+    if (!isPlainProjectionRecord(world)) return false;
+    const revision = ownDataValue(world, 'revision');
+    if (!Number.isSafeInteger(revision) || revision < 0 || revision !== events.length) return false;
+    const coverageDescriptor = Object.getOwnPropertyDescriptor(world, 'historyCoverage');
+    if (!coverageDescriptor) return true;
+    if (!Object.hasOwn(coverageDescriptor, 'value')) return false;
+    const coverage = coverageDescriptor.value;
+    if (!isPlainProjectionRecord(coverage)) return false;
+    const fields = [
+      'schema', 'sourceComplete', 'sourceEventCount', 'suppliedEventCount',
+      'omittedEventCount', 'omittedEventTypes', 'viewerRole'
+    ];
+    const descriptors = Object.getOwnPropertyDescriptors(coverage);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length !== fields.length || keys.some(key => !fields.includes(key))) return false;
+    for (const field of fields) {
+      const descriptor = descriptors[field];
+      if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value')) return false;
+    }
+    const omittedTypes = descriptors.omittedEventTypes.value;
+    if (!isPlainProjectionRecord(omittedTypes) || Reflect.ownKeys(omittedTypes).length !== 0) return false;
+    return descriptors.schema.value === 'ngl.public-world-history.v1' &&
+      descriptors.sourceComplete.value === true &&
+      descriptors.viewerRole.value === 'founder' &&
+      descriptors.sourceEventCount.value === revision &&
+      descriptors.suppliedEventCount.value === events.length &&
+      descriptors.omittedEventCount.value === 0;
+  } catch {
+    return false;
+  }
+}
+
+function townSquareReviewCoordinates(eventId) {
+  let hash = 2166136261;
+  for (let index = 0; index < eventId.length; index += 1) {
+    hash ^= eventId.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const unsigned = hash >>> 0;
+  return Object.freeze({
+    x: 1100 + (unsigned % 61),
+    y: 520 + ((unsigned >>> 8) % 41)
+  });
+}
+
+/**
+ * Project only an exact retained message → private report → Founder review chain
+ * onto TownSquare. The marker contains no private text and is visible only to
+ * the Founder or the original reporting actor. It is a process record, not
+ * moderation, adjudication, evidence certification, approval, truth, or XP.
+ */
+export function projectTownSquareReviewObjects(world, viewer) {
+  const viewerId = ownDataValue(viewer, 'id');
+  const viewerRole = ownDataValue(viewer, 'role');
+  const empty = historyStatus => Object.freeze({
+    totalCount: 0,
+    omittedCount: 0,
+    historyStatus,
+    objects: Object.freeze([])
+  });
+  if (!safeCommonsReviewMapId(viewerId) || !['founder', 'witness'].includes(viewerRole)) {
+    return empty('viewer-unavailable');
+  }
+  if (viewerRole === 'founder' && viewerId !== COMMONS_FOUNDER_ACTOR_ID) {
+    return empty('viewer-not-authorized');
+  }
+
+  const sourceEvents = ownDataValue(world, 'events');
+  if (!isArraySafely(sourceEvents)) return empty('actor-visible-links-unavailable');
+  const eventCount = ownDataValue(sourceEvents, 'length');
+  if (!Number.isSafeInteger(eventCount) || eventCount < 0 || eventCount > MAX_WORLD_EVENT_SCAN) {
+    return empty('actor-visible-links-unavailable');
+  }
+  const safeEvents = [];
+  for (let index = 0; index < eventCount; index += 1) {
+    const event = ownDataValue(sourceEvents, String(index));
+    const safeEvent = copySafeCommonsReviewEvent(event);
+    if (!safeEvent) return empty('actor-visible-links-unavailable');
+    safeEvents.push(safeEvent);
+  }
+
+  const history = projectCommonsReportReviewHistory(
+    { events: safeEvents }, COMMONS_FOUNDER_ACTOR_ID
+  );
+  const ownReportIds = new Set(viewerRole === 'witness' ? safeEvents.flatMap(event =>
+    ownDataValue(event, 'type') === 'message-reported' &&
+    ownDataValue(ownDataValue(event, 'actor'), 'id') === viewerId &&
+    ownDataValue(ownDataValue(event, 'actor'), 'role') === viewerRole &&
+    safeCommonsReviewMapId(ownDataValue(event, 'reportId'))
+      ? [ownDataValue(event, 'reportId')] : []
+  ) : []);
+  const relevantInvalidHistory = viewerRole === 'founder'
+    ? history.invalidReviewHistory
+    : ownReportIds.size > 0 && history.invalidReviewHistory &&
+      history.invalidReportIds.some(reportId => ownReportIds.has(reportId));
+  const founderHistoryIncomplete = viewerRole === 'founder' &&
+    !hasCompleteTownSquareFounderHistory(world, safeEvents);
+  const historyStatus = relevantInvalidHistory || founderHistoryIncomplete
+    ? 'actor-visible-links-incomplete'
+    : 'actor-visible-links-validated';
+
+  const visibleReviews = history.validReviews.filter(record =>
+    viewerRole === 'founder' ||
+    (record.reportEvent?.actor?.id === viewerId && record.reportEvent?.actor?.role === viewerRole)
+  );
+  const totalCount = visibleReviews.length;
+  const objects = visibleReviews.slice(0, MAX_TOWNSQUARE_REVIEW_MAP_OBJECTS).map(record => {
+    const eventId = record.event.id;
+    const reportId = record.reportId;
+    if (!safeCommonsReviewMapId(eventId) || !safeCommonsReviewMapId(reportId)) return null;
+    const coordinates = townSquareReviewCoordinates(eventId);
+    const sourceEventIds = Object.freeze([
+      record.postEvent.id, record.reportEvent.id, eventId
+    ]);
+    return Object.freeze({
+      id: eventId,
+      eventId,
+      reportId,
+      sourceEventIds,
+      status: 'process-record-not-adjudication',
+      mapVisible: true,
+      type: 'town-square-review',
+      x: coordinates.x,
+      y: coordinates.y
+    });
+  }).filter(Boolean);
+
+  return Object.freeze({
+    totalCount,
+    omittedCount: totalCount - objects.length,
+    historyStatus,
+    objects: Object.freeze(objects)
+  });
+}
+
 
 const SOURCE_ARCHIVE_FAILURE_RETRYABILITY=Object.freeze({
  GITHUB_SOURCE_UNAVAILABLE:true,
@@ -1191,7 +1378,7 @@ const seeded=n=>{const v=Math.sin(n*127.1+311.7)*43758.5453;return v-Math.floor(
 const palette={ink:'#29443d',teal:'#356e62',water:'#7da99a',paper:'#eee7ce',orange:'#d97638',red:'#af5138',gold:'#c4a252',grass:'#d5d9ae'};
 export class WorldView {
   constructor(canvas,{onInteract=()=>{},onDiscover=()=>{},onPosition=()=>{}}={}) {
-    this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionSummary=null;this.institutionCounts=computeInstitutionActivityCounts(this.world,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.movementEnabled=true;if(this.canvas?.dataset)this.canvas.dataset.movementEnabled='true';this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionSummary=null;this.institutionCounts=computeInstitutionActivityCounts(this.world,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.viewer=null;this.townSquareReviewProjection=projectTownSquareReviewObjects(this.world,null);this.townSquareReviewObjects=this.townSquareReviewProjection.objects;this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.movementEnabled=true;if(this.canvas?.dataset)this.canvas.dataset.movementEnabled='true';this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     this.paused=true;this.animation=null;this.animationEpoch=0;this.destroyed=false;this.windowFocused=true;this.doorway=globalThis.document?.getElementById?.('doorway')||null;
     this.onKeyDown=e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable="true"],#sheet')||document.body.classList.contains('modal-open'))return;const k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','e',' '].includes(k)){e.preventDefault();if(k==='e'||k===' '){if(!e.repeat)this.interact();return}if(this.movementEnabled===false)return;this.keys.add(k);this.cancelRoute()}};
     this.onKeyUp=e=>this.keys.delete(e.key.toLowerCase());
@@ -1241,7 +1428,7 @@ export class WorldView {
     if(data.positionSource!=='renderer-local')data.positionSource='renderer-local';
   }
   resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));this.syncCanvasState();this.scheduleFrame?.();}
-  setWorld(world,institutionSummary=this.institutionSummary,viewer=null){const next=world||{creations:[]};this.world=next;this.institutionSummary=institutionSummary||null;const actor=viewer&&typeof viewer==='object'?viewer:null;this.discovered=new Set(Array.isArray(next.discoveries)?next.discoveries.filter(discovery=>discovery&&sameResearchActor(discovery.actor,actor)&&PLACES.some(place=>place.type==='discovery'&&place.id===discovery.locationId)).map(discovery=>discovery.locationId):[]);this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}this.scheduleFrame?.();}
+  setWorld(world,institutionSummary=this.institutionSummary,viewer=null){const next=world||{creations:[]};this.world=next;this.institutionSummary=institutionSummary||null;const actor=viewer&&typeof viewer==='object'?viewer:null;this.viewer=actor;this.discovered=new Set(Array.isArray(next.discoveries)?next.discoveries.filter(discovery=>discovery&&sameResearchActor(discovery.actor,actor)&&PLACES.some(place=>place.type==='discovery'&&place.id===discovery.locationId)).map(discovery=>discovery.locationId):[]);this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.townSquareReviewProjection=projectTownSquareReviewObjects(next,actor);this.townSquareReviewObjects=this.townSquareReviewProjection.objects;const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y]),townSquareReviewObjects:safeTownSquareReviewObjects(this).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}this.scheduleFrame?.();}
   setPresence(presence){this.presence=Array.isArray(presence)?presence:[];this.scheduleFrame?.();}
   setMovementEnabled(enabled){
     const next=enabled===true;
@@ -1270,18 +1457,23 @@ export class WorldView {
       const place=PLACES.find(p=>p.id===id);
       const researchObject=this.researchObjects.find(object=>object.id===id);
       const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);
+      const townSquareReviewObject=safeTownSquareReviewObjects(this).find(object=>object.id===id);
       if(targetType==='research-object'){
         if(!researchObject){this.cancelRoute();return}
         target={x:researchObject.x,y:researchObject.y+28};
       }else if(targetType==='research-activity'){
         if(!researchActivityObject?.mapVisible){this.cancelRoute();return}
         target={x:researchActivityObject.x,y:researchActivityObject.y+18};
+      }else if(targetType==='town-square-review'){
+        if(!townSquareReviewObject?.mapVisible){this.cancelRoute();return}
+        target={x:townSquareReviewObject.x,y:townSquareReviewObject.y+20};
       }else if(targetType!==undefined&&targetType!==null){
         this.cancelRoute();return;
       }else if(creation)target={x:creation.position.x,y:creation.position.y+90};
       else if(place)target={x:place.x,y:place.y+50};
       else if(researchObject)target={x:researchObject.x,y:researchObject.y+28};
       else if(researchActivityObject?.mapVisible)target={x:researchActivityObject.x,y:researchActivityObject.y+18};
+      else if(townSquareReviewObject?.mapVisible)target={x:townSquareReviewObject.x,y:townSquareReviewObject.y+20};
       else {this.cancelRoute();return}
     }
     const route=findRoute(this.player,target,this.world.creations);
@@ -1289,7 +1481,7 @@ export class WorldView {
     this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;this.targetType=typeof id==='string'?(targetType??null):null;this.syncCanvasState();this.scheduleFrame?.();
   }
   nearest(targetId,targetType){
-    const options=[...PLACES,...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title}))];
+    const options=[...PLACES,...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title})),...safeTownSquareReviewObjects(this).map(object=>({id:object.id,eventId:object.eventId,reportId:object.reportId,x:object.x,y:object.y+10,type:'town-square-review',name:'TownSquare process review'}))];
     const candidates=targetId===undefined?(targetType===undefined?options:[]):typeof targetId==='string'?options.filter(option=>option.id===targetId&&(targetType===undefined||option.type===targetType)):[];
     return candidates.map(p=>({...p,distance:Math.hypot(p.x-this.player.x,p.y-this.player.y)})).sort((a,b)=>a.distance-b.distance)[0]||null;
   }
@@ -1298,7 +1490,7 @@ export class WorldView {
     if(nearest&&nearest.distance<160){
       if(targetId!==undefined)this.cancelRoute();
       if(nearest.type==='discovery')this.callbacks.onDiscover(nearest.id);
-      const interaction=nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:{type:nearest.type,id:nearest.id};
+      const interaction=nearest.type==='town-square-review'?{type:'town-square-review',eventId:nearest.eventId,reportId:nearest.reportId}:nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:{type:nearest.type,id:nearest.id};
       this.callbacks.onInteract(interaction);
     }else if(targetId===undefined&&targetType===undefined)this.goTo('workbench');
   }
@@ -1310,7 +1502,7 @@ export class WorldView {
       this.player={...this.player,...stepPlayer(this.player,direction,Math.min(PLAYER_MOVE_SPEED*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};
     }
     this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
-    if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
+    if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const townSquareReviewObject=safeTownSquareReviewObjects(this).find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='town-square-review'){if(townSquareReviewObject?.mapVisible)this.callbacks.onInteract({type:'town-square-review',eventId:townSquareReviewObject.eventId,reportId:townSquareReviewObject.reportId})}else if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
     for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90&&!this.discovered.has(place.id)){this.discovered.add(place.id);this.callbacks.onDiscover(place.id)}
     const desired=this.cameraTarget();const easing=this.reduced?1:1-Math.exp(-dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
     if(now-this.lastPosition>1500&&this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}else if(wasMoving&&!this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}
