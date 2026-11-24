@@ -3689,3 +3689,37 @@ test('TownSquare review map requires complete actor-visible history coverage', a
   assert.deepEqual(second.world, before, 'coverage checks and map projection must not mutate canonical history');
   assert.equal(second.world.xp, 0, 'review history and map inspection remain XP-neutral');
 });
+
+
+test('TownSquare pending report projection rejects a self-reported message chain', async () => {
+  const project = worldViewModule.projectTownSquareReviewObjects;
+  const base = Date.parse('2026-11-24T12:30:00.000Z');
+  const at = offset => new Date(base + offset).toISOString();
+  const author = { id: 'self-reporting-witness', name: 'Self-reporting Witness', role: 'witness' };
+  const reporter = { id: 'separate-reporting-witness', name: 'Separate Reporting Witness', role: 'witness' };
+  const created = createWorld({ id: 'town-square-self-report-projection', now: at(0) });
+  const posted = await applyAction(created, {
+    type: 'post-message', text: 'A self-report must not become a reviewable map object.'
+  }, author, { now: at(1000) });
+  const reported = await applyAction(posted.world, {
+    type: 'report-message', messageId: posted.result.messageId,
+    reason: 'privacy', details: 'A valid report by a different actor.'
+  }, reporter, { now: at(2000) });
+
+  // Simulate malformed retained history, not a supported action: the canonical
+  // reducer rejects a self-report. The projection must reject the same chain
+  // before exposing a pending marker to the message author.
+  const malformed = structuredClone(reported.world);
+  const reportEvent = malformed.events.find(event =>
+    event.type === 'message-reported' && event.reportId === reported.result.reportId
+  );
+  reportEvent.actor = { ...author };
+
+  const projection = project(malformed, author);
+  assert.equal(projection.objects.length, 0,
+    'a message author cannot receive a pending marker for their own self-reported message');
+  assert.equal(projection.historyStatus, 'actor-visible-links-incomplete',
+    'a self-report is malformed history, not a valid pending process object');
+  assert.equal(reported.world.xp, 0, 'the original report remains XP-neutral');
+  assert.equal(malformed.xp, 0, 'rejecting a malformed map projection creates no XP');
+});
