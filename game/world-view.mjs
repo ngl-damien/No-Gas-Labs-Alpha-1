@@ -408,6 +408,10 @@ export function projectTownSquareReviewObjects(world, viewer) {
   const historyStatus = relevantInvalidHistory || snapshotHistoryIncomplete
     ? 'actor-visible-links-incomplete'
     : 'actor-visible-links-validated';
+  // A locally valid chain inside a partial snapshot cannot establish the complete
+  // actor-visible review set. Keep the events in Chronicle, but do not render
+  // map markers until the response coverage receipt is complete and consistent.
+  if (historyStatus !== 'actor-visible-links-validated') return empty(historyStatus);
 
   const visibleReviews = history.validReviews.filter(record =>
     viewerRole === 'founder' ||
