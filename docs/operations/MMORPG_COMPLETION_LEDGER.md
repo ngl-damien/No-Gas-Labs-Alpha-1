@@ -1,3 +1,36 @@
+## Run 308 — gate evidence update — 2026-11-22
+
+**Candidate:** draft PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), runtime/test head `39f39a321f19db49ebc442ebcbfc4081616b389b`, main base `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. The capability is hosted-verified on a proposed branch only; it is not integrated into main.
+
+| Gate | Status | Run 308 evidence and limit |
+|---|---|---|
+| G0 Product definition | IN_PROGRESS | Contract remains authoritative; supported physical-device baseline and initial player scale are not established by this run. |
+| G1 Coherent playable loop | IN_PROGRESS | Quest Board and Synthesis Clerk journeys pass at 320px/390px; not yet one integrated, Founder-accepted product journey. |
+| G2 Persistent character/world | IN_PROGRESS | Full Verify [45025874268](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874268) passes on code/test head. The new restart test reconstructs a pending Armor Bearer offer from retained events after server restart, rejects wrong-recipient acceptance without mutation, and verifies one valid acceptance/replay idempotency. Synthesis [45025874260](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874260) verifies failed shared join preserves private state and later accepts the first valid shared snapshot. Both are proposed-branch evidence, not mainline integration. |
+| G3 Authoritative multiplayer | IN_PROGRESS | Separate session clients exercise server-side recipient binding, presence rejoin, live streams, 409 rejection and idempotent acceptance. Session IDs do not prove distinct humans; no scale claim. |
+| G4 Core RPG | IN_PROGRESS | Field-item inventory and Armor Bearer progression are derived from accepted transfer events; offer/receipt/inspection alone awards zero XP. This is one bounded mechanic, not complete RPG systems. |
+| G5 Social/economic | IN_PROGRESS | Incoming offer UI and handoff history are exercised by Quest Board mobile acceptance; unauthorized recipient and duplicate/replay behavior are tested. No broader public-economy or moderation release claim. |
+| G6 Persistent world/content | IN_PROGRESS | Quest Board [45025874273](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874273), Synthesis, Council, Academy and Combat Yard mobile checks pass; not feature-complete or integrated. |
+| G7 Android-first | IN_PROGRESS | PWA mobile journeys pass; native debug APK assembles, but Android emulator [45025874376](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874376) fails 2 tests and aborts after 8/15. No physical-device verification. |
+| G8 Operational readiness | IN_PROGRESS | Hosted preflight is ready with zero warnings/failures; authentication hardening, backup/restore, abuse controls, concurrency and declared-scale performance remain incomplete. |
+| G9 Release / Founder acceptance | NOT_STARTED | PR #718 remains draft/unmerged; Founder trust NOT_ENROLLED. No release candidate, approval, deployment or distribution. |
+
+**Exact-head checks:** Genesis [45025874402](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874402), live Source Archive [45025874285](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874285), Academy [45025874283](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874283), Council [45025874331](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874331), Combat Yard [45025874449](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874449), Quest Board [45025874273](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874273), Synthesis Clerk [45025874260](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874260), Full Verify [45025874268](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874268) all PASS. The phone PWA build [45025874501](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874501) preserved a Pages artifact; deploy job SKIPPED. Browser [45025874284](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874284) FAILS on Worker A's obsolete hidden Guild Hall locator. Android [45025874376](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45025874376) FAILS as described in the latest checkpoint; one failure is a test baseline taken before legitimate `discover(overlook)` navigation, while the renderer-process test has an empty XML failure body and unclassified emulator/process crash. Handoffs: [#472 comment 7079948940](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7079948940), [#533 comment 7079948533](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7079948533).
+
+**Process:** Desktop Commander devices are Offline; no local preflight, Node, Playwright, Gradle or pre-edit local receipt is claimed. Hosted preflight is post-edit evidence; procedural compliance PARTIAL. No source retrieval or independent truth verification is claimed from model assertions or mocked fixtures. No merge, release, deployment, physical-device acceptance, Founder approval, truth verdict or authority transition occurred.
+
+---
+
+## Run 294 — Moonshot Field failure-object projection — 2026-11-21
+
+- **Capability:** Moonshot Field now exposes the newest six valid server-observed Source Archive failure objects as read-only research blockers, with exact Chronicle links and a prefilled-but-unsubmitted Source Observatory lead. Evidence Archive remains the complete paginated owner/history.
+- **Evidence:** PR #718 runtime/test head `745b7c157de177fdc6bbd5b96418f6703b7bce25` (subsequent branch commits are documentation-only); Full Verify 44951200389 PASS; Genesis 44951200391 PASS; Synthesis mobile 44951200378 PASS at 320px/390px (14 failure objects, latest six shown, three pages, exact Chronicle event, lead not submitted, no mutation from panel navigation); Live Source Archive 44951200494 PASS; PWA build 44951200534 PASS (deploy skipped).
+- **Boundaries:** Source Archive failures are service-observed operational events, not source truth or claim verdicts. Clients cannot author canonical failure events. Partial/stale/invalid/unavailable snapshots disclose their limits; later success does not erase failure history. The panel does not award XP or grant authority.
+- **Remaining:** Quest Board 44951200431 and Android emulator 44951200400 were still IN PROGRESS at checkpoint capture. Browser 44951200393 retains Worker A's Contradiction Clerk placement failure at `scripts/verify-browser.py:472`; its offline PWA recovery subjourney passes. No native-device acceptance, merge, release or deployment is claimed.
+- **Gate status unchanged:** G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. This is a vertical-slice improvement, not completion of the persistent MMORPG or mainline integration.
+
+---
+
 ## Run 271 — Evidence Archive Source Observation challenge chronology — 2026-11-20
 
 - **Capability advanced:** the Evidence Archive author-response queue now follows the canonical retained event order instead of wall-clock timestamps. A clock regression can no longer make a later appended challenge appear older than an earlier challenge.

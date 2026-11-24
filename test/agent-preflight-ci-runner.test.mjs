@@ -98,7 +98,9 @@ test('CI preflight manifest covers Founder trust, enrollment and durable nonce-l
     'scripts/recover-founder-nonce-lock.mjs',
     'test/founder-nonce-recovery.test.mjs',
     'scripts/init-founder-nonce-ledger.mjs',
-    'test/founder-nonce-ledger-init.test.mjs'
+    'test/founder-nonce-ledger-init.test.mjs',
+    '.github/workflows/publish-phone-pwa.yml',
+    'src/institution/kernel.mjs'
   ]) {
     assert.ok(manifest.includes('--path ' + target), 'missing hosted preflight target: ' + target);
   }

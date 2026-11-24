@@ -1,6 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { projectResearchRecords, projectSourceObservationRecords } from './research-records.mjs';
+import { projectResearchRecords, projectSourceObservationRecords, retainedWorldEventHistoryOptions } from './research-records.mjs';
 import { validateRetainedCollaboratorResponse } from './collaborator-response.mjs';
+import { projectSourceArchiveFailureObjects } from './world-view.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -45,7 +46,8 @@ export const FIELD_ITEM_SOURCE_TYPES = Object.freeze({
   research: Object.freeze(['moonshot-proposed', 'experiment-reported']),
   adversarial: Object.freeze(['experiment-challenged', 'source-observation-challenged']),
   collaboration: Object.freeze(['collaborator-response-recorded']),
-  restoration: Object.freeze(['publish'])
+  restoration: Object.freeze(['publish']),
+  recovery: Object.freeze(['publish'])
 });
 
 export const FIELD_ITEM_DISCOVERY_LOCATIONS = Object.freeze(['relay', 'river', 'overlook', 'ruins']);
@@ -159,15 +161,24 @@ function retainedPublicationContext(world, history, eventCounts) {
  * event chain); a type label alone is never enough to create inventory/progress.
  */
 export function projectValidFieldItemSourceEventIds(world) {
-  const empty = Object.freeze(Object.fromEntries(
-    Object.keys(FIELD_ITEM_SOURCE_TYPES).map(slotId => [slotId, new Set()])
-  ));
+  const empty = Object.freeze({
+    ...Object.fromEntries(Object.keys(FIELD_ITEM_SOURCE_TYPES).map(slotId => [slotId, new Set()])),
+    recoveryLinks: Object.freeze([]),
+    recoveryLinkScanComplete: false
+  });
   try {
     const history = rows(world?.events);
     const eventCounts = uniqueEventCounts(history);
     const positionByEvent = new Map(history.map((event, index) => [event, index]));
+    const failureProjection = projectSourceArchiveFailureObjects(world, { includeRecoveryLinks: true });
+    const projectedRecoveryLinks = failureProjection?.recoveryLinkScanComplete === true &&
+      Array.isArray(failureProjection.recoveryLinks) ? failureProjection.recoveryLinks : [];
     const { retainedByVersion, matchedPublicationIds } =
       retainedPublicationContext(world, history, eventCounts);
+    // A recovery link must also pass the field-item publication matcher; the
+    // two projections intentionally intersect rather than trusting either alone.
+    const recoveryLinks = projectedRecoveryLinks.filter(link => matchedPublicationIds.has(link.publicationEventId));
+    const recoveryIds = new Set(recoveryLinks.map(link => link.publicationEventId));
     const hasEarlierPublication = (event, position) => {
       const publication = retainedByVersion.get(JSON.stringify([event?.creationId, event?.version]));
       const publicationPosition = publication ? positionByEvent.get(publication) : -1;
@@ -226,7 +237,7 @@ export function projectValidFieldItemSourceEventIds(world) {
         hasEarlierPublication(event, index);
     });
 
-    const researchRecords = projectResearchRecords(history, rows(world?.creations));
+    const researchRecords = projectResearchRecords(history, rows(world?.creations), retainedWorldEventHistoryOptions(world, history));
     const proposals = [];
     const experimentReports = [];
     const experimentChallenges = [];
@@ -248,7 +259,7 @@ export function projectValidFieldItemSourceEventIds(world) {
 
     // Source Observatory validates this chain by retained append position, not wall-clock order.
     // Only linked, cross-actor, uniquely retained challenges become Forge sources.
-    const sourceObservationChallenges = projectSourceObservationRecords(history, rows(world?.creations))
+    const sourceObservationChallenges = projectSourceObservationRecords(history, rows(world?.creations), retainedWorldEventHistoryOptions(world, history))
       .filter(record => record?.projectionStatus === 'linked')
       .flatMap(record => rows(record.challenges))
       .filter(challenge => safeId(challenge?.id));
@@ -287,10 +298,10 @@ export function projectValidFieldItemSourceEventIds(world) {
       'publish', world?.methods, history, eventCounts, ['creationId', 'version'],
       event => event.version > 1 && matchedPublicationIds.has(event.id) && hasUniquePriorRepair(event)
     );
-    const restorationIds = new Set(methods.map(event => event.id));
+    const restorationIds = new Set(methods.map(event => event.id).filter(id => !recoveryIds.has(id)));
 
     const idsBySlot = {
-      provenance: new Set([...matchedPublicationIds].filter(id => !restorationIds.has(id))),
+      provenance: new Set([...matchedPublicationIds].filter(id => !restorationIds.has(id) && !recoveryIds.has(id))),
       scouting: new Set(discoveries.map(event => event.id)),
       observation: new Set([...contributions, ...reports].map(event => event.id)),
       learning: new Set([...studies, ...studyReviews].map(event => event.id)),
@@ -300,9 +311,10 @@ export function projectValidFieldItemSourceEventIds(world) {
         ...sourceObservationChallenges.map(challenge => challenge.id)
       ]),
       collaboration: new Set(collaboratorResponses.map(event => event.id)),
-      restoration: restorationIds
+      restoration: restorationIds,
+      recovery: recoveryIds
     };
-    return Object.freeze(idsBySlot);
+    return Object.freeze({ ...idsBySlot, recoveryLinks: Object.freeze(recoveryLinks) });
   } catch {
     return empty;
   }

@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestObjectiveActionable, FIELD_ITEM_SOURCE_TYPES } from '../game/quests.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestObjectiveActionable, FIELD_ITEM_SOURCE_TYPES, createQuestEvidenceEventLinkResolver } from '../game/quests.mjs';
 import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
-import { projectGuildFieldSatchel } from '../game/social.mjs';
-import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
+import { COMMONS_FOUNDER_ACTOR_ID, projectGuildFieldSatchel } from '../game/social.mjs';
+import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
 import { buildSatireIssueBody, createArtifact, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from '../game/artifacts.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
@@ -1000,6 +1000,62 @@ test('Source Archive response objective withholds progress for a response by the
   assert.equal(world.xp, 0);
 });
 
+test('invalid optional evidence on a Source Archive challenge cannot advance dissent or response quests', () => {
+  const world = sourceArchiveQuestWorld({ actor: founder });
+  const report = world.events.find(event => event.type === 'experiment-reported');
+  const baselineXp = projectCharacter(world, founder).xp;
+  const challenge = {
+    id: 'source-archive-invalid-evidence-challenge-event',
+    type: 'experiment-challenged',
+    challengeId: 'source-archive-invalid-evidence-challenge',
+    reportId: report.reportId,
+    moonshotId: report.moonshotId,
+    actor: witness,
+    at: '2026-10-28T17:04:00.000Z',
+    challengeType: 'scope',
+    challengeText: 'The challenge cites an unavailable publication version.',
+    evidenceCreationId: 'source-archive-1',
+    evidenceVersion: 99
+  };
+  const response = {
+    id: 'source-archive-invalid-evidence-response-event',
+    type: 'experiment-challenge-responded',
+    responseId: 'source-archive-invalid-evidence-response',
+    challengeId: challenge.challengeId,
+    reportId: report.reportId,
+    moonshotId: report.moonshotId,
+    actor: founder,
+    at: '2026-10-28T17:05:00.000Z',
+    responseText: 'The response cannot turn an invalid evidence link into a valid challenge.'
+  };
+  world.events.push(challenge, response);
+  const beforeProjection = structuredClone(world);
+
+  const witnessChallenge = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-source-archive-challenge');
+  assert.equal(witnessChallenge.complete, false);
+  assert.equal(witnessChallenge.progress, 0);
+  assert.deepEqual(witnessChallenge.evidenceIds, []);
+  assert.deepEqual(witnessChallenge.action, {
+    type: 'research-activity',
+    id: 'research-activity:' + report.id,
+    moonshotId: report.moonshotId,
+    activityId: report.reportId
+  }, 'the invalid challenge remains history, while the valid report remains the next objective target');
+
+  const founderResponse = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-source-archive-response');
+  assert.equal(founderResponse.complete, false);
+  assert.equal(founderResponse.progress, 0);
+  assert.deepEqual(founderResponse.evidenceIds, []);
+  assert.match(founderResponse.blockedReason, /another actor must retain a valid challenge/i);
+
+  const founderCharacter = projectCharacter(world, founder);
+  assert.equal(founderCharacter.skills.find(skill => skill.id === 'experiment-responder').count, 0);
+  assert.equal(founderCharacter.xp, baselineXp);
+  assert.deepEqual(world, beforeProjection, 'quest and character projections are read-only');
+});
+
 test('Source Archive objective fails closed for unmarked, duplicated, or later-published source copies', () => {
   const cases = [
     { archiveIntent: false },
@@ -1070,6 +1126,92 @@ test('research quest targets the latest appended eligible records even when thei
   }, 'the newest appended other-actor report is the challenge target, not the oldest');
 });
 
+test('R&D Quest Trail links publication, proposal, report, challenge and response by retained append order under clock regression', () => {
+  const retained = experimentQuestWorld();
+  const [publication, proposal, report] = retained.events;
+  publication.at = '2026-10-28T17:00:00.000Z';
+  retained.creations[0].publishedAt = publication.at;
+  retained.creations[0].receipt.algorithm = 'sha256';
+  proposal.at = '2026-10-28T16:59:00.000Z';
+  report.at = '2026-10-28T16:58:00.000Z';
+
+  const challenge = {
+    id: 'experiment-challenge-event-1',
+    type: 'experiment-challenged',
+    challengeId: 'experiment-challenge-1',
+    reportId: 'report-1',
+    moonshotId: 'moon-1',
+    actor: witness,
+    at: '2026-10-28T16:57:00.000Z',
+    challengeType: 'missing-evidence',
+    challengeText: 'The observation is not an independent source check.',
+    evidenceCreationId: 'evidence-1',
+    evidenceVersion: 1
+  };
+  const response = {
+    id: 'experiment-challenge-response-event-1',
+    type: 'experiment-challenge-responded',
+    responseId: 'experiment-response-1',
+    challengeId: challenge.challengeId,
+    reportId: 'report-1',
+    moonshotId: 'moon-1',
+    actor: founder,
+    at: '2026-10-28T16:56:00.000Z',
+    responseText: 'The limitation is accepted; independent verification remains open.'
+  };
+  retained.events.push(challenge, response);
+  const before = structuredClone(retained);
+
+  const founderTrail = getQuestTrail(retained, founder);
+  const witnessTrail = getQuestTrail(retained, witness);
+  const milestone = (trail, id) => trail.find(item => item.id === id);
+
+  assert.deepEqual(milestone(founderTrail, 'founder-experiment-report').evidenceIds, [report.id]);
+  assert.deepEqual(milestone(founderTrail, 'founder-experiment-evidence').evidenceIds, [report.id]);
+  assert.deepEqual(milestone(witnessTrail, 'witness-challenge-experiment-report').evidenceIds, [challenge.id]);
+  assert.deepEqual(milestone(founderTrail, 'founder-experiment-challenge-response').evidenceIds, [response.id]);
+  for (const [trail, id] of [
+    [founderTrail, 'founder-experiment-report'],
+    [founderTrail, 'founder-experiment-evidence'],
+    [witnessTrail, 'witness-challenge-experiment-report'],
+    [founderTrail, 'founder-experiment-challenge-response']
+  ]) {
+    assert.equal(milestone(trail, id).complete, true, id);
+  }
+
+  const founderCharacter = projectCharacter(retained, founder);
+  const witnessCharacter = projectCharacter(retained, witness);
+  assert.equal(founderCharacter.skills.find(skill => skill.id === 'experimenter').count, 1);
+  assert.equal(founderCharacter.skills.find(skill => skill.id === 'experiment-responder').count, 1);
+  assert.equal(witnessCharacter.skills.find(skill => skill.id === 'adversary').count, 1);
+  assert.deepEqual(retained, before, 'Quest Board and Character Sheet projections are read-only');
+
+  const responseBeforeChallenge = structuredClone(retained);
+  const [movedResponse] = responseBeforeChallenge.events.splice(4, 1);
+  movedResponse.at = '2026-10-28T17:02:00.000Z';
+  responseBeforeChallenge.events.splice(3, 0, movedResponse);
+  const blockedResponse = milestone(
+    getQuestTrail(responseBeforeChallenge, founder),
+    'founder-experiment-challenge-response'
+  );
+  assert.equal(blockedResponse.complete, false);
+  assert.deepEqual(blockedResponse.evidenceIds, []);
+  assert.match(blockedResponse.blockedReason, /ambiguous or invalid/i,
+    'a later timestamp cannot rescue a response appended before its exact challenge');
+
+  const challengeBeforeReport = structuredClone(retained);
+  const [movedChallenge] = challengeBeforeReport.events.splice(3, 1);
+  movedChallenge.at = '2026-10-28T17:03:00.000Z';
+  challengeBeforeReport.events.splice(2, 0, movedChallenge);
+  const blockedChallenge = milestone(
+    getQuestTrail(challengeBeforeReport, witness),
+    'witness-challenge-experiment-report'
+  );
+  assert.equal(blockedChallenge.complete, false);
+  assert.deepEqual(blockedChallenge.evidenceIds, [],
+    'a later timestamp cannot rescue a challenge appended before its exact report');
+});
+
 test('experiment challenge quest treats a same-ID different-role report author as another actor', () => {
   const world = experimentQuestWorld({ reportActor: founder });
   const crossRoleWitness = { ...witness, id: founder.id };
@@ -1117,6 +1259,7 @@ test('Source Observation challenge quest offers a same-ID different-role actor t
     type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
   }, founder, { now: '2026-10-17T12:00:01.000Z' });
   const creationId = published.result.creationId;
+  const sourceSnapshotRevision = published.world.revision;
   const note = {
     claim: 'The bridge is open.',
     sourceKind: 'model-assertion',
@@ -1126,11 +1269,11 @@ test('Source Observation challenge quest offers a same-ID different-role actor t
     nextTest: 'Inspect the primary source.'
   };
   const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, sourceSnapshotRevision, ...note
   })).digest('hex');
   const observationId = 'source-observation-' + digest;
   const recorded = await applyAction(published.world, {
-    type: 'record-source-observation', creationId, version: 1, observationId, ...note
+    type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision, observationId, ...note
   }, founder, {
     now: '2026-10-17T12:00:02.000Z',
     requestId: observationId, actionFingerprint: 'd'.repeat(64)
@@ -1181,6 +1324,7 @@ test('Contradiction Ward quest requires the actor-scoped Source Observatory chal
     type: 'publish', draftId: drafted.result.draftId, expectedVersion: 0
   }, founder, { now: times.publish });
   const creationId = published.result.creationId;
+  const sourceSnapshotRevision = published.world.revision;
   const note = {
     claim: 'The model says the source exists.',
     sourceKind: 'model-assertion',
@@ -1190,11 +1334,11 @@ test('Contradiction Ward quest requires the actor-scoped Source Observatory chal
     nextTest: 'Retrieve and inspect the exact source.'
   };
   const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, sourceSnapshotRevision, ...note
   })).digest('hex');
   const observationId = 'source-observation-' + digest;
   const recorded = await applyAction(published.world, {
-    type: 'record-source-observation', creationId, version: 1, observationId, ...note
+    type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision, observationId, ...note
   }, founder, { now: times.note });
   // Append order is causal for this chain; the valid challenge may carry a regressing wall clock.
   const challenged = await applyAction(recorded.world, {
@@ -1678,6 +1822,31 @@ test('Academy study and review objectives require the publication event to prece
   assert.deepEqual(review.evidenceIds, []);
 });
 
+
+
+test('Academy study and review objectives follow retained append order when timestamps regress', () => {
+  const world = academyQuestWorld(true);
+  world.events[1].at = '2026-10-28T16:59:00.000Z';
+  world.events[2].at = '2026-10-28T16:58:00.000Z';
+
+  const trail = getQuestTrail(world, founder);
+  const study = trail.find(item => item.id === 'founder-academy-study-note');
+  const review = trail.find(item => item.id === 'founder-academy-study-review');
+  assert.equal(study.complete, true, 'a retained publication precedes the study note in the event stream');
+  assert.equal(review.complete, true, 'a retained study note precedes its review despite wall-clock regression');
+  assert.equal(findStudyReview(world.events[1], world.events)?.id, 'academy-review-event');
+
+  const reversed = structuredClone(world);
+  const [reviewEvent] = reversed.events.splice(2, 1);
+  reversed.events.splice(1, 0, reviewEvent);
+  const reversedTrail = getQuestTrail(reversed, founder);
+  const reversedReview = reversedTrail.find(item => item.id === 'founder-academy-study-review');
+  assert.equal(reversedTrail.find(item => item.id === 'founder-academy-study-note').complete, true);
+  assert.equal(reversedReview.complete, false, 'a later timestamp cannot make a review precede its source note');
+  assert.equal(reversedReview.progress, 0);
+  assert.deepEqual(reversedReview.evidenceIds, []);
+  assert.equal(findStudyReview(reversed.events[2], reversed.events), null);
+});
 
 
 test('main quest stops repeating the generic task when every current objective has a retained record', () => {
@@ -2597,6 +2766,44 @@ test('Guild Dissent Circuit requires membership at event time and a challenge af
   assert.equal(blocked.progress, 0);
   assert.equal(blocked.action, null);
   assert.match(blocked.blockedReason, /guild history is ambiguous or invalid/i);
+});
+
+test('Guild Dissent Circuit follows append order when source-action timestamps regress', () => {
+  const fixture = guildDissentCircuitFixture();
+  const {
+    world, publication, guildCreated, guildJoined,
+    founderObservation, witnessObservation, challenge, response
+  } = fixture;
+
+  // Membership events remain in their required chronological order. The
+  // Source Observatory actions are explicitly append-ordered and may carry
+  // valid timestamps below the world clock high-water mark.
+  witnessObservation.at = '2026-10-28T19:01:30.000Z';
+  challenge.at = '2026-10-28T19:01:40.000Z';
+  response.at = '2026-10-28T19:01:50.000Z';
+  world.events = [
+    publication, guildCreated, guildJoined,
+    founderObservation, witnessObservation, challenge, response
+  ];
+
+  const beforeProjection = structuredClone(world);
+  const objective = actor => getQuestTrail(world, actor)
+    .find(item => item.id === actor.role + '-guild-dissent-circuit');
+
+  const founderQuest = objective(founder);
+  const witnessQuest = objective(witness);
+  assert.equal(founderQuest.progress, 4,
+    'later-appended observation, challenge and response remain causally ordered despite clock regression');
+  assert.equal(founderQuest.complete, true);
+  assert.deepEqual(founderQuest.evidenceIds, [
+    founderObservation.id, witnessObservation.id, challenge.id, response.id
+  ]);
+  assert.equal(witnessQuest.progress, 4,
+    'the same append-ordered group objective is visible to the other current member');
+  assert.deepEqual(witnessQuest.evidenceIds, founderQuest.evidenceIds);
+  assert.match(founderQuest.interpretation, /timestamps are metadata, not causal order/i);
+  assert.equal(world.xp, 100, 'the participation objective awards no XP');
+  assert.deepEqual(world, beforeProjection, 'the projection is read-only and preserves all original timestamps and events');
 });
 
 test('Guild Dissent Circuit excludes observations appended before the prior author response from the next round', () => {
@@ -4408,4 +4615,472 @@ test('Armor Bearer quest prioritizes an actionable owned item over a pending rec
   getQuestTrail(secondForge.world, founder);
   assert.deepEqual(secondForge.world, beforeProjection,
     'selecting the next actionable chain is a read-only projection');
+});
+
+
+test('Quest evidence Chronicle links require one exact retained world-event identity', () => {
+  const event = {
+    id: 'quest-evidence-source-event',
+    type: 'source-observation-recorded',
+    at: '2026-11-21'
+  };
+  const world = { events: [event] };
+  const before = structuredClone(world);
+  const resolve = createQuestEvidenceEventLinkResolver(world);
+
+  assert.deepEqual(resolve({ id: event.id, type: event.type }), {
+    status: 'linked', event, reason: null
+  }, 'an exact unique event remains inspectable even when its timestamp needs Chronicle warning');
+  assert.equal(resolve({ id: ' ' + event.id, type: event.type }).status, 'invalid');
+  assert.equal(resolve({ id: 'missing-quest-evidence-event', type: event.type }).status, 'unlinked');
+  assert.equal(resolve({ id: event.id, type: 'source-observation-challenged' }).status, 'mismatched');
+  assert.equal(resolve({ id: 'x'.repeat(129), type: event.type }).status, 'invalid');
+  assert.equal(
+    createQuestEvidenceEventLinkResolver({ events: [event, { ...event, type: 'source-observation-challenged' }] })(
+      { id: event.id, type: event.type }
+    ).status,
+    'ambiguous',
+    'a duplicate event identity must not choose one matching Chronicle record'
+  );
+  assert.equal(
+    createQuestEvidenceEventLinkResolver({})({ id: event.id, type: event.type }).status,
+    'unavailable',
+    'missing retained world history must not be treated as an empty or linkable stream'
+  );
+  assert.deepEqual(world, before, 'resolving a quest evidence link must not mutate retained world history');
+});
+
+
+test('Source Archive investigation remains visible but blocked when failure history is partial or unavailable', () => {
+  const partial = createWorld({
+    id: 'partial-source-archive-world',
+    now: '2026-11-22T00:00:00.000Z'
+  });
+  // One accepted world revision is not represented in this actor-visible event
+  // prefix. There are no visible failure records, but absence is not established.
+  partial.revision = 1;
+
+  for (const actor of [founder, witness]) {
+    const before = structuredClone(partial);
+    const objective = getQuestTrail(partial, actor).find(item =>
+      item.id === actor.role + '-source-archive-failure-investigation'
+    );
+    assert.ok(objective, actor.role + ' must not lose the investigation objective on a partial snapshot');
+    assert.equal(objective.progress, 0);
+    assert.equal(objective.complete, false);
+    assert.equal(objective.action, null);
+    assert.match(objective.blockedReason, /partial/i);
+    assert.match(objective.blockedReason, /1 unseen event/i);
+    assert.equal(objective.countsForQuestkeeper, false);
+    assert.deepEqual(partial, before, 'projecting a blocked objective must not mutate the world');
+  }
+
+  const unavailable = createWorld({
+    id: 'unavailable-source-archive-world',
+    now: '2026-11-22T00:00:00.000Z'
+  });
+  unavailable.schema = 'ngl.world.unrecognized';
+  const unavailableObjective = getQuestTrail(unavailable, witness).find(item =>
+    item.id === 'witness-source-archive-failure-investigation'
+  );
+  assert.ok(unavailableObjective, 'an unavailable failure projection must remain visible as a blocked objective');
+  assert.equal(unavailableObjective.progress, 0);
+  assert.equal(unavailableObjective.action, null);
+  assert.match(unavailableObjective.blockedReason, /unavailable|unclassifiable/i);
+  assert.equal(unavailableObjective.countsForQuestkeeper, false);
+
+  const completeEmpty = createWorld({
+    id: 'complete-empty-source-archive-world',
+    now: '2026-11-22T00:00:00.000Z'
+  });
+  assert.equal(
+    getQuestTrail(completeEmpty, founder).some(item =>
+      item.id === 'founder-source-archive-failure-investigation'
+    ),
+    false,
+    'a complete, valid empty history should not invent a failure-investigation objective'
+  );
+});
+
+
+test('Founder Commons report-review quest requires an exact linked Founder-session event', async () => {
+  const start = '2026-11-23T10:00:00.000Z';
+  const author = { id: 'commons-author', name: 'Commons Author', role: 'witness' };
+  const reporter = { id: 'commons-reporter', name: 'Commons Reporter', role: 'witness' };
+  const created = createWorld({ id: 'commons-report-review-quest', now: start });
+  const posted = await applyAction(created, {
+    type: 'post-message',
+    text: 'A retained Commons message for a separate report.'
+  }, author, { now: '2026-11-23T10:01:00.000Z' });
+  const reported = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'privacy',
+    details: 'Please review this retained message as a process matter.'
+  }, reporter, { now: '2026-11-23T10:02:00.000Z' });
+
+  const open = getQuestTrail(reported.world, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.ok(open, 'the Founder trail must expose the TownSquare review objective');
+  assert.equal(open.title, 'Record a process review for another actor’s Commons report');
+  assert.equal(open.progress, 0);
+  assert.equal(open.target, 1);
+  assert.equal(open.complete, false);
+  assert.deepEqual(open.evidenceIds, []);
+  assert.deepEqual(open.action, { type: 'location', id: 'town-square' });
+  assert.equal(open.blockedReason, null);
+  assert.match(open.interpretation, /process record/i);
+  assert.match(open.interpretation, /not a factual verdict/i);
+  assert.match(open.interpretation, /no XP/i);
+
+  const xpBeforeReview = reported.world.xp;
+  const reviewed = await applyAction(reported.world, {
+    type: 'review-message-report',
+    reportId: reported.result.reportId,
+    note: 'Reviewed as a process step; this is not a factual verdict.'
+  }, founder, { now: '2026-11-23T10:03:00.000Z' });
+  const reviewEvent = reviewed.world.events.at(-1);
+  assert.equal(reviewEvent.type, 'message-report-reviewed');
+  assert.equal(reviewEvent.actor.id, founder.id);
+  assert.equal(reviewEvent.actor.role, 'founder');
+  assert.equal(reviewEvent.reportId, reported.result.reportId);
+  assert.equal(reviewEvent.messageId, posted.result.messageId);
+  const sourceChain = [
+    reviewed.world.events.find(event => event.type === 'message-posted' && event.messageId === posted.result.messageId),
+    reviewed.world.events.find(event => event.type === 'message-reported' && event.reportId === reported.result.reportId),
+    reviewEvent
+  ];
+  assert.ok(sourceChain.every(event => event && typeof event.id === 'string'));
+  const expectedEvidenceIds = sourceChain.map(event => event.id);
+  const sourcePositions = sourceChain.map(event => reviewed.world.events.indexOf(event));
+  assert.ok(sourcePositions[0] < sourcePositions[1] && sourcePositions[1] < sourcePositions[2]);
+
+  const beforeProjection = structuredClone(reviewed.world);
+  const complete = getQuestTrail(reviewed.world, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(complete.progress, 1);
+  assert.equal(complete.target, 1);
+  assert.equal(complete.complete, true);
+  assert.deepEqual(complete.evidenceIds, expectedEvidenceIds);
+  assert.equal(complete.evidenceDetailCount, 3, 'the quest exposes the original message, private report, and Founder review');
+  assert.equal(complete.action, null);
+  assert.equal(complete.blockedReason, null);
+  assert.equal(reviewed.world.xp, xpBeforeReview,
+    'a process review and its Quest Board projection award no XP');
+  assert.deepEqual(reviewed.world, beforeProjection,
+    'the Quest Board objective is a read-only projection of the retained review event');
+  assert.equal(getQuestTrail(reviewed.world, reporter).some(item =>
+    item.id === 'founder-commons-report-review'
+  ), false, 'Witness Quest Boards must not expose the Founder-only review objective');
+
+  // The production shared-world API wraps a complete Founder history in an
+  // explicit coverage receipt. That receipt proves no role-filtered events
+  // were omitted; its mere presence must not make the Founder history partial.
+  const completeFounderSnapshot = publicWorld(reviewed.world, founder);
+  const founderCoverage = completeFounderSnapshot.historyCoverage;
+  assert.equal(founderCoverage.schema, 'ngl.public-world-history.v1');
+  assert.equal(founderCoverage.sourceComplete, true);
+  assert.equal(founderCoverage.viewerRole, 'founder');
+  assert.equal(founderCoverage.sourceEventCount, reviewed.world.revision);
+  assert.equal(founderCoverage.suppliedEventCount, completeFounderSnapshot.events.length);
+  assert.equal(founderCoverage.omittedEventCount, 0);
+  assert.deepEqual(founderCoverage.omittedEventTypes, {});
+  const completeFromPublicSnapshot = getQuestTrail(completeFounderSnapshot, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(completeFromPublicSnapshot.progress, 1,
+    'a complete Founder public-world coverage receipt must preserve exact review progress');
+  assert.deepEqual(completeFromPublicSnapshot.evidenceIds, expectedEvidenceIds);
+  assert.equal(completeFromPublicSnapshot.evidenceDetailCount, 3);
+
+  // A Witness-filtered snapshot is not a complete Founder view, even when
+  // the caller pairs it with a Founder viewer object.
+  const witnessSnapshot = publicWorld(reviewed.world, witness);
+  assert.ok(witnessSnapshot.historyCoverage.omittedEventCount > 0);
+  const founderOnWitnessSnapshot = getQuestTrail(witnessSnapshot, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(founderOnWitnessSnapshot.progress, 0);
+  assert.equal(founderOnWitnessSnapshot.action, null);
+  assert.match(founderOnWitnessSnapshot.blockedReason, /incomplete|revision|coverage/i);
+
+  const forgedPartialCoverage = {
+    ...completeFounderSnapshot,
+    historyCoverage: {
+      ...founderCoverage,
+      omittedEventCount: 1,
+      omittedEventTypes: { 'message-reported': 1 }
+    }
+  };
+  const blockedForgedCoverage = getQuestTrail(forgedPartialCoverage, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(blockedForgedCoverage.progress, 0);
+  assert.equal(blockedForgedCoverage.action, null);
+  assert.match(blockedForgedCoverage.blockedReason, /incomplete|revision|coverage/i);
+});
+
+test('Founder Commons report-review quest fails closed on self-review, invalid linkage, and partial history', async () => {
+  const start = '2026-11-23T11:00:00.000Z';
+  const author = { id: 'commons-author-two', name: 'Commons Author Two', role: 'witness' };
+  const reporter = { id: 'commons-reporter-two', name: 'Commons Reporter Two', role: 'witness' };
+  const created = createWorld({ id: 'commons-report-review-quest-negative', now: start });
+  const posted = await applyAction(created, {
+    type: 'post-message',
+    text: 'A message used to test the Founder self-review boundary.'
+  }, author, { now: '2026-11-23T11:01:00.000Z' });
+
+  const founderReport = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'other',
+    details: 'A Founder-authored report cannot be reviewed by the same Founder session.'
+  }, founder, { now: '2026-11-23T11:02:00.000Z' });
+  const selfReviewBlocked = getQuestTrail(founderReport.world, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(selfReviewBlocked.progress, 0);
+  assert.equal(selfReviewBlocked.complete, false);
+  assert.equal(selfReviewBlocked.action, null);
+  assert.match(selfReviewBlocked.blockedReason, /eligible.*report|another actor/i);
+  const beforeRejectedSelfReview = structuredClone(founderReport.world);
+  await assert.rejects(
+    applyAction(founderReport.world, {
+      type: 'review-message-report',
+      reportId: founderReport.result.reportId,
+      note: 'The same Founder session cannot review its own report.'
+    }, founder, { now: '2026-11-23T11:03:00.000Z' }),
+    error => error.code === 'SELF_REVIEW' && error.status === 409
+  );
+  assert.deepEqual(founderReport.world, beforeRejectedSelfReview,
+    'a rejected self-review must not mutate the retained world');
+
+  const reportedByWitness = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'privacy',
+    details: 'A separate Witness report for malformed-history tests.'
+  }, reporter, { now: '2026-11-23T11:04:00.000Z' });
+  const reportEvent = reportedByWitness.world.events.at(-1);
+  const forgedWrongRoleReview = {
+    id: 'commons-forged-witness-review-event',
+    type: 'message-report-reviewed',
+    reviewId: 'commons-forged-witness-review',
+    reportId: reportedByWitness.result.reportId,
+    messageId: posted.result.messageId,
+    note: 'A Witness cannot author a Founder-session review.',
+    actor: reporter,
+    at: '2026-11-23T11:05:00.000Z'
+  };
+  const wrongRoleWorld = {
+    ...reportedByWitness.world,
+    revision: reportedByWitness.world.revision + 1,
+    events: [...reportedByWitness.world.events, forgedWrongRoleReview]
+  };
+  const wrongRole = getQuestTrail(wrongRoleWorld, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(wrongRole.progress, 0);
+  assert.equal(wrongRole.action, null);
+  assert.match(wrongRole.blockedReason, /invalid|ambiguous/i);
+
+  const forgedMismatchedReview = {
+    ...forgedWrongRoleReview,
+    id: 'commons-forged-mismatched-review-event',
+    reviewId: 'commons-forged-mismatched-review',
+    messageId: 'commons-nonexistent-message',
+    actor: founder,
+    at: '2026-11-23T11:06:00.000Z'
+  };
+  const mismatchedWorld = {
+    ...reportedByWitness.world,
+    revision: reportedByWitness.world.revision + 1,
+    events: [...reportedByWitness.world.events, forgedMismatchedReview]
+  };
+  const mismatched = getQuestTrail(mismatchedWorld, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(mismatched.progress, 0);
+  assert.equal(mismatched.action, null);
+  assert.match(mismatched.blockedReason, /invalid|ambiguous/i);
+
+  const duplicateReview = {
+    ...forgedMismatchedReview,
+    id: 'commons-duplicate-review-event-one',
+    reviewId: 'commons-duplicate-review-id',
+    messageId: posted.result.messageId,
+    actor: founder,
+    at: '2026-11-23T11:07:00.000Z'
+  };
+  const duplicateReviewAgain = {
+    ...duplicateReview,
+    id: 'commons-duplicate-review-event-two',
+    at: '2026-11-23T11:08:00.000Z'
+  };
+  const duplicateWorld = {
+    ...reportedByWitness.world,
+    revision: reportedByWitness.world.revision + 2,
+    events: [...reportedByWitness.world.events, duplicateReview, duplicateReviewAgain]
+  };
+  const duplicate = getQuestTrail(duplicateWorld, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(duplicate.progress, 0);
+  assert.equal(duplicate.action, null);
+  assert.match(duplicate.blockedReason, /invalid|ambiguous/i);
+
+  const malformedReviewCases = [
+    ['untrimmed review note', {
+      ...forgedMismatchedReview,
+      id: 'commons-forged-untrimmed-review-event',
+      reviewId: 'commons-forged-untrimmed-review',
+      messageId: posted.result.messageId,
+      actor: founder,
+      note: ' A process review note with surrounding whitespace. ',
+      at: '2026-11-23T11:07:00.000Z'
+    }],
+    ['overlong review note', {
+      ...forgedMismatchedReview,
+      id: 'commons-forged-overlong-review-event',
+      reviewId: 'commons-forged-overlong-review',
+      messageId: posted.result.messageId,
+      actor: founder,
+      note: 'x'.repeat(501),
+      at: '2026-11-23T11:07:00.000Z'
+    }],
+    ['review timestamp regression', {
+      ...forgedMismatchedReview,
+      id: 'commons-forged-regressed-review-event',
+      reviewId: 'commons-forged-regressed-review',
+      messageId: posted.result.messageId,
+      actor: founder,
+      note: 'A process review note with a regressed timestamp.',
+      at: '2026-11-23T11:03:00.000Z'
+    }]
+  ];
+  for (const [label, reviewEvent] of malformedReviewCases) {
+    const malformedWorld = {
+      ...reportedByWitness.world,
+      revision: reportedByWitness.world.revision + 1,
+      events: [...reportedByWitness.world.events, reviewEvent]
+    };
+    const malformedQuest = getQuestTrail(malformedWorld, founder).find(item =>
+      item.id === 'founder-commons-report-review'
+    );
+    assert.equal(malformedQuest.progress, 0, label);
+    assert.equal(malformedQuest.complete, false, label);
+    assert.equal(malformedQuest.action, null, label);
+    assert.match(malformedQuest.blockedReason, /invalid|ambiguous/i, label);
+  }
+
+  const partialWorld = {
+    ...reportedByWitness.world,
+    revision: reportedByWitness.world.revision + 1
+  };
+  const partial = getQuestTrail(partialWorld, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(partial.progress, 0);
+  assert.equal(partial.action, null);
+  assert.match(partial.blockedReason, /incomplete|revision/i);
+  assert.equal(reportEvent.type, 'message-reported');
+});
+
+
+test('Witness Quest Board exposes only the exact Founder review of that Witness session’s Commons report', async () => {
+  const commonsFounder = { id: COMMONS_FOUNDER_ACTOR_ID, name: 'Commons Founder', role: 'founder' };
+  const author = { id: 'commons-review-author', name: 'Commons Review Author', role: 'witness' };
+  const reporter = { id: 'commons-review-reporter', name: 'Commons Review Reporter', role: 'witness' };
+  const otherReporter = { id: 'commons-review-other-reporter', name: 'Other Commons Reporter', role: 'witness' };
+  const created = createWorld({ id: 'witness-commons-review-received', now: '2026-11-24T01:00:00.000Z' });
+  const posted = await applyAction(created, {
+    type: 'post-message',
+    text: 'A retained Commons message for the original reporter.'
+  }, author, { now: '2026-11-24T01:01:00.000Z' });
+  const reported = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'privacy',
+    details: 'Please preserve the exact process review for this report.'
+  }, reporter, { now: '2026-11-24T01:02:00.000Z' });
+  const reviewed = await applyAction(reported.world, {
+    type: 'review-message-report',
+    reportId: reported.result.reportId,
+    note: 'Founder process review only; not a factual verdict.'
+  }, commonsFounder, { now: '2026-11-24T01:03:00.000Z' });
+  const reviewEvent = reviewed.world.events.at(-1);
+
+  const otherPost = await applyAction(reviewed.world, {
+    type: 'post-message',
+    text: 'A separate message with a separate private report.'
+  }, author, { now: '2026-11-24T01:04:00.000Z' });
+  const otherReport = await applyAction(otherPost.world, {
+    type: 'report-message',
+    messageId: otherPost.result.messageId,
+    reason: 'other',
+    details: 'This report belongs to a different Witness session.'
+  }, otherReporter, { now: '2026-11-24T01:05:00.000Z' });
+  const sourceChain = [
+    otherReport.world.events.find(event => event.type === 'message-posted' && event.messageId === posted.result.messageId),
+    otherReport.world.events.find(event => event.type === 'message-reported' && event.reportId === reported.result.reportId),
+    reviewEvent
+  ];
+  assert.ok(sourceChain.every(event => event && typeof event.id === 'string'));
+  const expectedEvidenceIds = sourceChain.map(event => event.id);
+  assert.ok(sourceChain.every(event => otherReport.world.events.some(retained => retained.id === event.id)));
+
+  const reporterSnapshot = publicWorld(otherReport.world, reporter);
+  assert.ok(reporterSnapshot.historyCoverage.omittedEventCount > 0,
+    'the Witness receives a role-filtered snapshot that omits another actor’s private report');
+  assert.equal(reporterSnapshot.events.some(event => event.id === reviewEvent.id), true,
+    'the original reporter receives their exact linked Founder review event');
+  assert.equal(reporterSnapshot.events.some(event => event.reportId === otherReport.result.reportId), false,
+    'the original reporter does not receive another Witness’s private report');
+
+  const beforeProjection = structuredClone(reporterSnapshot);
+  const received = getQuestTrail(reporterSnapshot, reporter).find(item =>
+    item.id === 'witness-commons-report-review-received'
+  );
+  assert.ok(received, 'the reporter receives a read-only objective for their own retained review');
+  assert.equal(received.progress, 1);
+  assert.equal(received.target, 1);
+  assert.equal(received.complete, true);
+  assert.deepEqual(received.evidenceIds, expectedEvidenceIds);
+  assert.equal(received.evidenceDetailCount, 3, 'the reporter can inspect the exact message → report → review chain');
+  assert.ok(expectedEvidenceIds.every(id => reporterSnapshot.events.some(event => event.id === id)));
+  assert.equal(received.action, null);
+  assert.equal(received.blockedReason, null);
+  assert.match(received.interpretation, /process record/i);
+  assert.match(received.interpretation, /not a factual verdict/i);
+  assert.match(received.interpretation, /no XP/i);
+  assert.deepEqual(reporterSnapshot, beforeProjection,
+    'the Witness Quest Board projection must not mutate its partial public snapshot');
+  assert.equal(otherReport.world.xp, 0, 'reporting, review, and quest inspection award no XP');
+
+  assert.equal(getQuestTrail(publicWorld(otherReport.world, otherReporter), otherReporter).some(item =>
+    item.id === 'witness-commons-report-review-received'
+  ), false, 'another reporter does not inherit this Witness’s review objective');
+  assert.equal(getQuestTrail(publicWorld(otherReport.world, author), author).some(item =>
+    item.id === 'witness-commons-report-review-received'
+  ), false, 'the message author does not receive another actor’s private report objective');
+  assert.equal(getQuestTrail(publicWorld(otherReport.world, commonsFounder), commonsFounder).some(item =>
+    item.id === 'witness-commons-report-review-received'
+  ), false, 'the Founder retains the separate Founder-only review objective');
+  assert.equal(getQuestTrail(reporterSnapshot, reporter).some(item =>
+    item.id === 'founder-commons-report-review'
+  ), false, 'the Witness never receives the Founder-only objective');
+
+  const tampered = structuredClone(otherReport.world);
+  const reviewIndex = tampered.events.findIndex(event => event.id === reviewEvent.id);
+  tampered.events[reviewIndex].actor = { ...commonsFounder, id: 'forged-founder' };
+  const blocked = getQuestTrail(tampered, reporter).find(item =>
+    item.id === 'witness-commons-report-review-received'
+  );
+  assert.ok(blocked, 'invalid linkage remains visible as a blocked objective rather than disappearing as success');
+  assert.equal(blocked.progress, 0);
+  assert.equal(blocked.complete, false);
+  assert.deepEqual(blocked.evidenceIds, []);
+  assert.match(blocked.blockedReason, /invalid|ambiguous/i);
 });

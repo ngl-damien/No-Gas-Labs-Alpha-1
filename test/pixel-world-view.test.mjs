@@ -10,7 +10,7 @@ import {
 import {
   isWalkable, findRoute, advanceRoute, COMBAT_YARD_ACTION_RADIUS, PLACES, WORLD_WIDTH, WORLD_HEIGHT,
   PLAYER_MOVE_SPEED, MAX_FRAME_DELTA_SECONDS, boundedFrameDeltaSeconds,
-  institutionActivityCount
+  institutionActivityCount, WorldView
 } from '../game/world-view.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { createHash } from 'node:crypto';
@@ -503,6 +503,52 @@ test('a world obstacle update replans an active institution destination without 
   assert.equal(view.target, null, 'the route does not become an auto-interaction target');
 });
 
+test('same-session server position updates preserve an active freeform map route', () => {
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'actor', x: 180, y: 640, positionEpoch: 'epoch-1' },
+    positionEpoch: 'epoch-1',
+    world: { creations: [] }, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [], target: null, targetType: null, navigationTarget: null, playerApproach: null,
+    movementEnabled: true, keys: new Set(), input: { x: 0, y: 0 }, moving: false,
+    scheduleFrame: () => {}
+  });
+
+  view.goTo({ x: 420, y: 640 });
+  assert.ok(view.route.length > 0, 'a ground tap creates a walkable route');
+
+  view.setPlayer({ id: 'actor', x: 195, y: 640, positionEpoch: 'epoch-1' });
+
+  assert.ok(view.route.length > 0,
+    'a same-session server position receipt must replan the pending ground route instead of stranding the player after one update');
+  assert.equal(view.target, null, 'ground navigation remains movement-only');
+  assert.equal(view.targetType, null);
+});
+
+test('same-session server position updates preserve an active institution route', () => {
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'actor', x: 180, y: 640, positionEpoch: 'epoch-1' },
+    positionEpoch: 'epoch-1',
+    world: { creations: [] }, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [], target: null, targetType: null, navigationTarget: null, playerApproach: null,
+    movementEnabled: true, keys: new Set(), input: { x: 0, y: 0 }, moving: false,
+    scheduleFrame: () => {}
+  });
+
+  view.goTo('source_observatory');
+  const destination = { ...view.navigationTarget };
+  assert.ok(view.route.length > 0, 'the institution destination starts with a walkable route');
+
+  view.setPlayer({ id: 'actor', x: 195, y: 640, positionEpoch: 'epoch-1' });
+
+  assert.ok(view.route.length > 0,
+    'a same-session server position receipt must replan an institution route in progress');
+  assert.deepEqual(view.navigationTarget, destination,
+    'the exact requested institution remains the navigation destination, not an auto-interaction');
+  assert.equal(view.target, null, 'institution navigation does not become an automatic entry');
+});
+
 test('manual movement clears a pending institution destination', () => {
   const view = Object.create(PixelWorldView.prototype);
   Object.assign(view, {
@@ -589,6 +635,7 @@ async function sourceObservationWorld({ respond = false } = {}) {
     type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
   }, founder, { now: observationTimes.published });
   const creationId = published.result.creationId;
+  const sourceSnapshotRevision = published.world.revision;
   const note = {
     claim: 'The bridge is open.',
     sourceKind: 'model-assertion',
@@ -598,11 +645,11 @@ async function sourceObservationWorld({ respond = false } = {}) {
     nextTest: 'Inspect the primary source.'
   };
   const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, sourceSnapshotRevision, ...note
   })).digest('hex');
   const observationId = 'source-observation-' + digest;
   const recorded = await applyAction(published.world, {
-    type: 'record-source-observation', creationId, version: 1, observationId, ...note
+    type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision, observationId, ...note
   }, founder, {
     now: observationTimes.observed, requestId: observationId, actionFingerprint: 'c'.repeat(64)
   });
@@ -1001,6 +1048,8 @@ test('map renderer measures visible HUD overlays relative to its canvas', () => 
     assert.ok(Object.isFrozen(overlays[0]));
     assert.match(selectors[0], /#quest-card/);
     assert.match(selectors[0], /\.world-tools/);
+    assert.doesNotMatch(selectors[0], /#sheet-backdrop/, 'the pointer-transparent sheet backdrop must not reserve the map');
+    assert.match(selectors[0], /#sheet/, 'the actual institution panel still blocks map input within its own bounds');
   } finally {
     if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
     else delete globalThis.document;
@@ -1598,7 +1647,7 @@ test('touch pointer projection resolves institutional landmarks and rejects off-
   assert.equal(getterCalls, 0, 'institution hit testing must not invoke accessor-backed coordinates');
 });
 
-test('touching an institution landmark routes when distant and opens when near', () => {
+test('touching an institution landmark always navigates; explicit Interact remains separate', () => {
   const width = 390, height = 844, zoom = 0.78;
   const camera = { x: 600, y: 190 };
   const point = {
@@ -1626,8 +1675,10 @@ test('touching an institution landmark routes when distant and opens when near',
     }, () => calls.push(['fallback']));
     return { calls, focusCalls };
   };
-  assert.deepEqual(run(200), { calls: [['goTo', 'council_chamber']], focusCalls: 1 });
-  assert.deepEqual(run(100), { calls: [['interact', 'council_chamber']], focusCalls: 0 });
+  assert.deepEqual(run(200), { calls: [['goTo', 'council_chamber']], focusCalls: 1 },
+    'a distant landmark tap starts navigation without entering the institution');
+  assert.deepEqual(run(100), { calls: [['goTo', 'council_chamber']], focusCalls: 1 },
+    'a nearby landmark tap still navigates; the explicit nearby Interact action performs entry');
 });
 
 test('touching a distant NPC routes toward it, then a second tap opens its owning institution', () => {
@@ -2054,6 +2105,10 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
 
   const phone = renderProbe(390, 120);
   assert.ok(phone.labels.includes('TAP · TALK · ' + npc.shortName));
+  assert.equal(phone.dataset.playerX, '100');
+  assert.equal(phone.dataset.playerY, '100');
+  assert.equal(phone.dataset.playerPositionSource, 'local-renderer',
+    'DOM coordinates must identify themselves as renderer-local, never server-authoritative');
   assert.equal(phone.dataset.nearbyNpcRole, npc.roleId);
   assert.equal(phone.dataset.nearbyNpcPacketState, 'ready');
   assert.match(phone.attributes['aria-description'], /tap the character to talk/i);
@@ -2102,6 +2157,31 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.deepEqual(arrived.interactions, [{ type: 'institution', id: observatory.id }],
     'the primary Interact action enters the requested institution, not the incidental NPC');
   assert.equal(arrived.view.navigationTarget, null);
+
+  const synthesizer = GUILD_NPCS.find(candidate => candidate.roleId === 'synthesizer');
+  const synthesizerTarget = { id: synthesizer.id, type: 'npc' };
+  const synthesizerDestination = { ...synthesizer, type: 'npc', distance: 60 };
+  const npcWalking = renderProbe(390, 20, false, synthesizer, null, null, {
+    target: synthesizerTarget,
+    route: [{ x: synthesizer.x, y: synthesizer.y + 12 }],
+    destination: synthesizerDestination
+  });
+  assert.equal(npcWalking.dataset.navigationTargetId, synthesizer.id);
+  assert.equal(npcWalking.dataset.navigationState, 'walking');
+  assert.match(npcWalking.attributes['aria-description'], /Walking to Synthesis Clerk/i,
+    'screen-reader route copy must name the exact NPC destination, not a generic institution');
+  assert.match(npcWalking.attributes['aria-description'], /navigation alone does not open the interaction/i);
+  npcWalking.view.interact();
+  assert.deepEqual(npcWalking.interactions, [],
+    'NPC navigation must not talk to the collaborator before explicit arrival interaction');
+
+  const npcAwaitingRange = renderProbe(390, 20, false, synthesizer, null, null, {
+    target: synthesizerTarget,
+    route: [],
+    destination: { ...synthesizer, type: 'npc', distance: 300 }
+  });
+  assert.equal(npcAwaitingRange.dataset.navigationState, 'awaiting-range');
+  assert.match(npcAwaitingRange.attributes['aria-description'], /Synthesis Clerk is not within interaction range/i);
 
   const boundary = renderProbe(390, 160);
   assert.equal(boundary.dataset.nearbyNpcRole, 'none');
@@ -2343,26 +2423,50 @@ test('Guild Hall NPC readiness marks role-redacted event views as partial instea
     at: '2026-10-29T04:03:00.000Z',
     draftId: 'draft-1'
   });
-  world.revision += 1;
+  world.events.push(
+    {
+      id: 'commons-post-event-1', type: 'message-posted', messageId: 'message-1',
+      channel: 'commons', text: 'A retained public message.',
+      actor: { id: 'witness-3', name: 'Author', role: 'witness' },
+      at: '2026-10-29T04:04:00.000Z', semantics: 'public conversation'
+    },
+    {
+      id: 'commons-report-event-1', type: 'message-reported', reportId: 'report-1',
+      messageId: 'message-1', reason: 'privacy', details: 'Private report details.',
+      actor: { id: 'witness-2', name: 'Reporter', role: 'witness' },
+      at: '2026-10-29T04:05:00.000Z', semantics: 'private report'
+    },
+    {
+      id: 'commons-review-event-1', type: 'message-report-reviewed', reviewId: 'review-1',
+      reportId: 'report-1', messageId: 'message-1', note: 'Private process note.',
+      actor: { id: 'damien', name: 'Damien', role: 'founder' },
+      at: '2026-10-29T04:06:00.000Z', semantics: 'Founder-session process record'
+    }
+  );
+  world.revision += 4;
   const worldBefore = structuredClone(world);
 
   const founderReadiness = projectGuildNpcReadiness(world);
   assert.ok(founderReadiness.every(entry =>
     entry.status === 'ready' && entry.sourceSnapshotCoverage === 'count-matched' &&
-    entry.revision === 4 && entry.suppliedEventCount === 4
+    entry.revision === 7 && entry.suppliedEventCount === 7
   ));
 
   const witnessWorld = publicWorld(world, { id: 'witness-1', role: 'witness' });
-  assert.equal(witnessWorld.revision, 4);
-  assert.equal(witnessWorld.events.length, 3,
-    'the Witness projection omits the private Founder draft while retaining the canonical revision');
+  assert.equal(witnessWorld.revision, 7);
+  assert.equal(witnessWorld.events.length, 4,
+    'the Witness projection omits the private draft, report, and review while retaining the canonical revision');
+  assert.deepEqual(witnessWorld.historyCoverage.omittedEventTypes, {
+    draft: 1, 'message-reported': 1, 'message-report-reviewed': 1
+  });
+  assert.equal(witnessWorld.events.some(event => event.type === 'message-report-reviewed'), false);
   const witnessBefore = structuredClone(witnessWorld);
   const witnessReadiness = projectGuildNpcReadiness(witnessWorld);
   assert.ok(witnessReadiness.every(entry =>
     entry.status === 'partial' && entry.label === 'READY · PARTIAL' &&
     entry.sourceSnapshotStatus === 'identified' &&
     entry.sourceSnapshotCoverage === 'below-revision' &&
-    entry.revision === 4 && entry.suppliedEventCount === 3 &&
+    entry.revision === 7 && entry.suppliedEventCount === 4 &&
     /role-redacted or otherwise incomplete/.test(entry.reason)
   ));
 
@@ -2384,7 +2488,7 @@ test('Guild Hall NPC readiness marks role-redacted event views as partial instea
   view.updateResearchAccessibility();
   assert.match(view.canvas.dataset.guildNpcPackets,
     /archivist=partial:3:0:identified:below-revision/);
-  assert.match(view.researchAccessibilityLabel, /supplied view contains 3 event records for declared revision 4/);
+  assert.match(view.researchAccessibilityLabel, /supplied view contains 4 event records for declared revision 7/);
   assert.match(view.researchAccessibilityLabel, /Do not claim exhaustive history/);
 
   const labels = [];
@@ -3160,4 +3264,47 @@ test('a server position epoch rotation clears the old route even when the presen
   assert.deepEqual([...view.keys],[]);
   assert.deepEqual(view.input,{x:0,y:0});
   assert.equal(view.moving,false);
+});
+
+
+test('world canvas publishes renderer-local player, camera and route telemetry without changing canonical state', () => {
+  const view = Object.create(WorldView.prototype);
+  view.canvas = { dataset: {} };
+  view.player = { id: 'founder-session', x: 160, y: 243 };
+  view.camera = { x: 262, y: 541.5 };
+  view.zoom = 0.78;
+  view.width = 320;
+  view.height = 845;
+  view.route = [{ x: 380, y: 323 }];
+  view.world = { revision: 7, events: [{ id: 'retained-event' }] };
+  const before = JSON.stringify(view.world);
+
+  view.syncCanvasState();
+
+  assert.deepEqual(view.canvas.dataset, {
+    playerX: '160',
+    playerY: '243',
+    cameraX: '262',
+    cameraY: '541.5',
+    zoom: '0.78',
+    viewportWidth: '320',
+    viewportHeight: '845',
+    routeActive: 'true',
+    positionSource: 'renderer-local'
+  });
+  assert.equal(JSON.stringify(view.world), before,
+    'renderer telemetry must never mutate the canonical world projection');
+
+  view.route = [];
+  view.syncCanvasState();
+  assert.equal(view.canvas.dataset.routeActive, 'false');
+
+  view.player = { x: Number.NaN, y: 243 };
+  view.syncCanvasState();
+  assert.equal('playerX' in view.canvas.dataset, false,
+    'invalid local coordinates must clear stale renderer telemetry');
+  assert.equal(view.canvas.dataset.playerY, '243');
+  assert.equal(view.canvas.dataset.positionSource, 'renderer-local');
+  assert.equal(JSON.stringify(view.world), before,
+    'publishing or clearing renderer telemetry must remain outside canonical world state');
 });

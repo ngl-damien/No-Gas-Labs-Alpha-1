@@ -82,7 +82,7 @@ async function serviceWorkerHarness({
   return handlers;
 }
 
-test('service-worker installation rotates the offline shell and precaches Character Sheet and Chronicle navigation modules', async () => {
+test('service-worker installation rotates the offline shell and precaches Character Sheet, Quest Board and Chronicle modules', async () => {
   let openedCacheName = null;
   let precachedUrls = [];
   const handlers = await serviceWorkerHarness({
@@ -98,23 +98,29 @@ test('service-worker installation rotates the offline shell and precaches Charac
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261120-chronicle-in-place-reconnect-refresh-22');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261123-role-filtered-recovery-offers-68');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'),
     'Character Sheet to exact World Chronicle navigation must remain available in the offline shell');
   assert.ok(precachedUrls.includes('https://ngl.test/character-sheet.mjs'),
     'the Character Sheet activity and inventory projection must remain available in the offline core shell');
   assert.ok(precachedUrls.includes('https://ngl.test/world-view.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/quests.mjs'));
+  assert.ok(precachedUrls.includes('https://ngl.test/shared-snapshot.mjs'),
+    'the bounded public shared-world snapshot cache must be available after an offline reload');
   assert.ok(precachedUrls.includes('https://ngl.test/field-items.mjs'),
     'the event-derived field-item projection must remain available in the offline core shell');
   assert.ok(precachedUrls.includes('https://ngl.test/institution-view.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/chronicle.mjs'));
+  assert.ok(precachedUrls.includes('https://ngl.test/research-records.mjs'),
+    'global event positions and Source Observation projections must remain available in the offline core shell');
   assert.ok(precachedUrls.includes('https://ngl.test/timestamps.mjs'),
     'the strict timestamp validator imported by Chronicle must remain available in the offline core shell');
   assert.ok(precachedUrls.includes('https://ngl.test/styles.css'));
   assert.ok(precachedUrls.includes('https://ngl.test/github-decision-gate.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/artifacts.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/collaborator-contracts.mjs'));
+  assert.ok(!precachedUrls.includes('https://ngl.test/project-state.json'),
+    'the dated project-state snapshot must remain optional so its absence cannot block PWA installation');
 });
 
 test('installation rejects when the current shell cache cannot be opened', async () => {
@@ -163,7 +169,7 @@ test('installation remains bounded when Cache Storage open or shell precache sta
 });
 
 test('activation deletes only stale NGL shell caches and claims clients', async () => {
-  const current='ngl-common-ground-shell-20261120-chronicle-in-place-reconnect-refresh-22';
+  const current='ngl-common-ground-shell-20261123-role-filtered-recovery-offers-68';
   const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
   const deleted=[];
   let claimed=false;
@@ -183,7 +189,7 @@ test('activation deletes only stale NGL shell caches and claims clients', async 
 });
 
 test('activation preserves allowlisted optional artwork before deleting prior NGL shell caches', async () => {
-  const current='ngl-common-ground-shell-20261120-chronicle-in-place-reconnect-refresh-22';
+  const current='ngl-common-ground-shell-20261123-role-filtered-recovery-offers-68';
   const previous='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-20';
   const older='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-16';
   const coverUrl='https://ngl.test/assets/comic/cover_a.jpg';
@@ -228,7 +234,7 @@ test('activation preserves allowlisted optional artwork before deleting prior NG
 });
 
 test('activation remains bounded and claims clients when optional-asset migration stalls', async () => {
-  const current='ngl-common-ground-shell-20261120-chronicle-in-place-reconnect-refresh-22';
+  const current='ngl-common-ground-shell-20261123-role-filtered-recovery-offers-68';
   const previous='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-20';
   const fastTimeout=(callback,milliseconds,...args)=>setTimeout(callback,Math.min(milliseconds,20),...args);
   let claimed=false;
@@ -650,8 +656,9 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   const source = await readFile(join(process.cwd(), 'game/sw.js'), 'utf8');
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
+  assert.match(source, /['"]\/shared-snapshot\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261120-chronicle-in-place-reconnect-refresh-22/);
+  assert.match(source, /20261123-role-filtered-recovery-offers-68/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
@@ -666,13 +673,17 @@ test('Source Archive failure cards expose their retained failure-class sequence 
   assert.match(client, /sourceArchiveFailurePager=createFieldItemSourcePager/);
   assert.match(client, /sourceArchiveFailurePager\.currentPage/);
   assert.match(client, /sourceArchiveFailurePager\.setPageIndex/);
-  assert.match(client, /worldId:world\.id/);
+  assert.match(client, /worldId:archiveWorld\.id/);
   assert.match(client, /actorId:viewer\.id/);
   assert.match(client, /actorRole:viewer\.role/);
-  assert.match(client, /revision:world\.revision/);
+  assert.match(client, /revision:archiveWorld\.revision/);
+  assert.match(client, /projectSourceArchiveFailureObjects\(archiveWorld/);
   assert.match(client, /data-source-archive-failure-page-revision/);
-  assert.match(client, /data-source-archive-failure-cursor-reset/);
-  assert.match(client, /New shared-world activity arrived; this ledger is showing the newest page/);
+  assert.match(client, /data-evidence-archive-snapshot-freshness/);
+  assert.match(client, /data-evidence-archive-refresh/);
+  assert.match(client, /This archive remains pinned to the snapshot it opened at revision/);
+  assert.match(client, /Canonical institutional history was withheld to avoid mixing snapshots/);
+  assert.doesNotMatch(client, /data-source-archive-failure-cursor-reset/);
   assert.match(client, /data-source-archive-failure-older/);
   assert.match(client, /data-source-archive-failure-newer/);
   assert.match(client, /failureProjection\.hasOlder/);
@@ -781,4 +792,125 @@ test('secure origin registers the offline shell once and consumes an asynchronou
   assert.equal(registerOfflineShell(scope), true);
   assert.deepEqual(calls, [['./sw.js', { scope: './' }]]);
   await Promise.resolve();
+});
+
+test('artifact detail fails closed for unavailable exact versions and guards stale satire follow-ups', async () => {
+  const client = await readFile(join(process.cwd(), 'game/client.mjs'), 'utf8');
+  const openStart = client.indexOf('function openCreation(');
+  const enterStart = client.indexOf('function enterCreation(', openStart);
+  assert.ok(openStart >= 0 && enterStart > openStart, 'artifact detail and entry functions must be present');
+  const detail = client.slice(openStart, enterStart);
+  const exactTargetResolution = detail.indexOf('resolveRetainedCreationTarget(creationWorldSnapshot,id,requestedVersion)');
+  const unavailableGate = detail.indexOf("if(targetResolution.status!=='available')");
+  const availableVersions = detail.indexOf('const availableVersions=');
+  assert.ok(exactTargetResolution >= 0,
+    'the requested artifact identity and edition must pass the strict retained-target resolver');
+  assert.ok(unavailableGate > exactTargetResolution,
+    'missing or ambiguous artifact targets must fail closed before detail selection');
+  assert.ok(availableVersions > unavailableGate,
+    'the version selector must not be built before exact-target validation');
+  assert.match(detail, /selectedCreation=null;\s*selectedVersion=null;\s*activeNoteRenderer=null;/,
+    'an unavailable target must clear the prior artifact selection');
+  assert.match(detail, /creationRequestedId/);
+  assert.match(detail, /creationResolutionReason/);
+  assert.match(detail, /ARTIFACT VERSION UNAVAILABLE/);
+  assert.match(detail, /creationVersionStatus/);
+  assert.match(detail, /current version was not substituted/i);
+  assert.doesNotMatch(detail,
+    /availableVersions\.some\(version=>version\.version===requestedVersion\)\?requestedVersion:creation\.version/);
+  assert.match(detail, /Draft a linked follow-up issue →',\s*guarded\(/,
+    'the stale satire follow-up guard must use the normal guarded error surface');
+
+  const enterEnd = client.indexOf('function pendingPredicateNeedsRetentionAcknowledgement', enterStart);
+  const entry = client.slice(enterStart, enterEnd);
+  assert.match(entry, /prepareContradictionReview\(c,versionNumber\)/,
+    'entering an artifact must revalidate the exact requested version');
+});
+
+
+test('phone PWA captures and publishes a bounded public project-state snapshot', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/publish-phone-pwa.yml', import.meta.url), 'utf8');
+  const capture = workflow.indexOf('node scripts/capture-project-state.mjs --out _site/project-state.json');
+  const setupNode = workflow.indexOf('uses: actions/setup-node@v4');
+  const artifact = workflow.indexOf('uses: actions/upload-pages-artifact@v3');
+  assert.ok(setupNode >= 0 && setupNode < capture, "the snapshot producer must run on the repository's supported Node version");
+  assert.ok(workflow.includes('node-version: 24'));
+  assert.ok(capture >= 0, 'the PWA build must capture the dated project-state snapshot');
+  assert.ok(capture < artifact, 'snapshot capture must finish before the Pages artifact is preserved');
+  assert.ok(workflow.includes('GITHUB_TOKEN: ${{ github.token }}'));
+  for (const permission of ['contents', 'pull-requests', 'issues', 'actions', 'checks', 'statuses']) {
+    assert.ok(workflow.includes('  ' + permission + ': read'));
+  }
+  assert.ok(workflow.includes('test -s _site/project-state.json'));
+  assert.ok(workflow.includes('path: _site'));
+  assert.ok(workflow.includes("if: github.event_name == 'push' && github.ref == 'refs/heads/main'"),
+    'the PWA artifact may deploy only from an explicit main-branch push');
+  for (const target of ['scripts/capture-project-state.mjs', 'src/institution/kernel.mjs', 'test/project-state-snapshot.test.mjs']) {
+    assert.ok(workflow.includes("'" + target + "'"), 'PWA build must rerun when snapshot producer changes: ' + target);
+  }
+});
+
+test('the dated project-state snapshot is optional and its cached copy remains readable offline', async () => {
+  const source = await readFile(new URL('../game/sw.js', import.meta.url), 'utf8');
+  const coreStart = source.indexOf('const CORE_SHELL = [');
+  const core = source.slice(coreStart, source.indexOf('];', coreStart));
+  const optionalStart = source.indexOf('const OPTIONAL_SHELL = [');
+  const optional = source.slice(optionalStart, source.indexOf('];', optionalStart));
+  assert.ok(!core.includes('/project-state.json'), 'snapshot absence must not block shell installation');
+  assert.ok(optional.includes('/project-state.json'), 'the dated snapshot must use the optional public-asset cache path');
+
+  const cached = serviceResponse('dated-snapshot-envelope');
+  const handlers = await serviceWorkerHarness({
+    fetchImpl: async () => { throw new Error('offline'); },
+    openCache: async () => ({
+      match: async request => request.url === 'https://ngl.test/project-state.json' ? cached : null
+    })
+  });
+  const response = await serviceWorkerResponseWithin(
+    handlers.get('fetch'),
+    shellRequest('/project-state.json')
+  );
+  assert.equal(response.body, 'dated-snapshot-envelope');
+});
+
+test('activation carries the optional dated project-state snapshot forward without copying private APIs', async () => {
+  const current = 'ngl-common-ground-shell-20261123-role-filtered-recovery-offers-68';
+  const previous = 'ngl-common-ground-shell-previous';
+  const snapshotUrl = 'https://ngl.test/project-state.json';
+  const privateUrl = 'https://ngl.test/api/state';
+  const currentEntries = new Map();
+  const previousEntries = new Map([
+    [snapshotUrl, serviceResponse('dated-snapshot-from-previous-build')],
+    [privateUrl, serviceResponse('private-state-must-not-copy')]
+  ]);
+  const makeCache = entries => ({
+    match: async request => entries.get(typeof request === 'string' ? request : request.url) || null,
+    put: async (request, response) => { entries.set(typeof request === 'string' ? request : request.url, response); }
+  });
+  const cachesByName = new Map([
+    [current, makeCache(currentEntries)],
+    [previous, makeCache(previousEntries)]
+  ]);
+  const handlers = await serviceWorkerHarness({
+    fetchImpl: async () => serviceResponse('unused'),
+    openCache: async name => cachesByName.get(name) || makeCache(new Map()),
+    listCaches: async () => [current, previous]
+  });
+  let activation;
+  handlers.get('activate')({ waitUntil(value) { activation = Promise.resolve(value); } });
+  await activation;
+  assert.equal(currentEntries.get(snapshotUrl)?.body, 'dated-snapshot-from-previous-build');
+  assert.equal(currentEntries.has(privateUrl), false);
+});
+
+
+test('Source Archive failure cards distinguish later captures and navigate to the exact retained publication', async () => {
+  const client = await readFile(join(process.cwd(), 'game/client.mjs'), 'utf8');
+  assert.match(client, /data-source-archive-failure-capture-projection-complete/);
+  assert.match(client, /data-source-archive-failure-capture-status/);
+  assert.match(client, /laterCaptureStatusLabel/);
+  assert.match(client, /openCreation\(laterCapture\.creationId,laterCapture\.version,false,\{snapshot:archiveWorld\}\)/);
+  assert.match(client, /openWorldChronicle\(laterCapture\.publicationEventId,\{snapshot:archiveWorld\}\)/);
+  assert.match(client, /expected response body is not retained/);
+  assert.match(client, /does not establish source truth/);
 });

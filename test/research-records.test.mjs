@@ -1,6 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectResearchRecords, hasSourcePredicatePublicRetentionAcknowledgement, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER } from '../game/research-records.mjs';
+import { sourceObservationRequestMaterial, projectResearchRecords, projectSourceObservationRecords, isLinkedExperimentChallengeResponse, hasSourcePredicatePublicRetentionAcknowledgement, isValidSourceObservationBinding, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER } from '../game/research-records.mjs';
+
+test('Source Observation binding mode requires a revision-bound digest only for server receipts', () => {
+  const digest = 'a'.repeat(64);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'USER_SELECTED' }), true);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'USER_SELECTED', sourceSnapshotRevision: 4 }), true);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'USER_SELECTED', sourceSnapshotReceiptDigest: null }), true);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'USER_SELECTED', sourceSnapshotReceiptDigest: digest }), false);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'SERVER_SESSION_RECEIPT', sourceSnapshotRevision: 4, sourceSnapshotReceiptDigest: digest }), true);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'SERVER_SESSION_RECEIPT', sourceSnapshotReceiptDigest: digest }), false);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'SERVER_SESSION_RECEIPT', sourceSnapshotRevision: 4 }), false);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'SERVER_SESSION_RECEIPT', sourceSnapshotRevision: 4, sourceSnapshotReceiptDigest: 'not-a-digest' }), false);
+  assert.equal(isValidSourceObservationBinding({ bindingMode: 'UNKNOWN', sourceSnapshotRevision: 4, sourceSnapshotReceiptDigest: digest }), false);
+});
 
 const proposal = (overrides = {}) => ({
   id: 'proposal-event-1',
@@ -43,6 +56,7 @@ const challenge = (overrides = {}) => ({
   moonshotId: 'moonshot-1',
   challengeType: 'missing-evidence',
   challengeText: 'The method cannot be reproduced from the supplied record.',
+  resolutionRequest: 'Repeat the procedure with a retained measurement record.',
   actor: { id: 'founder-1', role: 'founder', name: 'Founder' },
   at: '2026-10-28T17:02:00.000Z',
   ...overrides
@@ -71,6 +85,25 @@ const retainedSource = (overrides = {}) => ({
   ...overrides
 });
 const project = (events, creations = [retainedSource()]) => projectResearchRecords(events, creations);
+
+test('Source Observation normalized identity binds a retained snapshot revision without rewriting legacy IDs', () => {
+  const base = {
+    actorId: 'witness-1', actorRole: 'witness', creationId: 'source-1', version: 1,
+    claim: 'A bounded author-entered observation.', sourceKind: 'user-report',
+    source: 'A participant report.', falsifier: null, uncertainty: null, nextTest: null
+  };
+  const legacy = sourceObservationRequestMaterial(base);
+  const firstSnapshot = sourceObservationRequestMaterial({ ...base, sourceSnapshotRevision: 1 });
+  const laterSnapshot = sourceObservationRequestMaterial({ ...base, sourceSnapshotRevision: 2 });
+  assert.equal(JSON.parse(legacy).protocol, 'ngl.source-observation-id.v1');
+  assert.equal(JSON.parse(firstSnapshot).protocol, 'ngl.source-observation-id.v2');
+  assert.equal(JSON.parse(firstSnapshot).sourceSnapshotRevision, 1);
+  assert.notEqual(firstSnapshot, laterSnapshot);
+  assert.throws(
+    () => sourceObservationRequestMaterial({ ...base, sourceSnapshotRevision: -1 }),
+    /snapshot revision/i
+  );
+});
 
 test('proposal source links require one earlier publication with consistent time', () => {
   const source = { sourceCreationId: 'source-1', sourceVersion: 1 };
@@ -126,7 +159,38 @@ test('unique, earlier research records receive only explicit chronological links
   assert.equal(byId.get('challenge-event-1')._projection.proposal?.id, 'proposal-event-1');
   assert.equal(byId.get('challenge-event-1')._projection.targetReport?.id, 'report-event-1');
   assert.equal(byId.get('challenge-event-1')._projection.targetReportStatus, 'linked');
+  assert.equal(byId.get('challenge-event-1')._projection.challengeStatus, 'linked');
   assert.deepEqual(projected.map(event => event.id), ['challenge-event-1', 'report-event-1', 'proposal-event-1']);
+});
+
+test('experiment challenge resolution requests are bounded when present; legacy records remain inspectable', () => {
+  const request = 'Repeat the procedure with the missing measurement settings retained.';
+  const valid = project([proposal(), report(), challenge({ resolutionRequest: request })])
+    .find(event => event.id === 'challenge-event-1');
+  assert.equal(valid._projection.challengeStatus, 'linked');
+  assert.equal(valid.resolutionRequest, request);
+
+  const legacyEvent = challenge();
+  delete legacyEvent.resolutionRequest;
+  const legacy = project([proposal(), report(), legacyEvent])
+    .find(event => event.id === 'challenge-event-1');
+  assert.equal(legacy._projection.challengeStatus, 'linked',
+    'older retained challenges remain readable without rewriting their history');
+
+  for (const [label, resolutionRequest] of [
+    ['empty', ''], ['whitespace', '   '], ['null', null], ['non-text', 7],
+    ['oversized', 'x'.repeat(1001)]
+  ]) {
+    const invalid = project([proposal(), report(), challenge({ resolutionRequest })])
+      .find(event => event.id === 'challenge-event-1');
+    assert.equal(invalid._projection.challengeStatus, 'invalid-challenge', label);
+  }
+
+  const malformedChallenge = challenge({ resolutionRequest: '   ' });
+  const response = project([proposal(), report(), malformedChallenge, challengeResponseEvent()])
+    .find(event => event.type === 'experiment-challenge-responded');
+  assert.equal(response._projection.targetChallengeStatus, 'unavailable',
+    'a malformed challenge cannot anchor an original-author response');
 });
 
 test('research links and Archive order follow retained append positions when clocks regress', () => {
@@ -158,6 +222,7 @@ test('research links and Archive order follow retained append positions when clo
   assert.equal(byId.get('report-event-1')._projection.proposalStatus, 'linked');
   assert.equal(byId.get('report-event-1')._projection.evidenceStatus, 'linked');
   assert.equal(byId.get('challenge-event-1')._projection.targetReportStatus, 'linked');
+  assert.equal(byId.get('challenge-event-1')._projection.challengeStatus, 'linked');
   assert.equal(byId.get('challenge-event-1')._projection.evidenceStatus, 'linked');
   assert.equal(byId.get('response-event-1')._projection.targetChallengeStatus, 'linked');
   assert.deepEqual(projected.map(record => record.id), [
@@ -186,6 +251,61 @@ test('a challenge response cannot point forward to a later challenge despite a l
     'report-event-1',
     'proposal-event-1'
   ]);
+});
+
+test('only a complete projected original-author response is eligible for the Moonshot Field reply card', () => {
+  const valid = project([proposal(), report(), challenge(), challengeResponseEvent()])
+    .find(event => event.type === 'experiment-challenge-responded');
+  assert.equal(isLinkedExperimentChallengeResponse(valid), true);
+
+  const cases = [
+    ['blank response identity', [proposal(), report(), challenge(), challengeResponseEvent({ responseId: ' ' })]],
+    ['wrong author', [proposal(), report(), challenge(), challengeResponseEvent({
+      actor: { id: 'founder-1', role: 'founder', name: 'Founder' }
+    })]],
+    ['duplicate response identity', [
+      proposal(), report(), challenge(), challengeResponseEvent(),
+      challengeResponseEvent({ id: 'response-event-2', responseId: 'response-1', challengeId: 'another-challenge' })
+    ]],
+    ['response before challenge', [proposal(), report(), challengeResponseEvent(), challenge()]],
+    ['invalid response text', [proposal(), report(), challenge(), challengeResponseEvent({ responseText: 'x'.repeat(1001) })]]
+  ];
+
+  for (const [label, events] of cases) {
+    const response = project(events).find(event => event.type === 'experiment-challenge-responded');
+    assert.ok(response, label + ': retained response remains inspectable');
+    assert.equal(isLinkedExperimentChallengeResponse(response), false, label);
+  }
+});
+
+test('invalid experiment challenges cannot anchor an author response', () => {
+  const cases = [
+    ['unsupported challenge type', challenge({ challengeType: 'unsupported' })],
+    ['empty challenge text', challenge({ challengeText: '' })],
+    ['oversized challenge text', challenge({ challengeText: 'x'.repeat(1001) })],
+    ['malformed supplied evidence', challenge({ evidenceCreationId: 'source-1', evidenceVersion: null })]
+  ];
+
+  for (const [label, invalidChallenge] of cases) {
+    const events = [proposal(), report(), invalidChallenge, challengeResponseEvent()];
+    const before = structuredClone(events);
+    const projected = project(events);
+    const challengeRecord = projected.find(event => event.id === invalidChallenge.id);
+    const responseRecord = projected.find(event => event.id === 'response-event-1');
+
+    assert.ok(challengeRecord, label + ': malformed challenge remains in retained projection');
+    assert.ok(responseRecord, label + ': retained response remains visible');
+    assert.equal(responseRecord._projection.targetChallenge, null, label);
+    assert.notEqual(responseRecord._projection.targetChallengeStatus, 'linked', label);
+    if (label === 'malformed supplied evidence') {
+      assert.equal(challengeRecord._projection.evidenceStatus, 'invalid', label);
+      assert.equal(challengeRecord._projection.challengeStatus, 'invalid-evidence', label);
+    } else {
+      assert.equal(challengeRecord._projection.targetReportStatus, 'invalid-challenge', label);
+      assert.equal(challengeRecord._projection.challengeStatus, 'invalid-challenge', label);
+    }
+    assert.deepEqual(events, before, label + ': research projection is read-only');
+  }
 });
 
 test('duplicate proposal identity is preserved but never used to infer report context', () => {
@@ -447,4 +567,94 @@ test('Source Analyst retention acknowledgement is versioned while pre-enforcemen
     ...beforeEnforcement,
     publicRetentionAcknowledgementVersion: 'unknown-version'
   }), false);
+});
+
+
+test('Source Observation notes, challenges and responses retain server-projected global positions', () => {
+  const digest = 'a'.repeat(64);
+  const observationId = 'source-observation-' + digest;
+  const witnessActor = { id: 'witness-1', role: 'witness', name: 'Witness' };
+  const founderActor = { id: 'founder-1', role: 'founder', name: 'Founder' };
+  const observation = {
+    id: 'source-observation-event-1',
+    type: 'source-observation-recorded',
+    observationId,
+    normalizedRecordDigest: digest,
+    creationId: 'source-1',
+    version: 1,
+    sourceSnapshotRevision: 1,
+    claim: 'A bounded author-entered observation.',
+    sourceKind: 'user-report',
+    source: 'A participant report.',
+    falsifier: null,
+    uncertainty: null,
+    nextTest: null,
+    actor: witnessActor,
+    at: '2026-10-28T17:00:00.000Z',
+    originSchema: 'ngl.source-observatory.v2',
+    bindingMode: 'SERVER_SESSION_RECEIPT',
+    sourceSnapshotReceiptDigest: 'b'.repeat(64),
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED',
+    historyPosition: 3
+  };
+  const events = [
+    publication({ historyPosition: 1 }),
+    observation,
+    {
+      id: 'source-challenge-event-1',
+      type: 'source-observation-challenged',
+      challengeId: 'source-challenge-1',
+      observationId,
+      creationId: 'source-1',
+      version: 1,
+      challengeType: 'missing-evidence',
+      challengeText: 'The report has no independently observed evidence.',
+      actor: founderActor,
+      at: '2026-10-28T17:01:00.000Z',
+      historyPosition: 5
+    },
+    {
+      id: 'source-response-event-1',
+      type: 'source-observation-challenge-responded',
+      responseId: 'source-response-1',
+      challengeId: 'source-challenge-1',
+      observationId,
+      creationId: 'source-1',
+      version: 1,
+      responseText: 'The author preserves the limitation and requests another test.',
+      actor: witnessActor,
+      at: '2026-10-28T17:02:00.000Z',
+      historyPosition: 6
+    }
+  ];
+  const records = projectSourceObservationRecords(events, [retainedSource()], { revision: 6, revisionPresent: true });
+  assert.equal(records.length, 1);
+  assert.equal(records[0].historyPosition, 3);
+  assert.equal(records[0].sourceSnapshotRevision, 1);
+  assert.equal(records[0].bindingMode, 'SERVER_SESSION_RECEIPT');
+  assert.equal(records[0].sourceSnapshotReceiptDigest, 'b'.repeat(64));
+  const malformedReceiptEvents = events.map(event => event.id === observation.id
+    ? { ...event, sourceSnapshotReceiptDigest: 'not-a-sha256-receipt' }
+    : event);
+  const malformedReceipt = projectSourceObservationRecords(
+    malformedReceiptEvents, [retainedSource()], { revision: 6, revisionPresent: true }
+  );
+  assert.equal(malformedReceipt[0].projectionStatus, 'malformed');
+  assert.equal(records[0].challenges[0].historyPosition, 5);
+  assert.equal(records[0].challenges[0].responses[0].historyPosition, 6);
+
+  const legacyPartial = events.map(event => {
+    const { historyPosition, ...withoutPosition } = event;
+    return withoutPosition;
+  });
+  const unsequenced = projectSourceObservationRecords(
+    legacyPartial, [retainedSource()], { allowLocalPositions: false }
+  );
+  assert.equal(unsequenced[0].historyPosition, null);
+  assert.equal(unsequenced[0].projectionStatus, 'malformed');
+  assert.equal(unsequenced[0].challenges.length, 0,
+    'challenge and response attribution requires retained global append positions');
 });

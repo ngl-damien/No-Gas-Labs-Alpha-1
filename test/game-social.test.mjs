@@ -53,7 +53,7 @@ test('Commons posts become actor-scoped quest and Speaker projections without XP
   await validateWorld(posted.world);
 });
 
-test('Commons reports are private and human moderation hides text without erasing history', async () => {
+test('Commons reports are private and Founder moderation hides text without erasing history', async () => {
   let world = createWorld({ id: 'commons-moderation', now: at(0) });
   const posted = await post(world, witnessA, 1000, 'Retain the original, even when a human hides the public copy.');
   world = posted.world;
@@ -80,11 +80,11 @@ test('Commons reports are private and human moderation hides text without erasin
   world = hidden.world;
   assert.equal(world.events.at(-1).actor.id, founder.id);
   assert.equal(projectTownSquare(world, founder).messages[0].hidden, true);
-  assert.equal(projectTownSquare(world, witnessC).messages[0].text, 'This message was hidden after human review.');
+  assert.equal(projectTownSquare(world, witnessC).messages[0].text, 'This message was hidden by a Founder moderation action.');
 
   const witnessView = publicWorld(world, witnessC);
   const publicPost = witnessView.events.find(event => event.type === 'message-posted');
-  assert.equal(publicPost.text, '[Message hidden by human moderation.]');
+  assert.equal(publicPost.text, '[Message hidden by a Founder moderation action.]');
   assert.equal(witnessView.events.some(event => event.type === 'message-reported'), false);
   assert.equal(publicWorld(world, founder).events.find(event => event.type === 'message-posted').text, 'Retain the original, even when a human hides the public copy.');
 
@@ -320,7 +320,8 @@ test('Guild Hall field satchel indexes current members’ retained work, dissent
     type: 'challenge-experiment-report',
     reportId: experiment.result.reportId,
     challengeType: 'reproducibility',
-    challengeText: 'The attempt record does not include a reproducible retrieval procedure.'
+    challengeText: 'The attempt record does not include a reproducible retrieval procedure.',
+    resolutionRequest: 'Repeat the retrieval with the exact procedure and retain the response bytes and timestamp.'
   }, witnessA, { now: at(10000) })).world;
 
   const note = {
@@ -331,12 +332,13 @@ test('Guild Hall field satchel indexes current members’ retained work, dissent
     uncertainty: 'The cited page may be stale.',
     nextTest: 'Retrieve the current page and compare its timestamp.'
   };
+  const sourceSnapshotRevision = world.revision;
   const material = sourceObservationRequestMaterial({
-    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, sourceSnapshotRevision, ...note
   });
   const observationId = 'source-observation-' + createHash('sha256').update(material).digest('hex');
   world = (await applyAction(world, {
-    type: 'record-source-observation', creationId, version: 1,
+    type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision,
     observationId, ...note
   }, founder, {
     now: at(11000), requestId: observationId, actionFingerprint: 'd'.repeat(64)
@@ -381,7 +383,7 @@ test('Guild Hall field satchel indexes current members’ retained work, dissent
 
   const messageItem = founderSatchel.items.find(item => item.eventId === posted.world.events.at(-1).id);
   assert.ok(messageItem);
-  assert.equal(messageItem.summary, '[Message hidden by human moderation.]');
+  assert.equal(messageItem.summary, '[Message hidden by a Founder moderation action.]');
   assert.match(messageItem.status, /not evidence, approval, ownership, authority, or XP/i);
   assert.ok(founderSatchel.items.every(item => Object.isFrozen(item) && Object.isFrozen(item.action)));
   assert.deepEqual(world, before, 'opening the guild satchel must not mutate canonical history');
@@ -505,40 +507,45 @@ test('guild leadership handoff is current-member-only, acceptance-gated, append-
   await assert.rejects(validateWorld(reusedOffer),error=>error.code==='INVALID_WORLD');
 });
 
-test('Commons shows only the reporter a private status and labels later human moderation by event order', async () => {
-  let world = createWorld({ id: 'commons-private-report-status', now: at(0) });
+test('Commons report status requires an explicit private Founder-session review, separate from moderation', async () => {
+  let world = createWorld({ id: 'commons-private-report-review', now: at(0) });
   const posted = await post(world, witnessA, 1000, 'Keep dissent visible while preserving the moderation record.');
   const messageId = posted.result.messageId;
-  const details = 'A human should review the public text, not erase the original.';
+  const details = 'A Founder should review the public text, not erase the original.';
   const reported = await report(posted.world, witnessB, 2000, messageId, 'privacy', details);
   world = reported.world;
   const reportEvent = world.events.at(-1);
+  const reportId = reportEvent.reportId;
 
   const reporterFeed = projectTownSquare(publicWorld(world, witnessB), witnessB);
   const reporterMessage = reporterFeed.messages.find(message => message.messageId === messageId);
   assert.deepEqual(reporterMessage.myReport, {
-    reportId: reportEvent.reportId,
+    reportId,
     reason: 'privacy',
     details,
     at: reportEvent.at,
-    status: 'awaiting-human-review',
+    status: 'awaiting-founder-review',
+    reviewId: null,
+    reviewNote: null,
+    reviewAt: null,
     subsequentModerationEventId: null,
     subsequentModerationDisposition: null
   });
   assert.equal(reporterFeed.pendingReports.length, 0);
 
-  const unrelatedFeed = projectTownSquare(publicWorld(world, witnessC), witnessC);
-  const unrelatedMessage = unrelatedFeed.messages.find(message => message.messageId === messageId);
-  assert.equal(unrelatedMessage.myReport, null);
-  assert.equal(JSON.stringify(unrelatedFeed).includes(details), false,
-    'another Witness must not receive the reporter\'s private details');
+  const unrelatedView = publicWorld(world, witnessC);
+  assert.equal(unrelatedView.events.some(event => event.type === 'message-reported'), false);
+  assert.equal(unrelatedView.events.some(event => event.type === 'message-report-reviewed'), false);
+  assert.equal(publicWorld(world, witnessB).events.some(event => event.type === 'message-reported'), true);
+  assert.equal(projectTownSquare(world, witnessC).pendingReports.length, 0);
+  assert.equal(projectTownSquare(world, founder).pendingReports.length, 1);
+  assert.equal(projectTownSquare(world, founder).pendingReports[0].canReview, true);
+  assert.equal(projectTownSquare(world, witnessB).messages[0].canReport, false);
 
-  const founderFeed = projectTownSquare(publicWorld(world, founder), founder);
-  const founderMessage = founderFeed.messages.find(message => message.messageId === messageId);
-  assert.equal(founderMessage.myReport, null,
-    'the Founder sees the moderation queue, not another actor\'s private report card');
-  assert.equal(founderFeed.pendingReports.length, 1);
-  assert.equal(founderFeed.pendingReports[0].details, details);
+  await assert.rejects(
+    applyAction(world, { type: 'review-message-report', reportId, note: 'Not a Founder review.' }, witnessA, { now: at(2500) }),
+    error => error.code === 'FORBIDDEN' && error.status === 403
+  );
 
   const hidden = await applyAction(world, {
     type: 'moderate-message', messageId, disposition: 'hide', reason: 'privacy'
@@ -547,10 +554,12 @@ test('Commons shows only the reporter a private status and labels later human mo
   const reporterAfterHide = projectTownSquare(publicWorld(hidden.world, witnessB), witnessB)
     .messages.find(message => message.messageId === messageId);
   assert.equal(reporterAfterHide.hidden, true);
-  assert.equal(reporterAfterHide.text, 'This message was hidden after human review.');
-  assert.equal(reporterAfterHide.myReport.status, 'human-moderation-event-followed');
+  assert.equal(reporterAfterHide.text, 'This message was hidden by a Founder moderation action.');
+  assert.equal(reporterAfterHide.myReport.status, 'awaiting-founder-review');
   assert.equal(reporterAfterHide.myReport.subsequentModerationEventId, hideEvent.id);
   assert.equal(reporterAfterHide.myReport.subsequentModerationDisposition, 'hide');
+  assert.equal(projectTownSquare(hidden.world, founder).pendingReports.length, 1,
+    'moderation and report review are separate retained steps');
   assert.equal(hidden.world.xp, 0);
   await validateWorld(hidden.world);
 
@@ -561,10 +570,211 @@ test('Commons shows only the reporter a private status and labels later human mo
   const reporterAfterRestore = projectTownSquare(publicWorld(restored.world, witnessB), witnessB)
     .messages.find(message => message.messageId === messageId);
   assert.equal(reporterAfterRestore.hidden, false);
-  assert.equal(reporterAfterRestore.myReport.status, 'human-moderation-event-followed');
+  assert.equal(reporterAfterRestore.myReport.status, 'awaiting-founder-review');
   assert.equal(reporterAfterRestore.myReport.subsequentModerationEventId, restoreEvent.id);
   assert.equal(reporterAfterRestore.myReport.subsequentModerationDisposition, 'restore');
+  assert.equal(projectTownSquare(restored.world, founder).pendingReports.length, 1);
   assert.equal(restored.world.xp, 0);
   await validateWorld(restored.world);
+
+  const note = 'Reviewed as a process step; message visibility remains a separate moderation decision.';
+  const reviewed = await applyAction(restored.world, {
+    type: 'review-message-report', reportId, note
+  }, founder, { now: at(5000) });
+  const reviewEvent = reviewed.world.events.at(-1);
+  assert.equal(reviewEvent.type, 'message-report-reviewed');
+  assert.equal(reviewEvent.actor.id, founder.id);
+  assert.equal(reviewEvent.actor.role, 'founder');
+  assert.equal(reviewEvent.reportId, reportId);
+  assert.equal(reviewEvent.messageId, messageId);
+  assert.equal(reviewEvent.note, note);
+  assert.equal(reviewed.result.reviewId, reviewEvent.reviewId);
+  assert.equal(reviewed.world.revision, restored.world.revision + 1);
+  assert.equal(reviewed.world.xp, 0);
+  assert.equal(projectTownSquare(reviewed.world, founder).pendingReports.length, 0);
+
+  const reporterAfterReview = projectTownSquare(publicWorld(reviewed.world, witnessB), witnessB)
+    .messages.find(message => message.messageId === messageId);
+  assert.equal(reporterAfterReview.hidden, false,
+    'recording a report review does not change message visibility');
+  assert.equal(reporterAfterReview.text, 'Keep dissent visible while preserving the moderation record.');
+  assert.deepEqual(reporterAfterReview.myReport, {
+    reportId,
+    reason: 'privacy',
+    details,
+    at: reportEvent.at,
+    status: 'founder-review-recorded',
+    reviewId: reviewEvent.reviewId,
+    reviewNote: note,
+    reviewAt: reviewEvent.at,
+    subsequentModerationEventId: restoreEvent.id,
+    subsequentModerationDisposition: 'restore'
+  });
+
+  const reporterView = publicWorld(reviewed.world, witnessB);
+  const unrelatedAfterReview = publicWorld(reviewed.world, witnessC);
+  assert.equal(reporterView.events.some(event => event.type === 'message-report-reviewed' && event.reportId === reportId), true);
+  assert.equal(publicWorld(reviewed.world, founder).events.some(event => event.type === 'message-report-reviewed' && event.reportId === reportId), true);
+  assert.equal(unrelatedAfterReview.events.some(event => event.type === 'message-reported'), false);
+  assert.equal(unrelatedAfterReview.events.some(event => event.type === 'message-report-reviewed'), false);
+  assert.equal(JSON.stringify(projectTownSquare(reviewed.world, witnessC)).includes(note), false,
+    'another Witness must not receive the reporter\'s private review note');
+
+  const founderReport = await report(posted.world, founder, 2500, messageId, 'other', 'Founder-authored report cannot be self-reviewed.');
+  const founderQueue = projectTownSquare(founderReport.world, founder).pendingReports;
+  assert.equal(founderQueue.length, 1);
+  assert.equal(founderQueue[0].canReview, false);
+  await assert.rejects(
+    applyAction(founderReport.world, {
+      type: 'review-message-report', reportId: founderReport.result.reportId, note: 'Self-review is not independent.'
+    }, founder, { now: at(3000) }),
+    error => error.code === 'SELF_REVIEW' && error.status === 409
+  );
+
+  await assert.rejects(
+    applyAction(reviewed.world, { type: 'review-message-report', reportId, note }, founder, { now: at(6000) }),
+    error => error.code === 'REPORT_ALREADY_REVIEWED' && error.status === 409
+  );
+  await assert.rejects(
+    applyAction(reviewed.world, { type: 'review-message-report', reportId: 'missing-report', note }, founder, { now: at(6000) }),
+    error => error.code === 'NOT_FOUND' && error.status === 404
+  );
+  const unreviewedReport = await report(posted.world, witnessC, 6000, messageId, 'other', 'Separate report for blank-note validation.');
+  await assert.rejects(
+    applyAction(unreviewedReport.world, { type: 'review-message-report', reportId: unreviewedReport.result.reportId, note: '   ' }, founder, { now: at(7000) }),
+    error => error.code === 'INVALID_INPUT'
+  );
+
+  const beforeRead = structuredClone(reviewed.world);
+  projectTownSquare(reviewed.world, witnessB);
+  assert.deepEqual(reviewed.world, beforeRead, 'projection refresh must not mutate retained world state');
+  const tampered = structuredClone(reviewed.world);
+  tampered.events.at(-1).actor = { ...witnessA };
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+  const orphaned = structuredClone(reviewed.world);
+  orphaned.events.at(-1).reportId = 'missing-report';
+  await assert.rejects(validateWorld(orphaned), error => error.code === 'INVALID_WORLD');
+  const duplicated = structuredClone(reviewed.world);
+  duplicated.events.push({
+    ...reviewEvent,
+    id: 'event-duplicate-report-review',
+    reviewId: 'message-report-review-duplicate'
+  });
+  duplicated.revision += 1;
+  await assert.rejects(validateWorld(duplicated), error => error.code === 'INVALID_WORLD');
+  await validateWorld(reviewed.world);
 });
 
+
+test('TownSquare review projection fails closed on malformed or ambiguous Founder review history', async () => {
+  const created = createWorld({ id: 'commons-review-projection-integrity', now: at(0) });
+  const posted = await post(created, witnessA, 1000, 'A Commons message for review projection integrity.');
+  const reported = await report(
+    posted.world, witnessB, 2000, posted.result.messageId,
+    'privacy', 'Review projection must require an exact Founder-session record.'
+  );
+  const note = 'A retained process review; not a factual verdict.';
+  const reviewed = await applyAction(reported.world, {
+    type: 'review-message-report',
+    reportId: reported.result.reportId,
+    note
+  }, founder, { now: at(3000) });
+  const reviewEvent = reviewed.world.events.at(-1);
+  const reviewIndex = reviewed.world.events.findIndex(event => event.id === reviewEvent.id);
+  const reportId = reported.result.reportId;
+  const messageId = posted.result.messageId;
+
+  const validReporterFeed = projectTownSquare(publicWorld(reviewed.world, witnessB), witnessB);
+  const validReporterMessage = validReporterFeed.messages.find(message => message.messageId === messageId);
+  assert.equal(validReporterMessage.myReport.status, 'founder-review-recorded');
+  assert.equal(projectTownSquare(publicWorld(reviewed.world, founder), founder).pendingReports.length, 0);
+
+  const invalidCases = [
+    ['wrong reviewer role', world => {
+      world.events[reviewIndex].actor = { ...witnessA };
+    }],
+    ['wrong Founder identity', world => {
+      world.events[reviewIndex].actor = { ...founder, id: 'forged-founder' };
+    }],
+    ['mismatched message identity', world => {
+      world.events[reviewIndex].messageId = 'commons-missing-message';
+    }],
+    ['untrimmed note', world => {
+      world.events[reviewIndex].note = ' ' + note;
+    }],
+    ['overlong note', world => {
+      world.events[reviewIndex].note = 'x'.repeat(501);
+    }],
+    ['review timestamp regression', world => {
+      world.events[reviewIndex].at = at(1500);
+    }],
+    ['duplicate review', world => {
+      world.events.push({
+        ...reviewEvent,
+        id: 'commons-duplicate-review-event',
+        reviewId: 'commons-duplicate-review-id',
+        at: at(4000)
+      });
+      world.revision += 1;
+    }],
+    ['duplicate report identity', world => {
+      const reportEvent = world.events.find(event =>
+        event.type === 'message-reported' && event.reportId === reportId
+      );
+      world.events.push({ ...reportEvent, id: 'commons-duplicate-report-event', at: at(4000) });
+      world.revision += 1;
+    }],
+    ['duplicate event identity', world => {
+      world.events[reviewIndex].id = reported.world.events.at(-1).id;
+    }]
+  ];
+
+  for (const [label, mutate] of invalidCases) {
+    const tampered = structuredClone(reviewed.world);
+    mutate(tampered);
+    const beforeProjection = structuredClone(tampered);
+    const reporterFeed = projectTownSquare(publicWorld(tampered, witnessB), witnessB);
+    const reporterMessage = reporterFeed.messages.find(message => message.messageId === messageId);
+    assert.equal(reporterMessage.myReport.status, 'review-status-unavailable', label);
+    assert.equal(reporterMessage.myReport.reviewId, null, label);
+    assert.equal(reporterMessage.myReport.reviewNote, null, label);
+    assert.match(reporterMessage.myReport.reviewWarning, /invalid|ambiguous/i, label);
+
+    const founderFeed = projectTownSquare(publicWorld(tampered, founder), founder);
+    const pending = founderFeed.pendingReports.find(report => report.reportId === reportId);
+    assert.ok(pending, label + ': invalid history must not hide the report from the Founder queue');
+    assert.equal(pending.reviewStatus, 'review-status-unavailable', label);
+    assert.equal(pending.canReview, false, label);
+    assert.match(pending.reviewWarning, /invalid|ambiguous/i, label);
+    assert.match(founderFeed.reviewHistoryWarning, /invalid|ambiguous/i, label);
+    assert.deepEqual(tampered, beforeProjection, label + ': projection must remain read-only');
+  }
+});
+
+test('player-guild projection validates global response positions in filtered snapshots', async () => {
+  const initial = createWorld({ id: 'guild-global-history-position', now: at(0) });
+  const created = await applyAction(initial, {
+    type: 'create-guild',
+    name: 'Position Keepers',
+    charter: 'Keep append order visible without granting authority.'
+  }, founder, { now: at(1000) });
+  const snapshot = publicWorld(created.world, founder);
+  assert.equal(snapshot.events[0].historyPosition, 1);
+
+  const before = structuredClone(snapshot);
+  assert.doesNotThrow(() => projectPlayerGuilds(snapshot, founder));
+
+  const filtered = structuredClone(snapshot);
+  filtered.revision = 2;
+  filtered.events = [{ ...filtered.events[0], historyPosition: 2 }];
+  assert.doesNotThrow(() => projectPlayerGuilds(filtered, founder),
+    'a valid global position may have a gap in an actor-filtered view');
+
+  const malformed = structuredClone(filtered);
+  malformed.events[0].historyPosition = 3;
+  assert.throws(
+    () => projectPlayerGuilds(malformed, founder),
+    /history position/i
+  );
+  assert.deepEqual(snapshot, before);
+});

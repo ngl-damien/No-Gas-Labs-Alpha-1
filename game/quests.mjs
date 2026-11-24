@@ -2,10 +2,11 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, isSafeFieldItemReferenceId, projectArmorBearerChains, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
-import { isValidMoonshotProposal, projectResearchRecords, projectSourceArchivePredicateContrasts, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords, projectSourceArchivePredicateContrasts, projectSourceObservationRecords, sameResearchActor, retainedWorldEventHistoryOptions } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
-import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
+import { COMMONS_FOUNDER_ACTOR_ID, projectCommonsMessages, projectCommonsReportReviewHistory, projectTownSquare, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
+import { projectSourceArchiveFailureObjects } from './world-view.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -74,7 +75,7 @@ export function findStudyReview(note, events) {
     event.studyId === note.studyId && unique('studyId', note.studyId) &&
     event.creationId === note.creationId && event.version === note.version &&
     event.actor?.id === note.actor.id && event.actor?.role === note.actor.role &&
-    isStrictTimestamp(event.at) && Date.parse(event.at) > Date.parse(note.at) &&
+    isStrictTimestamp(event.at) &&
     typeof event.response === 'string' && event.response.trim() &&
     Array.from(event.response).length <= 1000 &&
     typeof event.reflection === 'string' && event.reflection.trim() &&
@@ -316,6 +317,170 @@ function uniqueEventIds(events) {
   return new Set([...counts].filter(([, count]) => count === 1).map(([id]) => id));
 }
 
+const COMMONS_REVIEW_REFERENCE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const COMMONS_REVIEW_FORBIDDEN_IDS = new Set(['__proto__', 'constructor', 'prototype']);
+function isSafeCommonsReviewReferenceId(value) {
+  return typeof value === 'string' &&
+    COMMONS_REVIEW_REFERENCE_ID.test(value) &&
+    !COMMONS_REVIEW_FORBIDDEN_IDS.has(value);
+}
+
+function hasCompleteFounderHistorySnapshot(world, events) {
+  try {
+    if (!Array.isArray(events) || !Number.isSafeInteger(world?.revision) ||
+        world.revision < 0 || world.revision !== events.length) return false;
+    for (let index = 0; index < events.length; index += 1) {
+      if (!Object.hasOwn(events, String(index))) return false;
+    }
+
+    const coverageDescriptor = Object.getOwnPropertyDescriptor(world, 'historyCoverage');
+    if (!coverageDescriptor) return true;
+    if (!Object.hasOwn(coverageDescriptor, 'value')) return false;
+    const coverage = coverageDescriptor.value;
+    if (!coverage || typeof coverage !== 'object' || Array.isArray(coverage)) return false;
+    const coveragePrototype = Object.getPrototypeOf(coverage);
+    if (coveragePrototype !== Object.prototype && coveragePrototype !== null) return false;
+
+    const fields = [
+      'schema', 'sourceComplete', 'sourceEventCount', 'suppliedEventCount',
+      'omittedEventCount', 'omittedEventTypes', 'viewerRole'
+    ];
+    const descriptors = Object.getOwnPropertyDescriptors(coverage);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length !== fields.length || keys.some(key => !fields.includes(key))) return false;
+    for (const field of fields) {
+      const descriptor = descriptors[field];
+      if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value')) return false;
+    }
+
+    const omittedTypes = descriptors.omittedEventTypes.value;
+    if (!omittedTypes || typeof omittedTypes !== 'object' || Array.isArray(omittedTypes)) return false;
+    const omittedPrototype = Object.getPrototypeOf(omittedTypes);
+    if (omittedPrototype !== Object.prototype && omittedPrototype !== null) return false;
+    if (Reflect.ownKeys(omittedTypes).length !== 0) return false;
+
+    return descriptors.schema.value === 'ngl.public-world-history.v1' &&
+      descriptors.sourceComplete.value === true &&
+      descriptors.viewerRole.value === 'founder' &&
+      descriptors.sourceEventCount.value === world.revision &&
+      descriptors.suppliedEventCount.value === events.length &&
+      descriptors.omittedEventCount.value === 0;
+  } catch {
+    return false;
+  }
+}
+
+function projectFounderCommonsReportReviewMilestone(world, viewer, events) {
+  const interpretation = 'This Founder-only objective records a Founder-session process review of a private Commons report from another actor. The retained review event is a process record, not a factual verdict. It is complete only when the exact retained original message, report and Founder review events are uniquely linked and append-ordered. It does not establish factual truth, moderation, independent review, evidence certification, approval, distinct-human identity or NGL authority. It grants no XP; NPCs, collaborators, models and UI cannot create or complete it.';
+  // publicWorld() attaches historyCoverage to complete shared snapshots too.
+  // Accept only a dense, revision-matched Founder receipt with zero omissions;
+  // Witness-filtered, partial, malformed and accessor-backed receipts fail closed.
+  const historyComplete = hasCompleteFounderHistorySnapshot(world, events);
+  if (!historyComplete) {
+    return trailMilestone(
+      'founder-commons-report-review',
+      'Record a process review for another actor’s Commons report',
+      1, [], [], null,
+      'The accepted Founder world history is incomplete or revision-mismatched; no pending-report absence or review progress is inferred.',
+      interpretation
+    );
+  }
+
+  const reviewHistory = projectCommonsReportReviewHistory(world, viewer?.id);
+  const firstValidReview = reviewHistory.validReviews[0]?.event ?? null;
+  const invalidReviewHistory = reviewHistory.invalidReviewHistory;
+  let action = null;
+  let blockedReason = null;
+  if (!firstValidReview && invalidReviewHistory) {
+    blockedReason = 'A retained Commons review record has invalid or ambiguous report/message linkage; no objective progress is credited.';
+  } else if (!firstValidReview) {
+    try {
+      const commons = projectTownSquare(world, { id: viewer.id, role: viewer.role });
+      const eligiblePendingReport = trailRows(commons?.pendingReports).some(report =>
+        report?.canReview === true &&
+        isSafeCommonsReviewReferenceId(report?.reportId) &&
+        isSafeCommonsReviewReferenceId(report?.reporter?.id) &&
+        ['founder', 'witness'].includes(report?.reporter?.role) &&
+        !(report.reporter.id === viewer.id && report.reporter.role === viewer.role)
+      );
+      if (eligiblePendingReport) {
+        action = { type: 'location', id: 'town-square' };
+      } else {
+        blockedReason = 'No eligible pending private Commons report from another actor is currently retained. Self-review is prohibited; do not manufacture a report.';
+      }
+    } catch {
+      blockedReason = 'The retained Commons report projection is malformed; no progress or route is inferred.';
+    }
+  }
+
+  return trailMilestone(
+    'founder-commons-report-review',
+    'Record a process review for another actor’s Commons report',
+    1,
+    firstValidReview ? [firstValidReview.id] : [],
+    firstValidReview ? [firstValidReview] : [],
+    action,
+    blockedReason,
+    interpretation
+  );
+}
+
+
+function projectWitnessCommonsReportReviewMilestone(world, viewer, events) {
+  const actorId = viewer?.id;
+  const actorRole = viewer?.role;
+  const ownReportIds = new Set(trailRows(events).flatMap(event =>
+    event?.type === 'message-reported' &&
+    event?.actor?.id === actorId &&
+    event?.actor?.role === actorRole &&
+    isSafeCommonsReviewReferenceId(event?.reportId)
+      ? [event.reportId] : []
+  ));
+  if (!ownReportIds.size) return null;
+
+  const interpretation = 'This Witness-only objective records receipt of one exact Founder-session process review of this Witness session’s private Commons report. The retained review event is a process record, not a factual verdict, moderation action, independent review, evidence certification, approval, or NGL authority. The Quest Board projection is read-only and grants no XP; actor IDs are pseudonymous sessions and do not prove distinct humans.';
+  let reviewHistory;
+  try {
+    reviewHistory = projectCommonsReportReviewHistory(world, COMMONS_FOUNDER_ACTOR_ID);
+  } catch {
+    return trailMilestone(
+      'witness-commons-report-review-received',
+      'Inspect the Founder-session process review of your Commons report',
+      1, [], [], null,
+      'The retained Commons report/review projection is unavailable; no review event is selected.',
+      interpretation
+    );
+  }
+
+  const validReview = trailRows(reviewHistory?.validReviews).find(record =>
+    ownReportIds.has(record?.reportId) &&
+    record?.reportEvent?.actor?.id === actorId &&
+    record.reportEvent.actor.role === actorRole
+  );
+  if (validReview?.event && isSafeCommonsReviewReferenceId(validReview.event.id)) {
+    return trailMilestone(
+      'witness-commons-report-review-received',
+      'Inspect the Founder-session process review of your Commons report',
+      1, [validReview.event.id], [validReview.event], null, null, interpretation
+    );
+  }
+
+  const invalidOwnReport = trailRows(reviewHistory?.invalidReportIds)
+    .some(reportId => ownReportIds.has(reportId));
+  if (invalidOwnReport) {
+    return trailMilestone(
+      'witness-commons-report-review-received',
+      'Inspect the Founder-session process review of your Commons report',
+      1, [], [], null,
+      'The retained review linked to your private report is invalid or ambiguous; no review event is selected or counted.',
+      interpretation
+    );
+  }
+  // A report without a visible, uniquely linked review is not a negative claim:
+  // partial Witness snapshots may omit other actors’ private report/review events.
+  return null;
+}
+
 function matchingTrailRecords(type, records, events, fields, actorId, actorRole) {
   const validIds = uniqueEventIds(events);
   const owned = trailRows(records).filter(record => record?.actor?.id === actorId && record.actor.role === actorRole);
@@ -528,6 +693,76 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
   return Object.freeze(milestone);
 }
 
+/**
+ * Resolve one Quest Board evidence detail to its exact retained world event.
+ * The index is built from the pinned snapshot once; duplicate, malformed,
+ * missing, or type-mismatched identities fail closed. A link establishes only
+ * event identity, never the truth or authority of the event's contents.
+ */
+export function createQuestEvidenceEventLinkResolver(world) {
+  const events = Array.isArray(world?.events) ? world.events : null;
+  if (!events) {
+    return () => ({
+      status: 'unavailable',
+      event: null,
+      reason: 'Retained world event history is unavailable.'
+    });
+  }
+
+  const eventsById = new Map();
+  for (const event of events) {
+    if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
+    const id = event.id;
+    if (typeof id !== 'string' || !id || id.length > 128 || id.trim() !== id) continue;
+    const matches = eventsById.get(id) || [];
+    matches.push(event);
+    eventsById.set(id, matches);
+  }
+
+  return evidence => {
+    const id = evidence?.id;
+    if (typeof id !== 'string' || !id || id.length > 128 || id.trim() !== id) {
+      return {
+        status: 'invalid',
+        event: null,
+        reason: 'The evidence identity is missing or not normalized.'
+      };
+    }
+    const type = evidence?.type;
+    if (typeof type !== 'string' || !type || type.trim() !== type) {
+      return {
+        status: 'invalid',
+        event: null,
+        reason: 'The evidence event type is missing or not normalized.'
+      };
+    }
+    const matches = eventsById.get(id) || [];
+    if (matches.length === 0) {
+      return {
+        status: 'unlinked',
+        event: null,
+        reason: 'No retained world event matches this evidence identity.'
+      };
+    }
+    if (matches.length !== 1) {
+      return {
+        status: 'ambiguous',
+        event: null,
+        reason: 'Multiple retained world events share this evidence identity.'
+      };
+    }
+    const event = matches[0];
+    if (event.type !== type) {
+      return {
+        status: 'mismatched',
+        event: null,
+        reason: 'The retained event type does not match this evidence detail.'
+      };
+    }
+    return { status: 'linked', event, reason: null };
+  };
+}
+
 const PLAYER_GUILD_MEMBERSHIP_EVENT_TYPES = new Set([
   'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
 ]);
@@ -628,7 +863,7 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
   const sourceObservatory = { type: 'location', id: 'source_observatory' };
   const interpretationFor = guildName => [
     'Shared objective for ' + guildName + ': one linked Source Observation from each of two current guild actor identities, then a later challenge by a different current member, then the original author response.',
-    'Membership is evaluated at each event position in the append-only history and its timestamp; actor IDs are not proof of distinct humans.',
+    'Membership and Source Observatory stage order are evaluated by append position in retained history; strict timestamps are metadata, not causal order. Actor IDs are not proof of distinct humans.',
     'Source retrieval and independent verification remain NOT_PERFORMED; model assertions remain LEADS_ONLY. Completion records participation only; it does not establish truth, consensus, evidence certification, approval, mastery or authority, and grants no XP.',
     'Rejected, unanswered and contradictory events remain in history. Leaving or disbanding changes the current-roster projection but never deletes retained events.'
   ].join(' ');
@@ -683,8 +918,8 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
     eventPositionById.set(event.id, index);
   });
 
-  // Append-only position is the causal order. A regressing or backdated
-  // timestamp must not make work recorded before membership count for the guild.
+  // Source Observatory actions are append-ordered: a valid later-appended
+  // observation counts after the actor's join event even when its wall clock regresses.
   const memberJoinPositionByActor = new Map();
   for (const [eventId, event] of eventById) {
     if (!['guild-created', 'guild-joined'].includes(event?.type) || event.guildId !== guild.id) continue;
@@ -705,7 +940,6 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
       const position = eventPositionById.get(record.id);
       return Boolean(member && Number.isInteger(joinPosition) &&
         isStrictTimestamp(record.at) &&
-        Date.parse(record.at) >= Date.parse(member.joinedAt) &&
         Number.isInteger(position) && position > joinPosition && position > afterPosition);
     })
     .sort((left, right) =>
@@ -747,9 +981,6 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
   const latestObservationPosition = Math.max(...selectedObservations.map(record =>
     eventPositionById.get(record.id)
   ));
-  const latestObservationAt = Math.max(...selectedObservations.map(record =>
-    Date.parse(record.at)
-  ));
   const challengeRows = selectedObservations.flatMap(record =>
     trailRows(record.challenges).map(challenge => ({ record, challenge }))
   ).filter(({ record, challenge }) => {
@@ -761,8 +992,7 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
       key !== actorKey(record.actor) &&
       safeResearchId(challenge.id) && eventById.has(challenge.id) &&
       Number.isInteger(position) && position > latestObservationPosition && position > joinPosition &&
-      isStrictTimestamp(challenge.at) && Date.parse(challenge.at) >= Date.parse(member.joinedAt) &&
-      Date.parse(challenge.at) >= latestObservationAt);
+      isStrictTimestamp(challenge.at));
   }).map(({ record, challenge }) => {
     const challengePosition = eventPositionById.get(challenge.id);
     const response = challenge.responseStatus === 'answered' &&
@@ -777,7 +1007,7 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
       safeResearchId(response.id) && eventById.has(response.id) &&
       Number.isInteger(responsePosition) && responsePosition > challengePosition &&
       responsePosition > responseJoinPosition &&
-      isStrictTimestamp(response.at) && Date.parse(response.at) >= Date.parse(responseMember.joinedAt)
+      isStrictTimestamp(response.at)
       ? eventById.get(response.id) : null;
     return {
       record,
@@ -936,6 +1166,13 @@ export function getQuestTrail(world, viewer, options = {}) {
     }
     return timestampMatches === 1 && earlierMatches === 1;
   };
+  // Academy practice is append-ordered: the exact publication must precede the note/review in the retained stream, regardless of wall-clock regression.
+  const hasUniqueEarlierPublicationByAppendPosition = (creationId, version, eventPosition) => {
+    if (!Number.isInteger(eventPosition)) return false;
+    const candidates = publicationCandidatesByVersion.get(JSON.stringify([creationId, version])) || [];
+    return candidates.length === 1 && Number.isFinite(candidates[0].at) &&
+      Number.isInteger(candidates[0].index) && candidates[0].index < eventPosition;
+  };
   const creationById = new Map(trailRows(world?.creations)
     .filter(creation => creation && typeof creation.id === 'string')
     .map(creation => [creation.id, creation]));
@@ -997,11 +1234,128 @@ export function getQuestTrail(world, viewer, options = {}) {
   );
   const hasPublishedObservatory = publishedObservatoryVersions.length > 0;
   const nextSourceObservationTarget = publishedObservatoryVersions.at(-1) || null;
-  const allSourceObservationRecords = projectSourceObservationRecords(events, world?.creations);
+  const allSourceObservationRecords = projectSourceObservationRecords(events, world?.creations, retainedWorldEventHistoryOptions(world, events));
   const linkedSourceObservationRecords = allSourceObservationRecords
     .filter(record => record.projectionStatus === 'linked');
   const sourceObservationRecords = linkedSourceObservationRecords
     .filter(record => record.actor?.id === actorId && record.actor?.role === actorRole);
+  let sourceArchiveFailureProjection = null;
+  try { sourceArchiveFailureProjection = projectSourceArchiveFailureObjects(world); } catch {}
+  const failureOriginObservationRecords = sourceObservationRecords.filter(record =>
+    record.failureOriginStatus === 'linked' && typeof record.originFailureEventId === 'string'
+  );
+  const failureOriginObservationEvents = failureOriginObservationRecords
+    .map(record => events.find(event => event?.id === record.id))
+    .filter(Boolean);
+  const sourceArchiveFailureProjectionAvailable =
+    sourceArchiveFailureProjection?.available === true &&
+    Number.isSafeInteger(sourceArchiveFailureProjection.total) &&
+    sourceArchiveFailureProjection.total >= 0 &&
+    Number.isSafeInteger(sourceArchiveFailureProjection.invalidCount) &&
+    sourceArchiveFailureProjection.invalidCount >= 0 &&
+    typeof sourceArchiveFailureProjection.complete === 'boolean' &&
+    typeof sourceArchiveFailureProjection.captureProjectionComplete === 'boolean' &&
+    Number.isSafeInteger(sourceArchiveFailureProjection.unseenEventCount) &&
+    sourceArchiveFailureProjection.unseenEventCount >= 0;
+  const sourceArchiveFailureProjectionHasVisibleRecords =
+    sourceArchiveFailureProjectionAvailable && sourceArchiveFailureProjection.total > 0;
+  const sourceArchiveFailureInvestigationVisible =
+    !sourceArchiveFailureProjectionAvailable ||
+    sourceArchiveFailureProjectionHasVisibleRecords ||
+    sourceArchiveFailureProjection.complete !== true ||
+    sourceArchiveFailureProjection.invalidCount > 0;
+  const sourceArchiveFailureInvestigationBlockedReason = !sourceArchiveFailureProjectionAvailable
+    ? 'Source Archive failure history is unavailable or unclassifiable; reconnect or refresh the accepted world snapshot and inspect the Evidence Archive. No failure absence or progress is inferred.'
+    : !sourceArchiveFailureProjectionHasVisibleRecords
+      ? [
+          sourceArchiveFailureProjection.complete !== true
+            ? 'The accepted world snapshot is partial (' + sourceArchiveFailureProjection.unseenEventCount + ' unseen event(s)); reconnect and refresh before treating the failure list as empty.'
+            : null,
+          sourceArchiveFailureProjection.invalidCount > 0
+            ? 'The Source Archive failure projection withheld ' + sourceArchiveFailureProjection.invalidCount + ' invalid record(s); inspect the Evidence Archive.'
+            : null,
+          'No progress is credited.'
+        ].filter(Boolean).join(' ')
+      : null;
+  const sourceArchiveFailureInvestigationScope = !sourceArchiveFailureProjectionAvailable
+    ? 'The Source Archive failure-history projection is unavailable or unclassifiable.'
+    : [
+        sourceArchiveFailureProjection.complete !== true
+          ? 'The accepted snapshot is partial; ' + sourceArchiveFailureProjection.unseenEventCount + ' event(s) are unseen.'
+          : null,
+        sourceArchiveFailureProjection.invalidCount > 0
+          ? sourceArchiveFailureProjection.invalidCount + ' invalid failure record(s) were withheld.'
+          : null
+      ].filter(Boolean).join(' ');
+  const sourceArchiveFailureInvestigationInterpretation =
+    'Only an exact retained originFailureEventId link to one earlier service-observed Source Archive failure in the declared snapshot prefix counts. This records a provenance link only; it is not a source retry or an investigation result. Source retrieval and independent verification remain NOT_PERFORMED, model assertions remain LEADS_ONLY, execution remains NOT_EXECUTED, and no XP, truth verdict, or evidence certification is awarded.' +
+    (sourceArchiveFailureInvestigationScope
+      ? ' Snapshot scope: ' + sourceArchiveFailureInvestigationScope + ' Only validated, visible failure links can count.'
+      : '');
+  const sourceArchiveFailureInvestigationMilestones = sourceArchiveFailureInvestigationVisible
+    ? [Object.freeze({
+        ...trailMilestone(
+          actorRole + '-source-archive-failure-investigation',
+          'Link a Source Archive failure to a Source Observation',
+          1,
+          failureOriginObservationEvents.map(event => event.id),
+          failureOriginObservationEvents,
+          sourceArchiveFailureProjectionHasVisibleRecords
+            ? { type: 'location', id: 'moonshot_field' } : null,
+          sourceArchiveFailureInvestigationBlockedReason,
+          sourceArchiveFailureInvestigationInterpretation
+        ),
+        countsForQuestkeeper: false
+      })]
+    : [];
+  const sourceArchiveLaterCaptureMilestones = (() => {
+    if (actorRole !== 'founder') return [];
+    const failure = sourceArchiveFailureProjection?.mostRecentVisibleRetryableFailure;
+    if (!failure || typeof failure.eventId !== 'string') return [];
+    const failureEvent = events.find(event => event?.id === failure.eventId) || null;
+    if (!failureEvent || failureEvent.type !== 'source-archive-attempt-failed') return [];
+    const captureProjectionComplete = sourceArchiveFailureProjection.captureProjectionComplete === true;
+    const candidateCapture = captureProjectionComplete && failure.laterCaptureStatus === 'observed'
+      ? failure.laterCapture : null;
+    const publicationEvent = candidateCapture
+      ? events.find(event => event?.id === candidateCapture.publicationEventId) || null
+      : null;
+    const observed = Boolean(candidateCapture && publicationEvent &&
+      publicationEvent.type === 'publish' &&
+      publicationEvent.creationId === candidateCapture.creationId &&
+      publicationEvent.version === candidateCapture.version &&
+      publicationEvent.actor?.id === actorId &&
+      publicationEvent.actor?.role === actorRole);
+    const statusUnknown = !captureProjectionComplete ||
+      failure.laterCaptureStatus === 'unknown' ||
+      (failure.laterCaptureStatus === 'observed' && !observed);
+    const captureProjectionReason = sourceArchiveFailureProjection.captureProjectionReason;
+    const blockedReason = !statusUnknown ? null :
+      captureProjectionReason === 'capture-match-scan-budget-exhausted'
+        ? 'The bounded later-capture matching budget was exhausted; status remains UNKNOWN. No capture or absence is inferred.'
+        : captureProjectionReason === 'retained-version-scan-budget-exhausted'
+          ? 'The bounded retained-version scan budget was exhausted; status remains UNKNOWN. No capture or absence is inferred.'
+          : captureProjectionReason === 'unsafe-retained-version-object'
+          ? 'A retained Source Archive version has an unsafe object shape; later-capture status remains UNKNOWN. No capture or absence is inferred.'
+          : captureProjectionReason === 'unlinked-published-artifact'
+            ? 'A retained publish event is missing a unique artifact/version link; later-capture status remains UNKNOWN. No capture or absence is inferred.'
+            : 'The accepted Source Archive history is partial, incomplete, or ambiguous; refresh and inspect the Evidence Archive before treating a later capture as absent. No capture is inferred.';
+    const evidenceEvents = observed ? [failureEvent, publicationEvent] : [failureEvent];
+    const interpretation = 'This objective links one service-observed failure to a later explicitly published server-rechecked capture of the same repository, full commit SHA, and path. The expected response body is not retained; the later capture records bytes fetched later and is not proof of source truth, claim accuracy, authorship, independent verification, approval, or authority. The two-event game objective grants no XP.';
+    return [Object.freeze({
+      ...trailMilestone(
+        'founder-source-archive-later-capture',
+        'Capture the same pinned source after a recorded failure',
+        2,
+        evidenceEvents.map(event => event.id),
+        evidenceEvents,
+        statusUnknown || observed ? null : { type: 'location', id: 'evidence_archive' },
+        blockedReason,
+        interpretation
+      ),
+      countsForQuestkeeper: false
+    })];
+  })();
   const unlinkedSourceObservationHistory = allSourceObservationRecords.some(record =>
     record.actor?.id === actorId && record.actor?.role === actorRole &&
     record.projectionStatus !== 'linked'
@@ -1048,6 +1402,12 @@ export function getQuestTrail(world, viewer, options = {}) {
   const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
   const commonsMessages = projectCommonsMessages(world, { id: actorId, role: actorRole });
   const firstCommonsMessage = commonsMessages[0] || null;
+  const founderCommonsReportReviewMilestone = actorRole === 'founder'
+    ? projectFounderCommonsReportReviewMilestone(world, viewer, events)
+    : null;
+  const witnessCommonsReportReviewMilestone = actorRole === 'witness'
+    ? projectWitnessCommonsReportReviewMilestone(world, viewer, events)
+    : null;
   const guildMembership = currentPlayerGuildMembership(world, viewer, events);
   const guildLeadershipHandoffs = guildLeadershipHandoffEvents(
     world, events, actorId, actorRole, eventPositionByReference
@@ -1080,6 +1440,47 @@ export function getQuestTrail(world, viewer, options = {}) {
   const fieldEquipmentEvents = fieldItemState.equipmentEvents.filter(event =>
     event.actor?.id === actorId && event.actor?.role === actorRole
   );
+  const sourceArchiveRecoveryLinks = actorRole === 'founder' &&
+    Array.isArray(validFieldItemSourceEventIdsBySlot?.recoveryLinks)
+    ? validFieldItemSourceEventIdsBySlot.recoveryLinks.filter(link =>
+      link?.actorId === actorId && link?.actorRole === actorRole
+    ) : [];
+  const sourceArchiveRecoveryMilestones = sourceArchiveRecoveryLinks.map(link => {
+    const failureEvent = events.find(event =>
+      event?.id === link.failureEventId && event?.type === 'source-archive-attempt-failed' &&
+      sameResearchActor(event.actor, { id: actorId, role: actorRole })
+    );
+    const publicationEvent = events.find(event =>
+      event?.id === link.publicationEventId && event?.type === 'publish' &&
+      event?.creationId === link.creationId && event?.version === link.version &&
+      sameResearchActor(event.actor, { id: actorId, role: actorRole })
+    );
+    if (!failureEvent || !publicationEvent) return null;
+    const forgeEvent = fieldForgeEvents.find(event =>
+      event?.slotId === 'recovery' && event?.sourceEventId === publicationEvent.id
+    );
+    const equipEvent = forgeEvent ? fieldEquipmentEvents.find(event =>
+      event?.type === 'field-item-equipped' && event?.slotId === 'recovery' &&
+      event?.sourceEventId === forgeEvent.id
+    ) : null;
+    const evidenceEvents = [failureEvent, publicationEvent, forgeEvent, equipEvent]
+      .filter(Boolean)
+      .sort((left, right) => events.indexOf(left) - events.indexOf(right));
+    return Object.freeze({
+      ...trailMilestone(
+        'founder-source-archive-recovery-ledger-' + failureEvent.id,
+        'Forge and equip a Recovery Ledger from the linked later capture',
+        4,
+        evidenceEvents.map(event => event.id),
+        evidenceEvents,
+        equipEvent ? null : { type: 'location', id: 'forge' },
+        null,
+        'This objective requires one exact earlier service-observed retryable failure, one unique later server-rechecked publication, and the explicit actor-bound Forge and equip events. It records byte-retrieval lineage only; the receipt does not establish equality with the failed response, source truth, authorship, independent verification, execution, approval or authority. It awards no XP and does not count toward Questkeeper progression.'
+      ),
+      countsForQuestkeeper: false
+    });
+  }).filter(Boolean);
+
   const firstFieldEquipmentEvent = fieldEquipmentEvents[0] || null;
   const validAdversarialSourceIds = validFieldItemSourceEventIdsBySlot?.adversarial instanceof Set
     ? validFieldItemSourceEventIdsBySlot.adversarial : new Set();
@@ -1252,7 +1653,7 @@ export function getQuestTrail(world, viewer, options = {}) {
         typeof event.question !== 'string' || !event.question.trim() || Array.from(event.question).length > 500 ||
         typeof event.attempt !== 'string' || !event.attempt.trim() || Array.from(event.attempt).length > 1000 ||
         typeof event.nextCheck !== 'string' || !event.nextCheck.trim() || Array.from(event.nextCheck).length > 500) return false;
-    return hasUniqueEarlierPublication(event.creationId, event.version, event.at, eventPositionByReference.get(event));
+    return hasUniqueEarlierPublicationByAppendPosition(event.creationId, event.version, eventPositionByReference.get(event));
   });
   const studies = allStudyEvents.filter(event => event.actor.id === actorId && event.actor.role === actorRole);
   const reviewIdCounts = new Map(), reviewedStudyCounts = new Map();
@@ -1272,10 +1673,9 @@ export function getQuestTrail(world, viewer, options = {}) {
         event.creationId !== source.creationId || event.version !== source.version ||
         sourceIndex < 0 || reviewIndex <= sourceIndex ||
         !isStrictTimestamp(event.at) || !isStrictTimestamp(source.at) ||
-        Date.parse(source.at) >= Date.parse(event.at) ||
         typeof event.response !== 'string' || !event.response.trim() || Array.from(event.response).length > 1000 ||
         typeof event.reflection !== 'string' || !event.reflection.trim() || Array.from(event.reflection).length > 1000) return false;
-    return hasUniqueEarlierPublication(event.creationId, event.version, event.at, reviewIndex);
+    return hasUniqueEarlierPublicationByAppendPosition(event.creationId, event.version, reviewIndex);
   });
   const studyReviews = allStudyReviews.filter(event => event.actor.id === actorId && event.actor.role === actorRole);
   const hasStudyReview = studyReviews.length > 0;
@@ -1294,9 +1694,18 @@ export function getQuestTrail(world, viewer, options = {}) {
   // Reuse the full-history research linker before crediting a synthesis attempt.
   // A later duplicate Moonshot ID or an unlinked report/challenge makes the
   // original packet ambiguous, even if its copied response labels look valid.
-  const projectedResearchByEventId = new Map(projectResearchRecords(events, rows(world?.creations))
+  const projectedResearchByEventId = new Map(projectResearchRecords(events, rows(world?.creations), retainedWorldEventHistoryOptions(world, events))
     .filter(record => record?._projection?.recordSafe && record._projection.eventIdUnique)
     .map(record => [record.id, record]));
+  // Quest Board and Character Sheet consume the same fail-closed R&D projection.
+  // Keep one retained-order source for proposals, reports, challenges and responses.
+  const projectedExperimentRecords = [...projectedResearchByEventId.values()]
+    .sort((left, right) => left._projection.index - right._projection.index);
+  const validMoonshotProposals = projectedExperimentRecords.filter(record =>
+    record?.type === 'moonshot-proposed' && record?._projection?.proposalStatus === 'unique'
+  );
+  const validMoonshotIds = new Set(validMoonshotProposals.map(record => record.moonshotId));
+  const hasAnyMoonshotProposal = validMoonshotIds.size >= 1;
   // Source Archives become usable research objects only through an exact,
   // earlier, uniquely retained publication. Client-reported and server-rechecked
   // retrieval labels are provenance distinctions, not truth or authorship verdicts.
@@ -1432,7 +1841,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       (source.type === 'experiment-reported' && source._projection.proposalStatus === 'linked') ||
       (source.type === 'experiment-challenged' &&
         source._projection.proposalStatus === 'linked' &&
-        source._projection.targetReportStatus === 'linked')
+        source._projection.challengeStatus === 'linked')
     );
     // Retained append order, not wall-clock order, decides whether a source preceded this response.
     // Offline and cross-device clock skew may regress timestamps without reversing event history.
@@ -1464,97 +1873,29 @@ export function getQuestTrail(world, viewer, options = {}) {
       : !nextSynthesisPacket
         ? 'No bounded multi-source Synthesis Clerk packet is currently available.'
         : null;
-  const moonshotProposals = events.filter(event =>
-    isValidMoonshotProposal(event) && typeof event.id === 'string' &&
-    uniqueMoonshotEventIds.has(event.id) && event.actor?.id === actorId && event.actor?.role === actorRole
+  const moonshotProposals = validMoonshotProposals.filter(record =>
+    sameResearchActor(record.actor, viewer)
   );
-  const moonshotIdCounts = new Map();
-  const reportIdCounts = new Map();
-  for (const event of events) {
-    if (event?.type === 'moonshot-proposed' && typeof event.moonshotId === 'string') moonshotIdCounts.set(event.moonshotId, (moonshotIdCounts.get(event.moonshotId) || 0) + 1);
-    if (event?.type === 'experiment-reported' && typeof event.reportId === 'string') reportIdCounts.set(event.reportId, (reportIdCounts.get(event.reportId) || 0) + 1);
-  }
-  const proposalPositionById = new Map();
-  trailRows(events).forEach((event, index) => {
-    if (isValidMoonshotProposal(event) && moonshotIdCounts.get(event.moonshotId) === 1 &&
-        uniqueMoonshotEventIds.has(event.id)) {
-      proposalPositionById.set(event.moonshotId, index);
-    }
-  });
-  const validMoonshotIds = new Set(proposalPositionById.keys());
-  const hasAnyMoonshotProposal = validMoonshotIds.size >= 1;
-  const allExperimentReports = events.filter(event => {
-    const eventPosition = eventPositionByReference.get(event);
-    const proposalPosition = proposalPositionById.get(event?.moonshotId);
-    return event?.type === 'experiment-reported' && typeof event.id === 'string' &&
-      uniqueMoonshotEventIds.has(event.id) && typeof event.reportId === 'string' &&
-      reportIdCounts.get(event.reportId) === 1 && validMoonshotIds.has(event.moonshotId) &&
-      Number.isInteger(eventPosition) && proposalPosition < eventPosition &&
-      isStrictTimestamp(event.at) &&
-      Date.parse(events[proposalPosition]?.at) <= Date.parse(event.at) &&
-      typeof event.actor?.id === 'string' && ['founder', 'witness'].includes(event.actor?.role) &&
-      typeof event.procedure === 'string' && event.procedure.trim() &&
-      typeof event.observation === 'string' && event.observation.trim() &&
-      ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome);
-  });
-  const experimentReports = allExperimentReports.filter(event =>
-    event.actor?.id === actorId && event.actor?.role === actorRole
+  const allExperimentReports = projectedExperimentRecords.filter(record =>
+    record?.type === 'experiment-reported' &&
+    record?._projection?.proposalStatus === 'linked' &&
+    record?._projection?.reportIdUnique === true
   );
-  // A separate objective requires a report to reference one unambiguous,
-  // retained publication that existed earlier in the append-only event history.
-  // This proves artifact linkage only; it does not verify the reported procedure,
-  // observation, outcome, or truth of the hypothesis.
-  const experimentEvidenceReports = experimentReports.filter(event => {
-    if (typeof event.evidenceCreationId !== 'string' || !event.evidenceCreationId ||
-        !Number.isSafeInteger(event.evidenceVersion) || event.evidenceVersion < 1) return false;
-    return hasUniqueEarlierPublication(
-      event.evidenceCreationId, event.evidenceVersion, event.at, eventPositionByReference.get(event)
-    );
-  });
-  const challengeIdCounts = new Map();
-  for (const event of events) {
-    if (event?.type === 'experiment-challenged' && typeof event.challengeId === 'string') {
-      challengeIdCounts.set(event.challengeId, (challengeIdCounts.get(event.challengeId) || 0) + 1);
-    }
-  }
-  const reportById = new Map(allExperimentReports.map(event => [event.reportId, event]));
-  const validChallengeEvidence = event => {
-    const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
-    const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
-    if (hasEvidenceId !== hasEvidenceVersion) return false;
-    if (!hasEvidenceId) return (
-      (event.evidenceCreationId === undefined || event.evidenceCreationId === null) &&
-      (event.evidenceVersion === undefined || event.evidenceVersion === null)
-    );
-    const creation = creationById.get(event.evidenceCreationId);
-    const versions = retainedVersionsByCreationAndVersion.get(
-      JSON.stringify([event.evidenceCreationId, event.evidenceVersion])
-    ) || [];
-    const version = versions.length === 1 ? versions[0] : null;
-    const eventPosition = eventPositionByReference.get(event);
-    return Boolean(creation && version && version.id === creation.id &&
-      isStrictTimestamp(version.publishedAt) && isStrictTimestamp(event.at) &&
-      Date.parse(version.publishedAt) <= Date.parse(event.at) &&
-      hasUniqueEarlierPublication(event.evidenceCreationId, event.evidenceVersion, event.at, eventPosition));
-  };
-  const experimentChallenges = events.filter(event => {
-    const report = reportById.get(event?.reportId);
-    const reportPosition = report ? (eventPositionByReference.get(report) ?? -1) : -1;
-    const challengePosition = eventPositionByReference.get(event) ?? -1;
-    return event?.type === 'experiment-challenged' && typeof event.id === 'string' &&
-      uniqueMoonshotEventIds.has(event.id) &&
-      typeof event.challengeId === 'string' && challengeIdCounts.get(event.challengeId) === 1 &&
-      typeof event.reportId === 'string' && Boolean(report) &&
-      !sameResearchActor(report.actor, viewer) && report.moonshotId === event.moonshotId &&
-      event.actor?.id === actorId && event.actor?.role === actorRole &&
-      ['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'].includes(event.challengeType) &&
-      typeof event.challengeText === 'string' && Boolean(event.challengeText.trim()) &&
-      Array.from(event.challengeText).length <= 1000 &&
-      reportPosition >= 0 && challengePosition > reportPosition &&
-      isStrictTimestamp(event.at) &&
-      isStrictTimestamp(report.at) && Date.parse(report.at) <= Date.parse(event.at) &&
-      validChallengeEvidence(event);
-  });
+  const experimentReports = allExperimentReports.filter(record =>
+    sameResearchActor(record.actor, viewer)
+  );
+  // The defensive research projection binds the exact earlier publication by
+  // retained event position and exact version receipt. This is artifact linkage,
+  // not proof of the reported procedure, observation, outcome, or hypothesis.
+  const experimentEvidenceReports = experimentReports.filter(record =>
+    record?._projection?.evidenceStatus === 'linked'
+  );
+  const experimentChallenges = projectedExperimentRecords.filter(record =>
+    record?.type === 'experiment-challenged' &&
+    record?._projection?.proposalStatus === 'linked' &&
+    record?._projection?.challengeStatus === 'linked' &&
+    sameResearchActor(record.actor, viewer)
+  );
   // Reuse the defensive full-history linker for author responses. A quest counts
   // only uniquely linked responses from the original report author; a retained
   // but invalid/duplicate response blocks retry rather than inviting a second reply.
@@ -1587,13 +1928,12 @@ export function getQuestTrail(world, viewer, options = {}) {
     guildChallengeEventIds.has(event.id) && guildExperimentReportIds.has(event.reportId)
   );
 
-  const projectedExperimentRecords = projectResearchRecords(events, rows(world?.creations));
   const sourceArchiveChallenges = projectedExperimentRecords
     .filter(record => record?.type === 'experiment-challenged' &&
       record?._projection?.recordSafe === true &&
       record?._projection?.eventIdUnique === true &&
       record?._projection?.proposalStatus === 'linked' &&
-      record?._projection?.targetReportStatus === 'linked' &&
+      record?._projection?.challengeStatus === 'linked' &&
       sourceArchiveExperimentReportIds.has(record?._projection?.targetReport?.id) &&
       !guildChallengeScopeBlocked &&
       (!guildChallengeScopeActive ||
@@ -1640,7 +1980,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       record?._projection?.recordSafe === true &&
       record?._projection?.eventIdUnique === true &&
       record?._projection?.proposalStatus === 'linked' &&
-      record?._projection?.targetReportStatus === 'linked' &&
+      record?._projection?.challengeStatus === 'linked' &&
       sameResearchActor(record?._projection?.targetReport?.actor, viewer))
     .sort((left, right) => left._projection.index - right._projection.index);
   const responseEventCountsByChallenge = new Map();
@@ -1937,6 +2277,9 @@ export function getQuestTrail(world, viewer, options = {}) {
         !hasPublishedObservatory ? 'Publish a Source Observatory first; observations are recorded against one exact retained version.' : null,
         'This is an actor-attributed research note against one exact retained version. Source retrieval, independent verification and execution remain NOT_PERFORMED; the note is not a truth verdict.'
       ),
+      ...sourceArchiveFailureInvestigationMilestones,
+      ...sourceArchiveLaterCaptureMilestones,
+      ...sourceArchiveRecoveryMilestones,
       trailMilestone(
         'founder-source-observation-challenge', 'Challenge another actor’s source observation', 1,
         sourceObservationChallenges.map(event => event.id), sourceObservationChallenges,
@@ -2094,6 +2437,7 @@ export function getQuestTrail(world, viewer, options = {}) {
         null,
         'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
       ),
+      founderCommonsReportReviewMilestone,
       ...combatMilestones,
     ]);
   }
@@ -2190,6 +2534,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       !hasPublishedObservatory ? 'Wait for a retained Source Observatory publication before recording an observation.' : null,
       'This is an actor-attributed research note against one exact retained version. Source retrieval, independent verification and execution remain NOT_PERFORMED; the note is not a truth verdict.'
     ),
+    ...sourceArchiveFailureInvestigationMilestones,
     trailMilestone(
       'witness-source-observation-challenge', 'Challenge another actor’s source observation', 1,
       sourceObservationChallenges.map(event => event.id), sourceObservationChallenges,
@@ -2286,6 +2631,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       null,
       'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
     ),
+    ...(witnessCommonsReportReviewMilestone ? [witnessCommonsReportReviewMilestone] : []),
     ...combatMilestones,
   ]);
 }

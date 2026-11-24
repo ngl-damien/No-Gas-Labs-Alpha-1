@@ -1,8 +1,9 @@
-"""Touch-first acceptance for the walkable Council Chamber on narrow phones.
+"""Touch-first acceptance for walkable institutional rooms on narrow phones.
 
-This focused browser journey routes to the institution, taps its actual map
-landmark, and exercises all four bounded review-summary branches. Inspection
-must remain a read-only projection and never award progress.
+The Council Chamber journey inspects four bounded collaborator summaries. The
+TownSquare journey exercises a real private report, Founder-session review,
+actor-scoped visibility, self-review denial, and XP/moderation neutrality.
+Both journeys enter through the world and preserve its playable canvas.
 """
 import argparse
 import json
@@ -83,6 +84,8 @@ def authoritative_snapshot(page):
 
 
 def assert_council_room(page):
+    expect(page.locator('#sheet')).to_be_visible()
+    expect(page.locator('#sheet-close')).to_be_visible()
     content = page.locator('#sheet-content')
     expect(page.locator('#sheet-title')).to_have_text('Council Chamber')
     expect(content).to_have_attribute('data-council-chamber', 'true')
@@ -97,9 +100,48 @@ def assert_council_room(page):
     assert 'not four independent humans, votes, or endorsements' in text, (
         'Role coverage must not be presented as consensus or endorsement.'
     )
+    return assert_world_context_visible(page)
+
+
+def assert_world_context_visible(page, institution='Council Chamber'):
+    geometry = page.evaluate("""() => {
+      const canvas = document.querySelector('#world');
+      const panel = document.querySelector('#sheet');
+      const backdrop = document.querySelector('#sheet-backdrop');
+      const canvasRect = canvas.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const canvasStyle = getComputedStyle(canvas);
+      const backdropStyle = getComputedStyle(backdrop);
+      return {
+        canvasWidth: Math.round(canvasRect.width),
+        canvasHeight: Math.round(canvasRect.height),
+        exposedWorldHeight: Math.max(0, Math.round(Math.min(canvasRect.bottom, panelRect.top) - canvasRect.top)),
+        canvasFilter: canvasStyle.filter,
+        backdropFilter: backdropStyle.backdropFilter || backdropStyle.webkitBackdropFilter || 'none',
+        backdropPointerEvents: backdropStyle.pointerEvents,
+        sheetTop: Math.round(panelRect.top)
+      };
+    }""")
+    assert geometry['canvasWidth'] > 0 and geometry['canvasHeight'] > 0, (
+        'The world canvas must remain rendered while ' + institution + ' is open: ' + json.dumps(geometry)
+    )
+    assert geometry['exposedWorldHeight'] >= 100, (
+        institution + ' must leave at least 100px of playable world context visible: ' + json.dumps(geometry)
+    )
+    assert geometry['canvasFilter'] == 'none', (
+        'The world canvas must not be blurred behind the institution sheet: ' + json.dumps(geometry)
+    )
+    assert geometry['backdropFilter'] == 'none', (
+        'The institution backdrop must not blur the world: ' + json.dumps(geometry)
+    )
+    assert geometry['backdropPointerEvents'] == 'none', (
+        'The modeless institution sheet must not intercept world-canvas input: ' + json.dumps(geometry)
+    )
+    return geometry
 
 
 def assert_populated_council_room(page, fixture):
+    expect(page.locator('#sheet')).to_be_visible()
     content = page.locator('#sheet-content')
     expect(page.locator('#sheet-title')).to_have_text('Council Chamber')
     expect(content).to_have_attribute('data-council-chamber', 'true')
@@ -121,9 +163,67 @@ def assert_populated_council_room(page, fixture):
         details = card.locator('details[data-council-review-summary="' + role + '"]')
         expect(details).to_have_count(1)
         expect(details).to_have_attribute('data-council-review-status', 'valid-for-human-review')
-        details.locator('summary').click()
+        summary = details.locator('summary')
+        scroll_metrics = summary.evaluate("""el => {
+          const panel = document.querySelector('#sheet');
+          const panelRect = panel.getBoundingClientRect();
+          const header = panel.querySelector('.sheet-top');
+          const headerBottom = header ? header.getBoundingClientRect().bottom : panelRect.top;
+          const item = el.getBoundingClientRect();
+          const visibleTop = Math.max(panelRect.top, headerBottom) + 8;
+          const visibleBottom = panelRect.bottom - 8;
+          const delta = item.top < visibleTop
+            ? item.top - visibleTop
+            : item.bottom > visibleBottom
+              ? item.bottom - visibleBottom
+              : 0;
+          const maxScroll = Math.max(0, panel.scrollHeight - panel.clientHeight);
+          panel.scrollTop = Math.max(0, Math.min(maxScroll, panel.scrollTop + delta));
+          return {
+            requestedDelta: Math.round(delta),
+            scrollTop: Math.round(panel.scrollTop),
+            maxScroll: Math.round(maxScroll)
+          };
+        }""")
+        page.wait_for_timeout(50)
+        summary_state = summary.evaluate("""el => {
+          const panel = document.querySelector('#sheet');
+          const panelRect = panel.getBoundingClientRect();
+          const header = panel.querySelector('.sheet-top');
+          const headerBottom = header ? header.getBoundingClientRect().bottom : panelRect.top;
+          const item = el.getBoundingClientRect();
+          const visibleTop = Math.max(panelRect.top, headerBottom) + 4;
+          const visibleBottom = panelRect.bottom - 4;
+          return {
+            visible: item.width > 0 && item.height > 0 &&
+              item.top >= visibleTop && item.bottom <= visibleBottom,
+            itemTop: Math.round(item.top),
+            itemBottom: Math.round(item.bottom),
+            visibleTop: Math.round(visibleTop),
+            visibleBottom: Math.round(visibleBottom),
+            scrollTop: Math.round(panel.scrollTop),
+            scrollHeight: Math.round(panel.scrollHeight),
+            clientHeight: Math.round(panel.clientHeight)
+          };
+        }""")
+        assert summary_state['visible'], (
+            'Each bounded Council review summary must be reachable below the sticky header '
+            'inside the mobile sheet scrollport (' + role + '): ' +
+            json.dumps({**scroll_metrics, **summary_state})
+        )
+        close_in_view = page.locator('#sheet-close').evaluate("""el => {
+          const button = el.getBoundingClientRect();
+          const panel = document.querySelector('#sheet').getBoundingClientRect();
+          return button.width > 0 && button.height > 0 &&
+            button.top >= panel.top && button.bottom <= panel.bottom &&
+            button.left >= panel.left && button.right <= panel.right;
+        }""")
+        assert close_in_view, 'The Council sheet close control must remain in the visible panel while role notes are inspected.'
+        expect(page.locator('.sheet-top')).to_have_css('position', 'sticky')
+        summary.tap()
         for label in expected_labels:
             expect(details).to_contain_text(label)
+        summary.tap()  # Collapse before the next role so long notes do not compound the scroll height.
         if role == 'synthesizer':
             expect(details).to_contain_text(fixture['challengeEventId'])
         expect(details).to_contain_text('not independent evidence, truth, execution')
@@ -132,6 +232,7 @@ def assert_populated_council_room(page, fixture):
     assert 'not four independent humans, votes, or endorsements' in text, (
         'Role coverage must not be presented as consensus or endorsement.'
     )
+    return assert_world_context_visible(page)
 
 
 def seed_council_review_fixture(page):
@@ -224,15 +325,25 @@ def seed_council_review_fixture(page):
           initial.viewer.id === fixture.reporterActorId) {
         throw new Error('The retained report and challenge must be authored by distinct Witness actors.');
       }
+      const resolutionRequest = 'Repeat the experiment with the control condition recorded and preserve the resulting observation.';
       const challenge = await post({
         type: 'challenge-experiment-report',
         reportId: fixture.reportId,
         challengeType: 'methodology',
         challengeText: 'The report does not describe a control condition.',
+        resolutionRequest,
         requestId: 'council-mobile-fixture-challenge'
       });
       if (typeof challenge.result?.challengeId !== 'string') {
         throw new Error('The independent challenge action did not retain its challenge ID.');
+      }
+      const challengeState = await read();
+      const retainedChallenge = challengeState.world.events.find(event =>
+        event.type === 'experiment-challenged' && event.challengeId === challenge.result.challengeId
+      );
+      if (!retainedChallenge || retainedChallenge.resolutionRequest !== resolutionRequest ||
+          Object.hasOwn(retainedChallenge, 'outcome') || Object.hasOwn(retainedChallenge, 'status')) {
+        throw new Error('The retained challenge must preserve its exact requested next check without a verdict.');
       }
 
       const { projectCollaboratorPackets } = await import('/collaborator-contracts.mjs');
@@ -297,6 +408,9 @@ def seed_council_review_fixture(page):
               statement: 'The failed outcome is retained, while the methodology challenge disputes whether the procedure supports the stated inference.'
             }],
             dissentPreserved: includedChallenges.map(event => event.id),
+            authorResponsesPreserved: packetPayload.inputRecords
+              .filter(record => record.type === 'experiment-challenge-responded')
+              .map(record => record.eventId),
             unknowns: ['The report is not independently verified.'],
             nextDiscriminatingExperiment: {
               procedure: 'Repeat with a defined control and retain the observation.',
@@ -358,13 +472,25 @@ def seed_council_review_fixture(page):
 
 
 def council_canvas_tap_position(page):
-    point = page.locator('#world').evaluate("""canvas => {
+    point = page.locator('#world').evaluate("""async canvas => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Could not read the accepted player position for landmark navigation.');
+      const dto = await response.json();
+      const player = dto?.viewer?.position;
+      if (!player || !Number.isFinite(player.x) || !Number.isFinite(player.y)) {
+        throw new Error('The accepted player position is unavailable; do not guess the camera location.');
+      }
       const rect = canvas.getBoundingClientRect();
       const zoom = rect.width < 600 ? 0.78 : Math.max(0.64, Math.min(0.92, rect.width / 1500));
       const visibleWidth = rect.width / zoom;
       const visibleHeight = rect.height / zoom;
-      const cameraX = Math.max(visibleWidth / 2, Math.min(1600 - visibleWidth / 2, 600));
-      const cameraY = Math.max(visibleHeight / 2, Math.min(1000 - visibleHeight / 2, 190));
+      // Match WorldView.cameraTarget() instead of assuming the player reached
+      // an exact pixel before the modeless institution panel stopped the route.
+      const cameraX = Math.max(visibleWidth / 2, Math.min(1600 - visibleWidth / 2, player.x + 100));
+      const cameraY = Math.max(visibleHeight / 2, Math.min(1000 - visibleHeight / 2, player.y - 50));
       return {
         x: rect.width / 2 + (500 - cameraX) * zoom,
         y: rect.height / 2 + (190 - cameraY) * zoom
@@ -432,16 +558,18 @@ def run_viewport(browser, url, out, width):
         enter_nearby_institution(page, 'council_chamber', 'Council Chamber', 'Council Chamber')
         assert_council_room(page)
 
-        # A tap on the visible Council landmark must resolve the same institution ID,
-        # not merely send the player toward an anonymous world coordinate.
+        # A landmark tap is navigation, not entry. Preserve that distinction:
+        # resolve the same institution ID, then use its explicit nearby Interact action.
         page.locator('#sheet-close').tap()
         expect(page.locator('#sheet')).to_be_hidden()
         page.wait_for_timeout(750)
         page.locator('#world').tap(position=council_canvas_tap_position(page))
         page.wait_for_function(
-            "() => document.querySelector('#sheet-title')?.textContent === 'Council Chamber'",
+            "() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'council_chamber' && " +
+            "document.querySelector('#sheet')?.hidden === true",
             timeout=10000
         )
+        enter_nearby_institution(page, 'council_chamber', 'Council Chamber', 'Council Chamber', timeout=10000)
         assert_council_room(page)
 
         # The explicit Interact control remains a second, accessible way to enter.
@@ -468,7 +596,7 @@ def run_viewport(browser, url, out, width):
 
         fixture = None
         populated_before = None
-        if width == 390:
+        if width in (320, 390):
             # Test fixture events are deliberately authored test data, not model
             # execution or independent evidence. Every response still crosses
             # the real server validator and is projected as review-only history.
@@ -480,8 +608,8 @@ def run_viewport(browser, url, out, width):
             assert fixture['responseCount'] == 4
             assert fixture['distinctActors'] is True
 
-            # The route list brings the player beside the room; the canvas tap
-            # then opens the actual map landmark and all four bounded summaries.
+            # The route list and canvas landmark are navigation only. The explicit
+            # nearby Interact action is required to enter the institutional room.
             page.locator('#places-button').tap()
             populated_route = page.get_by_role('button', name='Walk to Council Chamber', exact=True)
             expect(populated_route).to_be_visible()
@@ -493,13 +621,40 @@ def run_viewport(browser, url, out, width):
             page.wait_for_timeout(750)
             page.locator('#world').tap(position=council_canvas_tap_position(page))
             page.wait_for_function(
-                "() => document.querySelector('#sheet-title')?.textContent === 'Council Chamber'",
+                "() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'council_chamber' && " +
+                "document.querySelector('#sheet')?.hidden === true",
                 timeout=10000
             )
+            enter_nearby_institution(page, 'council_chamber', 'Council Chamber', 'Council Chamber', timeout=10000)
             assert_populated_council_room(page, fixture)
             populated_after = authoritative_snapshot(page)
             assert populated_after == populated_before, (
                 'Opening and expanding all four Council summaries must remain read-only.'
+            )
+
+            # The Synthesis Clerk's retained dissent must be directly inspectable
+            # as the exact world event, pinned to the Council's source snapshot.
+            synthesizer = page.locator('[data-council-role="synthesizer"]')
+            synthesizer.locator(
+                'details[data-council-review-summary="synthesizer"] summary'
+            ).tap()
+            source_event = synthesizer.locator(
+                '[data-council-source-event-id="' + fixture['challengeEventId'] + '"]'
+            )
+            expect(source_event).to_have_count(1)
+            expect(source_event).to_be_visible()
+            source_event.tap()
+            expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
+            chronicle = page.locator('#sheet-content')
+            expect(chronicle).to_have_attribute(
+                'data-chronicle-snapshot-revision', str(populated_before['revision'])
+            )
+            expect(chronicle.locator(
+                '[data-event-id="world:' + fixture['challengeEventId'] + '"]'
+            )).to_be_visible()
+            chronicle_after = authoritative_snapshot(page)
+            assert chronicle_after == populated_before, (
+                'Opening a Council source-event link must remain pinned and read-only.'
             )
 
         layout = page.evaluate("""() => ({
@@ -535,6 +690,617 @@ def run_viewport(browser, url, out, width):
         context.close()
 
 
+
+
+def read_shared_state(page):
+    return page.evaluate("""async () => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Shared state read failed: ' + response.status);
+      const dto = await response.json();
+      if (!dto.viewer || !dto.world || !Array.isArray(dto.world.events)) {
+        throw new Error('Shared state omitted the viewer or retained world events.');
+      }
+      return dto;
+    }""")
+
+
+def shared_actor_page(browser, url, width, errors, label):
+    context = browser.new_context(
+        viewport={'width': width, 'height': 844},
+        is_mobile=True,
+        has_touch=True
+    )
+    page = context.new_page()
+    page.on('pageerror', lambda error: errors.append(label + ': ' + str(error)))
+    page.goto(url, wait_until='networkidle')
+    page.locator('#start-shared').tap()
+    page.locator('#world').wait_for(state='visible')
+    page.wait_for_function(
+        "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')",
+        timeout=10000
+    )
+    viewer = read_shared_state(page)['viewer']
+    if viewer.get('role') != 'witness':
+        raise AssertionError(label + ' must begin as a distinct shared Witness session.')
+    return context, page, viewer
+
+
+def api_action(page, action):
+    return page.evaluate("""async action => {
+      const response = await fetch('/api/action', {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(action)
+      });
+      return { status: response.status, body: await response.json() };
+    }""", action)
+
+
+def town_square_navigation_diagnostics(page):
+    return page.evaluate("""() => {
+      const world = document.querySelector('#world');
+      const sheet = document.querySelector('#sheet');
+      const route = [...document.querySelectorAll('button')].find(button =>
+        button.textContent.trim() === 'Walk to The Commons at TownSquare'
+      );
+      return {
+        renderer: world?.dataset.worldRenderer ?? null,
+        playerX: world?.dataset.playerX ?? null,
+        playerY: world?.dataset.playerY ?? null,
+        navigationTargetId: world?.dataset.navigationTargetId ?? null,
+        navigationState: world?.dataset.navigationState ?? null,
+        nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+        sheetHidden: sheet?.hidden ?? null,
+        placesButtonHidden: document.querySelector('#places-button')?.hidden ?? null,
+        routeButtonVisible: Boolean(route && (
+          route.offsetWidth || route.offsetHeight || route.getClientRects().length
+        )),
+        visibilityState: document.visibilityState
+      };
+    }""")
+
+
+def fail_town_square_route(page, out, width, actor, phase, error):
+    diagnostics = town_square_navigation_diagnostics(page)
+    screenshot = Path(out) / f'town-square-{actor}-{width}px-{phase}-failure.png'
+    screenshot.parent.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(screenshot), full_page=True)
+    raise AssertionError(
+        f'TownSquare route {phase} failed for {actor} at {width}px: ' +
+        json.dumps(diagnostics, sort_keys=True)
+    ) from error
+
+
+def open_town_square(page, out, width, actor):
+    # The Council journey keeps several isolated actor contexts open. Bring the
+    # actor being moved to the foreground and wait for its accepted render
+    # position before asking the pixel world to compute a route.
+    page.bring_to_front()
+    if not page.locator('#sheet').is_hidden():
+        page.locator('#sheet-close').tap()
+    try:
+        page.wait_for_function(
+            """() => {
+              const world = document.querySelector('#world');
+              return world?.dataset.worldRenderer === 'pixel-v1' &&
+                Number.isFinite(Number(world.dataset.playerX)) &&
+                Number.isFinite(Number(world.dataset.playerY));
+            }""",
+            timeout=15000
+        )
+    except Exception as error:
+        fail_town_square_route(page, out, width, actor, 'position-ready', error)
+
+    page.locator('#places-button').tap()
+    route = page.get_by_role('button', name='Walk to The Commons at TownSquare', exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    try:
+        page.wait_for_function(
+            """() => {
+              const world = document.querySelector('#world');
+              return world?.dataset.navigationTargetId === 'town-square' &&
+                ['walking', 'arrived', 'awaiting-range'].includes(world.dataset.navigationState);
+            }""",
+            timeout=15000
+        )
+    except Exception as error:
+        fail_town_square_route(page, out, width, actor, 'start', error)
+    try:
+        page.wait_for_function(
+            """() => {
+              const world = document.querySelector('#world');
+              return world?.dataset.navigationTargetId === 'town-square' &&
+                world?.dataset.navigationState === 'arrived' &&
+                world?.dataset.nearbyInstitutionId === 'town-square' &&
+                document.querySelector('#sheet')?.hidden === true;
+            }""",
+            timeout=90000
+        )
+    except Exception as error:
+        fail_town_square_route(page, out, width, actor, 'arrival', error)
+
+    enter = page.locator('#enter-institution-button')
+    if enter.is_visible():
+        enter.tap()
+    else:
+        interact = page.locator('#interact-button')
+        expect(interact).to_be_visible()
+        interact.tap()
+    page.wait_for_function(
+        """() => document.querySelector('#sheet-title')?.textContent === 'The Commons at TownSquare' &&
+          document.querySelector('#sheet-content')?.dataset.commonsPanel === 'true' &&
+          document.querySelector('#sheet')?.hidden === false""",
+        timeout=15000
+    )
+    expect(page.locator('#commons-compose')).to_be_visible()
+    assert_world_context_visible(page, 'The Commons at TownSquare')
+
+
+def run_town_square_report_review(browser, url, out, width):
+    contexts = []
+    errors = []
+    try:
+        author_context, author_page, author = shared_actor_page(browser, url, width, errors, 'author')
+        contexts.append(author_context)
+        reporter_context, reporter_page, reporter = shared_actor_page(browser, url, width, errors, 'reporter')
+        contexts.append(reporter_context)
+        unrelated_context, unrelated_page, unrelated = shared_actor_page(browser, url, width, errors, 'unrelated')
+        contexts.append(unrelated_context)
+        founder_context, founder_page, _ = shared_actor_page(browser, url, width, errors, 'founder')
+        contexts.append(founder_context)
+
+        expect(founder_page.locator('#login-button')).to_be_visible()
+        founder_page.locator('#login-button').tap()
+        founder_page.locator('#founder-name').fill('Damien')
+        founder_page.locator('#founder-key').fill('fake-browser-fixture-key-not-a-secret')
+        founder_page.locator('#verify-founder').tap()
+        # The UI login handler does not finish when /api/login first returns:
+        # it accepts that DTO, then startShared() revalidates the session and opens
+        # the shared stream before emitting this success toast. Wait for that whole
+        # transition so the next authoritative read cannot race the second fetch.
+        founder_page.wait_for_function(
+            """() => {
+              const toast = document.querySelector('#toast');
+              const login = document.querySelector('#login-button');
+              const logout = document.querySelector('#logout-button');
+              return Boolean(
+                toast && !toast.hidden &&
+                toast.textContent === 'Founder session verified by the local service.' &&
+                login?.hidden === true &&
+                logout?.hidden === false
+              );
+            }""",
+            timeout=15000
+        )
+        founder = read_shared_state(founder_page)['viewer']
+        observed_actors = {
+            'author': {'id': author.get('id'), 'role': author.get('role')},
+            'reporter': {'id': reporter.get('id'), 'role': reporter.get('role')},
+            'unrelated': {'id': unrelated.get('id'), 'role': unrelated.get('role')},
+            'founder': {'id': founder.get('id'), 'role': founder.get('role')}
+        }
+        if len({author['id'], reporter['id'], unrelated['id'], founder['id']}) != 4:
+            raise AssertionError(
+                'Author, reporter, unrelated Witness and Founder must be distinct actors: ' +
+                json.dumps(observed_actors, sort_keys=True)
+            )
+        if founder.get('role') != 'founder' or any(
+            actor.get('role') != 'witness' for actor in (author, reporter, unrelated)
+        ):
+            raise AssertionError(
+                'Only the authenticated Founder session may review Commons reports: ' +
+                json.dumps(observed_actors, sort_keys=True)
+            )
+
+        # Enter through the map's TownSquare route and its explicit nearby Interact action.
+        open_town_square(reporter_page, out, width, 'reporter')
+        open_town_square(founder_page, out, width, 'founder')
+        xp_before_actions = read_shared_state(founder_page)['world']['xp']
+
+        message_one_text = 'TownSquare review fixture: author message for a separate Witness report.'
+        message_two_text = 'TownSquare review fixture: reporter message for the Founder self-review boundary.'
+        setup_actions = [
+            (author_page, {
+                'type': 'post-message', 'text': message_one_text,
+                'requestId': 'town-square-mobile-' + str(width) + '-author-post'
+            }),
+            (reporter_page, {
+                'type': 'post-message', 'text': message_two_text,
+                'requestId': 'town-square-mobile-' + str(width) + '-reporter-post'
+            })
+        ]
+        message_ids = []
+        for page, action in setup_actions:
+            result = api_action(page, action)
+            if result['status'] != 200:
+                raise AssertionError('Server-validated Commons message fixture failed: ' + json.dumps(result))
+            message_id = result['body'].get('result', {}).get('messageId')
+            if not isinstance(message_id, str) or not message_id:
+                raise AssertionError('Commons message fixture omitted its exact message ID.')
+            message_ids.append(message_id)
+        message_one_id, message_two_id = message_ids
+        for page in (reporter_page, founder_page):
+            for message_id, message_text in zip(message_ids, (message_one_text, message_two_text)):
+                card = page.locator('[data-commons-message-id="' + message_id + '"]')
+                expect(card).to_be_visible()
+                expect(card).to_contain_text(message_text)
+
+        report_actions = [
+            (reporter_page, {
+                'type': 'report-message', 'messageId': message_one_id,
+                'reason': 'privacy',
+                'details': 'Please review the retained message as a process matter; no verdict is requested.',
+                'requestId': 'town-square-mobile-' + str(width) + '-reporter-report'
+            }),
+            (founder_page, {
+                'type': 'report-message', 'messageId': message_two_id,
+                'reason': 'privacy',
+                'details': 'Founder-authored report fixture; the same Founder session must not review it.',
+                'requestId': 'town-square-mobile-' + str(width) + '-founder-report'
+            })
+        ]
+        report_ids = []
+        for page, action in report_actions:
+            result = api_action(page, action)
+            if result['status'] != 200:
+                raise AssertionError('Server-validated private report fixture failed: ' + json.dumps(result))
+            report_id = result['body'].get('result', {}).get('reportId')
+            if not isinstance(report_id, str) or not report_id:
+                raise AssertionError('Commons report action omitted its exact report ID.')
+            report_ids.append(report_id)
+        report_one_id, report_two_id = report_ids
+        if report_one_id == report_two_id:
+            raise AssertionError('Independent report events must have distinct IDs.')
+
+        reporter_page.wait_for_function(
+            """messageId => document.querySelector('[data-commons-own-report="' + messageId + '"]')?.dataset.commonsOwnReportStatus === 'awaiting-founder-review'""",
+            arg=message_one_id,
+            timeout=15000
+        )
+        founder_page.wait_for_function(
+            """() => document.querySelector('#commons-pending-reports')?.textContent.includes('PENDING FOUNDER REVIEW · 2')""",
+            timeout=15000
+        )
+        pending_before = founder_page.locator('#commons-pending-reports')
+        expect(pending_before).to_contain_text('does not change message visibility')
+
+        founder_before_review = read_shared_state(founder_page)
+        if founder_before_review['world']['xp'] != xp_before_actions:
+            raise AssertionError('Posting and reporting Commons messages must not create XP.')
+        revision_before = founder_before_review['world']['revision']
+        xp_before = founder_before_review['world']['xp']
+        event_ids_before = [event['id'] for event in founder_before_review['world']['events']]
+
+        review_note = 'Reviewed as a process step; this note is not a factual verdict or moderation action.'
+        report_item = founder_page.locator('[data-commons-pending-report="' + report_one_id + '"]')
+        expect(report_item).to_be_visible()
+        report_item.locator('summary').tap()
+        founder_page.locator('[id="commons-review-note-' + report_one_id + '"]').fill(review_note)
+        founder_page.locator('[data-commons-review="' + report_one_id + '"]').tap()
+        founder_page.wait_for_function(
+            """reportId => !document.querySelector('[data-commons-pending-report="' + reportId + '"]')""",
+            arg=report_one_id,
+            timeout=15000
+        )
+
+        # The reporter's open sheet must receive the exact review over the shared stream.
+        reporter_page.wait_for_function(
+            """messageId => document.querySelector('[data-commons-own-report="' + messageId + '"]')?.dataset.commonsOwnReportStatus === 'founder-review-recorded'""",
+            arg=message_one_id,
+            timeout=15000
+        )
+        reporter_status = reporter_page.locator('[data-commons-own-report="' + message_one_id + '"]')
+        expect(reporter_status).to_contain_text(review_note)
+        expect(reporter_status).to_contain_text('not a factual verdict')
+        expect(reporter_page.locator('#commons-pending-reports')).to_have_count(0)
+
+        founder_pending = founder_page.locator('#commons-pending-reports')
+        expect(founder_pending).to_contain_text('PENDING FOUNDER REVIEW · 1')
+        expect(founder_pending).to_contain_text(
+            'does not change message visibility or establish factual truth'
+        )
+        expect(founder_page.locator(
+            '[data-commons-pending-report="' + report_one_id + '"]'
+        )).to_have_count(0)
+        self_review_item = founder_page.locator(
+            '[data-commons-pending-report="' + report_two_id + '"]'
+        )
+        expect(self_review_item).to_be_visible()
+        self_review_item.locator('summary').tap()
+        expect(self_review_item).to_contain_text('Self-review is blocked for this Founder session.')
+        expect(self_review_item.locator(
+            '[data-commons-review="' + report_two_id + '"]'
+        )).to_have_count(0)
+
+        founder_after_review = read_shared_state(founder_page)
+        reporter_after_review = read_shared_state(reporter_page)
+        author_state = read_shared_state(author_page)
+        unrelated_state = read_shared_state(unrelated_page)
+        founder_events = founder_after_review['world']['events']
+        reporter_events = reporter_after_review['world']['events']
+
+        review_events = [
+            event for event in founder_events
+            if event.get('type') == 'message-report-reviewed' and event.get('reportId') == report_one_id
+        ]
+        if len(review_events) != 1:
+            raise AssertionError('Founder review must append exactly one linked retained event.')
+        review_event = review_events[0]
+        if review_event.get('messageId') != message_one_id or review_event.get('note') != review_note or \
+                review_event.get('actor', {}).get('role') != 'founder' or \
+                review_event.get('actor', {}).get('id') != founder['id']:
+            raise AssertionError('The exact review event must retain report, message, note and Founder identity.')
+        if founder_after_review['world']['revision'] != revision_before + 1 or \
+                founder_after_review['world']['xp'] != xp_before:
+            raise AssertionError('A review must append one revision and award zero XP.')
+        event_ids_after = [event['id'] for event in founder_events]
+        if len(event_ids_after) != len(event_ids_before) + 1 or event_ids_after[:-1] != event_ids_before:
+            raise AssertionError('Review must append one event without rewriting retained history.')
+
+        def private_events(state):
+            return [
+                event for event in state['world']['events']
+                if event.get('type') in ('message-reported', 'message-report-reviewed')
+            ]
+
+        if private_events(author_state) or private_events(unrelated_state):
+            raise AssertionError('Message authors and unrelated Witnesses must not receive private report/review events.')
+        if {event.get('reportId') for event in private_events(reporter_after_review)} != {report_one_id}:
+            raise AssertionError('The reporter must see only its own report and linked review.')
+        if {event.get('reportId') for event in private_events(founder_after_review)} != {report_one_id, report_two_id}:
+            raise AssertionError('The Founder must see both reports and the one permitted review.')
+        report_events = {
+            event.get('reportId'): event for event in founder_events
+            if event.get('type') == 'message-reported'
+        }
+        if report_events.get(report_one_id, {}).get('actor', {}).get('id') != reporter['id'] or \
+                report_events.get(report_two_id, {}).get('actor', {}).get('id') != founder['id']:
+            raise AssertionError('Each private report must retain its exact reporting actor.')
+        if any(
+            event.get('type') == 'message-moderated'
+            for state in (author_state, reporter_after_review, unrelated_state, founder_after_review)
+            for event in state['world']['events']
+        ):
+            raise AssertionError('A process review must not create a moderation event.')
+
+        for state in (author_state, reporter_after_review, unrelated_state, founder_after_review):
+            messages = {
+                event.get('messageId'): event.get('text')
+                for event in state['world']['events']
+                if event.get('type') == 'message-posted'
+            }
+            if messages.get(message_one_id) != message_one_text or messages.get(message_two_id) != message_two_text:
+                raise AssertionError('Review must not remove or rewrite either original Commons message.')
+
+        # Rejected Witness review and Founder self-review attempts must not mutate history.
+        before_rejections = read_shared_state(founder_page)
+        unauthorized = api_action(reporter_page, {
+            'type': 'review-message-report', 'reportId': report_one_id,
+            'note': 'Witness attempt must be rejected.'
+        })
+        if unauthorized['status'] != 403:
+            raise AssertionError('Witness review must return 403: ' + json.dumps(unauthorized))
+        self_review = api_action(founder_page, {
+            'type': 'review-message-report', 'reportId': report_two_id,
+            'note': 'Self-review attempt must be rejected.'
+        })
+        if self_review['status'] != 409 or self_review['body'].get('error', {}).get('code') != 'SELF_REVIEW':
+            raise AssertionError('Founder self-review must return 409 SELF_REVIEW: ' + json.dumps(self_review))
+        after_rejections = read_shared_state(founder_page)
+        if after_rejections['world']['revision'] != before_rejections['world']['revision'] or \
+                after_rejections['world']['xp'] != before_rejections['world']['xp'] or \
+                [event['id'] for event in after_rejections['world']['events']] != [
+                    event['id'] for event in before_rejections['world']['events']
+                ]:
+            raise AssertionError('Rejected review attempts must not mutate revision, XP or retained history.')
+
+        for page, label in ((reporter_page, 'reporter'), (founder_page, 'Founder')):
+            layout = page.evaluate("""() => ({
+              viewportWidth: window.innerWidth,
+              documentWidth: document.documentElement.scrollWidth,
+              sheetWidth: document.querySelector('#sheet').clientWidth
+            })""")
+            if layout['documentWidth'] > layout['viewportWidth'] + 1:
+                raise AssertionError(label + ' TownSquare caused horizontal overflow: ' + json.dumps(layout))
+            assert_world_context_visible(page, 'The Commons at TownSquare')
+
+        reporter_screenshot = out / ('town-square-reporter-review-' + str(width) + '.png')
+        founder_screenshot = out / ('town-square-founder-review-' + str(width) + '.png')
+        reporter_page.screenshot(path=str(reporter_screenshot), full_page=True)
+        founder_page.screenshot(path=str(founder_screenshot), full_page=True)
+
+        def open_quest_board(page):
+            if page.locator('#sheet').is_visible():
+                page.locator('#sheet-close').tap()
+            page.locator('#places-button').tap()
+            route = page.get_by_role('button', name='Walk to Quest Board', exact=True)
+            expect(route).to_be_visible()
+            route.tap()
+            enter_nearby_institution(page, 'quest_board', 'Quest Board', 'Quest Board')
+
+        # The review is a real Founder-only institutional objective. Its evidence
+        # must be the exact retained event, and Chronicle inspection must be read-only.
+        open_quest_board(founder_page)
+        founder_quest_content = founder_page.locator('#sheet-content')
+        expect(founder_quest_content).to_have_attribute('data-quest-board', 'true')
+        expect(founder_quest_content).to_have_attribute('data-actor-role', 'founder')
+        review_objective = founder_quest_content.locator(
+            '[data-objective-id="founder-commons-report-review"]'
+        )
+        expect(review_objective).to_have_count(1)
+        expect(review_objective).to_contain_text(
+            'Record a process review for another actor’s Commons report'
+        )
+        expect(review_objective).to_contain_text('1/1')
+        expect(review_objective.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(review_objective.get_by_role(
+            'button', name='Walk to The Commons at TownSquare →', exact=True
+        )).to_have_count(0)
+
+        evidence_details = review_objective.locator('details.quest-evidence')
+        expect(evidence_details).to_have_count(1)
+        evidence_details.locator('summary').tap()
+        event_link = evidence_details.locator(
+            '[data-quest-evidence-event-link="' + review_event['id'] + '"]'
+        )
+        expect(event_link).to_have_count(1)
+        expect(event_link).to_have_attribute('data-chronicle-event-id', review_event['id'])
+        expect(event_link).to_have_attribute('data-chronicle-source', 'world')
+        expect(event_link).to_have_attribute(
+            'aria-label', 'Inspect retained message-report-reviewed event in World Chronicle'
+        )
+        board_revision = founder_quest_content.get_attribute(
+            'data-quest-board-snapshot-revision'
+        )
+        if not isinstance(board_revision, str) or not board_revision.isdigit():
+            raise AssertionError('The Founder Quest Board must expose its accepted snapshot revision.')
+        founder_quest_layout = founder_page.evaluate("""() => ({
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth
+        })""")
+        if founder_quest_layout['documentWidth'] > founder_quest_layout['viewportWidth'] + 1:
+            raise AssertionError('Founder Quest Board caused horizontal overflow: ' + json.dumps(founder_quest_layout))
+        founder_quest_screenshot = out / ('town-square-founder-review-quest-' + str(width) + '.png')
+        founder_page.screenshot(path=str(founder_quest_screenshot), full_page=True)
+
+        before_chronicle = read_shared_state(founder_page)['world']
+        event_link.tap()
+        expect(founder_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        exact_review_event = founder_page.locator(
+            '#sheet-content [data-event-id="world:' + review_event['id'] + '"]'
+        )
+        expect(exact_review_event).to_have_count(1)
+        expect(exact_review_event).to_have_attribute('data-event-source', 'world')
+        expect(exact_review_event).to_contain_text(review_note)
+        expect(founder_page.locator('#sheet-content')).to_have_attribute(
+            'data-chronicle-snapshot-revision', board_revision
+        )
+        after_chronicle = read_shared_state(founder_page)['world']
+        if after_chronicle['revision'] != before_chronicle['revision'] or \
+                after_chronicle['xp'] != before_chronicle['xp'] or \
+                [event['id'] for event in after_chronicle['events']] != [
+                    event['id'] for event in before_chronicle['events']
+                ] or after_chronicle['creations'] != before_chronicle['creations']:
+            raise AssertionError('Quest evidence and Chronicle inspection must not mutate the world.')
+        founder_chronicle_layout = founder_page.evaluate("""() => ({
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth
+        })""")
+        if founder_chronicle_layout['documentWidth'] > founder_chronicle_layout['viewportWidth'] + 1:
+            raise AssertionError('Founder World Chronicle caused horizontal overflow: ' + json.dumps(founder_chronicle_layout))
+        founder_chronicle_screenshot = out / ('town-square-founder-review-chronicle-' + str(width) + '.png')
+        founder_page.screenshot(path=str(founder_chronicle_screenshot), full_page=True)
+
+        open_quest_board(reporter_page)
+        reporter_quest_content = reporter_page.locator('#sheet-content')
+        expect(reporter_quest_content).to_have_attribute('data-quest-board', 'true')
+        expect(reporter_quest_content).to_have_attribute('data-actor-role', 'witness')
+        expect(reporter_quest_content.locator(
+            '[data-objective-id="founder-commons-report-review"]'
+        )).to_have_count(0)
+        reporter_review_objective = reporter_quest_content.locator(
+            '[data-objective-id="witness-commons-report-review-received"]'
+        )
+        expect(reporter_review_objective).to_have_count(1)
+        expect(reporter_review_objective).to_contain_text('1/1')
+        expect(reporter_review_objective.locator('.quest-step-state')).to_have_text('RECORDED')
+        reporter_evidence_details = reporter_review_objective.locator('details.quest-evidence')
+        expect(reporter_evidence_details).to_have_count(1)
+        reporter_evidence_details.locator('summary').tap()
+        reporter_event_link = reporter_evidence_details.locator(
+            '[data-quest-evidence-event-link="' + review_event['id'] + '"]'
+        )
+        expect(reporter_event_link).to_have_count(1)
+        expect(reporter_event_link).to_have_attribute('data-chronicle-event-id', review_event['id'])
+        expect(reporter_event_link).to_have_attribute('data-chronicle-source', 'world')
+        expect(reporter_event_link).to_have_attribute(
+            'aria-label', 'Inspect retained message-report-reviewed event in World Chronicle'
+        )
+        reporter_board_revision = reporter_quest_content.get_attribute(
+            'data-quest-board-snapshot-revision'
+        )
+        if not isinstance(reporter_board_revision, str) or not reporter_board_revision.isdigit():
+            raise AssertionError('The Witness Quest Board must expose its accepted snapshot revision.')
+        reporter_quest_layout = reporter_page.evaluate("""() => ({
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth
+        })""")
+        if reporter_quest_layout['documentWidth'] > reporter_quest_layout['viewportWidth'] + 1:
+            raise AssertionError('Witness Quest Board caused horizontal overflow: ' + json.dumps(reporter_quest_layout))
+        reporter_quest_screenshot = out / ('town-square-reporter-quest-board-' + str(width) + '.png')
+        reporter_page.screenshot(path=str(reporter_quest_screenshot), full_page=True)
+
+        before_reporter_chronicle = authoritative_snapshot(reporter_page)
+        reporter_event_link.tap()
+        expect(reporter_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        exact_reporter_review_event = reporter_page.locator(
+            '#sheet-content [data-event-id="world:' + review_event['id'] + '"]'
+        )
+        expect(exact_reporter_review_event).to_have_count(1)
+        expect(exact_reporter_review_event).to_have_attribute('data-event-source', 'world')
+        expect(exact_reporter_review_event).to_contain_text(review_note)
+        expect(reporter_page.locator('#sheet-content')).to_have_attribute(
+            'data-chronicle-snapshot-revision', reporter_board_revision
+        )
+        after_reporter_chronicle = authoritative_snapshot(reporter_page)
+        if after_reporter_chronicle != before_reporter_chronicle:
+            raise AssertionError('Witness review-event Chronicle inspection must not mutate the accepted world.')
+        reporter_chronicle_layout = reporter_page.evaluate("""() => ({
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth
+        })""")
+        if reporter_chronicle_layout['documentWidth'] > reporter_chronicle_layout['viewportWidth'] + 1:
+            raise AssertionError('Witness World Chronicle caused horizontal overflow: ' + json.dumps(reporter_chronicle_layout))
+        reporter_chronicle_screenshot = out / ('town-square-reporter-review-chronicle-' + str(width) + '.png')
+        reporter_page.screenshot(path=str(reporter_chronicle_screenshot), full_page=True)
+
+        if errors:
+            raise AssertionError('Browser page errors: ' + json.dumps(errors))
+        return {
+            'journey': 'touch-town-square-report-review-' + str(width),
+            'passed': True,
+            'viewport': width,
+            'actorsDistinct': True,
+            'messageIds': [message_one_id, message_two_id],
+            'reportIds': [report_one_id, report_two_id],
+            'reviewId': review_event.get('reviewId'),
+            'reviewRevisionDelta': 1,
+            'reviewXpDelta': 0,
+            'reporterSawExactReview': True,
+            'authorAndUnrelatedSawNoPrivateReports': True,
+            'founderSelfReviewBlocked': True,
+            'messageVisibilityUnchanged': True,
+            'moderationEvents': 0,
+            'rejectedActionsMutated': False,
+            'founderQuestReviewProgress': '1/1',
+            'founderQuestReviewEventId': review_event['id'],
+            'founderQuestChronicleNavigation': True,
+            'questAndChronicleInspectionReadOnly': True,
+            'reporterFounderObjectiveHidden': True,
+            'reporterReviewProgress': '1/1',
+            'reporterQuestReviewEventId': review_event['id'],
+            'reporterQuestChronicleNavigation': True,
+            'reporterChronicleReadOnly': True,
+            'pageErrors': errors,
+            'screenshots': [
+                reporter_screenshot.name,
+                founder_screenshot.name,
+                founder_quest_screenshot.name,
+                founder_chronicle_screenshot.name,
+                reporter_quest_screenshot.name,
+                reporter_chronicle_screenshot.name
+            ]
+        }
+    finally:
+        for context in reversed(contexts):
+            context.close()
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', default='/tmp/ngl-council-chamber')
@@ -542,13 +1308,15 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     results = []
-    with tempfile.TemporaryDirectory(prefix='ngl-council-mobile-') as data_dir:
-        process, url = launch_server(data_dir)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(args=['--no-sandbox'])
         try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(args=['--no-sandbox'])
-                try:
-                    for width in (320, 390):
+            for width in (320, 390):
+                # Each viewport receives an isolated world so the populated
+                # fixture is independently exercised rather than replayed.
+                with tempfile.TemporaryDirectory(prefix='ngl-council-mobile-' + str(width) + '-') as data_dir:
+                    process, url = launch_server(data_dir)
+                    try:
                         try:
                             result = run_viewport(browser, url, out, width)
                             results.append(result)
@@ -562,10 +1330,24 @@ def main():
                             })
                             (out / 'results.json').write_text(json.dumps(results, indent=2))
                             raise
-                finally:
-                    browser.close()
+
+                        try:
+                            result = run_town_square_report_review(browser, url, out, width)
+                            results.append(result)
+                            (out / 'results.json').write_text(json.dumps(results, indent=2))
+                            print(json.dumps(result), flush=True)
+                        except Exception as error:
+                            results.append({
+                                'journey': 'touch-town-square-report-review-' + str(width),
+                                'passed': False,
+                                'error': str(error)
+                            })
+                            (out / 'results.json').write_text(json.dumps(results, indent=2))
+                            raise
+                    finally:
+                        stop_server(process)
         finally:
-            stop_server(process)
+            browser.close()
     print(json.dumps(results))
 
 

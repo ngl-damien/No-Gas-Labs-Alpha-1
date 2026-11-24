@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import {
   formatContradictionReport,
-  prepareContradictionReview
+  prepareContradictionReview,
+  resolveRetainedCreationTarget
 } from '../game/contradiction-clerk.mjs';
 
 const publishedAt = '2026-11-04T12:00:00.000Z';
@@ -229,4 +230,99 @@ test('the Clerk rejects missing, extra, inherited and accessor-backed answers', 
     /own data fields/
   );
   assert.equal(getterCalls, 0);
+});
+
+
+test('exact artifact target resolution distinguishes missing, ambiguous and unavailable editions', () => {
+  const previous = retainedVersion({
+    id: 'creation-1',
+    title: 'Original research note',
+    version: 1,
+    html: '<p>original bytes</p>',
+    at: '2026-11-03T10:00:00.000Z'
+  });
+  const current = retainedVersion({
+    id: 'creation-1',
+    title: 'Revised research note',
+    version: 2,
+    html: '<p>revised bytes</p>',
+    at: '2026-11-04T10:00:00.000Z'
+  });
+  const creation = { ...current, versions: [previous] };
+
+  const exact = resolveRetainedCreationTarget({ creations: [creation] }, 'creation-1', 1);
+  assert.equal(exact.status, 'available');
+  assert.equal(exact.creation, creation);
+  assert.equal(exact.version, 1);
+  assert.equal(exact.title, previous.title);
+  assert.equal(exact.review.target.version, 1);
+  assert.equal(exact.review.target.receipt.digest, previous.receipt.digest);
+
+  const missing = resolveRetainedCreationTarget({ creations: [] }, 'missing-creation', 1);
+  assert.equal(missing.status, 'unavailable');
+  assert.equal(missing.reason, 'creation-not-retained');
+  assert.equal(missing.creationId, 'missing-creation');
+  assert.equal(missing.version, 1);
+  assert.equal(missing.title, 'Artifact unavailable');
+
+  const duplicate = resolveRetainedCreationTarget({
+    creations: [creation, structuredClone(creation)]
+  }, 'creation-1', 1);
+  assert.equal(duplicate.status, 'unavailable');
+  assert.equal(duplicate.reason, 'creation-identity-ambiguous');
+
+  const missingEdition = resolveRetainedCreationTarget({ creations: [creation] }, 'creation-1', 3);
+  assert.equal(missingEdition.status, 'unavailable');
+  assert.equal(missingEdition.reason, 'version-not-uniquely-retained');
+  assert.equal(missingEdition.title, creation.title);
+});
+
+test('exact artifact target resolution rejects accessor-backed and exotic snapshot collections without executing them', () => {
+  const creation = currentCreation();
+  let getterCalls = 0;
+  const accessorSnapshot = {};
+  Object.defineProperty(accessorSnapshot, 'creations', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return [creation];
+    }
+  });
+  const missingCollection = resolveRetainedCreationTarget(accessorSnapshot, 'creation-1', 1);
+  assert.equal(missingCollection.status, 'unavailable');
+  assert.equal(missingCollection.reason, 'creation-collection-unavailable');
+  assert.equal(getterCalls, 0);
+
+  const accessorCreation = currentCreation();
+  Object.defineProperty(accessorCreation, 'id', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return 'creation-1';
+    }
+  });
+  const accessorIdentity = resolveRetainedCreationTarget({ creations: [accessorCreation] }, 'creation-1', 1);
+  assert.equal(accessorIdentity.status, 'unavailable');
+  assert.equal(accessorIdentity.reason, 'creation-not-retained');
+  assert.equal(getterCalls, 0);
+
+  const exotic = [creation];
+  Object.defineProperty(exotic, Symbol.iterator, {
+    value() {
+      getterCalls += 1;
+      return [creation][Symbol.iterator]();
+    }
+  });
+  const exoticCollection = resolveRetainedCreationTarget({ creations: exotic }, 'creation-1', 1);
+  assert.equal(exoticCollection.status, 'unavailable');
+  assert.equal(exoticCollection.reason, 'creation-collection-unavailable');
+  assert.equal(getterCalls, 0);
+
+  const invalidIdentity = resolveRetainedCreationTarget(
+    { creations: [creation] },
+    'creation-1' + String.fromCharCode(0),
+    1
+  );
+  assert.equal(invalidIdentity.status, 'unavailable');
+  assert.equal(invalidIdentity.reason, 'invalid-creation-id');
 });

@@ -5,6 +5,7 @@ import {projectCharacter,projectFieldItemSourcePage,createFieldItemSourcePager,F
 import { getQuestTrail } from '../game/quests.mjs';
 import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
 import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
+import { buildSatireIssueBody, SATIRE_ISSUE_INTENT_PREFIX, SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX } from '../game/artifacts.mjs';
 
 const founder={id:'f-1',role:'founder'};
 const witness={id:'w-1',role:'witness'};
@@ -134,7 +135,7 @@ test('skills count only activity joined to retained events for the active charac
   };
   const record = projectCharacter(world, founder);
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
-    ['maker', 1], ['explorer', 1], ['observer', 1], ['speaker', 0], ['scholar', 0], ['source-recorder', 0], ['source-analyst', 0], ['retriever', 0],
+    ['maker', 1], ['satirist', 0], ['explorer', 1], ['observer', 1], ['speaker', 0], ['scholar', 0], ['source-recorder', 0], ['source-analyst', 0], ['retriever', 0],
     ['challenger', 1], ['source-responder', 0], ['experiment-responder', 0], ['collaborator', 0], ['council', 0], ['synthesis', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
     ['combatant', 0], ['questkeeper', 3], ['guild-steward', 0], ['deliberator', 0], ['restorer', 0], ['forger', 0], ['armorer', 0], ['armor-bearer', 0]
   ]);
@@ -410,6 +411,46 @@ test('Study Cards are actor-scoped collectibles derived only from uniquely linke
   assert.ok(Object.isFrozen(founderRecord.studyCards[0].action));
   assert.deepEqual(world, before, 'Study Cards are read-only projections, not new world events');
 });
+
+test('Study Cards and Scholar/Retriever skills follow retained append order through clock regression', () => {
+  const world = {
+    xp: 999,
+    creations: [publishedCreation('study-source', [t1])],
+    events: [
+      publication('study-publication', founder, 'study-source', 1, t1),
+      event('study-founder', 'study', founder, '2026-10-25T11:59:00.000Z', {
+        studyId: 'study-1', creationId: 'study-source', version: 1,
+        question: 'What does the retained source establish?',
+        attempt: 'It records a claim, not independent confirmation.',
+        nextCheck: 'Compare a separate source.'
+      }),
+      event('study-review', 'study-reviewed', founder, '2026-10-25T11:58:00.000Z', {
+        reviewId: 'review-1', studyId: 'study-1', creationId: 'study-source', version: 1,
+        response: 'The source supports only its narrow wording.',
+        reflection: 'The independent check remains open.'
+      })
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+
+  const founderRecord = projectCharacter(world, founder);
+  assert.equal(founderRecord.studyCardTotal, 1);
+  assert.equal(founderRecord.studyCards[0].reviewStatus, 'reflection-recorded');
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'scholar').count, 1);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'retriever').count, 1);
+  assert.equal(founderRecord.xp, 100, 'study and review remain practice records, not XP');
+
+  const reversed = structuredClone(world);
+  const [reviewEvent] = reversed.events.splice(2, 1);
+  reversed.events.splice(1, 0, reviewEvent);
+  const reversedRecord = projectCharacter(reversed, founder);
+  assert.equal(reversedRecord.studyCardTotal, 1, 'the source-bound study note remains visible');
+  assert.equal(reversedRecord.studyCards[0].reviewStatus, 'attempt-recorded');
+  assert.equal(reversedRecord.studyCards[0].reviewEventId, null);
+  assert.equal(reversedRecord.skills.find(skill => skill.id === 'retriever').count, 0,
+    'a review that precedes its source note in retained history cannot count as retrieval practice');
+});
+
 
 test('duplicate event identities cannot mint Study Cards or mark reflection recorded', () => {
   const duplicateStudy = (studyId, attempt) => event('duplicate-study-event', 'study', founder, t2, {
@@ -732,6 +773,98 @@ test('character activity fails closed when actor role is missing or unsupported'
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'explorer').count, 1);
 });
 
+test('Satirist skill counts only uniquely retained America’s Got Problems editions without extra XP', async () => {
+  const start = createWorld({ id: 'character-satirist-projection', now: t1 });
+  const initialIssue = {
+    schema: 'ngl.satire-issue.v1',
+    headline: 'The invoice that promised to be free',
+    target: 'A public procurement promise',
+    factualSubstrate: 'The proposal states a fixed cost; the underlying contract has not been retrieved.',
+    sourceReferences: ['Author-entered test brief 001 · retrieval not performed'],
+    satiricalTreatment: 'The promise arrives wearing a tiny hard hat and carrying a blank invoice.',
+    strongestCounterargument: 'A fixed-price contract may be defensible when scope and risk are genuinely bounded.',
+    uncertainty: 'The scope, exclusions and risk allocation remain unknown.',
+    falsifier: 'An independently retrieved contract with complete scope and cost terms would weaken this criticism.'
+  };
+  const firstDraft = await applyAction(start, {
+    type: 'draft',
+    kind: 'custom',
+    title: 'America’s Got Problems · Issue 001',
+    intent: SATIRE_ISSUE_INTENT_PREFIX + ' · In-world satirical issue; author-entered references only.',
+    html: buildSatireIssueBody(initialIssue)
+  }, founder, { now: t2 });
+  assert.equal(projectCharacter(firstDraft.world, founder).skills.find(skill => skill.id === 'satirist')?.count, 0,
+    'a private issue draft is not a published Satirist record');
+  assert.equal(projectCharacter(firstDraft.world, founder).xp, 0);
+
+  const firstPublished = await applyAction(firstDraft.world, {
+    type: 'publish', draftId: firstDraft.result.draftId, expectedVersion: 0
+  }, founder, { now: t3 });
+  const firstPublication = firstPublished.world.events.find(event =>
+    event.type === 'publish' && event.creationId === firstPublished.result.creationId &&
+    event.version === 1
+  );
+  assert.ok(firstPublication, 'the first edition must have one retained publication event');
+  const firstRecord = projectCharacter(firstPublished.world, founder);
+  assert.equal(firstRecord.skills.find(skill => skill.id === 'satirist')?.count, 1);
+  assert.equal(firstRecord.xp, 100, 'the ordinary publication reward is the only XP');
+  assert.equal(firstRecord.worldXp, 100);
+  assert.equal(projectCharacter(firstPublished.world, witness).skills.find(skill => skill.id === 'satirist')?.count, 0,
+    'another role/session does not inherit the Founder’s Satirist count');
+
+  const followUpIssue = {
+    ...initialIssue,
+    schema: 'ngl.satire-issue.v2',
+    headline: 'The invoice that promised to be free · follow-up',
+    factualSubstrate: 'The earlier edition described a proposal; the underlying contract remains unretrieved.',
+    sourceReferences: ['Author-entered follow-up brief 002 · retrieval not performed'],
+    satiricalTreatment: 'The tiny hard hat is now a receipt holder, not a crown.',
+    correctionOf: {
+      creationId: firstPublished.result.creationId,
+      version: 1,
+      publicationEventId: firstPublication.id
+    },
+    correctionNote: 'This separate edition preserves the earlier text and clarifies that no contract was retrieved.'
+  };
+  const followUpDraft = await applyAction(firstPublished.world, {
+    type: 'draft',
+    kind: 'custom',
+    title: 'America’s Got Problems · Issue 002',
+    intent: SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX + ' · Separate linked follow-up edition.',
+    html: buildSatireIssueBody(followUpIssue)
+  }, founder, { now: t4 });
+  assert.equal(projectCharacter(followUpDraft.world, founder).skills.find(skill => skill.id === 'satirist')?.count, 1,
+    'a follow-up draft does not count before publication');
+
+  const followUpPublished = await applyAction(followUpDraft.world, {
+    type: 'publish', draftId: followUpDraft.result.draftId, expectedVersion: 0
+  }, founder, { now: t5 });
+  const finalRecord = projectCharacter(followUpPublished.world, founder);
+  assert.equal(finalRecord.skills.find(skill => skill.id === 'satirist')?.count, 2,
+    'the exact separately published follow-up edition is a second Satirist record');
+  assert.equal(finalRecord.xp, 200, 'Satirist progression adds no XP beyond two ordinary publications');
+  assert.equal(finalRecord.worldXp, 200);
+  assert.equal(projectCharacter(followUpPublished.world, witness).skills.find(skill => skill.id === 'satirist')?.count, 0);
+
+  const ambiguous = structuredClone(followUpPublished.world);
+  const followUpPublication = ambiguous.events.find(event =>
+    event.type === 'publish' && event.creationId === followUpPublished.result.creationId &&
+    event.version === 1
+  );
+  assert.ok(followUpPublication);
+  ambiguous.events.push({
+    ...followUpPublication,
+    id: 'duplicate-satire-publication',
+    at: followUpPublication.at
+  });
+  ambiguous.revision = ambiguous.events.length;
+  const ambiguousRecord = projectCharacter(ambiguous, founder);
+  assert.equal(ambiguousRecord.skills.find(skill => skill.id === 'satirist')?.count, 1,
+    'an ambiguous duplicate publication cannot mint a second Satirist record');
+  assert.equal(ambiguousRecord.xp, 100,
+    'the ambiguous second edition also earns no character XP');
+});
+
 test('Researcher skill counts attributed falsifiable proposals without awarding XP', () => {
   const founderProposal = event('moonshot-f', 'moonshot-proposed', founder, t1, {
     moonshotId: 'moonshot-1',
@@ -815,6 +948,105 @@ test('Adversary skill counts unique challenges to another actor’s earlier vali
   });
   const selfRecord = projectCharacter({ ...world, events: [...world.events, selfChallenge] }, witness);
   assert.equal(selfRecord.skills.find(skill => skill.id === 'adversary').count, 0);
+});
+
+test('Adversary and Experiment Responder skills reject malformed present resolution requests while legacy challenges remain readable', () => {
+  const proposal = event('resolution-request-proposal', 'moonshot-proposed', witness, t1, {
+    moonshotId: 'resolution-request-moonshot',
+    title: 'A bounded question',
+    hypothesis: 'The stated condition predicts an observation.',
+    falsifier: 'A controlled observation contradicts the prediction.',
+    evidenceNeeded: 'A retained repeat measurement.'
+  });
+  const report = event('resolution-request-report', 'experiment-reported', witness, t2, {
+    reportId: 'resolution-request-report-id',
+    moonshotId: 'resolution-request-moonshot',
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The result remains inconclusive.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const legacyChallenge = event('resolution-request-legacy-challenge', 'experiment-challenged', founder, t3, {
+    challengeId: 'resolution-request-legacy-challenge-id',
+    reportId: 'resolution-request-report-id',
+    moonshotId: 'resolution-request-moonshot',
+    challengeType: 'methodology',
+    challengeText: 'The report omits a reproducible measurement setting.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const legacyWorld = { xp: 0, creations: [], events: [proposal, report, legacyChallenge] };
+  const before = structuredClone(legacyWorld);
+  assert.equal(projectCharacter(legacyWorld, founder).skills.find(skill => skill.id === 'adversary').count, 1,
+    'legacy challenges without the new field remain readable and countable under prior linkage rules');
+
+  const malformedChallenge = {
+    ...legacyChallenge,
+    id: 'resolution-request-malformed-challenge',
+    challengeId: 'resolution-request-malformed-challenge-id',
+    resolutionRequest: '   ',
+    at: t4
+  };
+  const response = event('resolution-request-malformed-response', 'experiment-challenge-responded', witness, t5, {
+    responseId: 'resolution-request-malformed-response-id',
+    challengeId: malformedChallenge.challengeId,
+    reportId: report.reportId,
+    moonshotId: report.moonshotId,
+    responseText: 'The requested measurement is still unavailable.'
+  });
+  const malformedWorld = { ...legacyWorld, events: [proposal, report, malformedChallenge, response] };
+  assert.equal(projectCharacter(malformedWorld, founder).skills.find(skill => skill.id === 'adversary').count, 0,
+    'a present whitespace-only resolution request cannot count as adversarial activity');
+  assert.equal(projectCharacter(malformedWorld, witness).skills.find(skill => skill.id === 'experiment-responder').count, 0,
+    'an invalid challenge cannot anchor original-author response progress');
+  assert.equal(projectCharacter(malformedWorld, witness).xp, 0);
+  assert.deepEqual(legacyWorld, before, 'the projection remains read-only and preserves legacy history');
+});
+
+test('Researcher and Adversary skills follow retained experiment append order through clock regression', () => {
+  const proposal = event('clock-regression-proposal', 'moonshot-proposed', founder, t3, {
+    moonshotId: 'clock-regression-moonshot',
+    title: 'A falsifiable clock-regression question',
+    hypothesis: 'The recorded attempt follows the retained proposal.',
+    falsifier: 'The attempt is appended before the proposal.',
+    evidenceNeeded: 'An independently observed result.'
+  });
+  const report = event('clock-regression-report', 'experiment-reported', founder, t2, {
+    reportId: 'clock-regression-report-id',
+    moonshotId: 'clock-regression-moonshot',
+    procedure: 'Run one bounded attempt.',
+    observation: 'The expected result was not independently reproduced.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const challenge = event('clock-regression-challenge', 'experiment-challenged', witness, t1, {
+    challengeId: 'clock-regression-challenge-id',
+    reportId: 'clock-regression-report-id',
+    moonshotId: 'clock-regression-moonshot',
+    challengeType: 'missing-evidence',
+    challengeText: 'The report does not include an independently observed result.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const world = {
+    xp: 999,
+    creations: [],
+    events: [proposal, report, challenge],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+  const founderRecord = projectCharacter(world, founder);
+  const witnessRecord = projectCharacter(world, witness);
+
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'researcher').count, 1);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'adversary').count, 1);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'adversary').count, 0);
+  assert.deepEqual([founderRecord.xp, witnessRecord.xp], [0, 0],
+    'proposal, self-reported attempt and cross-actor dissent do not award XP');
 });
 
 test('Adversary skill distinguishes the same pseudonymous ID across different session roles', () => {
@@ -1310,6 +1542,7 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
     type: 'publish', draftId: drafted.result.draftId, expectedVersion: 0
   }, founder, { now: t3 });
   const creationId = published.result.creationId;
+  const sourceSnapshotRevision = published.world.revision;
   const note = {
     claim: 'The model says the source exists.',
     sourceKind: 'model-assertion',
@@ -1319,11 +1552,11 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
     nextTest: 'Retrieve and inspect the exact source.'
   };
   const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, sourceSnapshotRevision, ...note
   })).digest('hex');
   const observationId = 'source-observation-' + digest;
   const recorded = await applyAction(published.world, {
-    type: 'record-source-observation', creationId, version: 1, observationId, ...note
+    type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision, observationId, ...note
   }, founder, { now: t4 });
   const observationEvent = recorded.world.events.at(-1);
   assert.equal(observationEvent.type, 'source-observation-recorded');
@@ -1540,7 +1773,7 @@ test('Commons posts become actor-owned field satchel objects with a TownSquare r
   assert.equal(other.fieldSatchel.length, 0, 'another actor cannot inherit this character’s satchel item');
 });
 
-test('a human-hidden Commons post remains in the author satchel with the public redaction', async () => {
+test('a Founder-hidden Commons post remains in the author satchel with the public redaction', async () => {
   const author = { id: 'satchel-author', name: 'Satchel Author', role: 'witness' };
   const reporter = { id: 'satchel-reporter', name: 'Satchel Reporter', role: 'witness' };
   const founderActor = { id: 'satchel-founder', name: 'Founder', role: 'founder' };
@@ -1568,7 +1801,7 @@ test('a human-hidden Commons post remains in the author satchel with the public 
 
   assert.equal(authorRecord.fieldSatchel.length, 1);
   assert.equal(authorRecord.fieldSatchel[0].eventId, posted.world.events[0].id);
-  assert.equal(authorRecord.fieldSatchel[0].summary, '[Message hidden by human moderation.]');
+  assert.equal(authorRecord.fieldSatchel[0].summary, '[Message hidden by a Founder moderation action.]');
   assert.equal(authorRecord.fieldSatchel[0].status, 'retained conversation · not evidence or authority');
   assert.equal(authorRecord.xp, 0);
   assert.equal(founderRecord.fieldSatchel.length, 0);

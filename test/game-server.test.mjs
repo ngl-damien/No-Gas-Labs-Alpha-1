@@ -11,11 +11,12 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { gunzipSync } from 'node:zlib';
 import { createGameServer, validateStoredWorldHistory } from '../game/server.mjs';
-import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
+import { recordSourceArchiveAttemptFailure } from '../game/source-archive-failures.mjs';
+import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
 import { GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR, buildGitHubSourceArchiveBody } from '../game/artifacts.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
-import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from '../game/research-records.mjs';
+import { sourceObservationRequestMaterial, projectSourceObservationRecords, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from '../game/research-records.mjs';
 import { projectPlayerGuilds } from '../game/social.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
 import { projectChronicle } from '../game/chronicle.mjs';
@@ -362,6 +363,79 @@ test('server-rechecked Source Archive bytes stay private across HTTP and SSE unt
   const artifact = await witness.request('/api/artifacts/' + creation.id + '?version=1');
   assert.equal(artifact.response.status, 200);
   assert.equal(artifact.body, retainedHtml);
+});
+
+test('Source Archive failure writer refuses incomplete world snapshots before appending', () => {
+  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const details = {
+    requestIdDigest: 'a'.repeat(64),
+    actionDigest: 'b'.repeat(64),
+    repository: 'ngl-damien/No-Gas-Labs-Alpha-1',
+    commitSha: 'f'.repeat(40),
+    path: 'test/fixtures/source.mjs',
+    failureCode: 'GITHUB_SOURCE_UNAVAILABLE'
+  };
+  const original = createWorld({
+    id: 'source-archive-failure-writer-world',
+    now: '2026-11-23T12:00:00.000Z'
+  });
+  const accepted = recordSourceArchiveAttemptFailure(original, actor, details, {
+    now: '2026-11-23T12:00:01.000Z'
+  });
+  assert.equal(accepted.world.revision, accepted.world.events.length);
+  assert.equal(accepted.world.events.length, 1);
+  assert.equal(original.revision, 0);
+  assert.equal(original.events.length, 0);
+
+  const incompleteSnapshots = [
+    ['revision ahead of retained events', world => { world.revision = 1; }],
+    ['retained events ahead of revision', world => {
+      world.events.push({ id: 'existing-event', type: 'discover' });
+    }],
+    ['sparse retained event slot', world => {
+      world.revision = 1;
+      world.events.length = 1;
+    }],
+    ['null retained event slot', world => {
+      world.revision = 1;
+      world.events.push(null);
+    }]
+  ];
+  for (const [label, mutate] of incompleteSnapshots) {
+    const malformed = structuredClone(original);
+    mutate(malformed);
+    const before = structuredClone(malformed);
+    assert.throws(
+      () => recordSourceArchiveAttemptFailure(malformed, actor, details, {
+        now: '2026-11-23T12:00:01.000Z'
+      }),
+      error => error?.code === 'INVALID_WORLD',
+      label
+    );
+    assert.deepEqual(malformed, before, label + ' must remain unchanged');
+  }
+
+  const accessorBacked = structuredClone(original);
+  accessorBacked.revision = 1;
+  let accessorReads = 0;
+  Object.defineProperty(accessorBacked.events, '0', {
+    enumerable: true,
+    configurable: true,
+    get() {
+      accessorReads += 1;
+      return { id: 'accessor-event', type: 'discover' };
+    }
+  });
+  assert.throws(
+    () => recordSourceArchiveAttemptFailure(accessorBacked, actor, details, {
+      now: '2026-11-23T12:00:01.000Z'
+    }),
+    error => error?.code === 'INVALID_WORLD',
+    'accessor-backed retained event slots must be rejected'
+  );
+  assert.equal(accessorReads, 0, 'reject an accessor without invoking it');
+  assert.equal(accessorBacked.revision, 1);
+  assert.equal(accessorBacked.events.length, 1);
 });
 
 test('Source Archive preview mismatch is retained as a rejected non-progression world event', async t => {
@@ -1238,6 +1312,14 @@ test('shared action request IDs replay the original result across lost responses
   assert.equal(first.body.idempotentReplay, false);
   const revision = first.body.world.revision;
   const reportId = first.body.result.id;
+  const expectedRecordTextReceipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(Buffer.from(action.text, 'utf8')).digest('hex'),
+    size: Buffer.byteLength(action.text, 'utf8')
+  };
+  const retainedReportEvent = first.body.world.events.find(event => event.requestId === requestId);
+  assert.equal(retainedReportEvent.recordId, reportId);
+  assert.deepEqual(retainedReportEvent.recordTextReceipt, expectedRecordTextReceipt);
   assert.equal(first.body.world.reports.filter(report => report.text === action.text).length, 1);
 
   const replay = await founder.request('/api/action', { ...action, requestId });
@@ -1270,6 +1352,9 @@ test('shared action request IDs replay the original result across lost responses
     assert.equal(afterRestart.response.status, 200, JSON.stringify(afterRestart.body));
     assert.equal(afterRestart.body.idempotentReplay, true);
     assert.equal(afterRestart.body.result.id, reportId);
+    const replayedReportEvent = afterRestart.body.world.events.find(event => event.requestId === requestId);
+    assert.equal(replayedReportEvent.recordId, reportId);
+    assert.deepEqual(replayedReportEvent.recordTextReceipt, expectedRecordTextReceipt);
     assert.equal(afterRestart.body.world.reports.filter(report => report.text === action.text).length, 1);
   } finally {
     await reopened.closeGame();
@@ -1695,10 +1780,28 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
     reportId: report.body.result.reportId,
     challengeType: 'missing-evidence',
     challengeText: 'The report lacks the measurement settings needed to reproduce the attempt.',
+    resolutionRequest: 'Repeat the procedure with the missing measurement settings retained and report the result.',
     evidenceCreationId: published.result.creationId,
     evidenceVersion: 1,
     requestId: 'experiment-challenge-retry-001'
   };
+  const missingResolutionRequest = { ...challengeAction, requestId: 'experiment-challenge-missing-resolution-001' };
+  delete missingResolutionRequest.resolutionRequest;
+  const missingResolution = await founder.request('/api/action', missingResolutionRequest);
+  assert.equal(missingResolution.response.status, 400, JSON.stringify(missingResolution.body));
+  assert.equal(missingResolution.body.error.code, 'INVALID_INPUT');
+  const afterMissingResolution = await founder.request('/api/state');
+  assert.equal(afterMissingResolution.body.world.events.filter(event => event.type === 'experiment-challenged').length, 0,
+    'a challenge without a concrete resolution request must not append an event');
+
+  const oversizedResolutionRequest = {
+    ...challengeAction,
+    resolutionRequest: 'x'.repeat(1001),
+    requestId: 'experiment-challenge-oversized-resolution-001'
+  };
+  const oversizedResolution = await founder.request('/api/action', oversizedResolutionRequest);
+  assert.equal(oversizedResolution.response.status, 413, JSON.stringify(oversizedResolution.body));
+  assert.equal(oversizedResolution.body.error.code, 'TOO_LARGE');
   const first = await founder.request('/api/action', challengeAction);
   assert.equal(first.response.status, 200, JSON.stringify(first.body));
   assert.equal(first.body.idempotentReplay, false);
@@ -1722,6 +1825,7 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   assert.equal(challenges[0].reportId, reports[0].reportId);
   assert.equal(challenges[0].evidenceCreationId, published.result.creationId);
   assert.equal(challenges[0].evidenceVersion, 1);
+  assert.equal(challenges[0].resolutionRequest, challengeAction.resolutionRequest);
   assert.equal(challenges[0].actor.role, 'founder');
   assert.equal(challenges[0].outcome, undefined);
   assert.equal(challenges[0].status, undefined);
@@ -1758,6 +1862,7 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   assert.equal(afterRestart.length, 1);
   assert.equal(afterRestart[0].evidenceCreationId, published.result.creationId);
   assert.equal(afterRestart[0].evidenceVersion, 1);
+  assert.equal(afterRestart[0].resolutionRequest, challengeAction.resolutionRequest);
   await restarted.closeGame();
   restarted = null;
 });
@@ -1789,6 +1894,7 @@ test('server startup accepts persisted experiment challenges from a same-ID diff
     type: 'challenge-experiment-report', reportId: report.result.reportId,
     challengeType: 'contradiction',
     challengeText: 'The measurement method is underspecified.',
+    resolutionRequest: 'Repeat the measurement with the missing settings retained.',
     evidenceCreationId: null, evidenceVersion: null
   }, crossRoleWitness, {
     now: '2026-10-27T00:00:03.000Z',
@@ -2092,18 +2198,52 @@ test('Source Observatory HTTP observations are hash-bound, actor-attributed, rep
   const before = await founder.request('/api/state');
   const actorId = before.body.viewer?.id || 'damien';
   const actorRole = before.body.viewer?.role || 'founder';
+  const sourceSnapshotRevision = before.body.world.revision;
+  const sourceSnapshotReceipt = before.body.sourceSnapshotReceipt;
+  assert.equal(sourceSnapshotReceipt?.revision, sourceSnapshotRevision);
+  assert.match(sourceSnapshotReceipt?.token || '', /^[A-Za-z0-9_-]{43}$/);
+  assert.ok(Number.isSafeInteger(sourceSnapshotReceipt?.expiresAt) && sourceSnapshotReceipt.expiresAt > Date.now());
+  const interveningWitness = f.client();
+  const witnessSession = await interveningWitness.request('/api/state');
+  assert.equal(witnessSession.body.viewer.role, 'witness');
+  assert.notEqual(witnessSession.body.viewer.id, actorId);
+  assert.equal(witnessSession.body.sourceSnapshotReceipt?.revision, sourceSnapshotRevision);
+  const intervening = await interveningWitness.request('/api/action', {
+    type: 'report', creationId, version: 1,
+    text: 'A second session appended a report after the pinned Source Observatory snapshot.'
+  });
+  assert.equal(intervening.response.status, 200, JSON.stringify(intervening.body));
+  const afterIntervening = await founder.request('/api/state');
+  assert.equal(afterIntervening.body.world.revision, sourceSnapshotRevision + 1);
   const note = { claim: 'The model says the bridge is open.', sourceKind: 'model-assertion', source: 'A model response; no external source retrieved.', falsifier: 'Independent inspection finds it closed.', uncertainty: 'No independent observation yet.', nextTest: 'Inspect the primary source directly.' };
-  const digest = artifactReceipt(sourceObservationRequestMaterial({ actorId, actorRole, creationId, version: 1, ...note })).digest;
+  const witnessDigest = artifactReceipt(sourceObservationRequestMaterial({
+    actorId: witnessSession.body.viewer.id, actorRole: witnessSession.body.viewer.role,
+    creationId, version: 1, sourceSnapshotRevision, ...note
+  })).digest;
+  const foreignReceipt = await interveningWitness.request('/api/action', {
+    type: 'record-source-observation', requestId: 'source-observation-' + witnessDigest,
+    observationId: 'source-observation-' + witnessDigest, creationId, version: 1,
+    sourceSnapshotRevision, sourceSnapshotReceipt: sourceSnapshotReceipt.token, ...note
+  });
+  assert.equal(foreignReceipt.response.status, 409);
+  assert.equal(foreignReceipt.body.error.code, 'INVALID_SOURCE_SNAPSHOT_RECEIPT');
+  const digest = artifactReceipt(sourceObservationRequestMaterial({ actorId, actorRole, creationId, version: 1, sourceSnapshotRevision, ...note })).digest;
   const observationId = 'source-observation-' + digest;
-  const action = { type: 'record-source-observation', requestId: observationId, observationId, creationId, version: 1, ...note };
+  const action = { type: 'record-source-observation', requestId: observationId, observationId, creationId, version: 1, sourceSnapshotRevision, sourceSnapshotReceipt: sourceSnapshotReceipt.token, ...note };
   const first = await founder.request('/api/action', action);
   assert.equal(first.response.status, 200, JSON.stringify(first.body));
   const after = await founder.request('/api/state');
+  assert.equal(after.body.world.revision, sourceSnapshotRevision + 2);
   const retained = after.body.world.events.filter(event => event.type === 'source-observation-recorded');
   assert.equal(retained.length, 1);
   assert.equal(retained[0].actor.id, actorId);
   assert.equal(retained[0].actor.role, actorRole);
-  assert.equal(retained[0].bindingMode, 'USER_SELECTED');
+  assert.equal(retained[0].bindingMode, 'SERVER_SESSION_RECEIPT');
+  assert.equal(retained[0].sourceSnapshotReceiptDigest, artifactReceipt(sourceSnapshotReceipt.token).digest);
+  assert.equal(JSON.stringify(retained[0]).includes(sourceSnapshotReceipt.token), false);
+  assert.equal(retained[0].sourceSnapshotRevision, sourceSnapshotRevision);
+  const exported = await founder.request('/api/export');
+  assert.equal(exported.body.sourceSnapshotReceipt, undefined);
   assert.equal(retained[0].sourceRetrieval, 'NOT_PERFORMED');
   assert.equal(retained[0].modelAssertions, 'LEADS_ONLY');
   assert.equal(after.body.world.xp, before.body.world.xp);
@@ -2124,6 +2264,118 @@ test('Source Observatory HTTP observations are hash-bound, actor-attributed, rep
   assert.equal(finalState.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
 });
 
+test('failure-derived Source Observation retains an exact server-validated Source Archive event link', async t => {
+  const capture = sourceArchiveCaptureFixture('export const FAILURE_ORIGIN_FIXTURE = true;\\n', {
+    fetchImpl: async () => { throw new Error('temporary upstream unavailable'); }
+  });
+  const f = await fixture(t, undefined, { githubSourceFetch: capture.fetchImpl });
+  const founder = f.client();
+  await founder.login();
+  const draft = await founder.request('/api/action', {
+    type: 'draft', kind: 'observatory', title: 'Failure-origin Source Observatory',
+    intent: 'Record attributed leads with exact retained failure provenance.'
+  });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const published = await founder.request('/api/action', {
+    type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0
+  });
+  assert.equal(published.response.status, 200, JSON.stringify(published.body));
+  const failed = await founder.request('/api/action', {
+    ...capture.action, requestId: 'source-failure-origin-attempt-1'
+  });
+  assert.equal(failed.response.status, 502);
+  assert.equal(failed.body.error.code, 'GITHUB_SOURCE_UNAVAILABLE');
+  const afterFailure = await founder.request('/api/state');
+  const failureEvent = afterFailure.body.world.events.find(event =>
+    event.type === 'source-archive-attempt-failed'
+  );
+  assert.ok(failureEvent);
+  const sourceSnapshotRevision = afterFailure.body.world.revision;
+  const sourceSnapshotReceipt = afterFailure.body.sourceSnapshotReceipt;
+  assert.equal(sourceSnapshotReceipt.revision, sourceSnapshotRevision);
+  const note = {
+    claim: 'One retained Source Archive retrieval attempt failed.',
+    sourceKind: 'tool-output',
+    source: 'Service-observed failure event ' + failureEvent.id,
+    falsifier: 'A new explicit capture succeeds and returns matching bytes.',
+    uncertainty: 'This attempt does not establish source availability beyond itself, authorship, claim accuracy, independent verification, or truth.',
+    nextTest: 'Start a new explicit capture with a new request ID and retain that attempt separately.'
+  };
+  const base = {
+    actorId: afterFailure.body.viewer.id,
+    actorRole: afterFailure.body.viewer.role,
+    creationId: published.body.result.creationId,
+    version: 1,
+    sourceSnapshotRevision,
+    ...note
+  };
+  const unknownOrigin = 'missing-source-archive-failure-event';
+  const unknownDigest = artifactReceipt(sourceObservationRequestMaterial({
+    ...base, originFailureEventId: unknownOrigin
+  })).digest;
+  const rejected = await founder.request('/api/action', {
+    type: 'record-source-observation',
+    requestId: 'source-observation-' + unknownDigest,
+    observationId: 'source-observation-' + unknownDigest,
+    creationId: published.body.result.creationId,
+    version: 1,
+    sourceSnapshotRevision,
+    sourceSnapshotReceipt: sourceSnapshotReceipt.token,
+    originFailureEventId: unknownOrigin,
+    ...note
+  });
+  assert.equal(rejected.response.status, 409);
+  assert.equal(rejected.body.error.code, 'INVALID_SOURCE_FAILURE_ORIGIN');
+  const afterRejected = await founder.request('/api/state');
+  assert.equal(afterRejected.body.world.revision, sourceSnapshotRevision);
+  const digest = artifactReceipt(sourceObservationRequestMaterial({
+    ...base, originFailureEventId: failureEvent.id
+  })).digest;
+  const observationId = 'source-observation-' + digest;
+  const action = {
+    type: 'record-source-observation',
+    requestId: observationId,
+    observationId,
+    creationId: published.body.result.creationId,
+    version: 1,
+    sourceSnapshotRevision,
+    sourceSnapshotReceipt: sourceSnapshotReceipt.token,
+    originFailureEventId: failureEvent.id,
+    ...note
+  };
+  const recorded = await founder.request('/api/action', action);
+  assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
+  const after = await founder.request('/api/state');
+  const observation = after.body.world.events.find(event =>
+    event.type === 'source-observation-recorded' && event.observationId === observationId
+  );
+  assert.ok(observation);
+  assert.equal(observation.originFailureEventId, failureEvent.id);
+  assert.ok(sourceSnapshotRevision >= after.body.world.events.indexOf(failureEvent) + 1);
+  assert.equal(observation.sourceRetrieval, 'NOT_PERFORMED');
+  assert.equal(observation.independentVerification, 'NOT_PERFORMED');
+  assert.equal(observation.modelAssertions, 'LEADS_ONLY');
+  assert.equal(observation.execution, 'NOT_EXECUTED');
+  assert.equal(after.body.world.xp, afterFailure.body.world.xp);
+  const projected = projectSourceObservationRecords(
+    after.body.world.events,
+    after.body.world.creations,
+    { revision: after.body.world.revision, revisionPresent: true }
+  );
+  const linked = projected.find(record => record.observationId === observationId);
+  assert.ok(linked);
+  assert.equal(linked.originFailureEventId, failureEvent.id);
+  assert.equal(linked.failureOriginStatus, 'linked');
+  assert.equal(linked.projectionStatus, 'linked');
+  const quest = getQuestTrail(after.body.world, after.body.viewer).find(item =>
+    item.id === 'founder-source-archive-failure-investigation'
+  );
+  assert.ok(quest);
+  assert.equal(quest.complete, true);
+  assert.deepEqual(quest.evidenceIds, [observation.id]);
+  assert.equal(after.body.world.xp, afterFailure.body.world.xp);
+});
+
 test('Source Observation challenges are actor-separated, append-only, replay-safe, and non-rewarding', async t => {
   const f = await fixture(t);
   const founder = f.client();
@@ -2142,6 +2394,7 @@ test('Source Observation challenges are actor-separated, append-only, replay-saf
   });
   assert.equal(published.response.status, 200, JSON.stringify(published.body));
   const before = await founder.request('/api/state');
+  const sourceSnapshotRevision = before.body.world.revision;
   const note = {
     claim: 'The bridge is open.', sourceKind: 'model-assertion',
     source: 'A model response; no primary source was retrieved.',
@@ -2151,12 +2404,12 @@ test('Source Observation challenges are actor-separated, append-only, replay-saf
   };
   const digest = artifactReceipt(sourceObservationRequestMaterial({
     actorId: before.body.viewer.id, actorRole: before.body.viewer.role,
-    creationId: published.body.result.creationId, version: 1, ...note
+    creationId: published.body.result.creationId, version: 1, sourceSnapshotRevision, ...note
   })).digest;
   const observationId = 'source-observation-' + digest;
   const recorded = await founder.request('/api/action', {
     type: 'record-source-observation', requestId: observationId, observationId,
-    creationId: published.body.result.creationId, version: 1, ...note
+    creationId: published.body.result.creationId, version: 1, sourceSnapshotRevision, ...note
   });
   assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
   const beforeChallenge = await witness.request('/api/state');
@@ -2300,7 +2553,7 @@ test('offline shell precaches and serves the complete current pixel-world import
 });
 
 
-test('shared Commons posts replay once, reports stay private, and Founder moderation preserves history', async t => {
+test('shared Commons report review is Founder-only, private to the reporter, and idempotent', async t => {
   const f = await fixture(t);
   const founder = f.client(); await founder.login();
   const author = f.client(), reporter = f.client(), unrelated = f.client();
@@ -2330,27 +2583,30 @@ test('shared Commons posts replay once, reports stay private, and Founder modera
   assert.equal(reporterState.body.world.events.filter(event => event.type === 'message-posted').length, 1);
   const report = await reporter.request('/api/action', {
     type: 'report-message', messageId, reason: 'privacy',
-    details: 'A human should review this public text.', requestId: 'commons-server-report-001'
+    details: 'A Founder should review this public text.', requestId: 'commons-server-report-001'
   });
   assert.equal(report.response.status, 200, JSON.stringify(report.body));
   assert.equal(report.body.world.revision, initialRevision + 2);
   assert.equal(report.body.world.xp, initialXp);
+  const reportId = report.body.result.reportId;
 
   const unrelatedState = await unrelated.request('/api/state');
   assert.equal(unrelatedState.body.world.events.some(event => event.type === 'message-reported'), false);
   assert.equal(unrelatedState.body.world.events.find(event => event.type === 'message-posted').text, postAction.text);
   const authorState = await author.request('/api/state');
-  assert.equal(authorState.body.world.events.some(event => event.type === 'message-reported'), false, 'the message author is not the private report author');
+  assert.equal(authorState.body.world.events.some(event => event.type === 'message-reported'), false,
+    'the message author is not the private report author');
   const reporterAfterReport = await reporter.request('/api/state');
-  assert.equal(reporterAfterReport.body.world.events.some(event => event.type === 'message-reported'), true, 'the reporting actor can inspect their own report');
+  assert.equal(reporterAfterReport.body.world.events.some(event => event.type === 'message-reported'), true,
+    'the reporting actor can inspect their own report');
   const founderState = await founder.request('/api/state');
   assert.equal(founderState.body.world.events.some(event => event.type === 'message-reported'), true);
 
-  const denied = await reporter.request('/api/action', {
+  const deniedModeration = await reporter.request('/api/action', {
     type: 'moderate-message', messageId, disposition: 'hide', reason: 'privacy',
     requestId: 'commons-server-denied-moderation-001'
   });
-  assert.equal(denied.response.status, 403);
+  assert.equal(deniedModeration.response.status, 403);
 
   const hidden = await founder.request('/api/action', {
     type: 'moderate-message', messageId, disposition: 'hide', reason: 'privacy',
@@ -2360,13 +2616,126 @@ test('shared Commons posts replay once, reports stay private, and Founder modera
   assert.equal(hidden.body.world.revision, initialRevision + 3);
   assert.equal(hidden.body.world.xp, initialXp);
 
-  const redacted = await unrelated.request('/api/state');
-  const publicPost = redacted.body.world.events.find(event => event.type === 'message-posted');
-  assert.equal(publicPost.text, '[Message hidden by human moderation.]');
-  assert.equal(redacted.body.world.events.some(event => event.type === 'message-reported'), false);
-  const founderAfter = await founder.request('/api/state');
-  assert.equal(founderAfter.body.world.events.find(event => event.type === 'message-posted').text, postAction.text);
-  assert.equal(founderAfter.body.world.events.filter(event => event.type === 'message-moderated').length, 1);
+  const reviewAction = {
+    type: 'review-message-report',
+    reportId,
+    note: 'Reviewed as a process step; this note is not a factual verdict or moderation action.',
+    requestId: 'commons-server-review-001'
+  };
+  const reviewed = await founder.request('/api/action', reviewAction);
+  assert.equal(reviewed.response.status, 200, JSON.stringify(reviewed.body));
+  assert.equal(reviewed.body.world.revision, initialRevision + 4);
+  assert.equal(reviewed.body.world.xp, initialXp);
+  assert.equal(reviewed.body.world.events.filter(event => event.type === 'message-report-reviewed').length, 1);
+  const reviewEvent = reviewed.body.world.events.find(event => event.type === 'message-report-reviewed');
+  assert.equal(reviewEvent.reportId, reportId);
+  assert.equal(reviewEvent.messageId, messageId);
+  assert.equal(reviewEvent.actor.role, 'founder');
+  assert.equal(reviewEvent.note, reviewAction.note);
+  assert.equal(reviewed.body.result.reviewId, reviewEvent.reviewId);
+
+  const reviewedReplay = await founder.request('/api/action', reviewAction);
+  assert.equal(reviewedReplay.response.status, 200, JSON.stringify(reviewedReplay.body));
+  assert.equal(reviewedReplay.body.idempotentReplay, true);
+  assert.equal(reviewedReplay.body.result.reviewId, reviewed.body.result.reviewId);
+  assert.equal(reviewedReplay.body.world.revision, reviewed.body.world.revision);
+  assert.equal(reviewedReplay.body.world.events.filter(event => event.type === 'message-report-reviewed').length, 1);
+
+  const reusedRequest = await founder.request('/api/action', {
+    ...reviewAction, note: 'Different bytes must not reuse the first request identity.'
+  });
+  assert.equal(reusedRequest.response.status, 409);
+  assert.equal(reusedRequest.body.error.code, 'IDEMPOTENCY_CONFLICT');
+
+  const duplicateReview = await founder.request('/api/action', {
+    ...reviewAction, requestId: 'commons-server-review-002'
+  });
+  assert.equal(duplicateReview.response.status, 409);
+  assert.equal(duplicateReview.body.error.code, 'REPORT_ALREADY_REVIEWED');
+
+  const deniedReview = await reporter.request('/api/action', {
+    ...reviewAction, requestId: 'commons-server-witness-review-001'
+  });
+  assert.equal(deniedReview.response.status, 403);
+  assert.equal(deniedReview.body.error.code, 'FORBIDDEN');
+
+  const unrelatedAfterReview = await unrelated.request('/api/state');
+  const publicPost = unrelatedAfterReview.body.world.events.find(event => event.type === 'message-posted');
+  assert.equal(publicPost.text, '[Message hidden by a Founder moderation action.]');
+  assert.equal(unrelatedAfterReview.body.world.events.some(event => event.type === 'message-reported'), false);
+  assert.equal(unrelatedAfterReview.body.world.events.some(event => event.type === 'message-report-reviewed'), false);
+  assert.equal(JSON.stringify(unrelatedAfterReview.body.world.events).includes(reviewAction.note), false);
+  const authorAfterReview = await author.request('/api/state');
+  assert.equal(authorAfterReview.body.world.events.some(event => event.type === 'message-reported'), false);
+  assert.equal(authorAfterReview.body.world.events.some(event => event.type === 'message-report-reviewed'), false);
+  const reporterAfterReview = await reporter.request('/api/state');
+  assert.equal(reporterAfterReview.body.world.events.some(event => event.type === 'message-report-reviewed'), true);
+  assert.equal(reporterAfterReview.body.world.events.find(event => event.type === 'message-report-reviewed').note, reviewAction.note);
+  const founderAfterReview = await founder.request('/api/state');
+  assert.equal(founderAfterReview.body.world.events.find(event => event.type === 'message-posted').text, postAction.text);
+  assert.equal(founderAfterReview.body.world.events.filter(event => event.type === 'message-moderated').length, 1);
+  assert.equal(founderAfterReview.body.world.events.filter(event => event.type === 'message-report-reviewed').length, 1);
+  assert.equal(founderAfterReview.body.world.revision, initialRevision + 4);
+  assert.equal(founderAfterReview.body.world.xp, initialXp);
+
+  const proposal = await unrelated.request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'Reconstruct a public collaborator snapshot after private report review',
+    hypothesis: 'A Witness packet omits another actor’s report and its Founder-session review.',
+    falsifier: 'The packet contains the private report or review note, or its source count is inconsistent.',
+    evidenceNeeded: 'The exact retained public prefix.'
+  });
+  assert.equal(proposal.response.status, 200, JSON.stringify(proposal.body));
+  const attempt = await unrelated.request('/api/action', {
+    type: 'report-experiment',
+    moonshotId: proposal.body.result.moonshotId,
+    procedure: 'Record one bounded attempt.',
+    observation: 'The report is self-described and not independently verified.',
+    reportedOutcome: 'failed'
+  });
+  assert.equal(attempt.response.status, 200, JSON.stringify(attempt.body));
+  const packetState = await unrelated.request('/api/state');
+  assert.equal(packetState.response.status, 200);
+  assert.equal(packetState.body.world.events.some(event => event.type === 'message-reported'), false);
+  assert.equal(packetState.body.world.events.some(event => event.type === 'message-report-reviewed'), false);
+  const packet = projectCollaboratorPackets(packetState.body.world).find(candidate =>
+    candidate.id === 'adversary' && candidate.available === true &&
+    candidate.moonshotId === proposal.body.result.moonshotId
+  );
+  assert.ok(packet, 'the redacted public prefix must still produce a bounded collaborator packet');
+  assert.equal(packet.sourceSnapshot.worldId, packetState.body.world.id);
+  assert.equal(packet.sourceSnapshot.revision, packetState.body.world.revision);
+  assert.equal(packet.sourceSnapshot.suppliedEventCount, packetState.body.world.events.length,
+    'the packet snapshot count must match the exact public event prefix after private report and review redaction');
+  const reportEvent = packetState.body.world.events.find(event =>
+    event.type === 'experiment-reported' && event.reportId === attempt.body.result.reportId
+  );
+  assert.ok(reportEvent);
+  const responseText = JSON.stringify({
+    targetEventId: reportEvent.id,
+    challengeType: 'missing-evidence',
+    challengeDraft: 'The attempt has no independently observed measurement.',
+    distinctnessAssessment: 'No earlier challenge is included in this packet.',
+    duplicateOfEventIds: [],
+    counterexample: 'A controlled repeat could contradict the report.',
+    evidenceNeeded: ['A retained independent measurement.'],
+    unknowns: ['The reported outcome remains self-reported.']
+  });
+  const recorded = await unrelated.request('/api/action', {
+    type: 'record-collaborator-response',
+    role: 'adversary',
+    moonshotId: proposal.body.result.moonshotId,
+    packetJson: packet.packetJson,
+    sourceEventIds: packet.inputRefs,
+    responseText,
+    requestId: 'commons-private-review-packet-response-001'
+  });
+  assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
+  assert.equal(recorded.body.world.xp, initialXp);
+  const retainedResponse = recorded.body.world.events.at(-1);
+  assert.equal(retainedResponse.type, 'collaborator-response-recorded');
+  assert.equal(retainedResponse.packetJson.includes(reviewAction.note), false);
+  assert.equal(retainedResponse.packetJson.includes('PRIVATE-FOUNDER-REPORT-DETAILS'), false);
 });
 
 
@@ -3150,6 +3519,7 @@ test('experiment challenge author responses are actor-bound, replay-safe, and no
     reportId: report.body.result.reportId,
     challengeType: 'methodology',
     challengeText: 'The procedure omits a reproducible measurement setting.',
+    resolutionRequest: 'Repeat the procedure with the measurement settings retained.',
     evidenceCreationId: null,
     evidenceVersion: null,
     requestId: 'experiment-response-challenge-001'
@@ -3217,6 +3587,7 @@ test('stored-history validator independently binds experiment challenge response
   const challenged = await applyAction(report.world, {
     type: 'challenge-experiment-report', reportId: report.result.reportId,
     challengeType: 'methodology', challengeText: 'The procedure omits a reproducible measurement setting.',
+    resolutionRequest: 'Repeat the procedure with the measurement settings retained.',
     evidenceCreationId: null, evidenceVersion: null
   }, witness, { now: '2026-11-08T12:00:03.000Z' });
   const challenge = challenged.world.events.at(-1);
@@ -3229,6 +3600,11 @@ test('stored-history validator independently binds experiment challenge response
     actionFingerprint: 'b'.repeat(64)
   });
   assert.doesNotThrow(() => validateStoredWorldHistory(responded.world));
+
+  const whitespaceResponseId = structuredClone(responded.world);
+  whitespaceResponseId.events.at(-1).responseId = ' ';
+  whitespaceResponseId.events.at(-1).actionResult.responseId = ' ';
+  assert.throws(() => validateStoredWorldHistory(whitespaceResponseId), /experiment challenge response|response/i);
 
   const wrongAuthor = structuredClone(responded.world);
   wrongAuthor.events.at(-1).actor = { ...witness };
@@ -3402,6 +3778,7 @@ test('stored-world validation accepts server clock-regressed Source Observatory 
   const published = await applyAction(draft.world, {
     type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
   }, founderActor, { now: publishedAt });
+  const sourceSnapshotRevision = published.world.revision;
   const note = {
     claim: 'The bridge is open.', sourceKind: 'model-assertion',
     source: 'A model assertion; no primary source was retrieved.',
@@ -3411,12 +3788,12 @@ test('stored-world validation accepts server clock-regressed Source Observatory 
   };
   const digest = artifactReceipt(sourceObservationRequestMaterial({
     actorId: founderActor.id, actorRole: founderActor.role,
-    creationId: published.result.creationId, version: 1, ...note
+    creationId: published.result.creationId, version: 1, sourceSnapshotRevision, ...note
   })).digest;
   const observationId = 'source-observation-' + digest;
   const recorded = await applyAction(published.world, {
     type: 'record-source-observation', creationId: published.result.creationId,
-    version: 1, observationId, ...note
+    version: 1, sourceSnapshotRevision, observationId, ...note
   }, founderActor, {
     now: '2026-10-17T12:00:05.000Z',
     requestId: observationId, actionFingerprint: 'a'.repeat(64)
@@ -3440,6 +3817,40 @@ test('stored-world validation accepts server clock-regressed Source Observatory 
 
   assert.equal(responded.world.updatedAt, publishedAt);
   assert.doesNotThrow(() => validateStoredWorldHistory(responded.world));
+
+  const receiptNote = {
+    ...note,
+    claim: 'A second note carries a server-issued snapshot receipt digest.'
+  };
+  const receiptDigest = artifactReceipt(sourceObservationRequestMaterial({
+    actorId: founderActor.id, actorRole: founderActor.role,
+    creationId: published.result.creationId, version: 1, sourceSnapshotRevision, ...receiptNote
+  })).digest;
+  const receiptObservationId = 'source-observation-' + receiptDigest;
+  const receiptBound = await applyAction(responded.world, {
+    type: 'record-source-observation', creationId: published.result.creationId,
+    version: 1, sourceSnapshotRevision, observationId: receiptObservationId, ...receiptNote
+  }, founderActor, {
+    now: '2026-10-17T12:00:04.000Z',
+    requestId: receiptObservationId, actionFingerprint: 'd'.repeat(64),
+    sourceSnapshotReceiptDigest: 'b'.repeat(64)
+  });
+  const receiptEvent = receiptBound.world.events.at(-1);
+  assert.equal(receiptEvent.bindingMode, 'SERVER_SESSION_RECEIPT');
+  assert.equal(receiptEvent.sourceSnapshotReceiptDigest, 'b'.repeat(64));
+  assert.doesNotThrow(() => validateStoredWorldHistory(receiptBound.world),
+    'the server history validator must accept a receipt digest computed after session-token validation');
+
+  const missingReceiptDigest = structuredClone(receiptBound.world);
+  delete missingReceiptDigest.events.at(-1).sourceSnapshotReceiptDigest;
+  assert.throws(() => validateStoredWorldHistory(missingReceiptDigest),
+    /Stored Source Observatory observation is malformed or unbound/,
+    'a server-session binding without its digest must fail closed');
+  const digestOnUserSelected = structuredClone(receiptBound.world);
+  digestOnUserSelected.events.at(-1).bindingMode = 'USER_SELECTED';
+  assert.throws(() => validateStoredWorldHistory(digestOnUserSelected),
+    /Stored Source Observatory observation is malformed or unbound/,
+    'a receipt digest cannot be relabeled as an author-selected binding');
 
   const outOfOrder = structuredClone(responded.world);
   const challengeIndex = outOfOrder.events.findIndex(event => event.type === 'source-observation-challenged');
@@ -3509,7 +3920,12 @@ test('large shared state and export snapshots negotiate fast gzip without changi
 
   const exported = await rawGet('/api/export', 'gzip');
   assert.equal(exported.headers['content-encoding'], 'gzip');
-  assert.deepEqual(JSON.parse(gunzipSync(exported.bytes).toString('utf8')), decoded);
+  const exportedDto = JSON.parse(gunzipSync(exported.bytes).toString('utf8'));
+  assert.equal(exportedDto.sourceSnapshotReceipt, undefined,
+    'A session-bound delivery token must never enter a portable world export.');
+  const { sourceSnapshotReceipt, ...stateWithoutEphemeralReceipt } = decoded;
+  assert.ok(sourceSnapshotReceipt && sourceSnapshotReceipt.revision === decoded.world.revision);
+  assert.deepEqual(exportedDto, stateWithoutEphemeralReceipt);
 });
 
 
@@ -3612,7 +4028,7 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   tamperedEvent.outcome = 'MATCH';
   await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
   assert.throws(() => validateStoredWorldHistory(tampered), /Stored Source Archive predicate outcome mismatch/);
-  const tamperedReceipt = structuredClone(afterNoMatch.body.world);
+  const tamperedReceipt = structuredClone(founderHistory.body.world);
   const receiptEvent = tamperedReceipt.events.find(item => item.predicateId === noMatch.body.result.predicateId);
   receiptEvent.sourceSha256 = '0'.repeat(64);
   assert.throws(() => validateStoredWorldHistory(tamperedReceipt), /World history integrity mismatch|Stored Source Archive predicate metadata mismatch/);
@@ -3858,4 +4274,198 @@ test('shared Forge recipient decline is recipient-only, replay-safe, durable, an
   assert.equal(restoredWitnessRecord.xp, 0);
   assert.equal(restoredFounderRecord.xp, 0);
   assert.equal(restoredWitness.world.xp, beforeXp);
+});
+
+
+test('stored report text cannot drift from its retained Chronicle event receipt', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const published = await publish(founder, 'Receipt-bound report target');
+  const creation = published.world.creations[0];
+  const action = {
+    type: 'report', creationId: creation.id, version: 1,
+    text: 'The retained report bytes must remain bound to the event.'
+  };
+  const result = await founder.request('/api/action', {
+    ...action, requestId: 'receipt-bound-report-tamper-001'
+  });
+  assert.equal(result.response.status, 200, JSON.stringify(result.body));
+
+  const tampered = structuredClone(result.body.world);
+  tampered.reports[0].text += ' altered after retention';
+  assert.throws(
+    () => validateStoredWorldHistory(tampered),
+    /receipt|text|contribution/i
+  );
+});
+
+test('stored-history validation accepts only complete response-position metadata', async () => {
+  const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const witness = { id: 'history-witness', name: 'History Witness', role: 'witness' };
+  const start = createWorld({
+    id: 'stored-response-history-position',
+    now: '2026-10-17T12:00:00.000Z'
+  });
+  const draft = await applyAction(start, {
+    type: 'draft', kind: 'loom', title: 'Private lead',
+    intent: 'A hidden event precedes public research.'
+  }, founder, { now: '2026-10-17T12:00:01.000Z' });
+  const proposal = await applyAction(draft.world, {
+    type: 'propose-moonshot',
+    title: 'Bound stored positions',
+    hypothesis: 'The retained event order is stable.',
+    falsifier: 'A public snapshot changes the event sequence.',
+    evidenceNeeded: 'A complete retained event sequence.'
+  }, founder, { now: '2026-10-17T12:00:02.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Inspect the retained event sequence.',
+    observation: 'The response exposes a derived position for each event.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, founder, { now: '2026-10-17T12:00:03.000Z' });
+
+  const full = publicWorld(report.world, founder);
+  assert.deepEqual(full.events.map(event => event.historyPosition), [1, 2, 3]);
+  assert.doesNotThrow(() => validateStoredWorldHistory(full));
+  assert.ok(report.world.events.every(event => !Object.hasOwn(event, 'historyPosition')));
+
+  const forged = structuredClone(full);
+  forged.events[1].historyPosition = 99;
+  assert.throws(
+    () => validateStoredWorldHistory(forged),
+    /history position/i
+  );
+
+  const filtered = publicWorld(report.world, witness);
+  assert.deepEqual(filtered.events.map(event => event.historyPosition), [2, 3]);
+  assert.throws(
+    () => validateStoredWorldHistory(filtered),
+    /filtered|history position/i
+  );
+});
+
+
+test('a later shared server-rechecked Source Archive publication links the exact prior failure and completes a no-extra-XP Founder quest', async t => {
+  let attempts = 0;
+  let capture;
+  capture = sourceArchiveCaptureFixture(
+    'export const SOURCE_ARCHIVE_RECOVERY = "same-pinned-target";\\n',
+    {
+      path: 'test/fixtures/failure-ledger.mjs',
+      fetchImpl: async () => {
+        attempts += 1;
+        return attempts === 1
+          ? new Response('temporary upstream outage', { status: 503 })
+          : capture.response();
+      }
+    }
+  );
+  const f = await fixture(t, undefined, { githubSourceFetch: capture.fetchImpl });
+  const founder = f.client();
+  await founder.login();
+
+  const failed = await founder.request('/api/action', {
+    ...capture.action, requestId: 'source-archive-failure-then-later-capture-001'
+  });
+  assert.equal(failed.response.status, 502);
+  const afterFailure = (await founder.request('/api/state')).body;
+  const failureEvent = afterFailure.world.events.find(event =>
+    event.type === 'source-archive-attempt-failed'
+  );
+  assert.ok(failureEvent);
+  assert.equal(failureEvent.retryable, true);
+  assert.equal(afterFailure.world.xp, 0);
+  const beforeCapture = projectSourceArchiveFailureObjects(afterFailure.world);
+  const beforeRecord = beforeCapture.records.find(record => record.eventId === failureEvent.id);
+  assert.equal(beforeCapture.captureProjectionComplete, true);
+  assert.equal(beforeRecord.laterCaptureStatus, 'not-observed');
+
+  await new Promise(resolve => setTimeout(resolve, 25));
+  const draft = await founder.request('/api/action', {
+    ...capture.action, requestId: 'source-archive-later-capture-002'
+  });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const afterDraft = (await founder.request('/api/state')).body;
+  assert.equal(afterDraft.world.xp, 0);
+  const draftProjection = projectSourceArchiveFailureObjects(afterDraft.world);
+  assert.equal(draftProjection.records.find(record => record.eventId === failureEvent.id).laterCaptureStatus, 'not-observed');
+
+  const publication = await founder.request('/api/action', {
+    type: 'publish',
+    draftId: draft.body.result.draftId,
+    expectedVersion: 0,
+    requestId: 'source-archive-later-capture-publish-003'
+  });
+  assert.equal(publication.response.status, 200, JSON.stringify(publication.body));
+  const state = (await founder.request('/api/state')).body;
+  const projection = projectSourceArchiveFailureObjects(state.world);
+  assert.equal(projection.captureProjectionComplete, true);
+  const record = projection.records.find(candidate => candidate.eventId === failureEvent.id);
+  assert.ok(record);
+  assert.equal(record.laterCaptureStatus, 'observed');
+  assert.equal(record.laterCaptureCount, 1);
+  assert.equal(record.laterCapture.creationId, publication.body.result.creationId);
+  assert.equal(record.laterCapture.version, 1);
+  assert.equal(record.laterCapture.publicationEventId, state.world.events.at(-1).id);
+  assert.equal(record.laterCapture.repository, failureEvent.repository);
+  assert.equal(record.laterCapture.commitSha, failureEvent.commitSha);
+  assert.equal(record.laterCapture.path, failureEvent.path);
+  assert.ok(Date.parse(record.laterCapture.fetchedAt) > Date.parse(failureEvent.at));
+  assert.ok(Date.parse(record.laterCapture.capturedAt) > Date.parse(failureEvent.at));
+  assert.ok(record.laterCapture.publicationPosition > record.historyPosition);
+
+  const quest = getQuestTrail(state.world, { id: 'damien', role: 'founder' }).find(candidate =>
+    candidate.id === 'founder-source-archive-later-capture'
+  );
+  assert.ok(quest);
+  assert.equal(quest.target, 2);
+  assert.equal(quest.progress, 2);
+  assert.equal(quest.complete, true);
+  assert.deepEqual(quest.evidenceIds, [failureEvent.id, state.world.events.at(-1).id]);
+  assert.equal(quest.countsForQuestkeeper, false);
+  assert.match(quest.interpretation, /same repository.*full commit SHA.*path.*expected.*not retained.*not proof.*no XP/i);
+  assert.equal(state.world.xp, 100);
+  assert.equal(capture.calls.length, 2);
+  assert.deepEqual(capture.calls.map(call => call.url), [capture.apiUrl, capture.apiUrl]);
+});
+
+
+test('stored-world validator binds Commons Founder reviews to authority and idempotency receipts', async () => {
+  const founderActor = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const author = { id: 'commons-validator-author', name: 'Author', role: 'witness' };
+  const reporter = { id: 'commons-validator-reporter', name: 'Reporter', role: 'witness' };
+  const start = Date.parse('2026-11-11T12:00:00.000Z');
+  const at = offset => new Date(start + offset).toISOString();
+  const initial = createWorld({ id: 'commons-stored-review-validator', now: at(0) });
+  const posted = await applyAction(initial, {
+    type: 'post-message',
+    text: 'Retain a review as process history, not a factual verdict.'
+  }, author, { now: at(1000), requestId: 'commons-validator-post-001', actionFingerprint: 'a'.repeat(64) });
+  const reported = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'privacy',
+    details: 'Please inspect this private report.'
+  }, reporter, { now: at(2000), requestId: 'commons-validator-report-001', actionFingerprint: 'b'.repeat(64) });
+  const reviewed = await applyAction(reported.world, {
+    type: 'review-message-report',
+    reportId: reported.result.reportId,
+    note: 'Reviewed as a process record; no factual finding.'
+  }, founderActor, { now: at(3000), requestId: 'commons-validator-review-001', actionFingerprint: 'c'.repeat(64) });
+
+  assert.doesNotThrow(() => validateStoredWorldHistory(reviewed.world));
+
+  const forgedActor = structuredClone(reviewed.world);
+  forgedActor.events.find(event => event.type === 'message-report-reviewed').actor = {
+    id: 'commons-validator-witness', name: 'Witness', role: 'witness'
+  };
+  assert.throws(() => validateStoredWorldHistory(forgedActor), /authority/i);
+
+  const mismatchedReceipt = structuredClone(reviewed.world);
+  mismatchedReceipt.events.find(event => event.type === 'message-report-reviewed').actionResult.reviewId = 'message-report-review-forged';
+  assert.throws(() => validateStoredWorldHistory(mismatchedReceipt), /report review result mismatch/i);
 });

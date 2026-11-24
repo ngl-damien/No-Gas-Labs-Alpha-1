@@ -23,12 +23,63 @@ export function sameResearchActor(left, right) {
     ['founder', 'witness'].includes(left.role) && left.role === right.role && left.id === right.id;
 }
 
+/**
+ * Presentation gate for a projected experiment-author response. A response is
+ * displayable as linked only after the exact report, challenge, actor, event
+ * identity, and append-order checks have all passed. This is not adjudication,
+ * proof of distinct human participation, or an authority decision.
+ */
+export function isLinkedExperimentChallengeResponse(record) {
+  const projection = record?._projection;
+  const challenge = projection?.targetChallenge;
+  const report = projection?.targetReport;
+  return record?.type === 'experiment-challenge-responded' &&
+    projection?.recordSafe === true &&
+    projection?.eventIdUnique === true &&
+    projection?.targetChallengeStatus === 'linked' &&
+    challenge?.type === 'experiment-challenged' &&
+    challenge.challengeId === record.challengeId &&
+    challenge.reportId === record.reportId &&
+    challenge.moonshotId === record.moonshotId &&
+    report?.type === 'experiment-reported' &&
+    report.reportId === record.reportId &&
+    report.moonshotId === record.moonshotId &&
+    sameResearchActor(report.actor, record.actor);
+}
+
+export function isValidSourceFailureEventId(value) {
+  return typeof value === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) &&
+    !['constructor', 'prototype', '__proto__'].includes(value);
+}
+
+/**
+ * Validate the provenance mode for a retained Source Observation.
+ * A server-session binding must carry both the exact accepted snapshot revision
+ * and the digest of the ephemeral receipt validated by the shared server.
+ * The bearer token itself must never enter canonical event history.
+ */
+export function isValidSourceObservationBinding(event) {
+  const digest = event?.sourceSnapshotReceiptDigest;
+  if (event?.bindingMode === 'USER_SELECTED') {
+    return digest === undefined || digest === null;
+  }
+  return event?.bindingMode === 'SERVER_SESSION_RECEIPT' &&
+    Number.isSafeInteger(event.sourceSnapshotRevision) &&
+    event.sourceSnapshotRevision >= 0 &&
+    typeof digest === 'string' &&
+    /^[a-f0-9]{64}$/.test(digest);
+}
+
 const RESEARCH_TYPES = new Set([
   'moonshot-proposed',
   'experiment-reported',
   'experiment-challenged',
   'experiment-challenge-responded',
   'source-archive-predicate-evaluated'
+]);
+const EXPERIMENT_CHALLENGE_TYPES = new Set([
+  'missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'
 ]);
 
 // Research projections consume event-shaped data that may have crossed a model,
@@ -154,6 +205,169 @@ function snapshotArrayEntries(value, maxItems) {
   return entries;
 }
 
+export function retainedEventHistoryPositions(eventsInput, {
+  allowLocalPositions = true,
+  revision,
+  revisionPresent = false
+} = {}) {
+  const events = Array.isArray(eventsInput) ? eventsInput : [];
+  let hasMetadata = false;
+  const positions = [];
+  for (let index = 0; index < events.length; index += 1) {
+    let slot;
+    try { slot = Object.getOwnPropertyDescriptor(events, String(index)); }
+    catch { return Array.from({ length: events.length }, () => null); }
+    if (!slot || !Object.hasOwn(slot, 'value')) {
+      positions.push(undefined);
+      continue;
+    }
+    const event = slot.value;
+    if (!event || typeof event !== 'object') {
+      positions.push(undefined);
+      continue;
+    }
+    let descriptor;
+    try { descriptor = Object.getOwnPropertyDescriptor(event, 'historyPosition'); }
+    catch {
+      hasMetadata = true;
+      positions.push(undefined);
+      continue;
+    }
+    if (!descriptor) {
+      positions.push(undefined);
+      continue;
+    }
+    hasMetadata = true;
+    positions.push(Object.hasOwn(descriptor, 'value') ? descriptor.value : undefined);
+  }
+  if (hasMetadata) {
+    let prior = 0;
+    const valid = positions.length === events.length && positions.every(position => {
+      if (!Number.isSafeInteger(position) || position <= prior ||
+          (revisionPresent && (!Number.isSafeInteger(revision) || revision < position))) return false;
+      prior = position;
+      return true;
+    });
+    return valid ? positions : Array.from({ length: events.length }, () => null);
+  }
+  if (allowLocalPositions && (!revisionPresent ||
+      (Number.isSafeInteger(revision) && revision >= 0 && revision === events.length))) {
+    return Array.from({ length: events.length }, (_, index) => index + 1);
+  }
+  return Array.from({ length: events.length }, () => null);
+}
+export function retainedWorldEventHistoryPositions(world, eventsInput) {
+  let revisionPresent = false;
+  let revision;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(world ?? {}, 'revision');
+    if (descriptor) {
+      revisionPresent = true;
+      if (Object.hasOwn(descriptor, 'value')) revision = descriptor.value;
+    }
+  } catch {
+    revisionPresent = true;
+  }
+  const events = Array.isArray(eventsInput) ? eventsInput : [];
+  const allowLocalPositions = !revisionPresent ||
+    (Number.isSafeInteger(revision) && revision >= 0 && revision === events.length);
+  return retainedEventHistoryPositions(events, { allowLocalPositions, revision, revisionPresent });
+}
+
+export function retainedWorldEventHistoryOptions(world, eventsInput) {
+  let revisionPresent = false;
+  let revision;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(world ?? {}, 'revision');
+    if (descriptor) {
+      revisionPresent = true;
+      if (Object.hasOwn(descriptor, 'value')) revision = descriptor.value;
+    }
+  } catch {
+    revisionPresent = true;
+  }
+  const positions = retainedWorldEventHistoryPositions(world, eventsInput);
+  return Object.freeze({
+    allowLocalPositions: positions.length === (Array.isArray(eventsInput) ? eventsInput.length : 0) &&
+      positions.every((position, index) => position === index + 1),
+    revision,
+    revisionPresent
+  });
+}
+
+/**
+ * Response-only global positions and role-filtered coverage metadata may be
+ * imported as canonical history only when they describe the complete stream
+ * exactly (1..revision). Actor-filtered snapshots retain gaps and must never
+ * be promoted to canonical world state.
+ */
+export function stripCompleteResponseHistoryPositions(world) {
+  let events;
+  let revision;
+  let hasCoverageMetadata = false;
+  try {
+    const source = world ?? {};
+    const coverageDescriptor = Object.getOwnPropertyDescriptor(source, 'historyCoverage');
+    if (coverageDescriptor) {
+      if (!Object.hasOwn(coverageDescriptor, 'value')) return { status: 'invalid', world };
+      hasCoverageMetadata = true;
+    }
+    const eventsDescriptor = Object.getOwnPropertyDescriptor(source, 'events');
+    if (!eventsDescriptor) return { status: hasCoverageMetadata ? 'invalid' : 'absent', world };
+    if (!Object.hasOwn(eventsDescriptor, 'value') || !Array.isArray(eventsDescriptor.value)) {
+      return { status: 'invalid', world };
+    }
+    events = eventsDescriptor.value;
+    const revisionDescriptor = Object.getOwnPropertyDescriptor(source, 'revision');
+    if (revisionDescriptor && Object.hasOwn(revisionDescriptor, 'value')) revision = revisionDescriptor.value;
+  } catch {
+    return { status: 'invalid', world };
+  }
+
+  let hasMetadata = false;
+  for (let index = 0; index < events.length; index += 1) {
+    let slot;
+    try { slot = Object.getOwnPropertyDescriptor(events, String(index)); }
+    catch { return { status: 'invalid', world }; }
+    if (!slot || !Object.hasOwn(slot, 'value')) continue;
+    const event = slot.value;
+    if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
+    let descriptor;
+    try { descriptor = Object.getOwnPropertyDescriptor(event, 'historyPosition'); }
+    catch { return { status: 'invalid', world }; }
+    if (descriptor) hasMetadata = true;
+  }
+  if (!hasMetadata) return { status: hasCoverageMetadata ? 'invalid' : 'absent', world };
+
+  const positions = retainedWorldEventHistoryPositions(world, events);
+  if (!Number.isSafeInteger(revision) || revision !== events.length ||
+      positions.length !== events.length ||
+      positions.some((position, index) => position !== index + 1)) return { status: 'invalid', world };
+
+  const canonicalEvents = [];
+  for (let index = 0; index < events.length; index += 1) {
+    let slot;
+    try { slot = Object.getOwnPropertyDescriptor(events, String(index)); }
+    catch { return { status: 'invalid', world }; }
+    if (!slot || !Object.hasOwn(slot, 'value')) return { status: 'invalid', world };
+    const event = slot.value;
+    if (!event || typeof event !== 'object' || Array.isArray(event)) return { status: 'invalid', world };
+    let copy;
+    try { copy = { ...event }; }
+    catch { return { status: 'invalid', world }; }
+    delete copy.historyPosition;
+    canonicalEvents.push(copy);
+  }
+  let canonicalWorld;
+  try {
+    canonicalWorld = { ...world, events: canonicalEvents };
+    delete canonicalWorld.historyCoverage;
+  } catch {
+    return { status: 'invalid', world };
+  }
+  return { status: 'stripped', world: canonicalWorld };
+}
+
 function countBy(events, field, predicate = () => true) {
   const counts = new Map();
   for (const event of events) {
@@ -202,9 +416,14 @@ function validReport(event) {
  * logic, not adjudication: invalid or ambiguous records remain visible, but
  * their context is not guessed.
  */
-export function projectResearchRecords(input, retainedCreations = []) {
+export function projectResearchRecords(input, retainedCreations = [], {
+  allowLocalPositions = true,
+  revision,
+  revisionPresent = false
+} = {}) {
   const eventEntries = snapshotArrayEntries(input, MAX_EVENT_COUNT);
   const events = eventEntries.map(entry => entry.value);
+  const historyPositions = retainedEventHistoryPositions(events, { allowLocalPositions, revision, revisionPresent });
   const unsafeEvents = new WeakSet();
   eventEntries.forEach(entry => {
     if (!entry.safe && entry.value && typeof entry.value === 'object') unsafeEvents.add(entry.value);
@@ -325,14 +544,48 @@ export function projectResearchRecords(input, retainedCreations = []) {
     if (!proposal || proposal.index >= index) return;
     reportById.set(event.reportId, { event, index });
   });
+  const challengeDetailsAreValid = event => {
+    const hasResolutionRequest = Object.hasOwn(event, 'resolutionRequest');
+    const resolutionRequestValid = !hasResolutionRequest ||
+      (hasText(event.resolutionRequest) &&
+        event.resolutionRequest.trim() === event.resolutionRequest &&
+        Array.from(event.resolutionRequest).length <= 1000);
+    return !unsafeEvents.has(event) &&
+      event?.type === 'experiment-challenged' &&
+      hasText(event.actor?.id) &&
+      ['founder', 'witness'].includes(event.actor.role) &&
+      EXPERIMENT_CHALLENGE_TYPES.has(event.challengeType) &&
+      hasText(event.challengeText) &&
+      Array.from(event.challengeText).length <= 1000 &&
+      resolutionRequestValid;
+  };
+  const challengeEvidenceIsValid = (event, evidenceStatus) =>
+    evidenceStatus === 'linked' ||
+    (evidenceStatus === 'not-provided' &&
+      (event.evidenceCreationId === undefined || event.evidenceCreationId === null) &&
+      (event.evidenceVersion === undefined || event.evidenceVersion === null));
+
+  // A response may link only to a complete, source-valid challenge. Check the
+  // unsafe/null boundary before reading any event field or artifact reference.
+  const challengeCanAnchorResponse = (event, index) => {
+    if (unsafeEvents.has(event) || event?.type !== 'experiment-challenged') return false;
+    if (!eventIdentityIsUnique(event, eventIdCounts) ||
+        !hasText(event.challengeId) ||
+        challengeCounts.get(event.challengeId) !== 1 ||
+        !hasText(event.reportId) ||
+        !challengeDetailsAreValid(event) ||
+        !validTime(event.at)) return false;
+    const evidenceStatus = artifactStatusFor(event, index, 'evidenceCreationId', 'evidenceVersion');
+    if (!challengeEvidenceIsValid(event, evidenceStatus)) return false;
+    const report = reportById.get(event.reportId);
+    return Boolean(report && report.index < index &&
+      report.event.moonshotId === event.moonshotId &&
+      !sameResearchActor(report.event.actor, event.actor));
+  };
   const challengeById = new Map();
   events.forEach((event, index) => {
-    if (unsafeEvents.has(event) || event?.type !== 'experiment-challenged' ||
-        !eventIdentityIsUnique(event, eventIdCounts) || !hasText(event.challengeId) ||
-        challengeCounts.get(event.challengeId) !== 1 || !hasText(event.reportId)) return;
+    if (!challengeCanAnchorResponse(event, index)) return;
     const report = reportById.get(event.reportId);
-    if (!report || report.index >= index || report.event.moonshotId !== event.moonshotId ||
-        sameResearchActor(report.event.actor, event.actor) || !validTime(event.at)) return;
     challengeById.set(event.challengeId, { event, index, report });
   });
 
@@ -375,9 +628,7 @@ export function projectResearchRecords(input, retainedCreations = []) {
       let targetChallengeStatus = 'not-applicable';
       if (event.type === 'experiment-challenged') {
         if (!recordSafe || !eventIdUnique || !hasText(event.challengeId) || challengeCounts.get(event.challengeId) !== 1) targetReportStatus = 'ambiguous';
-        else if (!hasText(event.actor?.id) || !['founder', 'witness'].includes(event.actor.role) ||
-            !['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'].includes(event.challengeType) ||
-            !hasText(event.challengeText) || Array.from(event.challengeText).length > 1000) targetReportStatus = 'invalid-challenge';
+        else if (!challengeDetailsAreValid(event)) targetReportStatus = 'invalid-challenge';
         else if (!hasText(event.reportId)) targetReportStatus = 'missing';
         else if (reportCounts.get(event.reportId) > 1) targetReportStatus = 'ambiguous';
         else {
@@ -417,10 +668,19 @@ export function projectResearchRecords(input, retainedCreations = []) {
         }
       }
 
+      const evidenceStatus = event.type === 'experiment-reported' || event.type === 'experiment-challenged'
+        ? recordSafe ? artifactStatusFor(event, index, 'evidenceCreationId', 'evidenceVersion') : 'invalid'
+        : 'not-applicable';
+      const challengeStatus = event.type !== 'experiment-challenged' ? 'not-applicable'
+        : targetReportStatus !== 'linked' ? targetReportStatus
+          : challengeEvidenceIsValid(event, evidenceStatus) ? 'linked' : 'invalid-evidence';
+
       return Object.freeze({
         ...event,
+        historyPosition: historyPositions[index],
         _projection: Object.freeze({
           index,
+          historyPosition: historyPositions[index],
           eventIdUnique,
           recordSafe,
           reportIdUnique: event.type === 'experiment-reported'
@@ -430,9 +690,8 @@ export function projectResearchRecords(input, retainedCreations = []) {
           proposalStatus,
           sourceStatus: event.type === 'moonshot-proposed' ? artifactStatusFor(event, index, 'sourceCreationId', 'sourceVersion') : event.type === 'source-archive-predicate-evaluated' ? artifactStatusFor(event, index, 'creationId', 'version') : 'not-applicable',
           predicateStatus: predicateStatusFor(event, index),
-          evidenceStatus: event.type === 'experiment-reported' || event.type === 'experiment-challenged'
-            ? artifactStatusFor(event, index, 'evidenceCreationId', 'evidenceVersion')
-            : 'not-applicable',
+          evidenceStatus,
+          challengeStatus,
           targetReport,
           targetReportStatus,
           targetChallenge,
@@ -702,7 +961,8 @@ export function parseSourceObservatoryExport(input) {
 // does not prove that its contents originated from the selected artifact.
 export function sourceObservationRequestMaterial({
   actorId, actorRole, creationId, version, claim, sourceKind, source,
-  falsifier = null, uncertainty = null, nextTest = null
+  falsifier = null, uncertainty = null, nextTest = null, sourceSnapshotRevision,
+  originFailureEventId
 }) {
   const required = (value, label) => {
     if (typeof value !== 'string' || !value.trim()) throw new TypeError(label + ' is required.');
@@ -716,8 +976,17 @@ export function sourceObservationRequestMaterial({
   if (!['founder', 'witness'].includes(actorRole)) throw new TypeError('Actor role must be Founder or Witness.');
   if (!Number.isSafeInteger(version) || version < 1) throw new TypeError('Version must be a positive integer.');
   if (!sourceObservationSourceKinds.has(sourceKind)) throw new TypeError('Unknown source class.');
-  return JSON.stringify({
-    protocol: 'ngl.source-observation-id.v1',
+  const snapshotBound = sourceSnapshotRevision !== undefined;
+  if (snapshotBound && (!Number.isSafeInteger(sourceSnapshotRevision) || sourceSnapshotRevision < 0)) {
+    throw new TypeError('Source snapshot revision must be a nonnegative safe integer.');
+  }
+  const failureOriginBound = originFailureEventId !== undefined;
+  if (failureOriginBound && (!snapshotBound || !isValidSourceFailureEventId(originFailureEventId))) {
+    throw new TypeError('Failure event ID must be a valid retained event identifier and requires a source snapshot revision.');
+  }
+  const material = {
+    protocol: failureOriginBound ? 'ngl.source-observation-id.v3' :
+      snapshotBound ? 'ngl.source-observation-id.v2' : 'ngl.source-observation-id.v1',
     actorId: required(actorId, 'Actor ID'),
     actorRole: required(actorRole, 'Actor role'),
     creationId: required(creationId, 'Creation ID'),
@@ -728,14 +997,22 @@ export function sourceObservationRequestMaterial({
     falsifier: optional(falsifier, 'Falsifier'),
     uncertainty: optional(uncertainty, 'Uncertainty'),
     nextTest: optional(nextTest, 'Next test')
-  });
+  };
+  if (snapshotBound) material.sourceSnapshotRevision = sourceSnapshotRevision;
+  if (failureOriginBound) material.originFailureEventId = originFailureEventId;
+  return JSON.stringify(material);
 }
 
-export function projectSourceObservationRecords(eventsInput, creationsInput) {
+export function projectSourceObservationRecords(eventsInput, creationsInput, {
+  allowLocalPositions = true,
+  revision,
+  revisionPresent = false
+} = {}) {
   const eventEntries = snapshotArrayEntries(eventsInput, MAX_EVENT_COUNT);
   const creationEntries = snapshotArrayEntries(creationsInput, MAX_RETAINED_CREATIONS);
   const events = eventEntries.map(entry => entry.value);
   const creations = creationEntries.map(entry => entry.value);
+  const historyPositions = retainedEventHistoryPositions(events, { allowLocalPositions, revision, revisionPresent });
   const unsafeEvents = new WeakSet();
   const unsafeCreations = new WeakSet();
   eventEntries.forEach(entry => {
@@ -745,6 +1022,13 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
     if (!entry.safe && entry.value && typeof entry.value === 'object') unsafeCreations.add(entry.value);
   });
   const eventIdCounts = countBy(events, 'id', hasText);
+  const eventsById = new Map();
+  events.forEach((candidate, index) => {
+    if (!hasText(candidate?.id)) return;
+    const matches = eventsById.get(candidate.id) || [];
+    matches.push({ event: candidate, index });
+    eventsById.set(candidate.id, matches);
+  });
   const observationEvents = events.filter(event => event?.type === 'source-observation-recorded');
   const observationIdCounts = countBy(observationEvents, 'observationId', hasText);
   const sourceObservationChallengeEvents = events.filter(event => event?.type === 'source-observation-challenged');
@@ -800,12 +1084,18 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       isStrictTimestamp(event.at) &&
       typeof event.creationId === 'string' && event.creationId &&
       Number.isSafeInteger(event.version) && event.version > 0 &&
+      (event.sourceSnapshotRevision === undefined ||
+        (Number.isSafeInteger(event.sourceSnapshotRevision) && event.sourceSnapshotRevision >= 0 &&
+         Number.isSafeInteger(historyPositions[index]) && event.sourceSnapshotRevision < historyPositions[index])) &&
+      (event.originFailureEventId === undefined ||
+        (isValidSourceFailureEventId(event.originFailureEventId) &&
+         Number.isSafeInteger(event.sourceSnapshotRevision))) &&
       typeof event.claim === 'string' && event.claim.trim() && Array.from(event.claim).length <= 500 &&
       sourceObservationSourceKinds.has(event.sourceKind) &&
       typeof event.source === 'string' && event.source.trim() && Array.from(event.source).length <= 500 &&
       optionalText(event.falsifier) && optionalText(event.uncertainty) && optionalText(event.nextTest) &&
       event.originSchema === 'ngl.source-observatory.v2' &&
-      event.bindingMode === 'USER_SELECTED' &&
+      isValidSourceObservationBinding(event) &&
       event.sourceRetrieval === 'NOT_PERFORMED' &&
       event.independentVerification === 'NOT_PERFORMED' &&
       event.modelAssertions === 'LEADS_ONLY' &&
@@ -825,6 +1115,39 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       projectionStatus = 'ambiguous';
       projectionReason = 'The event or normalized note identity is repeated.';
     }
+    let failureOriginStatus = 'not-linked';
+    let failureOriginReason = null;
+    if (event.originFailureEventId !== undefined) {
+      if (!isValidSourceFailureEventId(event.originFailureEventId) ||
+          !Number.isSafeInteger(event.sourceSnapshotRevision)) {
+        failureOriginStatus = 'malformed';
+        failureOriginReason = 'The failure-origin link is not a valid snapshot-bound event identifier.';
+      } else {
+        const matches = eventsById.get(event.originFailureEventId) || [];
+        if (matches.length === 0) {
+          failureOriginStatus = 'missing';
+          failureOriginReason = 'The referenced Source Archive failure event is not present in this retained snapshot.';
+        } else if (matches.length !== 1) {
+          failureOriginStatus = 'ambiguous';
+          failureOriginReason = 'The referenced event identifier is repeated in retained history.';
+        } else if (unsafeEvents.has(matches[0].event)) {
+          failureOriginStatus = 'malformed';
+          failureOriginReason = 'The referenced failure event cannot be safely inspected.';
+        } else if (matches[0].event?.type !== 'source-archive-attempt-failed') {
+          failureOriginStatus = 'wrong-type';
+          failureOriginReason = 'The referenced event is not a Source Archive retrieval failure.';
+        } else if (matches[0].index >= index) {
+          failureOriginStatus = 'not-earlier';
+          failureOriginReason = 'The referenced Source Archive failure does not precede this observation in retained event order.';
+        } else if (!Number.isSafeInteger(historyPositions[matches[0].index]) ||
+                   event.sourceSnapshotRevision < historyPositions[matches[0].index]) {
+          failureOriginStatus = 'snapshot-excluded';
+          failureOriginReason = 'The declared source snapshot prefix does not include the exact failure event.';
+        } else {
+          failureOriginStatus = 'linked';
+        }
+      }
+    }
     const key = JSON.stringify([event.creationId, event.version]);
     const target = versions.get(key);
     const publicationRows = publications.get(key) || [];
@@ -837,12 +1160,22 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
     } else if (projectionStatus === 'linked' && publicationRows.length !== 1) {
       projectionStatus = publicationRows.length ? 'ambiguous' : 'unavailable';
       projectionReason = 'The selected version does not have one unique retained publication event.';
+    } else if (projectionStatus === 'linked' && event.sourceSnapshotRevision !== undefined &&
+      event.sourceSnapshotRevision < historyPositions[publicationRows[0].index]) {
+      projectionStatus = 'unavailable';
+      projectionReason = 'The declared snapshot prefix predates the selected publication.';
     } else if (projectionStatus === 'linked' &&
       (publicationRows[0].index >= index || unsafeEvents.has(publicationRows[0].event) || publicationRows[0].event.actor?.role !== 'founder' ||
        !isStrictTimestamp(target.version.publishedAt) ||
        publicationRows[0].event.at !== target.version.publishedAt)) {
       projectionStatus = 'unavailable';
       projectionReason = 'The source publication does not precede this note in retained history or its timestamp does not match the retained version.';
+    }
+    if (projectionStatus === 'linked' && event.originFailureEventId !== undefined &&
+        failureOriginStatus !== 'linked') {
+      projectionStatus = failureOriginStatus === 'ambiguous' ? 'ambiguous' :
+        failureOriginStatus === 'malformed' ? 'malformed' : 'unavailable';
+      projectionReason = failureOriginReason || 'The exact Source Archive failure origin is not linked.';
     }
     // The retained event index is the canonical sequence. Strict timestamps remain metadata;
     // a wall-clock regression must not hide later appended dissent or an author response.
@@ -866,7 +1199,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
         Array.from(response.responseText).length <= 1000 && isStrictTimestamp(response.at) &&
         responseIndex > challengeIndex
       ).map(({ event: response, index: responseIndex }) => Object.freeze({
-        id: response.id, type: response.type, historyPosition: responseIndex + 1, responseId: response.responseId,
+        id: response.id, type: response.type, historyPosition: historyPositions[responseIndex], responseId: response.responseId,
         challengeId: response.challengeId, observationId: response.observationId,
         creationId: response.creationId, version: response.version,
         responseText: response.responseText, actor: response.actor, at: response.at
@@ -874,7 +1207,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       const responseStatus = responseRows.length === 0 ? 'unanswered' :
         responseRows.length === 1 && responses.length === 1 ? 'answered' : 'ambiguous';
       return Object.freeze({
-        id: challenge.id, historyPosition: challengeIndex + 1, challengeId: challenge.challengeId, observationId: challenge.observationId,
+        id: challenge.id, historyPosition: historyPositions[challengeIndex], challengeId: challenge.challengeId, observationId: challenge.observationId,
         creationId: challenge.creationId, version: challenge.version, challengeType: challenge.challengeType,
         challengeText: challenge.challengeText, actor: challenge.actor, at: challenge.at,
         responseStatus, responses: Object.freeze(responses)
@@ -887,10 +1220,14 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
         : 'This is an author-entered note, not an independently verified claim.';
     records.push(Object.freeze({
       id: event.id,
-      historyPosition: index + 1,
+      historyPosition: historyPositions[index],
       observationId: event.observationId,
       creationId: event.creationId,
       version: event.version,
+      sourceSnapshotRevision: event.sourceSnapshotRevision ?? null,
+      originFailureEventId: event.originFailureEventId ?? null,
+      failureOriginStatus,
+      failureOriginReason,
       claim: event.claim,
       sourceKind: event.sourceKind,
       source: event.source,
@@ -901,6 +1238,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       at: event.at,
       originSchema: event.originSchema,
       bindingMode: event.bindingMode,
+      sourceSnapshotReceiptDigest: event.sourceSnapshotReceiptDigest ?? null,
       sourceRetrieval: event.sourceRetrieval,
       independentVerification: event.independentVerification,
       modelAssertions: event.modelAssertions,

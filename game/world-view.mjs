@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { sameResearchActor } from './research-records.mjs';
+import { GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
 
 export const WORLD_WIDTH=1600,WORLD_HEIGHT=1000,PLAYER_MOVE_SPEED=175,MAX_FRAME_DELTA_SECONDS=0.25;
 export const COMBAT_YARD_ACTION_RADIUS=160;
@@ -17,24 +18,24 @@ export const PLACES=[
  {id:'ruins',name:'The Unfinished',x:1280,y:810,type:'discovery'},
  {id:'town-square',name:'TownSquare · Institution Records',x:1040,y:440,type:'institution',purpose:'Projects, evidence, disputes and scoped decisions.',glyph:'T',color:'#356e62'},
  {id:'quest_board',name:'Quest Board',x:700,y:430,type:'institution',purpose:'Read actor-scoped objectives and route to real work; progress comes from retained activity, never from inspecting the board.',glyph:'Q',color:'#6b805d'},
- {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Prepare bounded collaborator packets, preserve attributed responses, and review the limits of collaborator authority.',glyph:'G',color:'#356e62'},
+ {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Prepare bounded collaborator packets, preserve attributed responses, and review the limits of collaborator authority. The Synthesis Clerk can inspect the dated public project-state snapshot bundled with this build and prepare an unsubmitted evidence lead for the Source Observatory; this is not live CI, independent verification, or engineering acceptance.',glyph:'G',color:'#356e62'},
  {id:'council_chamber',name:'Council Chamber',x:500,y:190,type:'institution',purpose:'Review actor-attributed Guild Hall role attempts, contradictions, unknowns and preserved dissent; deliberation only, never consensus or authority.',glyph:'C',color:'#536b68'},
- {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
+ {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts; this is not engineering acceptance or external deployment.',glyph:'F',color:'#c76a35'},
  {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain actor-attributed Source Observatory notes, challenges, author responses, reports, shared-service-observed failed Source Archive retrievals, byte-predicate results, dissent and collaborator packets. The Contradiction Clerk offers a fixed local challenge checklist here; byte receipts identify bytes, not truth.',glyph:'E',color:'#6b805d'},
  {id:'source_observatory',name:'Source Observatory',x:1230,y:160,type:'institution',purpose:'Record falsifiable, actor-attributed research notes against exact retained publications; preserve uncertainty and dissent without certifying truth.',glyph:'O',color:'#6b805d'},
- {id:'decision_chamber',name:'Founder Gate',x:780,y:180,type:'institution',purpose:'Decision Chamber for human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
+ {id:'decision_chamber',name:'Founder Gate',x:780,y:180,type:'institution',purpose:'Decision Chamber for human-gated decisions and scoped authority at Founder Gate, including consequential external deployment; a recorded decision is separate from evidence and execution.',glyph:'D',color:'#29443d'},
  {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work; visits do not certify mastery.',glyph:'A',color:'#7c876a'},
  {id:'moonshot_field',name:'Moonshot Field',x:1460,y:430,type:'institution',purpose:'Draft testable research questions and run bounded literal predicates against retained server-rechecked Source Archive bytes; byte matches are not claim verdicts.',glyph:'M',color:'#356e62'},
  {id:'combat_yard',name:'Combat Yard',x:620,y:790,type:'institution',purpose:'Run bounded deterministic training encounters; only explicit player moves create retained combat events and first-victory game XP.',glyph:'C',color:'#8f4d3b'},
- {id:'publication_house',name:'Publication House',x:250,y:870,type:'institution',purpose:'Browse published artifacts and preserved versions.',glyph:'P',color:'#c76a35'}
+ {id:'publication_house',name:'Publication House',x:250,y:870,type:'institution',purpose:'In-world circulation only: Browse published artifacts and preserved versions; this is not external deployment, adoption, public impact, contracts, licensing, or revenue.',glyph:'P',color:'#c76a35'}
 ];
 const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  // Guild Hall: research proposals, reported attempts, and explicit dissent.
- guild_hall:event=>['proposal','claim','moonshot-proposed','experiment-reported','experiment-challenged','experiment-challenge-responded','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='PROPOSAL'||event?.event_type==='CLAIM',
+ guild_hall:event=>['proposal','claim','moonshot-proposed','experiment-reported','experiment-challenged','experiment-challenge-responded','collaborator-response-recorded','guild-created','guild-joined','guild-left','guild-disbanded','guild-leadership-transfer-offered','guild-leadership-transfer-cancelled','guild-leadership-transfer-declined','guild-leadership-transferred'].includes(event?.type)||event?.event_type==='PROPOSAL'||event?.event_type==='CLAIM',
  // Council Chamber: retained, uniquely identified role attempts; never votes or consensus.
  council_chamber:event=>event?.type==='collaborator-response-recorded',
  // Forge: the artifact lifecycle, including its explicit publication step.
- forge:event=>['draft','repair','publish','field-item-forged','field-item-equipped','field-item-unequipped'].includes(event?.type)||event?.execution==='EXECUTED',
+ forge:event=>['draft','repair','publish','field-item-forged','field-item-equipped','field-item-unequipped','field-item-transfer-offered','field-item-transfer-cancelled','field-item-transfer-declined','field-item-transferred'].includes(event?.type)||event?.execution==='EXECUTED',
  // Evidence Archive: Source Observatory notes, linked challenges/responses, reports, failed retrieval attempts, dissent and retained publications.
  evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged','experiment-challenge-responded','source-observation-recorded','source-observation-challenged','source-observation-challenge-responded','source-archive-attempt-failed','source-archive-predicate-evaluated','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
  // Source Observatory: authored observations and adversarial follow-up, never a truth ledger.
@@ -42,7 +43,7 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  // Decision Chamber: decision-service records and the recovered authorization/revocation vocabulary.
  decision_chamber:event=>['decision','revocation','policy-set','proposal-created','decision-attempted','expiry-observed'].includes(event?.type)||event?.event_type==='REVOCATION'||(event?.authority==='AUTHORIZED'&&event?.execution!=='EXECUTED'),
  // TownSquare: public contributions, reports, disputes, and scoped decision activity.
- 'town-square':event=>['contribute','report','experiment-challenged','experiment-challenge-responded','decision-attempted','revocation'].includes(event?.type)||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
+ 'town-square':event=>['contribute','report','experiment-challenged','experiment-challenge-responded','decision-attempted','revocation','message-posted','message-reported','message-moderated','message-report-reviewed'].includes(event?.type)||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
  academy:event=>['study','study-reviewed','learning','skill-evidence'].includes(event?.type)||event?.event_type==='LEARNING'||event?.event_type==='SKILL_EVIDENCE',
  moonshot_field:event=>['experiment','moonshot','moonshot-proposed','experiment-reported','experiment-challenged','experiment-challenge-responded','source-archive-predicate-evaluated'].includes(event?.type)||event?.event_type==='MOONSHOT',
  publication_house:event=>event?.type==='publish'||event?.event_type==='PUBLICATION'||event?.event_type==='SATIRE',
@@ -73,6 +74,30 @@ function ownDataValue(object,key){
  }catch{return undefined;}
 }
 function isArraySafely(value){try{return Array.isArray(value)}catch{return false}}
+const INSTITUTION_EVENT_ROUTE_FIELDS=Object.freeze(['type','event_type','execution','evidence','admission','outcome']);
+export function institutionDestinationsForEvent(event,stream='world'){
+ const matchers=stream==='kernel'?INSTITUTION_KERNEL_EVENT_MATCHERS:stream==='world'?INSTITUTION_EVENT_MATCHERS:null;
+ if(!matchers)return Object.freeze([]);
+ const snapshot=Object.create(null);
+ for(const key of INSTITUTION_EVENT_ROUTE_FIELDS){
+  const value=ownDataValue(event,key);
+  if(value!==undefined)snapshot[key]=value;
+ }
+ const destinations=[];
+ for(const [id,matcher] of Object.entries(matchers)){
+  let matches=false;
+  try{matches=matcher(snapshot)===true}catch{}
+  if(!matches)continue;
+  const place=PLACES.find(candidate=>candidate.id===id&&candidate.type==='institution');
+  if(!place)continue;
+  destinations.push(Object.freeze({
+   id:place.id,
+   name:place.id==='town-square'?'TownSquare':place.name,
+   purpose:typeof place.purpose==='string'?place.purpose:''
+  }));
+ }
+ return Object.freeze(destinations);
+}
 const DECISION_SUMMARY_SCHEMA='ngl.decisions.summary.v1';
 const DECISION_STATUSES=Object.freeze(['PENDING','APPROVED','REJECTED','DEFERRED','EXPIRED']);
 function decisionSummaryState(summary){
@@ -220,6 +245,191 @@ const SOURCE_ARCHIVE_FAILURE_STATUS_LABELS=Object.freeze({
  SOURCE_ARCHIVE_BUILD_FAILED:'RETRYABLE · ARCHIVE BUILD FAILED'
 });
 const SOURCE_ARCHIVE_FAILURE_PAGE_SIZE=12;
+const SOURCE_ARCHIVE_FAILURE_CAPTURE_MATCH_BUDGET=100_000;
+
+function isPlainProjectionRecord(value){
+ try{
+  const prototype=Object.getPrototypeOf(value);
+  return prototype===Object.prototype||prototype===null;
+ }catch{return false;}
+}
+
+function hasTrustedRoleFilteredHistoryCoverage(world,revision,eventCount){
+ try{
+  const descriptor=Object.getOwnPropertyDescriptor(world,'historyCoverage');
+  if(!descriptor||!Object.hasOwn(descriptor,'value'))return false;
+  const marker=descriptor.value;
+  if(!isPlainProjectionRecord(marker))return false;
+  const expectedKeys=[
+   'schema','sourceComplete','sourceEventCount','suppliedEventCount',
+   'omittedEventCount','omittedEventTypes','viewerRole'
+  ];
+  const markerKeys=Reflect.ownKeys(marker);
+  if(markerKeys.length!==expectedKeys.length||markerKeys.some(key=>!expectedKeys.includes(key)))return false;
+  const read=key=>{
+   const field=Object.getOwnPropertyDescriptor(marker,key);
+   return field&&Object.hasOwn(field,'value')?field.value:undefined;
+  };
+  const omittedTypes=read('omittedEventTypes');
+  if(!isPlainProjectionRecord(omittedTypes))return false;
+  const allowedTypes=new Set(['draft','repair','message-reported','message-report-reviewed']);
+  const omittedKeys=Reflect.ownKeys(omittedTypes);
+  let omittedCount=0;
+  for(const key of omittedKeys){
+   if(typeof key!=='string'||!allowedTypes.has(key))return false;
+   const field=Object.getOwnPropertyDescriptor(omittedTypes,key);
+   if(!field||!Object.hasOwn(field,'value')||!Number.isSafeInteger(field.value)||field.value<0)return false;
+   omittedCount+=field.value;
+  }
+  const declaredOmitted=read('omittedEventCount');
+  return read('schema')==='ngl.public-world-history.v1'&&
+   read('sourceComplete')===true&&
+   read('sourceEventCount')===revision&&
+   read('suppliedEventCount')===eventCount&&
+   declaredOmitted===revision-eventCount&&
+   read('viewerRole')==='witness'&&
+   declaredOmitted>0&&omittedCount===declaredOmitted;
+ }catch{return false;}
+}
+
+function projectServerRecheckedSourceArchivePublications(world,events,eventCount,eventIdCounts,historyPositions){
+ let complete=true;
+ const creations=ownDataValue(world,'creations');
+ if(!isArraySafely(creations))return {complete:false,captures:[],reason:null};
+ const creationCount=ownDataValue(creations,'length');
+ if(!Number.isSafeInteger(creationCount)||creationCount<0||creationCount>MAX_WORLD_EVENT_SCAN)return {complete:false,captures:[],reason:null};
+ const sourceVersions=new Map();
+ const sourceCreationIds=new Set();
+ const creationIdCounts=new Map();
+ let scannedVersionCount=0;
+ let reason=null;
+ for(let creationIndex=0;creationIndex<creationCount;creationIndex++){
+  const creation=ownDataValue(creations,String(creationIndex));
+  if(!creation||typeof creation!=='object'||isArraySafely(creation)||!isPlainProjectionRecord(creation)){
+   complete=false;reason||='unsafe-retained-version-object';continue;
+  }
+  if(unsafeOwnAccessor(creation,'id')){complete=false;continue;}
+  const creationId=ownDataValue(creation,'id');
+  if(typeof creationId!=='string'||!creationId.trim()||creationId.length>128){complete=false;continue;}
+  creationIdCounts.set(creationId,(creationIdCounts.get(creationId)||0)+1);
+  if(unsafeOwnAccessor(creation,'versions'))complete=false;
+  const priorVersions=ownDataValue(creation,'versions');
+  if(priorVersions!==undefined&&!isArraySafely(priorVersions)){complete=false;continue;}
+  const priorVersionCount=priorVersions===undefined?0:ownDataValue(priorVersions,'length');
+  if(!Number.isSafeInteger(priorVersionCount)||priorVersionCount<0||priorVersionCount>MAX_WORLD_EVENT_SCAN){complete=false;continue;}
+  const versionCount=priorVersionCount+1;
+  if(versionCount>MAX_WORLD_EVENT_SCAN-scannedVersionCount){
+   // Per-creation limits alone multiply across the world. Exhaustion makes every
+   // later-capture conclusion UNKNOWN and withholds even an otherwise-found link.
+   complete=false;
+   reason='retained-version-scan-budget-exhausted';
+   break;
+  }
+  scannedVersionCount+=versionCount;
+  for(let versionIndex=0;versionIndex<=priorVersionCount;versionIndex++){
+   const version=versionIndex===priorVersionCount?creation:ownDataValue(priorVersions,String(versionIndex));
+   if(!version||typeof version!=='object'||isArraySafely(version)||!isPlainProjectionRecord(version)){
+    complete=false;reason||='unsafe-retained-version-object';sourceCreationIds.add(creationId);continue;
+   }
+   if(['kind','intent','html'].some(key=>unsafeOwnAccessor(version,key))){
+    complete=false;reason||='unsafe-retained-version-object';sourceCreationIds.add(creationId);continue;
+   }
+   const kind=ownDataValue(version,'kind')??ownDataValue(creation,'kind');
+   const intent=ownDataValue(version,'intent');
+   const html=ownDataValue(version,'html');
+   const hasSourceArchiveSignal=
+    (typeof intent==='string'&&intent.startsWith(GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX))||
+    (typeof html==='string'&&html.includes('data-ngl-source-archive="v1"'));
+   if(!hasSourceArchiveSignal)continue;
+   sourceCreationIds.add(creationId);
+   const versionNumber=ownDataValue(version,'version');
+   const versionId=ownDataValue(version,'id');
+   const publishedAt=ownDataValue(version,'publishedAt');
+   const receipt=ownDataValue(version,'receipt');
+   const receiptDigest=ownDataValue(receipt,'digest');
+   if(unsafeOwnAccessor(version,'id')||unsafeOwnAccessor(version,'version')||
+      unsafeOwnAccessor(version,'publishedAt')||unsafeOwnAccessor(version,'receipt')||
+      unsafeOwnAccessor(receipt,'digest')||unsafeOwnAccessor(version,'kind')||
+      unsafeOwnAccessor(creation,'kind')||
+      kind!=='custom'||typeof intent!=='string'||
+      !intent.startsWith(GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX)||
+      typeof html!=='string'||!html.includes('data-ngl-source-archive="v1"')||
+      versionId!==creationId||!Number.isSafeInteger(versionNumber)||versionNumber<1||
+      !isStrictTimestamp(publishedAt)||typeof receiptDigest!=='string'||!/^[a-f0-9]{64}$/.test(receiptDigest)){
+    complete=false;
+    continue;
+   }
+   let metadata;
+   try{metadata=readGitHubSourceArchiveMetadata(html)}catch{complete=false;continue;}
+   const key=JSON.stringify([creationId,versionNumber]);
+   const versions=sourceVersions.get(key)||[];
+   versions.push({creationId,version:versionNumber,publishedAt,metadata});
+   sourceVersions.set(key,versions);
+  }
+ }
+ for(const [creationId,count] of creationIdCounts){
+  if(count>1&&sourceCreationIds.has(creationId))complete=false;
+ }
+ const publicationRows=new Map();
+ for(let index=0;index<eventCount;index++){
+  const event=ownDataValue(events,String(index));
+  if(ownDataValue(event,'type')!=='publish')continue;
+  const creationId=ownDataValue(event,'creationId');
+  const version=ownDataValue(event,'version');
+  if(typeof creationId!=='string'||!Number.isSafeInteger(version)||version<1){
+   complete=false;
+   reason||='unlinked-published-artifact';
+   continue;
+  }
+  const key=JSON.stringify([creationId,version]);
+  if(!sourceVersions.has(key)){
+   const retainedCreationCount=creationIdCounts.get(creationId)||0;
+   if(sourceCreationIds.has(creationId)||retainedCreationCount!==1){
+    complete=false;
+    reason||='unlinked-published-artifact';
+   }
+   continue;
+  }
+  const publications=publicationRows.get(key)||[];
+  publications.push({event,index});
+  publicationRows.set(key,publications);
+ }
+ const captures=[];
+ for(const [key,versions] of sourceVersions){
+  if(versions.length!==1){complete=false;continue;}
+  const version=versions[0];
+  const publications=publicationRows.get(key)||[];
+  if(publications.length!==1){complete=false;continue;}
+  const publication=publications[0];
+  const event=publication.event;
+  const eventId=ownDataValue(event,'id');
+  const eventCreationId=ownDataValue(event,'creationId');
+  const eventVersion=ownDataValue(event,'version');
+  const eventAt=ownDataValue(event,'at');
+  const actor=ownDataValue(event,'actor');
+  const actorId=ownDataValue(actor,'id');
+  const actorRole=ownDataValue(actor,'role');
+  const valid=typeof eventId==='string'&&WORLD_OBJECT_ID.test(eventId)&&eventIdCounts.get(eventId)===1&&
+   eventCreationId===version.creationId&&eventVersion===version.version&&
+   actor&&typeof actor==='object'&&!isArraySafely(actor)&&
+   typeof actorId==='string'&&actorId.length>0&&actorRole==='founder'&&
+   isStrictTimestamp(eventAt)&&eventAt===version.publishedAt&&
+   Number.isInteger(publication.index)&&publication.index>=0;
+  if(!valid){complete=false;continue;}
+  if(version.metadata.retrievalMode==='SERVER_RECHECKED'){
+   captures.push(Object.freeze({
+    creationId:version.creationId,version:version.version,publicationEventId:eventId,
+    publicationPosition:historyPositions?.[publication.index]??publication.index+1,actorId,
+    repository:version.metadata.repository,commitSha:version.metadata.commitSha,path:version.metadata.path,
+    fetchedAt:version.metadata.fetchedAt,capturedAt:version.metadata.capturedAt,
+    captureId:version.metadata.captureId,gitBlobSha:version.metadata.gitBlobSha,
+    sha256:version.metadata.sha256,size:version.metadata.size
+   }));
+  }
+ }
+ return {complete,captures:Object.freeze(captures),reason};
+}
+
 
 function validSourceArchiveFailurePath(value){
  return typeof value==='string'&&value.length>0&&value.length<=240&&
@@ -233,7 +443,7 @@ function validSourceArchiveFailurePath(value){
  * records an operational outcome; it does not establish anything about source
  * truth, claim validity, XP, publication, execution, or authority.
  */
-export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_FAILURE_PAGE_SIZE,page=0}={}){
+export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_FAILURE_PAGE_SIZE,page=0,includeRecoveryLinks=false}={}){
  if(!world||typeof world!=='object'||isArraySafely(world)||ownDataValue(world,'schema')!=='ngl.world.v2')return null;
  let revisionDescriptor;
  try{revisionDescriptor=Object.getOwnPropertyDescriptor(world,'revision')}catch{return null}
@@ -246,6 +456,9 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
     !Number.isSafeInteger(revision)||revision<eventCount||revision>MAX_WORLD_EVENT_SCAN)return null;
  const complete=revision===eventCount;
 
+ const historyPositions=[];
+ let historyPositionCount=0;
+ let previousHistoryPosition=0;
  const eventIdCounts=new Map();
  const attemptIdCounts=new Map();
  const outcomeCounts=new Map();
@@ -254,10 +467,28 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
  const candidates=[];
  for(let index=0;index<eventCount;index++){
   const event=ownDataValue(events,String(index));
-  if(!event||typeof event!=='object'||isArraySafely(event))continue;
+  // Every retained slot must be safely classifiable before this projection can
+  // make an absence or ordering claim. A hole, accessor-backed type, or malformed
+  // event cannot be silently treated as an unrelated event.
+  if(!event||typeof event!=='object'||isArraySafely(event))return null;
+  let historyPositionDescriptor;
+  try{historyPositionDescriptor=Object.getOwnPropertyDescriptor(event,'historyPosition')}catch{return null}
+  if(historyPositionDescriptor){
+   if(!Object.hasOwn(historyPositionDescriptor,'value'))return null;
+   const historyPosition=historyPositionDescriptor.value;
+   if(!Number.isSafeInteger(historyPosition)||historyPosition<1||
+      historyPosition>revision||historyPosition<=previousHistoryPosition)return null;
+   previousHistoryPosition=historyPosition;
+   historyPositionCount++;
+   historyPositions.push(historyPosition);
+  }else{
+   historyPositions.push(null);
+  }
+  const eventType=ownDataValue(event,'type');
+  if(typeof eventType!=='string'||!eventType.trim())return null;
   const eventId=ownDataValue(event,'id');
   if(typeof eventId==='string')eventIdCounts.set(eventId,(eventIdCounts.get(eventId)||0)+1);
-  if(ownDataValue(event,'type')!=='source-archive-attempt-failed')continue;
+  if(eventType!=='source-archive-attempt-failed')continue;
   const attemptId=ownDataValue(event,'attemptId');
   if(typeof attemptId==='string')attemptIdCounts.set(attemptId,(attemptIdCounts.get(attemptId)||0)+1);
   const requestIdDigest=ownDataValue(event,'requestIdDigest');
@@ -274,6 +505,10 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   }
   candidates.push({event,index,eventId,attemptId,requestIdDigest,actionDigest,failureCode});
  }
+ if(historyPositionCount!==0&&historyPositionCount!==eventCount)return null;
+ const hasExplicitHistoryPositions=eventCount>0&&historyPositionCount===eventCount;
+ if(complete&&hasExplicitHistoryPositions&&
+    historyPositions.some((position,index)=>position!==index+1))return null;
 
  const projected=[];
  let invalidCount=0;
@@ -308,6 +543,7 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
    observedBy==='shared-source-archive-service'&&boundedWorldText(semantics,300);
   if(!valid){invalidCount++;continue;}
   projected.push({
+   index,
    requestKey:JSON.stringify([requestIdDigest,actionDigest]),
    record:Object.freeze({
     id:'source-archive-failure:'+eventId,
@@ -315,7 +551,7 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
     locationId:'evidence_archive',
     eventId,
     attemptId,
-    historyPosition:complete?index+1:null,
+    historyPosition:hasExplicitHistoryPositions?historyPositions[index]:complete?index+1:null,
     visiblePosition:index+1,
     actorId,
     actorName,
@@ -342,27 +578,163 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
  for(const group of failureClassGroups.values()){
   for(const item of group)item.failureClassCount=group.length;
  }
+ const retainedHistoryPositions=historyPositions.map((position,index)=>
+  position??(complete?index+1:null)
+ );
+ const roleFilteredPartial=!complete&&hasExplicitHistoryPositions&&
+  hasTrustedRoleFilteredHistoryCoverage(world,revision,eventCount);
+ const captureScan=projectServerRecheckedSourceArchivePublications(
+  world,events,eventCount,eventIdCounts,retainedHistoryPositions
+ );
+ let captureProjectionComplete=complete&&invalidCount===0&&captureScan.complete;
+ let recoveryLinkScanComplete=(complete||roleFilteredPartial)&&invalidCount===0&&captureScan.complete;
+ let captureProjectionReason=captureScan.reason||
+  (!complete?(roleFilteredPartial?'role-filtered-partial-history':'partial-history'):null);
+ const capturesByFailureId=new Map();
+ if(recoveryLinkScanComplete){
+  // Index only exact source targets first. The remaining per-failure checks are
+  // globally budgeted so a large same-target history cannot trigger O(F×C)
+  // work without a hard stop.
+  const capturesByTarget=new Map();
+  for(const capture of captureScan.captures){
+   const key=JSON.stringify([capture.actorId,capture.repository,capture.commitSha,capture.path]);
+   const bucket=capturesByTarget.get(key)||[];
+   bucket.push(capture);
+   capturesByTarget.set(key,bucket);
+  }
+  let comparisonCount=0;
+  for(const item of projected){
+   const failureAt=Date.parse(item.record.at);
+   const failurePosition=item.record.historyPosition??item.index+1;
+   const targetKey=JSON.stringify([
+    item.record.actorId,item.record.repository,item.record.commitSha,item.record.path
+   ]);
+   const candidates=capturesByTarget.get(targetKey)||[];
+   const matches=[];
+   for(const capture of candidates){
+    if(comparisonCount>=SOURCE_ARCHIVE_FAILURE_CAPTURE_MATCH_BUDGET){
+     captureProjectionComplete=false;
+     recoveryLinkScanComplete=false;
+     captureProjectionReason='capture-match-scan-budget-exhausted';
+     break;
+    }
+    comparisonCount+=1;
+    if(capture.publicationPosition>failurePosition&&
+       Date.parse(capture.fetchedAt)>failureAt&&
+       Date.parse(capture.capturedAt)>failureAt){
+     matches.push(capture);
+     if(matches.length>1){
+      captureProjectionComplete=false;
+      recoveryLinkScanComplete=false;
+      captureProjectionReason='ambiguous-capture-matches';
+      break;
+     }
+    }
+   }
+   if(!recoveryLinkScanComplete)break;
+   capturesByFailureId.set(item.record.eventId,matches);
+  }
+ }
+ if(recoveryLinkScanComplete){
+  const failuresByPublicationEventId=new Map();
+  for(const [failureEventId,matches] of capturesByFailureId){
+   if(matches.length!==1)continue;
+   const publicationEventId=matches[0].publicationEventId;
+   const group=failuresByPublicationEventId.get(publicationEventId)||[];
+   group.push(failureEventId);
+   failuresByPublicationEventId.set(publicationEventId,group);
+  }
+  if([...failuresByPublicationEventId.values()].some(group=>group.length>1)){
+   captureProjectionComplete=false;
+   recoveryLinkScanComplete=false;
+   captureProjectionReason='ambiguous-capture-origin-assignment';
+  }
+ }
+ if(!recoveryLinkScanComplete)capturesByFailureId.clear();
+ for(const item of projected){
+  const matches=capturesByFailureId.get(item.record.eventId)||[];
+  const observed=recoveryLinkScanComplete&&matches.length===1;
+  const notObserved=captureProjectionComplete&&matches.length===0;
+  const capture=observed?matches[0]:null;
+  item.record=Object.freeze({
+   ...item.record,
+   laterCaptureStatus:observed?'observed':notObserved?'not-observed':'unknown',
+   laterCaptureStatusLabel:observed
+    ?'LATER SERVER-RECHECKED CAPTURE OBSERVED'
+    :notObserved?'NO LATER SERVER-RECHECKED CAPTURE OBSERVED':'LATER CAPTURE STATUS UNKNOWN',
+   laterCaptureCount:observed?1:notObserved?0:null,
+   laterCapture:capture?Object.freeze({
+    creationId:capture.creationId,version:capture.version,
+    publicationEventId:capture.publicationEventId,
+    repository:capture.repository,commitSha:capture.commitSha,path:capture.path,
+    fetchedAt:capture.fetchedAt,capturedAt:capture.capturedAt,
+    publicationPosition:capture.publicationPosition,captureId:capture.captureId,
+    gitBlobSha:capture.gitBlobSha,sha256:capture.sha256,size:capture.size
+   }):null
+  });
+ }
  const failureClassHistoryComplete=complete&&invalidCount===0;
+ const allRecords=projected.map(item=>Object.freeze({
+  ...item.record,
+  failureClassPosition:item.failureClassPosition,
+  failureClassCount:item.failureClassCount,
+  failureClassHistoryComplete
+ }));
+ const recoveryLinks=[];
+ if(includeRecoveryLinks===true&&recoveryLinkScanComplete){
+  const failuresByPublicationEventId=new Map();
+  for(const record of allRecords){
+   if(record.laterCaptureStatus!=='observed'||!record.laterCapture)continue;
+   const publicationEventId=record.laterCapture.publicationEventId;
+   const group=failuresByPublicationEventId.get(publicationEventId)||[];
+   group.push(record);
+   failuresByPublicationEventId.set(publicationEventId,group);
+  }
+  for(const [publicationEventId,group] of failuresByPublicationEventId){
+   // A single publication cannot be assigned to multiple failure origins.
+   if(group.length!==1||group[0].retryable!==true)continue;
+   const record=group[0];
+   recoveryLinks.push(Object.freeze({
+    failureEventId:record.eventId,
+    failurePosition:record.historyPosition,
+    attemptId:record.attemptId,
+    failureCode:record.failureCode,
+    actorId:record.actorId,
+    actorRole:record.actorRole,
+    publicationEventId,
+    publicationPosition:record.laterCapture.publicationPosition,
+    creationId:record.laterCapture.creationId,
+    version:record.laterCapture.version,
+    repository:record.laterCapture.repository,
+    commitSha:record.laterCapture.commitSha,
+    path:record.laterCapture.path,
+    fetchedAt:record.laterCapture.fetchedAt,
+    capturedAt:record.laterCapture.capturedAt,
+    captureId:record.laterCapture.captureId,
+    gitBlobSha:record.laterCapture.gitBlobSha,
+    sha256:record.laterCapture.sha256,
+    size:record.laterCapture.size
+   }));
+  }
+ }
  const boundedLimit=Number.isSafeInteger(limit)&&limit>=1&&limit<=100
   ?limit:SOURCE_ARCHIVE_FAILURE_PAGE_SIZE;
  if(!Number.isSafeInteger(page)||page<0||page>MAX_WORLD_EVENT_SCAN)return null;
- const total=projected.length;
+ const total=allRecords.length;
  const totalPages=Math.ceil(total/boundedLimit);
  const boundedPage=totalPages===0?0:Math.min(page,totalPages-1);
  // Page zero is the newest page. Records inside each page retain append order;
  // the Evidence Archive renders each bounded page newest-first.
  const pageEnd=Math.max(0,total-boundedPage*boundedLimit);
  const pageStart=Math.max(0,pageEnd-boundedLimit);
- const pageRecords=projected.slice(pageStart,pageEnd);
- const records=pageRecords.map(item=>Object.freeze({
-  ...item.record,
-  failureClassPosition:item.failureClassPosition,
-  failureClassCount:item.failureClassCount,
-  failureClassHistoryComplete
- }));
+ const records=allRecords.slice(pageStart,pageEnd);
+ const mostRecentVisibleRetryableFailure=[...allRecords].reverse().find(record=>record.retryable)||null;
  return Object.freeze({
   available:true,
   complete,
+  captureProjectionComplete,
+  recoveryLinkScanComplete,
+  captureProjectionReason,
   unseenEventCount:revision-eventCount,
   total,
   invalidCount,
@@ -374,7 +746,9 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   hasOlder:pageStart>0,
   hasNewer:boundedPage>0,
   omittedCount:total-records.length,
-  records:Object.freeze(records)
+  mostRecentVisibleRetryableFailure,
+  records:Object.freeze(records),
+  ...(includeRecoveryLinks===true?{recoveryLinks:Object.freeze(recoveryLinks)}:{})
  });
 }
 
@@ -819,7 +1193,7 @@ export class WorldView {
   constructor(canvas,{onInteract=()=>{},onDiscover=()=>{},onPosition=()=>{}}={}) {
     this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionSummary=null;this.institutionCounts=computeInstitutionActivityCounts(this.world,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.movementEnabled=true;if(this.canvas?.dataset)this.canvas.dataset.movementEnabled='true';this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     this.paused=true;this.animation=null;this.animationEpoch=0;this.destroyed=false;this.windowFocused=true;this.doorway=globalThis.document?.getElementById?.('doorway')||null;
-    this.onKeyDown=e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable="true"]')||document.body.classList.contains('modal-open'))return;const k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','e',' '].includes(k)){e.preventDefault();if(k==='e'||k===' '){if(!e.repeat)this.interact();return}if(this.movementEnabled===false)return;this.keys.add(k);this.cancelRoute()}};
+    this.onKeyDown=e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable="true"],#sheet')||document.body.classList.contains('modal-open'))return;const k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','e',' '].includes(k)){e.preventDefault();if(k==='e'||k===' '){if(!e.repeat)this.interact();return}if(this.movementEnabled===false)return;this.keys.add(k);this.cancelRoute()}};
     this.onKeyUp=e=>this.keys.delete(e.key.toLowerCase());
     this.clearManualInput=()=>{const active=this.moving||this.keys.size>0||this.input.x!==0||this.input.y!==0||this.route.length>0;this.keys.clear();this.input={x:0,y:0};this.moving=false;if(active)this.callbacks.onPosition(this.getPlayer());};
     this.onBlur=()=>{this.windowFocused=false;this.syncLifecycle();};
@@ -844,7 +1218,29 @@ export class WorldView {
   cameraTarget(){const visibleWidth=this.width/this.zoom,visibleHeight=this.height/this.zoom;return {x:Math.max(visibleWidth/2,Math.min(1600-visibleWidth/2,this.player.x+100)),y:Math.max(visibleHeight/2,Math.min(1000-visibleHeight/2,this.player.y-50))};}
   needsAnimation(){if(this.destroyed||this.paused)return false;if(this.moving||this.route.length>0)return true;if(this.reduced)return false;const desired=this.cameraTarget();return Math.abs(this.camera.x-desired.x)>.1||Math.abs(this.camera.y-desired.y)>.1;}
 
-  resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));this.scheduleFrame?.();}
+  syncCanvasState(){
+    const data=this.canvas?.dataset;
+    if(!data)return;
+    const values={
+      playerX:this.player?.x,
+      playerY:this.player?.y,
+      cameraX:this.camera?.x,
+      cameraY:this.camera?.y,
+      zoom:this.zoom,
+      viewportWidth:this.width,
+      viewportHeight:this.height
+    };
+    for(const [key,value] of Object.entries(values)){
+      if(Number.isFinite(value)){
+        const next=String(value);
+        if(data[key]!==next)data[key]=next;
+      }else delete data[key];
+    }
+    const routeActive=String(Array.isArray(this.route)&&this.route.length>0);
+    if(data.routeActive!==routeActive)data.routeActive=routeActive;
+    if(data.positionSource!=='renderer-local')data.positionSource='renderer-local';
+  }
+  resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));this.syncCanvasState();this.scheduleFrame?.();}
   setWorld(world,institutionSummary=this.institutionSummary,viewer=null){const next=world||{creations:[]};this.world=next;this.institutionSummary=institutionSummary||null;const actor=viewer&&typeof viewer==='object'?viewer:null;this.discovered=new Set(Array.isArray(next.discoveries)?next.discoveries.filter(discovery=>discovery&&sameResearchActor(discovery.actor,actor)&&PLACES.some(place=>place.type==='discovery'&&place.id===discovery.locationId)).map(discovery=>discovery.locationId):[]);this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}this.scheduleFrame?.();}
   setPresence(presence){this.presence=Array.isArray(presence)?presence:[];this.scheduleFrame?.();}
   setMovementEnabled(enabled){
@@ -864,7 +1260,7 @@ export class WorldView {
   setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){this.player={...this.player,x:player.x,y:player.y};this.cancelRoute();}}
   getPlayer(){return {...this.player};}
   setInput(input){if(this.movementEnabled===false){this.input={x:0,y:0};return}this.input={x:input?.x||0,y:input?.y||0};if(this.input.x||this.input.y)this.cancelRoute();this.scheduleFrame?.();}
-  cancelRoute(){this.route=[];this.target=null;this.targetType=null;this.scheduleFrame?.();}
+  cancelRoute(){this.route=[];this.target=null;this.targetType=null;this.syncCanvasState();this.scheduleFrame?.();}
   focusCreation(id){this.goTo(id);}
   goTo(id,targetType){
     if(this.movementEnabled===false)return;
@@ -890,7 +1286,7 @@ export class WorldView {
     }
     const route=findRoute(this.player,target,this.world.creations);
     if(!route.length){this.cancelRoute();return}
-    this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;this.targetType=typeof id==='string'?(targetType??null):null;this.scheduleFrame?.();
+    this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;this.targetType=typeof id==='string'?(targetType??null):null;this.syncCanvasState();this.scheduleFrame?.();
   }
   nearest(targetId,targetType){
     const options=[...PLACES,...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title}))];
@@ -906,7 +1302,7 @@ export class WorldView {
       this.callbacks.onInteract(interaction);
     }else if(targetId===undefined&&targetType===undefined)this.goTo('workbench');
   }
-  update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){if(this.moving)this.callbacks.onPosition(this.getPlayer());this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.targetType=null;this.moving=false;return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};
+  update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){if(this.moving)this.callbacks.onPosition(this.getPlayer());this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.targetType=null;this.moving=false;this.syncCanvasState();return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};
     const wasMoving=this.moving;const before=this.player;
     if(this.route.length&&!direction.x&&!direction.y){
       this.player={...this.player,...advanceRoute(this.player,this.route,PLAYER_MOVE_SPEED*dt,this.world.creations).player};
@@ -918,6 +1314,7 @@ export class WorldView {
     for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90&&!this.discovered.has(place.id)){this.discovered.add(place.id);this.callbacks.onDiscover(place.id)}
     const desired=this.cameraTarget();const easing=this.reduced?1:1-Math.exp(-dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
     if(now-this.lastPosition>1500&&this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}else if(wasMoving&&!this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}
+    this.syncCanvasState();
   }
   line(points,color=palette.ink,width=2,dash=[]){const c=this.ctx;c.beginPath();c.strokeStyle=color;c.lineWidth=width;c.setLineDash(dash);points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.stroke();c.setLineDash([])}
   ellipse(x,y,rx,ry,fill,stroke){const c=this.ctx;c.beginPath();c.ellipse(x,y,rx,ry,0,0,Math.PI*2);if(fill){c.fillStyle=fill;c.fill()}if(stroke){c.strokeStyle=stroke;c.lineWidth=1.5;c.stroke()}}

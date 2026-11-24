@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PLACES, institutionActivityCount, institutionSummaryFromState, projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
+import { GUILD_NPCS } from '../game/pixel-world-view.mjs';
+import { createWorld } from '../game/model.mjs';
+import { projectCharterCodex, renderCharterCodex } from '../game/institution-view.mjs';
 
 function sourceArchiveFailureEvent(overrides={}) {
   return {
@@ -399,6 +402,52 @@ test('failure projection never invokes accessors or Proxy get traps and rejects 
   }),null,'a revision smaller than the delivered event array is inconsistent history');
 });
 
+test('failure projection fails closed when any retained event slot cannot be classified safely', () => {
+  const visibleFailure = sourceArchiveFailureEvent({
+    id: 'visible-before-unclassifiable',
+    attemptId: 'visible-before-unclassifiable-attempt',
+    requestIdDigest: '1'.repeat(64),
+    actionDigest: '2'.repeat(64)
+  });
+  let typeGetterCalls = 0;
+  const accessorType = sourceArchiveFailureEvent({
+    id: 'unclassifiable-accessor-type',
+    attemptId: 'unclassifiable-accessor-attempt',
+    requestIdDigest: '3'.repeat(64),
+    actionDigest: '4'.repeat(64)
+  });
+  Object.defineProperty(accessorType, 'type', {
+    enumerable: true,
+    configurable: true,
+    get() {
+      typeGetterCalls++;
+      return 'source-archive-attempt-failed';
+    }
+  });
+
+  assert.equal(projectSourceArchiveFailureObjects({
+    schema: 'ngl.world.v2',
+    revision: 2,
+    events: [visibleFailure, accessorType]
+  }), null, 'an accessor-backed event type cannot be silently classified as a non-failure');
+  assert.equal(typeGetterCalls, 0, 'projection must not invoke an untrusted event-type getter');
+
+  const sparseEvents = new Array(2);
+  sparseEvents[0] = visibleFailure;
+  assert.equal(projectSourceArchiveFailureObjects({
+    schema: 'ngl.world.v2',
+    revision: 2,
+    events: sparseEvents
+  }), null, 'a sparse retained event array cannot support a complete-history claim');
+
+  assert.equal(projectSourceArchiveFailureObjects({
+    schema: 'ngl.world.v2',
+    revision: 2,
+    events: [visibleFailure, { id: 'event-without-type' }]
+  }), null, 'an event without a safe type is unclassifiable, not evidence of no failure');
+});
+
+
 test('Evidence Archive owns the fixed Contradiction Clerk challenge and its retained reports', () => {
   const archive = PLACES.find(place => place.id === 'evidence_archive');
   assert.ok(archive);
@@ -582,4 +631,102 @@ test('Combat Yard map count reflects retained encounter and move events, not inv
   ] };
   assert.equal(institutionActivityCount('combat_yard', world), 2);
   assert.equal(world.xp, 0, 'map activity counts do not award XP or mutate world state');
+});
+
+
+function charterElement(tag) {
+  return {
+    tagName: tag,
+    children: [],
+    dataset: {},
+    attributes: {},
+    textContent: '',
+    append(...children) { this.children.push(...children); },
+    setAttribute(name, value) { this.attributes[name] = value; }
+  };
+}
+
+function walkCharterTree(root) {
+  return [root, ...(Array.isArray(root?.children) ? root.children.flatMap(walkCharterTree) : [])];
+}
+
+function withCharterDocument(run) {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    writable: true,
+    value: { createElement: charterElement }
+  });
+  try { return run(); }
+  finally {
+    if (previous) Object.defineProperty(globalThis, 'document', previous);
+    else delete globalThis.document;
+  }
+}
+
+test('AOTA Codex routes engineering handoff to Guild Hall and external deployment decisions to Founder Gate', () => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const world = createWorld({
+    id: 'codex-institution-routing',
+    founderName: 'Neophyte Founder',
+    now: '2026-11-22T08:00:00.000Z'
+  });
+  const before = structuredClone(world);
+  const projection = projectCharterCodex(world, founder);
+  const engineer = projection.stages.find(stage => stage.id === 'engineer-for-use');
+  const deploy = projection.stages.find(stage => stage.id === 'deploy-share-commercialize');
+
+  assert.equal(projection.available, true);
+  assert.equal(engineer.locationId, 'guild_hall');
+  assert.equal(engineer.locationName, 'Guild Hall · Synthesis Clerk');
+  assert.equal(engineer.navigationTargetId, 'guild-npc-synthesizer');
+  const synthesizer = GUILD_NPCS.find(npc => npc.id === engineer.navigationTargetId);
+  assert.ok(synthesizer, 'Stage 10 must target the registered Synthesis Clerk NPC.');
+  assert.equal(synthesizer.roleId, 'synthesizer');
+  assert.equal(synthesizer.routeLocation, engineer.locationId);
+  assert.equal(synthesizer.authority, 'advisory-only');
+  assert.equal(synthesizer.invokesModel, false);
+  assert.equal(synthesizer.mayWriteCanonicalState, false);
+  assert.equal(synthesizer.mayGrantAuthority, false);
+  assert.equal(synthesizer.mayAwardProgress, false);
+  assert.equal(synthesizer.mayCertifyTruthOrExecution, false);
+  assert.equal(engineer.status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.equal(engineer.relatedOnly, true);
+  assert.deepEqual(engineer.evidenceIds, []);
+  assert.equal(deploy.locationId, 'decision_chamber');
+  assert.equal(deploy.navigationTargetId, null);
+  assert.equal(deploy.locationName, 'Founder Gate · Decision Chamber');
+  assert.equal(deploy.status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.equal(deploy.relatedOnly, true);
+  assert.deepEqual(deploy.evidenceIds, []);
+  assert.equal(projection.xpDelta, 0);
+  assert.equal(projection.worldMutation, false);
+
+  const place = id => PLACES.find(candidate => candidate.id === id);
+  assert.match(place('forge')?.purpose || '', /not.*engineering acceptance/i);
+  assert.match(place('guild_hall')?.purpose || '', /Synthesis Clerk.*dated.*snapshot.*evidence lead/i);
+  assert.match(place('decision_chamber')?.purpose || '', /human-gated.*external deployment/i);
+  assert.match(place('publication_house')?.purpose || '', /in-world circulation only/i);
+  assert.match(place('publication_house')?.purpose || '', /not external deployment/i);
+
+  const actions = [];
+  withCharterDocument(() => {
+    const root = charterElement('div');
+    renderCharterCodex(root, {
+      world,
+      viewer: founder,
+      onOpenAction: action => actions.push(action)
+    });
+    const routeButtons = walkCharterTree(root).filter(node =>
+      ['engineer-for-use', 'deploy-share-commercialize'].includes(node.dataset?.charterStageAction)
+    );
+    assert.equal(routeButtons.length, 2);
+    for (const button of routeButtons) button.onclick();
+  });
+
+  assert.deepEqual(actions, [
+    { type: 'location', id: 'guild-npc-synthesizer' },
+    { type: 'location', id: 'decision_chamber' }
+  ]);
+  assert.deepEqual(world, before, 'Codex routing remains read-only and awards no progress');
 });

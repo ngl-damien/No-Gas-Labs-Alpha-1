@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto';
 import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from '../game/research-records.mjs';
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from '../game/artifacts.mjs';
 import assert from 'node:assert/strict';
-import { renderCharterCodex, projectCharterCodex, renderEvidenceArchive, renderInstitution, renderWorldChronicle } from '../game/institution-view.mjs';
-import { applyAction, createWorld } from '../game/model.mjs';
+import { renderCharterCodex, projectCharterCodex, projectEvidenceArchiveActivityStreams, renderEvidenceArchive, renderEvidenceArchiveActivityStreams, renderInstitution, renderWorldChronicle } from '../game/institution-view.mjs';
+import { applyAction, createWorld, publicWorld } from '../game/model.mjs';
 import { projectChronicle } from '../game/chronicle.mjs';
 
 function element(tag) {
@@ -129,9 +129,10 @@ async function sourceArchiveDossierWorld({ kind = 'conflict' } = {}) {
 }
 
 
-function sourceObservationWorld({ claim = 'A model says the bridge is open.' } = {}) {
+function sourceObservationWorld({ claim = 'A model says the bridge is open.', sourceSnapshotRevision } = {}) {
   const founder = { id: 'damien', name: 'Damien', role: 'founder' };
   const witness = { id: 'witness-1', name: 'Witness', role: 'witness' };
+  const actor = founder;
   const creationId = 'creation-observatory';
   const publishedAt = '2026-10-27T09:00:00.000Z';
   const note = {
@@ -142,9 +143,11 @@ function sourceObservationWorld({ claim = 'A model says the bridge is open.' } =
     uncertainty: 'No independent observation.',
     nextTest: 'Inspect the bridge.'
   };
-  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
-  })).digest('hex');
+  const identityMaterial = {
+    actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note,
+    ...(sourceSnapshotRevision === undefined ? {} : { sourceSnapshotRevision })
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial(identityMaterial)).digest('hex');
   const observationId = 'source-observation-' + digest;
   const challengeId = 'source-challenge-1';
   const world = {
@@ -157,7 +160,9 @@ function sourceObservationWorld({ claim = 'A model says the bridge is open.' } =
       {
         id: 'source-observation-event', type: 'source-observation-recorded',
         observationId, creationId, version: 1, actor: founder, at: '2026-10-27T09:01:00.000Z',
-        ...note, originSchema: 'ngl.source-observatory.v2', bindingMode: 'USER_SELECTED',
+        ...note,
+        ...(sourceSnapshotRevision === undefined ? {} : { sourceSnapshotRevision }),
+        originSchema: 'ngl.source-observatory.v2', bindingMode: 'USER_SELECTED',
         sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED',
         modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED', normalizedRecordDigest: digest
       },
@@ -255,13 +260,15 @@ test('TownSquare warns about ungrouped events and accepted work without history 
 
 test('Evidence Archive queues only uniquely linked unanswered Source Observation challenges and opens the exact version', () => withDocument(() => {
   const claim = '<img src=x onerror=alert(1)> A model says the bridge is open.';
-  const { world, creationId } = sourceObservationWorld({ claim });
+  const { world, creationId } = sourceObservationWorld({ claim, sourceSnapshotRevision: 1 });
   const before = structuredClone(world);
   const opened = [];
+  const inspected = [];
   const root = element('div');
   renderEvidenceArchive(root, {
     world, shared: true,
-    onOpenArtifact: (id, version) => opened.push([id, version])
+    onOpenArtifact: (id, version) => opened.push([id, version]),
+    onInspectEvent: eventId => inspected.push(eventId)
   });
   const output = textOf(root);
   assert.match(output, /SOURCE OBSERVATORY · AUTHOR RESPONSE QUEUE/);
@@ -286,6 +293,14 @@ test('Evidence Archive queues only uniquely linked unanswered Source Observation
   const registerCards = walk(root).filter(item => item.dataset?.sourceObservationRegisterRecord);
   assert.equal(registerCards.length, 1);
   assert.equal(registerCards[0].dataset.sourceObservationRegisterRecord.startsWith('source-observation-'), true);
+  assert.equal(registerCards[0].dataset.sourceObservationSnapshotRevision, '1');
+  assert.match(textOf(registerCards[0]), /Snapshot reference: world revision 1/);
+  assert.match(textOf(registerCards[0]), /does not prove the actor viewed that snapshot/i);
+  const chronicleButton = walk(root).find(item => item.dataset?.sourceObservationChronicleEvent);
+  assert.ok(chronicleButton, 'the retained observation must navigate to its exact Chronicle event');
+  assert.equal(chronicleButton.dataset.sourceObservationChronicleEvent, 'source-observation-event');
+  chronicleButton.onclick();
+  assert.deepEqual(inspected, ['source-observation-event']);
   const registerButton = walk(root).find(item => item.dataset?.sourceObservationRegisterOpen);
   assert.ok(registerButton);
   assert.equal(registerButton.dataset.creationId, creationId);
@@ -611,9 +626,127 @@ test('AOTA Codex projects all twelve charter stages without awarding progress or
   assert.deepEqual(world, before);
 }));
 
+test('AOTA Codex exposes actor-scoped snapshot-cited lead activity without calling it engineering acceptance', async () => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const witness = { id: 'snapshot-witness', name: 'Snapshot Witness', role: 'witness' };
+  let world = createWorld({
+    id: 'codex-project-snapshot-lead',
+    founderName: 'Neophyte Founder',
+    now: '2026-11-22T13:59:57.000Z'
+  });
+  const draft = await applyAction(world, {
+    type: 'draft',
+    kind: 'observatory',
+    title: 'Source Observatory',
+    intent: 'Retain an attributed note with a falsifier and next test.'
+  }, founder, { now: '2026-11-22T13:59:58.000Z' });
+  const published = await applyAction(draft.world, {
+    type: 'publish',
+    draftId: draft.result.draftId,
+    expectedVersion: 0
+  }, founder, { now: '2026-11-22T13:59:59.000Z' });
+  world = published.world;
+  const creationId = published.result.creationId;
+  const capturedAt = '2026-11-22T13:00:00.000Z';
+  const headSha = 'a'.repeat(40);
+  const baseSha = 'b'.repeat(40);
+
+  async function retainLead(actor, { claimAt = capturedAt, sourceAt = capturedAt, sourceKind = 'tool-output', digest = 'c'.repeat(64) }, at) {
+    const note = {
+      claim: 'Build snapshot ' + claimAt + ' reports PR #718 · Runtime as open at ' + claimAt +
+        ' with head commit ' + headSha + ' · exact-head checks waiting.',
+      sourceKind,
+      source: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718 · captured head ' + headSha +
+        ' · captured base ' + baseSha + ' · exact-head checks waiting · snapshot captured ' + sourceAt +
+        ' · sha256 ' + digest,
+      falsifier: 'A fresh GitHub read shows a different head or state.',
+      uncertainty: 'Build-time snapshot only; not live or independently verified.',
+      nextTest: 'Open the exact PR and compare a fresh check-run and commit-status inventory for the same head.'
+    };
+    const sourceSnapshotRevision = world.revision;
+    const observationId = 'source-observation-' + createHash('sha256').update(sourceObservationRequestMaterial({
+      actorId: actor.id,
+      actorRole: actor.role,
+      creationId,
+      version: 1,
+      sourceSnapshotRevision,
+      ...note
+    })).digest('hex');
+    const result = await applyAction(world, {
+      type: 'record-source-observation',
+      creationId,
+      version: 1,
+      sourceSnapshotRevision,
+      observationId,
+      ...note
+    }, actor, {
+      now: at,
+      requestId: observationId,
+      actionFingerprint: createHash('sha256').update('request:' + observationId).digest('hex')
+    });
+    world = result.world;
+    return world.events.at(-1).id;
+  }
+
+  const validLeadEventId = await retainLead(founder, {}, '2026-11-22T14:00:01.000Z');
+  const mismatchedTimestampEventId = await retainLead(founder, {
+    claimAt: '2026-11-22T13:30:00.000Z',
+    sourceAt: '2026-11-22T13:00:00.000Z'
+  }, '2026-11-22T14:00:02.000Z');
+  const modelAssertionEventId = await retainLead(founder, {
+    sourceKind: 'model-assertion'
+  }, '2026-11-22T14:00:03.000Z');
+  const malformedDigestEventId = await retainLead(founder, {
+    digest: 'd'.repeat(63)
+  }, '2026-11-22T14:00:04.000Z');
+  const witnessLeadEventId = await retainLead(witness, {}, '2026-11-22T14:00:05.000Z');
+
+  const beforeProjection = structuredClone(world);
+  const projection = projectCharterCodex(world, founder);
+  const stage = projection.stages.find(item => item.id === 'engineer-for-use');
+  const deploy = projection.stages.find(item => item.id === 'deploy-share-commercialize');
+
+  assert.equal(stage.status, 'SNAPSHOT-CITED LEAD(S) RETAINED · SELF-REPORTED · NOT ENGINEERING ACCEPTANCE');
+  assert.deepEqual(stage.evidenceIds, [validLeadEventId]);
+  assert.equal(stage.evidenceLabel, 'Retained actor-authored Source Observation event IDs');
+  assert.match(stage.activitySummary, /AUTHOR-DECLARED BUILD SNAPSHOT LEADS 1/);
+  assert.match(stage.activitySummary, /not server-validated/i);
+  assert.match(stage.boundary, /does not prove the snapshot was read/i);
+  assert.match(stage.boundary, /not engineering acceptance/i);
+  assert.equal(stage.relatedOnly, true);
+  assert.equal(stage.locationId, 'guild_hall');
+  assert.equal(deploy.status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.deepEqual(deploy.evidenceIds, []);
+  assert.equal(projection.readOnly, true);
+  assert.equal(projection.xpDelta, 0);
+  assert.equal(projection.worldMutation, false);
+  assert.deepEqual(world, beforeProjection);
+
+  for (const excludedId of [mismatchedTimestampEventId, modelAssertionEventId, malformedDigestEventId, witnessLeadEventId]) {
+    assert.ok(!stage.evidenceIds.includes(excludedId));
+  }
+
+  withDocument(() => {
+    const root = element('div');
+    renderCharterCodex(root, { world, viewer: founder });
+    const card = walk(root).find(item => item.dataset?.charterStage === 'engineer-for-use');
+    assert.ok(card);
+    const renderedText = walk(card).map(item =>
+      typeof item.textContent === 'string' ? item.textContent : ''
+    ).join(' ');
+    assert.match(renderedText, /SNAPSHOT-CITED LEAD/);
+    assert.match(renderedText, /not server-validated/i);
+    assert.ok(renderedText.includes(validLeadEventId));
+    assert.ok(!renderedText.includes(mismatchedTimestampEventId));
+    assert.ok(!renderedText.includes(modelAssertionEventId));
+    assert.ok(!renderedText.includes(witnessLeadEventId));
+  });
+});
+
 test('AOTA Codex distinguishes same-version Source Observatory follow-up from unrelated experiment evidence', async () => {
   const founder = { id: 'damien', name: 'Damien', role: 'founder' };
-  async function buildWorld({ reportUsesSourceVersion }) {
+  const witness = { id: 'codex-witness', name: 'Codex Witness', role: 'witness' };
+  async function buildWorld({ reportUsesSourceVersion, actor = founder, hiddenDraftBeforeNotes = false }) {
     const start = createWorld({
       id: 'codex-source-followup-' + (reportUsesSourceVersion ? 'linked' : 'unrelated'),
       founderName: 'Damien',
@@ -627,6 +760,15 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       type: 'publish', draftId: sourceDraft.result.draftId, expectedVersion: 0
     }, founder, { now: '2026-11-08T09:00:02.000Z' });
     const creationId = sourcePublished.result.creationId;
+    let observationBase = sourcePublished.world;
+    if (hiddenDraftBeforeNotes) {
+      const hiddenDraft = await applyAction(observationBase, {
+        type: 'draft', kind: 'loom', title: 'Private pre-observation draft',
+        intent: 'This retained Founder draft is hidden from the Witness projection.'
+      }, founder, { now: '2026-11-08T09:00:02.500Z' });
+      observationBase = hiddenDraft.world;
+    }
+    const sourceSnapshotRevision = observationBase.revision;
     const note = {
       claim: 'The model says the bridge is open.',
       sourceKind: 'model-assertion',
@@ -636,16 +778,17 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       nextTest: 'Inspect the bridge status at the primary source.'
     };
     const digest = createHash('sha256').update(sourceObservationRequestMaterial({
-      actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, sourceSnapshotRevision, ...note
     })).digest('hex');
     const observationId = 'source-observation-' + digest;
-    const recorded = await applyAction(sourcePublished.world, {
-      type: 'record-source-observation', creationId, version: 1, observationId, ...note
-    }, founder, {
+    const recorded = await applyAction(observationBase, {
+      type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision, observationId, ...note
+    }, actor, {
       now: '2026-11-08T09:00:03.000Z',
       requestId: observationId,
       actionFingerprint: 'a'.repeat(64)
     });
+    const secondSourceSnapshotRevision = recorded.world.revision;
     const secondNote = {
       ...note,
       claim: 'A second model assertion says the bridge is open.',
@@ -653,13 +796,13 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       uncertainty: 'No independent observation for this second assertion.'
     };
     const secondDigest = createHash('sha256').update(sourceObservationRequestMaterial({
-      actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...secondNote
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, sourceSnapshotRevision: secondSourceSnapshotRevision, ...secondNote
     })).digest('hex');
     const secondObservationId = 'source-observation-' + secondDigest;
     const recordedAgain = await applyAction(recorded.world, {
-      type: 'record-source-observation', creationId, version: 1,
+      type: 'record-source-observation', creationId, version: 1, sourceSnapshotRevision: secondSourceSnapshotRevision,
       observationId: secondObservationId, ...secondNote
-    }, founder, {
+    }, actor, {
       now: '2026-11-08T09:00:03.500Z',
       requestId: secondObservationId,
       actionFingerprint: 'b'.repeat(64)
@@ -689,7 +832,7 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       evidenceNeeded: 'A retained observation of the primary source.',
       sourceCreationId: creationId,
       sourceVersion: 1
-    }, founder, { now: proposalAt });
+    }, actor, { now: proposalAt });
     const report = await applyAction(proposal.world, {
       type: 'report-experiment',
       moonshotId: proposal.result.moonshotId,
@@ -698,13 +841,14 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       reportedOutcome: 'failed',
       evidenceCreationId: reportEvidenceCreationId,
       evidenceVersion: 1
-    }, founder, { now: reportAt });
+    }, actor, { now: reportAt });
     return {
       world: report.world,
       sourceNoteEventIds: [recorded.world.events.at(-1).id, recordedAgain.world.events.at(-1).id],
       proposalEventId: proposal.world.events.at(-1).id,
       reportEventId: report.world.events.at(-1).id,
-      founder
+      founder,
+      viewer: actor
     };
   }
 
@@ -738,6 +882,24 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
   assert.equal(unrelatedProjection.worldMutation, false);
   assert.deepEqual(unrelated.world, unrelatedBefore);
 
+  const filtered = await buildWorld({
+    reportUsesSourceVersion: true, actor: witness, hiddenDraftBeforeNotes: true
+  });
+  const filteredSnapshot = publicWorld(filtered.world, witness);
+  assert.ok(filteredSnapshot.events.some((event, index) => event.historyPosition > index + 1),
+    'the Witness snapshot must retain global positions across the hidden Founder draft');
+  const filteredSnapshotBefore = structuredClone(filteredSnapshot);
+  const filteredProjection = projectCharterCodex(filteredSnapshot, witness);
+  const filteredStage = filteredProjection.stages.find(stage => stage.id === 'experiment');
+  assert.equal(filteredStage.status, 'SAME-VERSION-LINKED ATTEMPT REPORT(S) · SELF-REPORTED');
+  for (const id of [...filtered.sourceNoteEventIds, filtered.proposalEventId, filtered.reportEventId]) {
+    assert.ok(filteredStage.evidenceIds.includes(id));
+  }
+  assert.equal(filteredProjection.readOnly, true);
+  assert.equal(filteredProjection.xpDelta, 0);
+  assert.equal(filteredProjection.worldMutation, false);
+  assert.deepEqual(filteredSnapshot, filteredSnapshotBefore);
+
   const ambiguous = await buildWorld({ reportUsesSourceVersion: true });
   const originalReport = ambiguous.world.events.find(event => event.id === ambiguous.reportEventId);
   const duplicateReport = structuredClone(originalReport);
@@ -748,6 +910,8 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
   duplicateReport.actor = { id: 'witness-2', role: 'witness', name: 'Second Witness' };
   duplicateReport.at = '2026-11-08T09:00:06.000Z';
   ambiguous.world.events.push(duplicateReport);
+  ambiguous.world.revision = ambiguous.world.events.length;
+  ambiguous.world.updatedAt = duplicateReport.at;
   const ambiguousBefore = structuredClone(ambiguous.world);
   const ambiguousProjection = projectCharterCodex(ambiguous.world, ambiguous.founder);
   const ambiguousStage = ambiguousProjection.stages.find(stage => stage.id === 'experiment');
@@ -770,6 +934,8 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
   unrelatedDuplicateReport.actor = { id: 'witness-2', role: 'witness', name: 'Second Witness' };
   unrelatedDuplicateReport.at = '2026-11-08T09:00:06.000Z';
   unrelatedAmbiguous.world.events.push(unrelatedDuplicateReport);
+  unrelatedAmbiguous.world.revision = unrelatedAmbiguous.world.events.length;
+  unrelatedAmbiguous.world.updatedAt = unrelatedDuplicateReport.at;
   const unrelatedAmbiguousBefore = structuredClone(unrelatedAmbiguous.world);
   const unrelatedAmbiguousProjection = projectCharterCodex(unrelatedAmbiguous.world, unrelatedAmbiguous.founder);
   const unrelatedAmbiguousStage = unrelatedAmbiguousProjection.stages.find(stage => stage.id === 'experiment');
@@ -1870,9 +2036,12 @@ test('World Chronicle visibly marks Date.parse-lenient timestamps as unavailable
 
 test('World Chronicle refreshes its open snapshot and freshness after reconnect without mutating retained history', () => withDocument(() => {
   const { world, founder } = sourceObservationWorld();
+  world.revision = 17;
   const beforeWorld = structuredClone(world);
   const container = element('div');
   const refresh = renderWorldChronicle(container, world, 'publish-observatory', { stale: true });
+  assert.equal(container.dataset.chronicleSnapshotRevision, String(world.revision),
+    'the rendered Chronicle must disclose the exact snapshot revision it projects');
 
   assert.equal(typeof refresh, 'function',
     'opening a World Chronicle must expose an in-place refresh for newly accepted shared snapshots');
@@ -1882,19 +2051,23 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   assert.ok(freshness());
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
   assert.match(freshness().textContent, /shared stream is disconnected/i);
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'disconnected');
   assert.equal(search.value, 'publish-observatory');
 
   const nextWorld = structuredClone(world);
+  nextWorld.revision = world.revision + 1;
   nextWorld.events.push({
     id: 'chronicle-reconnect-new-discovery',
     type: 'discover',
-    locationId: 'academy',
+    locationId: 'overlook',
     actor: founder,
     at: '2026-10-27T09:04:00.000Z'
   });
   const beforeNextWorld = structuredClone(nextWorld);
 
   assert.equal(refresh(nextWorld, false), true);
+  assert.equal(container.dataset.chronicleSnapshotRevision, String(nextWorld.revision),
+    'the Chronicle revision marker must advance only when a new snapshot is accepted');
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'current');
   assert.match(freshness().textContent, /current client snapshot/i);
   assert.doesNotMatch(freshness().textContent, /disconnected/i);
@@ -1909,8 +2082,927 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   ), 'the refreshed Chronicle must project events from the newly accepted world snapshot');
 
   assert.equal(refresh(nextWorld, true), true);
+  assert.equal(container.dataset.chronicleSnapshotRevision, String(nextWorld.revision),
+    'marking the accepted snapshot stale must not replace its revision');
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'disconnected');
+  const mismatchContainer = element('div');
+  renderWorldChronicle(mismatchContainer, nextWorld, 'publish-observatory', {
+    stale: true,
+    staleReason: 'revision-mismatch'
+  });
+  assert.equal(mismatchContainer.dataset.chronicleSnapshotFreshnessReason, 'revision-mismatch');
+  const mismatchFreshness = walk(mismatchContainer).find(item => item.dataset?.chronicleSnapshotFreshness);
+  assert.ok(mismatchFreshness);
+  assert.match(mismatchFreshness.textContent,
+    /accepted revision differs from the snapshot captured/i);
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
   assert.match(freshness().textContent, /shared stream is disconnected/i);
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'disconnected');
   assert.deepEqual(world, beforeWorld, 'refreshing the Chronicle must not mutate the previous snapshot');
   assert.deepEqual(nextWorld, beforeNextWorld, 'refreshing the Chronicle must not mutate the newly accepted snapshot');
+}));
+
+
+
+test('World Chronicle exposes a bounded return path to Evidence Archive and keeps it through snapshot refresh', () => withDocument(() => {
+  const { world } = sourceObservationWorld();
+  const beforeWorld = structuredClone(world);
+  const returned = [];
+  const container = element('div');
+  const refresh = renderWorldChronicle(container, world, 'publish-observatory', {
+    stale: true,
+    onReturnToEvidenceArchive: () => returned.push('Evidence Archive')
+  });
+  const returnButton = () => walk(container).find(item =>
+    item.dataset?.chronicleReturnEvidenceArchive === 'true'
+  );
+
+  assert.ok(returnButton(), 'an Archive-origin Chronicle must expose a return action');
+  assert.equal(returnButton().textContent, 'Return to Evidence Archive →');
+  returnButton().onclick();
+  assert.deepEqual(returned, ['Evidence Archive']);
+
+  const nextWorld = structuredClone(world);
+  nextWorld.events.push({
+    id: 'chronicle-return-reconnect-discovery',
+    type: 'discover',
+    locationId: 'overlook',
+    actor: { id: 'damien', name: 'Damien', role: 'founder' },
+    at: '2026-10-27T09:05:00.000Z'
+  });
+  const beforeNextWorld = structuredClone(nextWorld);
+  assert.equal(refresh(nextWorld, false), true);
+  assert.ok(returnButton(), 'the return action must survive in-place Chronicle refresh');
+  returnButton().onclick();
+  assert.deepEqual(returned, ['Evidence Archive', 'Evidence Archive']);
+  assert.deepEqual(world, beforeWorld, 'the return path must not mutate the old snapshot');
+  assert.deepEqual(nextWorld, beforeNextWorld, 'the return path must not mutate the refreshed snapshot');
+}));
+
+
+test('World Chronicle exposes bounded recorded actor attribution without inferring distinct humans or authority', () => withDocument(() => {
+  const witness = { id: 'witness-session-7', name: 'Witness', role: 'witness' };
+  const unknownRole = { id: 'unclassified-session', name: 'Unclassified', role: 'administrator' };
+  const overlongActorId = 'x'.repeat(129);
+  const world = {
+    creations: [{ id: 'creation-1', title: 'Research object', kind: 'observatory', version: 1, versions: [] }],
+    reports: [{
+      id: 'report-witness', creationId: 'creation-1', version: 1,
+      text: 'A Witness-authored retained report; not independently verified.',
+      actor: witness, at: '2026-11-20T12:01:00.000Z'
+    }],
+    contributions: [],
+    events: [
+      {
+        id: 'report-event-witness', type: 'report', actor: witness,
+        creationId: 'creation-1', version: 1, actionResult: { id: 'report-witness' },
+        at: '2026-11-20T12:01:00.000Z'
+      },
+      {
+        id: 'unknown-role-event', type: 'discover', actor: unknownRole,
+        locationId: 'overlook', at: '2026-11-20T12:02:00.000Z'
+      },
+      {
+        id: 'overlong-actor-event', type: 'discover',
+        actor: { id: overlongActorId, name: 'Long ID', role: 'witness' },
+        locationId: 'overlook', at: '2026-11-20T12:03:00.000Z'
+      }
+    ]
+  };
+  const before = structuredClone(world);
+
+  const witnessContainer = element('main');
+  renderWorldChronicle(witnessContainer, world, 'report-event-witness');
+  const witnessCard = walk(witnessContainer).find(node =>
+    node.dataset?.eventId === 'world:report-event-witness'
+  );
+  assert.ok(witnessCard, 'the exact retained report event remains navigable');
+  assert.equal(witnessCard.dataset.chronicleActorId, witness.id);
+  assert.equal(witnessCard.dataset.chronicleActorRole, 'witness');
+  assert.equal(witnessCard.dataset.chronicleActorAttribution, 'complete');
+  assert.match(textOf(witnessCard), /recorded actor role: witness/i);
+  assert.match(textOf(witnessCard),
+    /pseudonymous session attribution; not proof of a distinct human, endorsement or authority/i);
+
+  const search = walk(witnessContainer).find(node => node.dataset?.chronicleSearch === 'true');
+  assert.ok(search);
+  search.value = witness.id;
+  search.oninput();
+  assert.ok(walk(witnessContainer).some(node =>
+    node.dataset?.eventId === 'world:report-event-witness'
+  ), 'retained Chronicle history must be searchable by the recorded actor ID');
+
+  const unknownRoleContainer = element('main');
+  renderWorldChronicle(unknownRoleContainer, world, 'unknown-role-event');
+  const unknownRoleCard = walk(unknownRoleContainer).find(node =>
+    node.dataset?.eventId === 'world:unknown-role-event'
+  );
+  assert.ok(unknownRoleCard);
+  assert.equal(unknownRoleCard.dataset.chronicleActorId, 'unclassified-session');
+  assert.equal(unknownRoleCard.dataset.chronicleActorRole, 'unavailable');
+  assert.equal(unknownRoleCard.dataset.chronicleActorAttribution, 'incomplete');
+  assert.match(textOf(unknownRoleCard), /recorded actor attribution incomplete/i);
+  assert.doesNotMatch(textOf(unknownRoleCard), /administrator/i);
+
+  const overlongContainer = element('main');
+  renderWorldChronicle(overlongContainer, world, 'overlong-actor-event');
+  const overlongCard = walk(overlongContainer).find(node =>
+    node.dataset?.eventId === 'world:overlong-actor-event'
+  );
+  assert.ok(overlongCard);
+  assert.equal(overlongCard.dataset.chronicleActorId, 'unavailable');
+  assert.equal(overlongCard.dataset.chronicleActorRole, 'witness');
+  assert.equal(overlongCard.dataset.chronicleActorAttribution, 'incomplete');
+  assert.doesNotMatch(textOf(overlongCard), new RegExp(overlongActorId));
+
+  assert.deepEqual(world, before, 'Chronicle actor attribution and search must remain read-only');
+}));
+
+
+test('Evidence Archive keeps report and contribution streams separate and ordered by retained append position', () => {
+  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const world = {
+    creations: [{ id: 'creation-1', title: 'Research object', kind: 'observatory', version: 1, versions: [] }],
+    reports: [
+      { id: 'report-first', creationId: 'creation-1', version: 1, text: 'First report; timestamp is descriptive.', actor, at: '2026-11-20T12:02:00.000Z' },
+      { id: 'report-later', creationId: 'creation-1', version: 1, text: 'Later appended report; clock regressed.', actor, at: '2026-11-20T12:01:00.000Z' }
+    ],
+    contributions: [
+      { id: 'contribution-first', creationId: 'creation-1', version: 1, text: 'First contribution.', actor, at: '2026-11-20T12:03:00.000Z' },
+      { id: 'contribution-later', creationId: 'creation-1', version: 1, text: 'Later appended contribution; clock regressed.', actor, at: '2026-11-20T11:59:00.000Z' }
+    ]
+  };
+  const before = structuredClone(world);
+  const projection = projectEvidenceArchiveActivityStreams(world);
+  const reportStream = projection.streams.find(stream => stream.id === 'report');
+  const contributionStream = projection.streams.find(stream => stream.id === 'contribution');
+
+  assert.equal(reportStream.available, true);
+  assert.equal(contributionStream.available, true);
+  assert.equal(reportStream.orderingBasis, 'retained-append-position');
+  assert.equal(reportStream.scope, 'actor-visible-collection');
+  assert.deepEqual(reportStream.records.map(item => item.record.id), ['report-later', 'report-first']);
+  assert.deepEqual(reportStream.records.map(item => item.streamPosition), [2, 1]);
+  assert.deepEqual(contributionStream.records.map(item => item.record.id), ['contribution-later', 'contribution-first']);
+  assert.deepEqual(contributionStream.records.map(item => item.streamPosition), [2, 1]);
+
+  withDocument(() => {
+    const root = element('main');
+    const opened = [];
+    renderEvidenceArchiveActivityStreams(root, world, (creationId, version) => opened.push([creationId, version]));
+    const reportSection = walk(root).find(node => node.dataset?.evidenceArchiveActivityStream === 'report');
+    const contributionSection = walk(root).find(node => node.dataset?.evidenceArchiveActivityStream === 'contribution');
+    assert.ok(reportSection);
+    assert.ok(contributionSection);
+    assert.equal(reportSection.dataset.orderingBasis, 'retained-append-position');
+    assert.equal(contributionSection.dataset.orderingBasis, 'retained-append-position');
+    const reportCards = walk(reportSection).filter(node => node.dataset?.evidenceArchiveActivityRecord === 'report');
+    const contributionCards = walk(contributionSection).filter(node => node.dataset?.evidenceArchiveActivityRecord === 'contribution');
+    assert.deepEqual(reportCards.map(node => node.dataset.activityRecordId), ['report-later', 'report-first']);
+    assert.deepEqual(reportCards.map(node => node.dataset.streamPosition), ['2', '1']);
+    assert.deepEqual(reportCards.map(node => node.dataset.activityActorId), ['damien', 'damien']);
+    assert.deepEqual(reportCards.map(node => node.dataset.activityActorRole), ['founder', 'founder']);
+    assert.deepEqual(contributionCards.map(node => node.dataset.activityRecordId), ['contribution-later', 'contribution-first']);
+    assert.deepEqual(contributionCards.map(node => node.dataset.streamPosition), ['2', '1']);
+    assert.deepEqual(contributionCards.map(node => node.dataset.activityActorId), ['damien', 'damien']);
+    assert.deepEqual(contributionCards.map(node => node.dataset.activityActorRole), ['founder', 'founder']);
+    assert.match(textOf(reportCards[0]), /recorded actor role: founder/i);
+    assert.match(textOf(reportCards[0]), /pseudonymous session attribution/i);
+    assert.match(textOf(root), /separate streams/i);
+    assert.match(textOf(root), /timestamps are descriptive/i);
+    const openButton = walk(reportCards[0]).find(node => node.dataset?.evidenceArchiveOpen === 'true');
+    assert.ok(openButton, 'a linked report must expose exact artifact-version navigation');
+    openButton.onclick();
+    assert.deepEqual(opened, [['creation-1', 1]]);
+  });
+  assert.deepEqual(world, before, 'Evidence Archive projection and navigation must not mutate the world');
+});
+
+test('Evidence Archive pages all retained report and contribution history independently by append position', () => {
+  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const reports = [];
+  const contributions = [];
+  const events = [];
+  for (let index = 1; index <= 12; index += 1) {
+    const at = new Date(Date.UTC(2026, 10, 20, 12, index)).toISOString();
+    const reportId = 'report-' + index;
+    const contributionId = 'contribution-' + index;
+    reports.push({
+      id: reportId, creationId: 'creation-1', version: 1,
+      text: 'Retained report ' + index, actor, at
+    });
+    contributions.push({
+      id: contributionId, creationId: 'creation-1', version: 1,
+      text: 'Retained contribution ' + index, actor, at
+    });
+    events.push({
+      id: 'event-' + reportId, type: 'report', actor, creationId: 'creation-1', version: 1,
+      actionResult: { id: reportId }, at, historyPosition: events.length + 1
+    });
+    events.push({
+      id: 'event-' + contributionId, type: 'contribute', actor, creationId: 'creation-1', version: 1,
+      actionResult: { id: contributionId }, at, historyPosition: events.length + 1
+    });
+  }
+  const world = {
+    revision: events.length,
+    events,
+    creations: [{ id: 'creation-1', title: 'Research object', version: 1, versions: [] }],
+    reports,
+    contributions
+  };
+  const before = structuredClone(world);
+  const projection = projectEvidenceArchiveActivityStreams(world);
+  const reportStream = projection.streams.find(stream => stream.id === 'report');
+  const contributionStream = projection.streams.find(stream => stream.id === 'contribution');
+  const newestReports = Array.from({ length: 10 }, (_, index) => 'report-' + (12 - index));
+  const newestContributions = Array.from({ length: 10 }, (_, index) => 'contribution-' + (12 - index));
+
+  assert.equal(reportStream.pageSize, 10);
+  assert.equal(reportStream.pageCount, 2);
+  assert.equal(reportStream.pageIndex, 0);
+  assert.equal(reportStream.olderCount, 2);
+  assert.deepEqual(reportStream.records.map(item => item.record.id), newestReports);
+  assert.equal(contributionStream.pageCount, 2);
+  assert.equal(contributionStream.olderCount, 2);
+  assert.deepEqual(contributionStream.records.map(item => item.record.id), newestContributions);
+
+  const clamped = projectEvidenceArchiveActivityStreams(world, {
+    pages: { report: 99, contribution: -1 }
+  });
+  assert.equal(clamped.streams.find(stream => stream.id === 'report').pageIndex, 1);
+  assert.equal(clamped.streams.find(stream => stream.id === 'contribution').pageIndex, 0);
+
+  withDocument(() => {
+    const root = element('main');
+    const opened = [];
+    const inspected = [];
+    renderEvidenceArchiveActivityStreams(
+      root,
+      world,
+      (creationId, version) => opened.push([creationId, version]),
+      eventId => inspected.push(eventId)
+    );
+    const section = id => walk(root).find(node => node.dataset?.evidenceArchiveActivityStream === id);
+    const recordIds = id => walk(section(id))
+      .filter(node => node.dataset?.evidenceArchiveActivityRecord === id)
+      .map(node => node.dataset.activityRecordId);
+
+    assert.deepEqual(recordIds('report'), newestReports);
+    assert.deepEqual(recordIds('contribution'), newestContributions);
+    const olderReport = walk(section('report')).find(node => node.dataset?.evidenceArchivePage === 'older');
+    assert.ok(olderReport, 'older report pages must be reachable from the Archive');
+    olderReport.onclick();
+    assert.equal(section('report').dataset.streamPage, '2');
+    assert.deepEqual(recordIds('report'), ['report-2', 'report-1']);
+    assert.equal(section('contribution').dataset.streamPage, '1');
+    assert.deepEqual(recordIds('contribution'), newestContributions);
+
+    const olderContribution = walk(section('contribution')).find(node => node.dataset?.evidenceArchivePage === 'older');
+    assert.ok(olderContribution, 'contribution pagination must be independent of report pagination');
+    olderContribution.onclick();
+    assert.equal(section('contribution').dataset.streamPage, '2');
+    assert.deepEqual(recordIds('contribution'), ['contribution-2', 'contribution-1']);
+    assert.equal(section('report').dataset.streamPage, '2');
+
+    const oldestReport = walk(section('report')).find(node => node.dataset?.activityRecordId === 'report-1');
+    const openArtifact = walk(oldestReport).find(node => node.dataset?.evidenceArchiveOpen === 'true');
+    const inspectEvent = walk(oldestReport).find(node => node.dataset?.evidenceArchiveOpenEvent === 'true');
+    assert.ok(openArtifact, 'older retained reports keep exact artifact-version navigation');
+    assert.ok(inspectEvent, 'older retained reports keep exact Chronicle navigation');
+    openArtifact.onclick();
+    inspectEvent.onclick();
+    assert.deepEqual(opened, [['creation-1', 1]]);
+    assert.deepEqual(inspected, ['event-report-1']);
+
+    const newerReport = walk(section('report')).find(node => node.dataset?.evidenceArchivePage === 'newer');
+    assert.ok(newerReport);
+    newerReport.onclick();
+    assert.equal(section('report').dataset.streamPage, '1');
+    assert.deepEqual(recordIds('report'), newestReports);
+    assert.equal(section('contribution').dataset.streamPage, '2');
+    assert.deepEqual(recordIds('contribution'), ['contribution-2', 'contribution-1']);
+  });
+  assert.deepEqual(world, before, 'Archive pagination and navigation must not mutate the world');
+});
+
+test('Evidence Archive marks a missing activity collection unavailable instead of empty', () => {
+  const projection = projectEvidenceArchiveActivityStreams({ reports: [] });
+  const contributionStream = projection.streams.find(stream => stream.id === 'contribution');
+  assert.equal(contributionStream.available, false);
+  assert.match(contributionStream.reason, /missing history is not treated as empty/i);
+  withDocument(() => {
+    const root = element('main');
+    renderEvidenceArchiveActivityStreams(root, { reports: [] });
+    const contributionSection = walk(root).find(node => node.dataset?.evidenceArchiveActivityStream === 'contribution');
+    assert.ok(contributionSection);
+    assert.equal(contributionSection.dataset.streamStatus, 'unavailable');
+    assert.match(textOf(contributionSection), /missing history is not treated as empty/i);
+    assert.doesNotMatch(textOf(contributionSection), /No contributions are retained/i);
+  });
+});
+
+test('Evidence Archive retains malformed activity visibly as unvalidated and withholds artifact navigation', () => {
+  const world = {
+    creations: [{ id: 'creation-1', title: 'Research object', version: 1, versions: [] }],
+    reports: [
+      { id: 'report-bad-time', creationId: 'creation-1', version: 1, text: 'Malformed timestamp remains visible.', actor: { id: 'damien', role: 'founder' }, at: 'not-a-timestamp' }
+    ],
+    contributions: []
+  };
+  const projection = projectEvidenceArchiveActivityStreams(world);
+  const item = projection.streams.find(stream => stream.id === 'report').records[0];
+  assert.equal(item.status, 'unvalidated');
+  withDocument(() => {
+    const root = element('main');
+    renderEvidenceArchiveActivityStreams(root, world, () => assert.fail('unvalidated record must not navigate'));
+    const card = walk(root).find(node => node.dataset?.activityRecordId === 'report-bad-time');
+    assert.ok(card);
+    assert.equal(card.dataset.recordStatus, 'unvalidated');
+    assert.equal(walk(card).some(node => node.dataset?.evidenceArchiveOpen === 'true'), false);
+    assert.match(textOf(card), /unvalidated/i);
+  });
+});
+
+
+test('Evidence Archive withholds navigation when an exact retained artifact version is missing', () => {
+  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const world = {
+    creations: [{ id: 'creation-1', title: 'Research object', version: 2, versions: [] }],
+    reports: [
+      { id: 'report-missing-version', creationId: 'creation-1', version: 1, text: 'The earlier version is not retained.', actor, at: '2026-11-20T12:00:00.000Z' }
+    ],
+    contributions: []
+  };
+  const projection = projectEvidenceArchiveActivityStreams(world);
+  const item = projection.streams.find(stream => stream.id === 'report').records[0];
+  assert.equal(item.status, 'unvalidated');
+  assert.match(item.reason, /exact retained artifact version is unavailable/i);
+  withDocument(() => {
+    const root = element('main');
+    renderEvidenceArchiveActivityStreams(root, world, () => assert.fail('missing artifact version must not navigate'));
+    const card = walk(root).find(node => node.dataset?.activityRecordId === 'report-missing-version');
+    assert.ok(card);
+    assert.equal(card.dataset.recordStatus, 'unvalidated');
+    assert.equal(walk(card).some(node => node.dataset?.evidenceArchiveOpen === 'true'), false);
+  });
+});
+
+test('Evidence Archive mounts reports and contributions as separate streams', () => {
+  const world = createWorld({ now: '2026-11-20T12:00:00.000Z' });
+  withDocument(() => {
+    const root = element('main');
+    renderEvidenceArchive(root, { world, shared: false });
+    const reportStream = walk(root).find(node => node.dataset?.evidenceArchiveActivityStream === 'report');
+    const contributionStream = walk(root).find(node => node.dataset?.evidenceArchiveActivityStream === 'contribution');
+    assert.ok(reportStream);
+    assert.ok(contributionStream);
+    assert.equal(reportStream.dataset.streamStatus, 'available');
+    assert.equal(contributionStream.dataset.streamStatus, 'available');
+    assert.match(textOf(root), /separate streams/i);
+  });
+});
+
+
+test('Evidence Archive links report and contribution cards to their unique exact source events', () => {
+  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const world = {
+    revision: 4,
+    creations: [{ id: 'creation-1', title: 'Research object', version: 1, versions: [] }],
+    reports: [{
+      id: 'report-1', creationId: 'creation-1', version: 1,
+      text: 'A retained report; its claim is not independently verified.', actor,
+      at: '2026-11-20T12:01:00.000Z'
+    }],
+    contributions: [{
+      id: 'contribution-1', creationId: 'creation-1', version: 1,
+      text: 'A retained contribution; its claim is not independently verified.', actor,
+      at: '2026-11-20T12:02:00.000Z'
+    }],
+    events: [
+      {
+        id: 'event-report-1', type: 'report', actor, creationId: 'creation-1', version: 1,
+        actionResult: { id: 'report-1' }, at: '2026-11-20T12:01:00.000Z', historyPosition: 2
+      },
+      {
+        id: 'event-contribution-1', type: 'contribute', actor, creationId: 'creation-1', version: 1,
+        actionResult: { id: 'contribution-1' }, at: '2026-11-20T12:02:00.000Z', historyPosition: 4
+      }
+    ]
+  };
+  const before = structuredClone(world);
+  const projection = projectEvidenceArchiveActivityStreams(world);
+  const report = projection.streams.find(stream => stream.id === 'report').records[0];
+  const contribution = projection.streams.find(stream => stream.id === 'contribution').records[0];
+
+  assert.equal(report.sourceEvent.status, 'linked');
+  assert.equal(report.sourceEvent.eventId, 'event-report-1');
+  assert.equal(report.sourceEvent.eventPosition, 2);
+  assert.equal(contribution.sourceEvent.status, 'linked');
+  assert.equal(contribution.sourceEvent.eventId, 'event-contribution-1');
+  assert.equal(contribution.sourceEvent.eventPosition, 4);
+
+  withDocument(() => {
+    const root = element('main');
+    const inspected = [];
+    renderEvidenceArchive(root, {
+      world,
+      onOpenArtifact: () => {},
+      onInspectEvent: eventId => inspected.push(eventId)
+    });
+    for (const [recordId, eventId] of [
+      ['report-1', 'event-report-1'],
+      ['contribution-1', 'event-contribution-1']
+    ]) {
+      const card = walk(root).find(node => node.dataset?.activityRecordId === recordId);
+      assert.ok(card, 'the retained activity card remains visible');
+      assert.equal(card.dataset.activityActorId, actor.id);
+      assert.equal(card.dataset.activityActorRole, actor.role);
+      assert.match(textOf(card), /recorded actor role: founder/i);
+      assert.match(textOf(card), /source event link identifies retained activity only; it does not verify the claim/i);
+      const link = walk(card).find(node => node.dataset?.evidenceArchiveOpenEvent === 'true');
+      assert.ok(link, 'a unique exact source event must expose Chronicle navigation');
+      assert.equal(link.dataset.eventId, eventId);
+      assert.equal(link.dataset.eventPosition, eventId === 'event-report-1' ? '2' : '4');
+      link.onclick();
+    }
+    assert.deepEqual(inspected, ['event-report-1', 'event-contribution-1']);
+  });
+  assert.deepEqual(world, before, 'source-event projection and Chronicle navigation must remain read-only');
+});
+
+
+test('Evidence Archive withholds source-event links for missing, duplicate, or mismatched lineage', () => {
+  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const makeWorld = () => ({
+    creations: [{ id: 'creation-1', title: 'Research object', version: 1, versions: [] }],
+    reports: [{
+      id: 'report-1', creationId: 'creation-1', version: 1,
+      text: 'This text mentions event-report-1 but cannot create a source link.', actor,
+      at: '2026-11-20T12:01:00.000Z'
+    }],
+    contributions: [],
+    events: [{
+      id: 'event-report-1', type: 'report', actor, creationId: 'creation-1', version: 1,
+      actionResult: { id: 'report-1' }, at: '2026-11-20T12:01:00.000Z'
+    }]
+  });
+  const cases = [
+    {
+      name: 'missing event history',
+      status: 'unavailable',
+      mutate: world => { delete world.events; }
+    },
+    {
+      name: 'no action-result match',
+      status: 'unlinked',
+      mutate: world => { world.events[0].actionResult.id = 'another-record'; }
+    },
+    {
+      name: 'duplicate action-result matches',
+      status: 'ambiguous',
+      mutate: world => { world.events.push({ ...structuredClone(world.events[0]), id: 'event-report-2' }); }
+    },
+    {
+      name: 'duplicate event identity',
+      status: 'ambiguous',
+      mutate: world => { world.events.push({ id: 'event-report-1', type: 'discover', actor, at: '2026-11-20T12:03:00.000Z' }); }
+    },
+    {
+      name: 'unnormalized event identity',
+      status: 'ambiguous',
+      mutate: world => { world.events[0].id = ' event-report-1 '; }
+    },
+    {
+      name: 'wrong event type',
+      status: 'mismatched',
+      mutate: world => { world.events[0].type = 'contribute'; }
+    },
+    {
+      name: 'wrong artifact identity',
+      status: 'mismatched',
+      mutate: world => { world.events[0].creationId = 'another-creation'; }
+    },
+    {
+      name: 'wrong artifact version',
+      status: 'mismatched',
+      mutate: world => { world.events[0].version = 2; }
+    },
+    {
+      name: 'wrong actor identity',
+      status: 'mismatched',
+      mutate: world => { world.events[0].actor = { ...actor, id: 'another-actor' }; }
+    },
+    {
+      name: 'unnormalized activity record identity',
+      status: 'unlinked',
+      recordStatus: 'unvalidated',
+      mutate: world => { world.reports[0].id = ' report-1 '; }
+    },
+    {
+      name: 'unnormalized source action-result identity',
+      status: 'unlinked',
+      mutate: world => { world.events[0].actionResult.id = ' report-1 '; }
+    },
+    {
+      name: 'unnormalized artifact identity',
+      status: 'mismatched',
+      recordStatus: 'unvalidated',
+      mutate: world => {
+        world.reports[0].creationId = ' creation-1 ';
+        world.events[0].creationId = ' creation-1 ';
+      }
+    },
+    {
+      name: 'unnormalized matching actor identity',
+      status: 'mismatched',
+      recordStatus: 'unvalidated',
+      actorId: 'unavailable',
+      mutate: world => {
+        world.reports[0].actor = { ...actor, id: ' damien ' };
+        world.events[0].actor = { ...actor, id: ' damien ' };
+      }
+    },
+    {
+      name: 'unnormalized matching actor name',
+      status: 'mismatched',
+      recordStatus: 'unvalidated',
+      actorName: 'unknown actor',
+      mutate: world => {
+        world.reports[0].actor = { ...actor, name: ' Damien ' };
+        world.events[0].actor = { ...actor, name: ' Damien ' };
+      }
+    },
+    {
+      name: 'wrong actor role',
+      status: 'mismatched',
+      mutate: world => { world.events[0].actor = { ...actor, role: 'witness' }; }
+    }
+  ];
+
+  for (const fixture of cases) {
+    const world = makeWorld();
+    fixture.mutate(world);
+    const before = structuredClone(world);
+    const item = projectEvidenceArchiveActivityStreams(world).streams
+      .find(stream => stream.id === 'report').records[0];
+    assert.equal(item.sourceEvent.status, fixture.status, fixture.name);
+    if (fixture.recordStatus) assert.equal(item.status, fixture.recordStatus, fixture.name + ' must fail closed at the record level');
+    assert.ok(item.sourceEvent.reason, fixture.name + ' must explain why navigation is withheld');
+    withDocument(() => {
+      const root = element('main');
+      renderEvidenceArchiveActivityStreams(root, world, undefined, () => {
+        assert.fail(fixture.name + ' must not create a Chronicle link');
+      });
+      const card = walk(root).find(node =>
+        node.dataset?.evidenceArchiveActivityRecord === 'report' &&
+        node.dataset?.recordStatus === (fixture.recordStatus || 'linked')
+      );
+      assert.ok(card, fixture.name + ' must preserve the visible activity record');
+      if (fixture.actorId) assert.equal(card.dataset.activityActorId, fixture.actorId, fixture.name);
+      if (fixture.actorName) assert.match(textOf(card), new RegExp(fixture.actorName, 'i'), fixture.name);
+      assert.equal(walk(card).some(node => node.dataset?.evidenceArchiveOpenEvent === 'true'), false,
+        fixture.name + ' must not offer a guessed or ambiguous source link');
+      if (fixture.recordStatus === 'unvalidated') assert.match(textOf(card), /unvalidated retained activity/i);
+      else assert.match(textOf(card), /source chronicle link withheld/i);
+    });
+    assert.deepEqual(world, before, fixture.name + ' projection must not mutate history');
+  }
+});
+
+
+test('Chronicle routes retained events to related institutions and only explicit discovery events to recorded map places', () => {
+  const actor = { id: 'chronicle-route-founder', name: 'Chronicle Founder', role: 'founder' };
+  const world = {
+    creations: [{
+      id: 'creation-route',
+      title: 'Route fixture',
+      kind: 'observatory',
+      version: 1,
+      versions: [{ version: 1, title: 'Route fixture', publishedAt: '2026-11-20T12:00:00.000Z' }]
+    }],
+    reports: [{
+      id: 'report-route',
+      creationId: 'creation-route',
+      version: 1,
+      text: 'A retained report; its claim is not independently verified.',
+      actor,
+      at: '2026-11-20T12:01:00.000Z'
+    }],
+    contributions: [],
+    discoveries: [],
+    events: [
+      {
+        id: 'publish-route-event',
+        type: 'publish',
+        creationId: 'creation-route',
+        version: 1,
+        actor,
+        at: '2026-11-20T12:00:00.000Z'
+      },
+      {
+        id: 'report-route-event',
+        type: 'report',
+        creationId: 'creation-route',
+        version: 1,
+        actionResult: { id: 'report-route' },
+        actor,
+        at: '2026-11-20T12:01:00.000Z'
+      },
+      {
+        id: 'discover-route-event',
+        type: 'discover',
+        locationId: 'overlook',
+        actor,
+        at: '2026-11-20T12:02:00.000Z'
+      },
+      {
+        id: 'discover-prototype-key',
+        type: 'discover',
+        locationId: 'toString',
+        actor,
+        at: '2026-11-20T12:03:00.000Z'
+      },
+      {
+        id: 'discover-institution-id',
+        type: 'discover',
+        locationId: 'town-square',
+        actor,
+        at: '2026-11-20T12:04:00.000Z'
+      }
+    ]
+  };
+  const before = structuredClone(world);
+  const opened = [];
+
+  withDocument(() => {
+    const root = element('main');
+    renderWorldChronicle(root, world, 'report-route-event', {
+      onOpenLocation: placeId => opened.push(placeId)
+    });
+    const reportCard = walk(root).find(item => item.dataset?.eventId === 'world:report-route-event');
+    assert.ok(reportCard);
+    const reportRoutes = walk(reportCard).filter(item => item.dataset?.chronicleInstitutionRoute);
+    assert.deepEqual(reportRoutes.map(item => item.dataset.chronicleInstitutionRoute),
+      ['evidence_archive', 'town-square']);
+    assert.match(textOf(root), /not claims about the event's physical location/i);
+    const townSquareButton = reportRoutes.find(item => item.dataset.chronicleInstitutionRoute === 'town-square');
+    assert.ok(townSquareButton);
+    assert.equal(townSquareButton.textContent, 'Go to TownSquare →');
+    assert.match(townSquareButton['aria-label'], /^Go to related institution TownSquare/);
+    const archiveButton = reportRoutes.find(item => item.dataset.chronicleInstitutionRoute === 'evidence_archive');
+    assert.ok(archiveButton);
+    assert.equal(archiveButton.textContent, 'Go to Evidence Archive →');
+    assert.match(archiveButton['aria-label'], /^Go to related institution Evidence Archive/);
+    archiveButton.onclick();
+    assert.deepEqual(opened, ['evidence_archive']);
+  });
+
+  withDocument(() => {
+    const root = element('main');
+    renderWorldChronicle(root, world, 'report-route-event', {
+      stale: true,
+      staleReason: 'disconnected',
+      onOpenLocation: placeId => opened.push(placeId)
+    });
+    const staleRoutes = walk(root).filter(item =>
+      item.dataset?.chronicleInstitutionRoute || item.dataset?.chronicleRecordedLocation
+    );
+    assert.ok(staleRoutes.length > 0, 'stale Chronicle entries should still disclose their institutional and map destinations');
+    assert.ok(staleRoutes.every(item => item.disabled === true),
+      'stale retained snapshots must not start shared-world routes');
+    for (const route of staleRoutes) route.onclick();
+    assert.deepEqual(opened, ['evidence_archive'],
+      'disabled stale routes must not invoke the navigation callback');
+  });
+
+  withDocument(() => {
+    const root = element('main');
+    renderWorldChronicle(root, world, 'discover-route-event', {
+      onOpenLocation: placeId => opened.push(placeId)
+    });
+    const discoveryCard = walk(root).find(item => item.dataset?.eventId === 'world:discover-route-event');
+    assert.ok(discoveryCard);
+    const recordedPlaceButton = walk(discoveryCard).find(item =>
+      item.dataset?.chronicleRecordedLocation === 'overlook'
+    );
+    assert.ok(recordedPlaceButton, 'an explicit retained discovery can route to its actual map location');
+    assert.match(recordedPlaceButton.textContent, /The Long View/);
+    recordedPlaceButton.onclick();
+    assert.deepEqual(opened, ['evidence_archive', 'overlook']);
+  });
+
+  withDocument(() => {
+    const root = element('main');
+    renderWorldChronicle(root, world, 'discover-prototype-key', {
+      onOpenLocation: placeId => opened.push(placeId)
+    });
+    assert.equal(walk(root).some(item => item.dataset?.chronicleRecordedLocation),
+      false, 'prototype keys must not resolve as map locations');
+  });
+
+  withDocument(() => {
+    const root = element('main');
+    renderWorldChronicle(root, world, 'discover-institution-id', {
+      onOpenLocation: placeId => opened.push(placeId)
+    });
+    assert.equal(walk(root).some(item => item.dataset?.chronicleRecordedLocation),
+      false, 'a discovery event cannot claim an institution ID as a recorded scenic location');
+  });
+
+  withDocument(() => {
+    const root = element('main');
+    renderInstitution(root, projects, gate, {
+      world,
+      kernelUnavailable: true,
+      onOpenLocation: placeId => opened.push(placeId)
+    });
+    const publicationCard = walk(root).find(item => item.dataset?.eventId === 'world:publish-route-event');
+    assert.ok(publicationCard);
+    const publicationHouseButton = walk(publicationCard).find(item =>
+      item.dataset?.chronicleInstitutionRoute === 'publication_house'
+    );
+    assert.ok(publicationHouseButton, 'a retained publication must link to the Publication House');
+    publicationHouseButton.onclick();
+    assert.deepEqual(opened, ['evidence_archive', 'overlook', 'publication_house']);
+  });
+
+  assert.deepEqual(world, before, 'Chronicle navigation projection must not mutate retained world history or progression');
+});
+
+
+test('Evidence Archive links private report records through their receipt-bound record ID', () => {
+  const actor = { id: 'witness-private', name: 'Private Witness', role: 'witness' };
+  const text = 'A private report with retained exact bytes.';
+  const recordTextReceipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(Buffer.from(text, 'utf8')).digest('hex'),
+    size: Buffer.byteLength(text, 'utf8')
+  };
+  const world = {
+    creations: [{ id: 'creation-private', title: 'Private research object', version: 1, versions: [] }],
+    reports: [{
+      id: 'report-private', creationId: 'creation-private', version: 1,
+      text, actor, at: '2026-11-21T07:00:00.000Z'
+    }],
+    contributions: [],
+    events: [{
+      id: 'event-private-report', type: 'report', actor,
+      creationId: 'creation-private', version: 1,
+      recordId: 'report-private', recordTextReceipt,
+      at: '2026-11-21T07:00:00.000Z'
+    }]
+  };
+
+  const linked = projectEvidenceArchiveActivityStreams(world).streams
+    .find(stream => stream.id === 'report').records[0];
+  assert.equal(linked.sourceEvent.status, 'linked');
+  assert.equal(linked.sourceEvent.eventId, 'event-private-report');
+
+  const mismatched = structuredClone(world);
+  mismatched.events[0].actionResult = { id: 'another-report' };
+  const withheld = projectEvidenceArchiveActivityStreams(mismatched).streams
+    .find(stream => stream.id === 'report').records[0];
+  assert.equal(withheld.sourceEvent.status, 'mismatched');
+});
+
+
+test('Evidence Archive withholds invented positions for partial legacy event snapshots', () => {
+  const actor = { id: 'witness-1', name: 'Witness', role: 'witness' };
+  const world = {
+    revision: 4,
+    creations: [{ id: 'creation-legacy', title: 'Legacy research object', version: 1, versions: [] }],
+    reports: [{
+      id: 'report-legacy', creationId: 'creation-legacy', version: 1,
+      text: 'A retained report without projected global positions.', actor,
+      at: '2026-11-20T12:01:00.000Z'
+    }],
+    contributions: [],
+    events: [{
+      id: 'event-report-legacy', type: 'report', actor, creationId: 'creation-legacy', version: 1,
+      actionResult: { id: 'report-legacy' }, at: '2026-11-20T12:01:00.000Z'
+    }]
+  };
+  const before = structuredClone(world);
+  const report = projectEvidenceArchiveActivityStreams(world).streams
+    .find(stream => stream.id === 'report').records[0];
+  assert.equal(report.sourceEvent.status, 'linked',
+    'a unique source event can remain navigable even when its global position is unavailable');
+  assert.equal(report.sourceEvent.eventPosition, null);
+
+  withDocument(() => {
+    const root = element('main');
+    renderEvidenceArchive(root, {
+      world,
+      onOpenArtifact: () => {},
+      onInspectEvent: () => {}
+    });
+    const card = walk(root).find(node => node.dataset?.activityRecordId === 'report-legacy');
+    assert.ok(card);
+    const link = walk(card).find(node => node.dataset?.evidenceArchiveOpenEvent === 'true');
+    assert.ok(link, 'unique event identity still permits Chronicle navigation');
+    assert.equal(link.dataset.eventPosition, undefined);
+    assert.equal(link.dataset.eventPositionStatus, 'unavailable');
+  });
+  assert.deepEqual(world, before, 'position projection must remain read-only');
+});
+
+
+test('World Chronicle keeps an explicitly pinned snapshot until the player refreshes it', () => withDocument(() => {
+  const { world, founder } = sourceObservationWorld();
+  world.events.push({
+    id: 'chronicle-pinned-existing-discovery',
+    type: 'discover',
+    locationId: 'overlook',
+    actor: founder,
+    at: '2026-10-27T10:00:00.000Z'
+  });
+  const pinnedRevision = world.events.length;
+  world.revision = pinnedRevision;
+  assert.ok(Number.isSafeInteger(pinnedRevision) && pinnedRevision >= 0);
+  const beforeWorld = structuredClone(world);
+  const refreshed = [];
+  const routed = [];
+  const container = element('main');
+  const update = renderWorldChronicle(container, world, 'publish-observatory', {
+    stale: true,
+    staleReason: 'revision-mismatch',
+    onRefresh: () => refreshed.push('requested'),
+    onOpenLocation: locationId => routed.push(locationId),
+    refreshAvailable: true
+  });
+  const refreshButton = () => walk(container).find(item =>
+    item.dataset?.chronicleSnapshotRefresh === 'true'
+  );
+  const freshness = () => walk(container).find(item =>
+    item.dataset?.chronicleSnapshotFreshness
+  );
+
+  assert.ok(refreshButton(), 'a stale pinned Chronicle must expose an explicit refresh control');
+  assert.equal(refreshButton().textContent, 'Refresh World Chronicle →');
+  assert.equal(refreshButton().disabled, false);
+  assert.equal(container.dataset.chronicleSnapshotRevision, String(pinnedRevision));
+  const search = walk(container).find(item => item.dataset?.chronicleSearch === 'true');
+  assert.ok(search);
+  search.value = '';
+  search.oninput();
+  const pinnedDiscovery = walk(container).find(item =>
+    item.dataset?.eventId === 'world:chronicle-pinned-existing-discovery'
+  );
+  assert.ok(pinnedDiscovery, 'the pinned discovery event must remain inspectable');
+  const recordedPlace = walk(pinnedDiscovery).find(item =>
+    item.dataset?.chronicleRecordedLocation === 'overlook'
+  );
+  assert.ok(recordedPlace, 'a retained discovery must expose its recorded map location');
+  assert.equal(recordedPlace.disabled, true,
+    'route navigation must remain disabled while the Chronicle snapshot is stale');
+  refreshButton().onclick();
+  assert.deepEqual(refreshed, ['requested'], 'the refresh control must invoke only its bounded callback');
+
+  const nextWorld = structuredClone(world);
+  nextWorld.revision = pinnedRevision + 1;
+  nextWorld.events.push({
+    id: 'chronicle-pinned-later-discovery',
+    type: 'discover',
+    locationId: 'overlook',
+    actor: founder,
+    at: '2026-10-27T09:04:00.000Z'
+  });
+  const beforeNextWorld = structuredClone(nextWorld);
+
+  assert.equal(update(world, true, 'disconnected', false), true);
+  assert.equal(container.dataset.chronicleSnapshotRevision, String(pinnedRevision),
+    'a newer live revision must not silently replace the pinned snapshot');
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'disconnected');
+  assert.equal(refreshButton().disabled, true,
+    'the control must remain unavailable when the newer snapshot is not currently usable');
+  assert.match(refreshButton().textContent, /reconnect to refresh/i);
+  assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
+
+  assert.equal(update(world, true, 'revision-mismatch', true), true);
+  assert.equal(refreshButton().disabled, false,
+    'a connected, newer accepted revision must enable explicit refresh');
+
+  assert.equal(update(nextWorld, false, 'current', false), true,
+    'the caller may advance the view only after the player chooses refresh');
+  assert.equal(container.dataset.chronicleSnapshotRevision, String(nextWorld.revision));
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'current');
+  assert.equal(refreshButton().hidden, true);
+  assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'current');
+  const refreshedPlace = walk(container).find(item =>
+    item.dataset?.eventId === 'world:chronicle-pinned-existing-discovery'
+  );
+  const refreshedRoute = walk(refreshedPlace).find(item =>
+    item.dataset?.chronicleRecordedLocation === 'overlook'
+  );
+  assert.ok(refreshedRoute);
+  assert.equal(refreshedRoute.disabled, false,
+    'explicit refresh must re-enable deterministic route navigation');
+  refreshedRoute.onclick();
+  assert.deepEqual(routed, ['overlook']);
+  assert.ok(walk(container).some(item =>
+    item.dataset?.eventId === 'world:chronicle-pinned-later-discovery'
+  ), 'the refreshed Chronicle must reveal the newly accepted event');
+  assert.deepEqual(world, beforeWorld, 'snapshot pinning and refresh must not mutate the old world');
+  assert.deepEqual(nextWorld, beforeNextWorld, 'snapshot pinning and refresh must not mutate the new world');
 }));

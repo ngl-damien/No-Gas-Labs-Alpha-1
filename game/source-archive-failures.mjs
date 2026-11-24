@@ -7,6 +7,20 @@ const date = now => new Date(now ?? Date.now()).toISOString();
 const fail = (code, message, status = 400) => {
   throw Object.assign(new Error(message), { code, status });
 };
+function hasDenseRetainedEventHistory(events) {
+  try {
+    for (let index = 0; index < events.length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(events, String(index));
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true ||
+          !descriptor.value || typeof descriptor.value !== 'object' || Array.isArray(descriptor.value)) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 const RETRYABILITY = Object.freeze({
   GITHUB_SOURCE_UNAVAILABLE: true,
   SOURCE_CAPTURE_MISMATCH: false,
@@ -48,13 +62,16 @@ export function recordSourceArchiveAttemptFailure(original, actor, details, { no
       original.revision < 0 || !Array.isArray(original.events) || !isStrictTimestamp(original.updatedAt)) {
     fail('INVALID_WORLD', 'Source Archive failure requires a valid current world snapshot.');
   }
+  if (original.revision !== original.events.length || !hasDenseRetainedEventHistory(original.events)) {
+    fail('INVALID_WORLD', 'Source Archive failure requires a complete retained event history.');
+  }
   if (original.revision >= Number.MAX_SAFE_INTEGER) {
     fail('REVISION_EXHAUSTED', 'The world revision cannot advance safely.', 503);
   }
   const at = date(now);
   const previousAt = Date.parse(original.updatedAt);
-  if (!Number.isFinite(previousAt) || !isStrictTimestamp(at) || Date.parse(at) < previousAt) {
-    fail('INVALID_CHRONOLOGY', 'Source Archive failure time cannot precede the retained world history.', 409);
+  if (!Number.isFinite(previousAt) || !isStrictTimestamp(at)) {
+    fail('INVALID_CHRONOLOGY', 'Source Archive failure requires a strict timestamp and valid world high-water mark.', 409);
   }
   const world = clone(original);
   const attemptId = uid('source-archive-attempt');

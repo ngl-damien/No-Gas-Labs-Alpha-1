@@ -7,7 +7,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { performance } from 'node:perf_hooks';
 import { gzip, constants as zlibConstants } from 'node:zlib';
 import { promisify } from 'node:util';
-import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
+import { createWorld, applyAction, publicWorld, validateWorld, isAppendOrderedWorldEventType } from './model.mjs';
 import { recordSourceArchiveAttemptFailure } from './source-archive-failures.mjs';
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
 import { MAX_GITHUB_SOURCE_BYTES, loadGitHubSourceFile, parseGitHubBlobUrl } from './github-decision-gate.mjs';
@@ -21,15 +21,14 @@ import { createLoginRateLimiter } from './login-rate-limit.mjs';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
-import { COMBAT_EVENT_TYPES } from './combat.mjs';
-import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, hasSourcePredicatePublicRetentionAcknowledgement } from './research-records.mjs';
-import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
+import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, hasSourcePredicatePublicRetentionAcknowledgement, stripCompleteResponseHistoryPositions, isValidSourceObservationBinding, isValidSourceFailureEventId } from './research-records.mjs';
+import { COMMONS_FOUNDER_ACTOR_ID, COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
 import { PLACES, PLAYER_MOVE_SPEED, findRoute, isWalkable , COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
-const CONFIG = Object.freeze({ founderId: 'damien', actors: [
-  { id: 'damien', roles: ['founder'], kind: 'human' },
+const CONFIG = Object.freeze({ founderId: COMMONS_FOUNDER_ACTOR_ID, actors: [
+  { id: COMMONS_FOUNDER_ACTOR_ID, roles: ['founder'], kind: 'human' },
   { id: 'local-forge', roles: ['executor'], kind: 'local-process' },
   { id: 'local-byte-verifier', roles: ['observer'], kind: 'local-process' }
 ] });
@@ -39,15 +38,16 @@ const JSON_GZIP_THRESHOLD_BYTES = 16 * 1024;
 const gzipAsync = promisify(gzip);
 const COOKIE = 'ngl_session';
 const SESSION_TTL = 24 * 60 * 60 * 1000;
+const SOURCE_SNAPSHOT_RECEIPT_TTL = SESSION_TTL;
+const MAX_SOURCE_SNAPSHOT_RECEIPTS_PER_SESSION = 32;
 const SESSION_POSITION_STORE_SCHEMA = 'ngl.session-position-store.v1';
 const SESSION_POSITION_TTL = 7 * 24 * 60 * 60 * 1000;
 const MAX_SESSION_POSITION_RECORDS = 512;
-const SOURCE_OBSERVATION_EVENT_TYPES = new Set(['source-observation-recorded', 'source-observation-challenged', 'source-observation-challenge-responded']);
 const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allow-downloads; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; font-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'self' about:";
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
-  ...['client', 'offline-shell', 'github-decision-gate', 'project-state-snapshot', 'quests', 'character-sheet', 'field-items', 'player-position', 'world-view', 'pixel-world-view', 'model', 'combat', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench', 'social', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
+  ...['client', 'offline-shell', 'github-decision-gate', 'project-state-snapshot', 'quests', 'character-sheet', 'field-items', 'player-position', 'shared-snapshot', 'world-view', 'pixel-world-view', 'model', 'combat', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench', 'social', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
   ['/project-state.json', ['project-state.json', 'application/json; charset=utf-8']],
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
@@ -106,15 +106,16 @@ const actionFields = {
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'evaluate-source-archive-predicate': ['type', 'creationId', 'version', 'publicRetentionAcknowledgementVersion', 'predicateKind', 'literal', 'requestId'],
-  'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
+  'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'resolutionRequest', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'respond-experiment-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
-  'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId'],
+  'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'sourceSnapshotRevision', 'sourceSnapshotReceipt', 'originFailureEventId', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId'],
   'challenge-source-observation': ['type', 'observationId', 'challengeType', 'challengeText', 'requestId'],
   'respond-source-observation-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'post-message': ['type', 'text', 'requestId'],
   'report-message': ['type', 'messageId', 'reason', 'details', 'requestId'],
   'moderate-message': ['type', 'messageId', 'disposition', 'reason', 'requestId'],
+  'review-message-report': ['type', 'reportId', 'note', 'requestId'],
   'create-guild': ['type', 'name', 'charter', 'requestId'],
   'join-guild': ['type', 'guildId', 'requestId'],
   'leave-guild': ['type', 'guildId', 'requestId'],
@@ -224,6 +225,10 @@ function preflightAction(input) {
       if (!Number.isSafeInteger(input.version) || input.version < 1) fail('INVALID_VERSION', 'Select a positive retained Observatory version.');
       requiredId(input.observationId, 'Source observation identity');
       if (!/^source-observation-[a-f0-9]{64}$/.test(input.observationId) || input.requestId !== input.observationId) fail('INVALID_SOURCE_OBSERVATION_ID', 'Observation and request IDs must match the normalized SHA-256 identity.');
+      if (input.sourceSnapshotReceipt !== undefined && (typeof input.sourceSnapshotReceipt !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(input.sourceSnapshotReceipt))) fail('INVALID_SOURCE_SNAPSHOT_RECEIPT', 'A server-issued snapshot receipt must be a bounded opaque token.');
+      if (input.originFailureEventId !== undefined && !isValidSourceFailureEventId(input.originFailureEventId)) {
+        fail('INVALID_SOURCE_FAILURE_ORIGIN', 'The failure origin must be one exact retained event identifier.', 409);
+      }
       preflightText(input.claim, 500, 'Claim', { required: true });
       if (!SOURCE_OBSERVATION_SOURCE_KINDS.includes(input.sourceKind)) fail('INVALID_SOURCE_KIND', 'Choose a known self-classified source kind.');
       preflightText(input.source, 500, 'Source or attribution', { required: true });
@@ -262,6 +267,10 @@ function preflightAction(input) {
       if (!COMMONS_DISPOSITIONS.includes(input.disposition)) fail('INVALID_MESSAGE_DISPOSITION', 'Choose hide or restore.');
       if (!COMMONS_REASONS.includes(input.reason)) fail('INVALID_MESSAGE_REASON', 'Choose a bounded moderation reason.');
       break;
+    case 'review-message-report':
+      requiredId(input.reportId, 'Report ID');
+      preflightText(input.note, 500, 'Review note', { required: true });
+      break;
     case 'record-collaborator-response': {
       if (!['archivist', 'adversary', 'synthesizer', 'tutor'].includes(input.role)) fail('INVALID_COLLABORATOR_ROLE', 'Choose a bounded Guild Hall role.');
       requiredId(input.moonshotId, 'Moonshot ID');
@@ -281,6 +290,7 @@ function preflightAction(input) {
       requiredId(input.reportId, 'Experiment report ID');
       if (!challengeTypes.has(input.challengeType)) fail('INVALID_CHALLENGE_TYPE', 'Choose a bounded challenge category.');
       preflightText(input.challengeText, 1000, 'Challenge text', { required: true });
+      preflightText(input.resolutionRequest, 1000, 'Resolution request', { required: true });
       const hasEvidenceId = input.evidenceCreationId !== undefined && input.evidenceCreationId !== null;
       const hasEvidenceVersion = input.evidenceVersion !== undefined && input.evidenceVersion !== null;
       if (hasEvidenceId !== hasEvidenceVersion) fail('INVALID_EVIDENCE', 'Choose both a retained challenge-evidence artifact and version, or neither.');
@@ -536,11 +546,33 @@ function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   const maximumEventAt = world.events.reduce((maximum, event) => { const eventAt = Date.parse(event?.at); return Number.isFinite(eventAt) ? Math.max(maximum, eventAt) : maximum; }, createdAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || updatedAt !== maximumEventAt) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-forged': ['itemId', 'slotId', 'sourceEventId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'field-item-transfer-offered': ['offerId', 'itemId', 'itemEventId', 'recipientId', 'recipientRole'], 'field-item-transfer-cancelled': ['offerId'], 'field-item-transfer-declined': ['offerId'], 'field-item-transferred': ['offerId', 'itemId', 'itemEventId', 'fromActorId', 'fromActorRole'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'experiment-challenge-responded': ['responseId', 'challengeId', 'reportId', 'moonshotId', 'responseText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'combat-encounter-started': ['encounterId', 'opponentId'], 'combat-move-resolved': ['encounterId', 'move'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'source-archive-attempt-failed': ['attemptId', 'requestIdDigest', 'actionDigest', 'repository', 'commitSha', 'path', 'failureCode', 'retryable', 'observedBy'], 'source-archive-predicate-evaluated': ['predicateId', 'creationId', 'version', 'publicRetentionAcknowledgementVersion', 'predicateKind', 'literal', 'outcome', 'sourceSha256', 'sourceSize', 'retrievalMode', 'evaluator', 'observedBy', 'executionContext', 'sourceTruth', 'independentVerification', 'modelAssertions'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'guild-leadership-transfer-offered': ['guildId', 'offerId', 'recipientId', 'recipientRole'], 'guild-leadership-transfer-cancelled': ['guildId', 'offerId'], 'guild-leadership-transfer-declined': ['guildId', 'offerId'], 'guild-leadership-transferred': ['guildId', 'offerId', 'fromLeaderId', 'fromLeaderRole'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-forged': ['itemId', 'slotId', 'sourceEventId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'field-item-transfer-offered': ['offerId', 'itemId', 'itemEventId', 'recipientId', 'recipientRole'], 'field-item-transfer-cancelled': ['offerId'], 'field-item-transfer-declined': ['offerId'], 'field-item-transferred': ['offerId', 'itemId', 'itemEventId', 'fromActorId', 'fromActorRole'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'experiment-challenge-responded': ['responseId', 'challengeId', 'reportId', 'moonshotId', 'responseText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'combat-encounter-started': ['encounterId', 'opponentId'], 'combat-move-resolved': ['encounterId', 'move'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'source-archive-attempt-failed': ['attemptId', 'requestIdDigest', 'actionDigest', 'repository', 'commitSha', 'path', 'failureCode', 'retryable', 'observedBy'], 'source-archive-predicate-evaluated': ['predicateId', 'creationId', 'version', 'publicRetentionAcknowledgementVersion', 'predicateKind', 'literal', 'outcome', 'sourceSha256', 'sourceSize', 'retrievalMode', 'evaluator', 'observedBy', 'executionContext', 'sourceTruth', 'independentVerification', 'modelAssertions'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'message-report-reviewed': ['reviewId', 'reportId', 'messageId', 'note'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'guild-leadership-transfer-offered': ['guildId', 'offerId', 'recipientId', 'recipientRole'], 'guild-leadership-transfer-cancelled': ['guildId', 'offerId'], 'guild-leadership-transfer-declined': ['guildId', 'offerId'], 'guild-leadership-transferred': ['guildId', 'offerId', 'fromLeaderId', 'fromLeaderRole'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), experimentChallenges = new Map(), experimentResponseIds = new Set(), respondedExperimentChallengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
   const eventPositions = new Map(), eventById = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
+  // Keep collaborator snapshot counts identical to the role-redacted public-world projection.
+  const commonsReportsById = new Map();
+  for (const source of world.events) {
+    if (source?.type === 'message-reported' && typeof source.reportId === 'string') {
+      commonsReportsById.set(source.reportId, source);
+    }
+  }
+  const isPrivateCommonsEventFor = (source, actor) => {
+    if (actor?.role === 'founder') return false;
+    if (source?.type === 'message-reported') {
+      return source.actor?.id !== actor?.id || source.actor?.role !== actor?.role;
+    }
+    if (source?.type === 'message-report-reviewed') {
+      const report = commonsReportsById.get(source.reportId);
+      return report?.actor?.id !== actor?.id || report?.actor?.role !== actor?.role;
+    }
+    return false;
+  };
+  const visibleEventCountFor = (actor, endIndex) => world.events.slice(0, endIndex).filter(source =>
+    actor?.role === 'founder' ||
+    (!['draft', 'repair'].includes(source.type) && !isPrivateCommonsEventFor(source, actor))
+  ).length;
   const sourceObservationIds = new Set(), sourceObservationById = new Map(), sourceObservationChallengeIds = new Set(), sourceObservationChallengeById = new Map(), sourceObservationResponseIds = new Set(), respondedSourceObservationChallengeIds = new Set(), sourceArchivePredicateIds = new Set();
   const sourceArchiveAttemptIds = new Set(), sourceArchiveFailureBindings = new Map(), sourceArchiveFailureOutcomes = new Set();
   const historyKey = (...parts) => JSON.stringify(parts);
@@ -562,7 +594,13 @@ function validateHistory(world) {
   let previousAt = Date.parse(world.createdAt);
   for (const event of world.events) {
     if (!Object.hasOwn(details, event.type)) throw new Error('Unknown stored world history event');
-    const optional = ['requestId', 'actionFingerprint', 'actionResult', ...(event.type === 'discover' ? ['repeat'] : []), ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion'] : [])];
+    const optional = [
+      'requestId', 'actionFingerprint', 'actionResult',
+      ...(event.type === 'contribute' || event.type === 'report' ? ['recordId', 'recordTextReceipt'] : []),
+      ...(event.type === 'discover' ? ['repeat'] : []),
+      ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion', 'resolutionRequest'] : []),
+      ...(event.type === 'source-observation-recorded' ? ['sourceSnapshotRevision', 'sourceSnapshotReceiptDigest', 'originFailureEventId'] : [])
+    ];
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
     const validTransferActorId = value => typeof value === 'string' && value.length > 0 &&
@@ -590,8 +628,8 @@ function validateHistory(world) {
       throw new Error('Stored guild leadership source identity is malformed.');
     }
     const eventAt = Date.parse(event.at);
-    const appendOrderedEvent = SOURCE_OBSERVATION_EVENT_TYPES.has(event.type) || COMBAT_EVENT_TYPES.includes(event.type);
-    if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || (!appendOrderedEvent && eventAt < previousAt) || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
+    const appendOrderedEvent = isAppendOrderedWorldEventType(event.type);
+    if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || (!appendOrderedEvent && eventAt < previousAt) || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated', 'message-report-reviewed'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
     if (event.type === 'source-archive-attempt-failed') {
       const retryable = event.failureCode === 'SOURCE_CAPTURE_MISMATCH' ? false
         : ['GITHUB_SOURCE_UNAVAILABLE', 'SOURCE_ARCHIVE_BUILD_FAILED'].includes(event.failureCode) ? true : null;
@@ -632,8 +670,16 @@ function validateHistory(world) {
       }
       studyIds.add(event.studyId);
       studyById.set(event.studyId, event);
-      const matches = published.filter(item => item.id === event.creationId && item.version === event.version && Date.parse(item.publishedAt) <= eventAt);
-      if (matches.length !== 1) throw new Error('Stored Academy study note does not bind to one earlier retained published version');
+      const key = historyKey(event.creationId, event.version);
+      const matches = publishedByVersion.get(key) || [];
+      const publications = publicationEventsByVersion.get(key) || [];
+      const publication = publications[0];
+      const studyIndex = eventPositions.get(event) ?? -1;
+      const publicationIndex = publication ? (eventPositions.get(publication) ?? -1) : -1;
+      if (matches.length !== 1 || publications.length !== 1 || studyIndex < 0 ||
+          publicationIndex < 0 || publicationIndex >= studyIndex || publication.at !== matches[0].publishedAt) {
+        throw new Error('Stored Academy study note does not bind to one earlier retained published version');
+      }
     }
     if (event.type === 'study-reviewed') {
       if (typeof event.reviewId !== 'string' || !event.reviewId || reviewIds.has(event.reviewId) ||
@@ -645,10 +691,20 @@ function validateHistory(world) {
         throw new Error('Stored Academy study review is malformed or repeated');
       }
       const source = studyById.get(event.studyId);
-      if (!source || source.actor.id !== event.actor.id || source.actor.role !== event.actor.role ||
+      const sourceIndex = source ? (eventPositions.get(source) ?? -1) : -1;
+      const reviewIndex = eventPositions.get(event) ?? -1;
+      if (!source || sourceIndex < 0 || sourceIndex >= reviewIndex ||
+          source.actor.id !== event.actor.id || source.actor.role !== event.actor.role ||
           source.creationId !== event.creationId || source.version !== event.version ||
-          Date.parse(source.at) >= eventAt) throw new Error('Stored Academy study review must follow its author’s matching source note');
-      if (!(publishedByVersion.get(historyKey(event.creationId, event.version)) || []).some(item => Date.parse(item.publishedAt) <= eventAt)) {
+          !isStrictTimestamp(source.at)) throw new Error('Stored Academy study review must follow its author’s matching source note');
+      const key = historyKey(event.creationId, event.version);
+      const versions = publishedByVersion.get(key) || [];
+      const publications = publicationEventsByVersion.get(key) || [];
+      const publication = publications[0];
+      const publicationIndex = publication ? (eventPositions.get(publication) ?? -1) : -1;
+      if (versions.length !== 1 || publications.length !== 1 ||
+          publicationIndex < 0 || publicationIndex >= sourceIndex ||
+          publication.at !== versions[0].publishedAt) {
         throw new Error('Stored Academy study review does not bind to an earlier retained published version');
       }
       reviewIds.add(event.reviewId);
@@ -663,9 +719,18 @@ function validateHistory(world) {
         throw new Error('Stored moonshot proposal is malformed');
       }
       if (!(event.sourceCreationId === null && event.sourceVersion === null)) {
+        const key = historyKey(event.sourceCreationId, event.sourceVersion);
+        const versions = publishedByVersion.get(key) || [];
+        const publications = publicationEventsByVersion.get(key) || [];
+        const publication = publications[0];
+        const publicationIndex = publication ? (eventPositions.get(publication) ?? -1) : -1;
+        const proposalIndex = eventPositions.get(event) ?? -1;
         if (typeof event.sourceCreationId !== 'string' || !event.sourceCreationId.trim() ||
             !Number.isSafeInteger(event.sourceVersion) || event.sourceVersion < 1 ||
-            !(publishedByVersion.get(historyKey(event.sourceCreationId, event.sourceVersion)) || []).some(p => Date.parse(p.publishedAt) <= Date.parse(event.at))) {
+            versions.length !== 1 || publications.length !== 1 ||
+            publicationIndex < 0 || publicationIndex >= proposalIndex ||
+            publication.actor?.id !== CONFIG.founderId || publication.actor?.role !== 'founder' ||
+            publication.at !== versions[0].publishedAt) {
           throw new Error('Stored moonshot source reference is invalid');
         }
       }
@@ -680,15 +745,28 @@ function validateHistory(world) {
       }
       reportIds.add(event.reportId);
       experimentReports.set(event.reportId, event);
-      if ((proposalsByMoonshot.get(event.moonshotId) || []).filter(proposal => proposal.index < eventPositions.get(event) && Date.parse(proposal.event.at) <= Date.parse(event.at)).length !== 1) {
+      if ((proposalsByMoonshot.get(event.moonshotId) || []).filter(proposal => proposal.index < eventPositions.get(event)).length !== 1) {
         throw new Error('Stored experiment report does not bind to one earlier moonshot proposal');
       }
       const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
       const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
       if (hasEvidenceId !== hasEvidenceVersion ||
-          (!hasEvidenceId && (event.evidenceCreationId !== null || event.evidenceVersion !== null)) ||
-          (hasEvidenceId && !(publishedByVersion.get(historyKey(event.evidenceCreationId, event.evidenceVersion)) || []).some(p => Date.parse(p.publishedAt) <= Date.parse(event.at)))) {
+          (!hasEvidenceId && (event.evidenceCreationId !== null || event.evidenceVersion !== null))) {
         throw new Error('Stored experiment evidence reference is invalid');
+      }
+      if (hasEvidenceId) {
+        const key = historyKey(event.evidenceCreationId, event.evidenceVersion);
+        const versions = publishedByVersion.get(key) || [];
+        const publications = publicationEventsByVersion.get(key) || [];
+        const publication = publications[0];
+        const publicationIndex = publication ? (eventPositions.get(publication) ?? -1) : -1;
+        const reportIndex = eventPositions.get(event) ?? -1;
+        if (versions.length !== 1 || publications.length !== 1 ||
+            publicationIndex < 0 || publicationIndex >= reportIndex ||
+            publication.actor?.id !== CONFIG.founderId || publication.actor?.role !== 'founder' ||
+            publication.at !== versions[0].publishedAt) {
+          throw new Error('Stored experiment evidence reference is invalid');
+        }
       }
     }
     if (event.type === 'experiment-challenged') {
@@ -696,7 +774,8 @@ function validateHistory(world) {
       if (typeof event.challengeId !== 'string' || !event.challengeId || challengeIds.has(event.challengeId) ||
           typeof event.reportId !== 'string' || !event.reportId || typeof event.moonshotId !== 'string' || !event.moonshotId ||
           !challengeTypes.has(event.challengeType) || typeof event.challengeText !== 'string' || !event.challengeText.trim() || Array.from(event.challengeText).length > 1000 ||
-          !report || report.moonshotId !== event.moonshotId || sameResearchActor(report.actor, event.actor) || Date.parse(report.at) > Date.parse(event.at)) {
+          !report || report.moonshotId !== event.moonshotId || sameResearchActor(report.actor, event.actor) ||
+          (eventPositions.get(report) ?? -1) >= (eventPositions.get(event) ?? -1)) {
         throw new Error('Stored experiment challenge is malformed or does not target an earlier report from a different actor');
       }
       const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
@@ -706,10 +785,17 @@ function validateHistory(world) {
         if (event.evidenceCreationId !== undefined && event.evidenceCreationId !== null) throw new Error('Stored unlinked challenge evidence must be null');
         if (event.evidenceVersion !== undefined && event.evidenceVersion !== null) throw new Error('Stored unlinked challenge evidence version must be null');
       } else {
-        const source = world.creations.find(creation => creation.id === event.evidenceCreationId);
-        const version = source && (source.version === event.evidenceVersion ? source : source.versions.find(item => item.version === event.evidenceVersion));
-        if (!version || !isStrictTimestamp(version.publishedAt) || Date.parse(version.publishedAt) > Date.parse(event.at)) {
-          throw new Error('Stored experiment challenge evidence version is not retained at the challenge time');
+        const key = historyKey(event.evidenceCreationId, event.evidenceVersion);
+        const versions = publishedByVersion.get(key) || [];
+        const publications = publicationEventsByVersion.get(key) || [];
+        const publication = publications[0];
+        const publicationIndex = publication ? (eventPositions.get(publication) ?? -1) : -1;
+        const challengeIndex = eventPositions.get(event) ?? -1;
+        if (versions.length !== 1 || publications.length !== 1 ||
+            publicationIndex < 0 || publicationIndex >= challengeIndex ||
+            publication.actor?.id !== CONFIG.founderId || publication.actor?.role !== 'founder' ||
+            publication.at !== versions[0].publishedAt) {
+          throw new Error('Stored experiment challenge evidence version is not bound to one earlier retained publication');
         }
       }
       challengeIds.add(event.challengeId);
@@ -721,14 +807,14 @@ function validateHistory(world) {
       const responseIndex = eventPositions.get(event);
       const challengeIndex = challenge ? eventPositions.get(challenge) : -1;
       const reportIndex = report ? eventPositions.get(report) : -1;
-      if (typeof event.responseId !== 'string' || !event.responseId || experimentResponseIds.has(event.responseId) ||
+      if (typeof event.responseId !== 'string' || !event.responseId.trim() || event.responseId.trim() !== event.responseId || experimentResponseIds.has(event.responseId) ||
           typeof event.challengeId !== 'string' || !challenge || respondedExperimentChallengeIds.has(event.challengeId) ||
           typeof event.reportId !== 'string' || !report || challenge.reportId !== event.reportId ||
           typeof event.moonshotId !== 'string' || challenge.moonshotId !== event.moonshotId || report.moonshotId !== event.moonshotId ||
           !sameResearchActor(report.actor, event.actor) ||
           typeof event.responseText !== 'string' || !event.responseText.trim() || Array.from(event.responseText).length > 1000 ||
           reportIndex < 0 || challengeIndex <= reportIndex || responseIndex <= challengeIndex ||
-          !isStrictTimestamp(event.at) || Date.parse(challenge.at) >= Date.parse(event.at) || Date.parse(report.at) >= Date.parse(event.at)) {
+          !isStrictTimestamp(event.at)) {
         throw new Error('Stored experiment challenge response is malformed or not authored by the original report author after the exact challenge');
       }
       experimentResponseIds.add(event.responseId);
@@ -750,7 +836,7 @@ function validateHistory(world) {
           retainedVersions.length !== 1 || publicationsForVersion.length !== 1 ||
           eventPositions.get(publicationsForVersion[0]) >= index ||
           publicationsForVersion[0].actor?.id !== CONFIG.founderId || publicationsForVersion[0].actor?.role !== 'founder' ||
-          publicationsForVersion[0].at !== versions[0].publishedAt || Date.parse(publicationsForVersion[0].at) > Date.parse(event.at) ||
+          publicationsForVersion[0].at !== versions[0].publishedAt ||
           !hasSourcePredicatePublicRetentionAcknowledgement(event) ||
           !['contains-literal', 'does-not-contain-literal'].includes(event.predicateKind) ||
           typeof event.literal !== 'string' || !event.literal.trim() || event.literal !== event.literal.trim() ||
@@ -795,23 +881,44 @@ function validateHistory(world) {
     }
     if (event.type === 'source-observation-recorded') {
       const index = eventPositions.get(event);
+      const failureOriginMatches = event.originFailureEventId === undefined ? [] :
+        world.events.filter(candidate => candidate.id === event.originFailureEventId);
+      const failureOriginEvent = failureOriginMatches[0];
+      const failureOriginPosition = failureOriginEvent ? eventPositions.get(failureOriginEvent) : -1;
+      const failureOriginValid = event.originFailureEventId === undefined || (
+        isValidSourceFailureEventId(event.originFailureEventId) &&
+        failureOriginMatches.length === 1 &&
+        failureOriginEvent.type === 'source-archive-attempt-failed' &&
+        Number.isSafeInteger(event.sourceSnapshotRevision) &&
+        Number.isSafeInteger(failureOriginPosition) &&
+        failureOriginPosition < index &&
+        event.sourceSnapshotRevision >= failureOriginPosition + 1
+      );
       const digest = artifactReceipt(sourceObservationRequestMaterial({
         actorId: event.actor?.id, actorRole: event.actor?.role, creationId: event.creationId, version: event.version,
         claim: event.claim, sourceKind: event.sourceKind, source: event.source,
-        falsifier: event.falsifier, uncertainty: event.uncertainty, nextTest: event.nextTest
+        falsifier: event.falsifier, uncertainty: event.uncertainty, nextTest: event.nextTest,
+        sourceSnapshotRevision: event.sourceSnapshotRevision,
+        originFailureEventId: event.originFailureEventId
       })).digest;
       const key = historyKey(event.creationId, event.version);
       const source = world.creations.find(creation => creation.id === event.creationId);
       const versions = source ? [...(source.versions || []), source].filter(version => version.version === event.version) : [];
       const publicationsForVersion = publicationEventsByVersion.get(key) || [];
+      const publicationPosition = publicationsForVersion.length === 1 ? eventPositions.get(publicationsForVersion[0]) + 1 : null;
+      const eventPosition = index + 1;
+      const snapshotRevisionValid = event.sourceSnapshotRevision === undefined ||
+        (Number.isSafeInteger(event.sourceSnapshotRevision) && Number.isSafeInteger(publicationPosition) &&
+          event.sourceSnapshotRevision >= publicationPosition && event.sourceSnapshotRevision < eventPosition);
       if (typeof event.observationId !== 'string' || event.observationId !== 'source-observation-' + digest ||
           event.normalizedRecordDigest !== digest || sourceObservationIds.has(event.observationId) ||
           event.requestId !== undefined && event.requestId !== event.observationId ||
           !source || source.kind !== 'observatory' || versions.length !== 1 || (versions[0].kind ?? source.kind) !== 'observatory' ||
           !isStrictTimestamp(versions[0].publishedAt) || publicationsForVersion.length !== 1 ||
           publicationsForVersion[0].at !== versions[0].publishedAt || eventPositions.get(publicationsForVersion[0]) >= index ||
+          !snapshotRevisionValid || !failureOriginValid ||
           !SOURCE_OBSERVATION_SOURCE_KINDS.includes(event.sourceKind) ||
-          event.originSchema !== 'ngl.source-observatory.v2' || event.bindingMode !== 'USER_SELECTED' ||
+          event.originSchema !== 'ngl.source-observatory.v2' || !isValidSourceObservationBinding(event) ||
           event.sourceRetrieval !== 'NOT_PERFORMED' || event.independentVerification !== 'NOT_PERFORMED' ||
           event.modelAssertions !== 'LEADS_ONLY' || event.execution !== 'NOT_EXECUTED' ||
           typeof event.claim !== 'string' || !event.claim.trim() || Array.from(event.claim).length > 500 ||
@@ -893,7 +1000,7 @@ function validateHistory(world) {
       if (packet?.protocol !== 'ngl.bounded-collaborator-packet.v1' || packet.role !== event.role || packet.targetMoonshotId !== event.moonshotId ||
           packet.authority !== 'advisory-only' || packet.mayWriteCanonicalState !== false || packet.mayGrantAuthority !== false ||
           packet.mayAwardProgress !== false || packet.mayCertifyTruthOrExecution !== false ||
-          snapshot?.status !== 'identified' || snapshot.worldId !== world.id || snapshot.revision !== index || snapshot.suppliedEventCount !== world.events.slice(0, index).filter(source => event.actor.role === 'founder' || (!['draft', 'repair'].includes(source.type) && (source.type !== 'message-reported' || (source.actor?.id === event.actor.id && source.actor?.role === event.actor.role)))).length ||
+          snapshot?.status !== 'identified' || snapshot.worldId !== world.id || snapshot.revision !== index || snapshot.suppliedEventCount !== visibleEventCountFor(event.actor, index) ||
           !Array.isArray(packet.inputRefs) || JSON.stringify(packet.inputRefs) !== JSON.stringify(event.sourceEventIds) ||
           !Array.isArray(packet.inputRecords) || packet.inputRecords.length !== event.sourceEventIds.length ||
           !Array.isArray(packet.omittedEventIds) || packet.omittedEventIds.length > 64 || packet.omittedEventIds.some(id => typeof id !== 'string' || !id || Array.from(id).length > 128 || event.sourceEventIds.includes(id)) || new Set(packet.omittedEventIds).size !== packet.omittedEventIds.length ||
@@ -917,7 +1024,7 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'experiment-challenge-responded': 'responseId', 'source-archive-predicate-evaluated': 'predicateId', 'collaborator-response-recorded': 'responseId,validationStatus', 'combat-encounter-started': 'encounterId', 'combat-move-resolved': 'encounterId,move', 'field-item-forged': 'itemId,slotId,sourceEventId', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'field-item-transfer-offered': 'offerId', 'field-item-transfer-cancelled': 'offerId', 'field-item-transfer-declined': 'offerId', 'field-item-transferred': 'itemId,offerId', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId', 'guild-leadership-transfer-offered': 'guildId,offerId', 'guild-leadership-transfer-cancelled': 'guildId,offerId', 'guild-leadership-transfer-declined': 'guildId,offerId', 'guild-leadership-transferred': 'guildId,leaderId,offerId,previousLeaderId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'experiment-challenge-responded': 'responseId', 'source-archive-predicate-evaluated': 'predicateId', 'collaborator-response-recorded': 'responseId,validationStatus', 'combat-encounter-started': 'encounterId', 'combat-move-resolved': 'encounterId,move', 'field-item-forged': 'itemId,slotId,sourceEventId', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'field-item-transfer-offered': 'offerId', 'field-item-transfer-cancelled': 'offerId', 'field-item-transfer-declined': 'offerId', 'field-item-transferred': 'itemId,offerId', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'message-report-reviewed': 'reviewId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId', 'guild-leadership-transfer-offered': 'guildId,offerId', 'guild-leadership-transfer-cancelled': 'guildId,offerId', 'guild-leadership-transfer-declined': 'guildId,offerId', 'guild-leadership-transferred': 'guildId,leaderId,offerId,previousLeaderId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
@@ -943,6 +1050,7 @@ function validateHistory(world) {
       if (event.type === 'message-posted' && result.messageId !== event.messageId) throw new Error('Stored idempotency Commons post result mismatch');
       if (event.type === 'message-reported' && result.reportId !== event.reportId) throw new Error('Stored idempotency Commons report result mismatch');
       if (event.type === 'message-moderated' && (result.moderationId !== event.moderationId || result.disposition !== event.disposition)) throw new Error('Stored idempotency Commons moderation result mismatch');
+      if (event.type === 'message-report-reviewed' && result.reviewId !== event.reviewId) throw new Error('Stored idempotency Commons report review result mismatch');
       if (event.type.startsWith('guild-') && result.guildId !== event.guildId) throw new Error('Stored idempotency player-guild result mismatch');
       if (['guild-leadership-transfer-offered', 'guild-leadership-transfer-cancelled', 'guild-leadership-transfer-declined'].includes(event.type) && result.offerId !== event.offerId) throw new Error('Stored idempotency guild leadership offer result mismatch');
       if (event.type === 'guild-leadership-transferred' &&
@@ -963,8 +1071,37 @@ function validateHistory(world) {
     if (event.type === 'publish' && !(publishedByVersion.get(historyKey(event.creationId, event.version)) || []).some(p => p.publishedAt === event.at)) throw new Error('Stored publication history mismatch');
     if (Object.hasOwn(notes, event.type)) {
       if (event.type === 'discover' && event.repeat === true) continue;
-      const index = notes[event.type].findIndex(note => note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor) && (event.type === 'discover' ? note.locationId === event.locationId : note.creationId === event.creationId && note.version === event.version));
+      const hasRecordId = event.type === 'contribute' || event.type === 'report'
+        ? Object.hasOwn(event, 'recordId') : false;
+      const hasRecordTextReceipt = event.type === 'contribute' || event.type === 'report'
+        ? Object.hasOwn(event, 'recordTextReceipt') : false;
+      if (hasRecordId !== hasRecordTextReceipt) {
+        throw new Error('Stored activity event has an incomplete text receipt binding');
+      }
+      const index = notes[event.type].findIndex(note =>
+        (event.type === 'discover'
+          ? note.locationId === event.locationId
+          : (hasRecordId
+              ? note.id === event.recordId
+              : typeof event.actionResult?.id === 'string'
+                ? note.id === event.actionResult.id : true) &&
+            note.creationId === event.creationId && note.version === event.version) &&
+        note.at === event.at &&
+        canonicalStringify(note.actor) === canonicalStringify(event.actor));
       if (index < 0) throw new Error('Stored contribution / discovery history mismatch');
+      const note = notes[event.type][index];
+      if (hasRecordId) {
+        exact(event.recordTextReceipt, ['algorithm', 'digest', 'size']);
+        const expectedReceipt = artifactReceipt(Buffer.from(note.text, 'utf8'));
+        if (event.recordTextReceipt.algorithm !== expectedReceipt.algorithm ||
+            event.recordTextReceipt.digest !== expectedReceipt.digest ||
+            event.recordTextReceipt.size !== expectedReceipt.size) {
+          throw new Error('Stored activity text does not match its Chronicle receipt');
+        }
+        if (event.actionResult !== undefined && event.actionResult?.id !== event.recordId) {
+          throw new Error('Stored activity result ID does not match its Chronicle record ID');
+        }
+      }
       notes[event.type].splice(index, 1);
     }
   }
@@ -986,7 +1123,11 @@ function validateHistory(world) {
 
 /** Expose the independent durable-history validator for focused integrity tests. */
 export function validateStoredWorldHistory(world) {
-  validateHistory(world);
+  const responseHistory = stripCompleteResponseHistoryPositions(world);
+  if (responseHistory.status === 'invalid') {
+    throw new Error('Stored response history positions must describe a complete canonical event stream.');
+  }
+  validateHistory(responseHistory.world);
 }
 
 async function validatePayload(raw) {
@@ -1269,10 +1410,29 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     }
     return position;
   };
-  const dto = session => {
+  const sourceSnapshotReceiptFor = (session, revision) => {
+    const now = Date.now();
+    if (!(session.sourceSnapshotReceipts instanceof Map)) session.sourceSnapshotReceipts = new Map();
+    for (const [storedRevision, receipt] of session.sourceSnapshotReceipts) {
+      if (!receipt || !Number.isSafeInteger(receipt.expiresAt) || receipt.expiresAt <= now) session.sourceSnapshotReceipts.delete(storedRevision);
+    }
+    let receipt = session.sourceSnapshotReceipts.get(revision);
+    if (!receipt) {
+      receipt = { token: randomBytes(32).toString('base64url'), revision, issuedAt: now, expiresAt: now + SOURCE_SNAPSHOT_RECEIPT_TTL };
+      session.sourceSnapshotReceipts.set(revision, receipt);
+    }
+    while (session.sourceSnapshotReceipts.size > MAX_SOURCE_SNAPSHOT_RECEIPTS_PER_SESSION) {
+      session.sourceSnapshotReceipts.delete(session.sourceSnapshotReceipts.keys().next().value);
+    }
+    return { token: receipt.token, revision: receipt.revision, issuedAt: receipt.issuedAt, expiresAt: receipt.expiresAt };
+  };
+  const dto = (session, { includeSourceSnapshotReceipt = true } = {}) => {
     const position = sessionPositionForWorld(session);
+    const world = publicWorld(store.value.world, session.actor);
+    const sourceSnapshotReceipt = includeSourceSnapshotReceipt ? sourceSnapshotReceiptFor(session, world.revision) : undefined;
     return {
-      world: publicWorld(store.value.world, session.actor),
+      world,
+      ...(sourceSnapshotReceipt ? { sourceSnapshotReceipt } : {}),
       viewer: {
         ...session.actor,
         presenceId: session.presenceId,
@@ -1301,7 +1461,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
   const sessionCookie = (token, request, actor) => `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict${actor.role === 'witness' ? `; Max-Age=${Math.floor(SESSION_TTL / 1000)}` : ''}${request.socket.encrypted ? '; Secure' : ''}`;
   function expireSession(token, session) {
     presence.delete(session.token); session.actor = witness(session.token); session.lastSeen = Date.now();
-    for (const stream of [...streams]) if (stream.session === session) { sendEvent(stream, 'world', dto(session)); stream.response.end(); }
+    for (const stream of [...streams]) if (stream.session === session) { sendEvent(stream, 'world', dto(session, { includeSourceSnapshotReceipt: false })); stream.response.end(); }
     broadcastPresence();
     if (token) sessions.delete(token);
   }
@@ -1333,7 +1493,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       session = {
         token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now(),
         position: restoreSessionPosition(positionStore, actor, movementNow(), store.value.world),
-        positionEpoch: randomUUID(), positionRevision: 0
+        positionEpoch: randomUUID(), positionRevision: 0, sourceSnapshotReceipts: new Map()
       }; sessions.set(id, session);
       response.setHeader('Set-Cookie', sessionCookie(id, request, actor));
     }
@@ -1341,6 +1501,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     if (!isWalkable(session.position.x, session.position.y, store.value.world.creations)) {
       session.position = reconcileSessionPosition(session, store.value.world, movementNow());
     }
+    if (!(session.sourceSnapshotReceipts instanceof Map)) session.sourceSnapshotReceipts = new Map();
     session.lastSeen = Date.now(); return session;
   }
   // Founder login is authenticated before it consumes a session slot. A stale or
@@ -1406,7 +1567,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     const session = {
       token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now(),
       position: restoreSessionPosition(positionStore, resolvedActor, movementNow(), store.value.world),
-      positionEpoch: randomUUID(), positionRevision: 0
+      positionEpoch: randomUUID(), positionRevision: 0, sourceSnapshotReceipts: new Map()
     }; sessions.set(token, session);
     response.setHeader('Set-Cookie', sessionCookie(token, request, resolvedActor));
     return session;
@@ -1529,7 +1690,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
           if (before.available && after.available && before.revision !== after.revision) broadcastWorld();
           return await json(response, 200, snapshot);
         }
-        if (path === '/api/state' || path === '/api/export') return await json(response, 200, dto(session), { acceptEncoding: request.headers['accept-encoding'] });
+        if (path === '/api/state' || path === '/api/export') return await json(response, 200, dto(session, { includeSourceSnapshotReceipt: path === '/api/state' }), { acceptEncoding: request.headers['accept-encoding'] });
         if (path === '/api/events') {
           response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
           response.flushHeaders();
@@ -1802,18 +1963,34 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             const digest = artifactReceipt(sourceObservationRequestMaterial({
               actorId: actor.id, actorRole: actor.role, creationId: action.creationId, version: action.version,
               claim: action.claim, sourceKind: action.sourceKind, source: action.source,
-              falsifier: action.falsifier, uncertainty: action.uncertainty, nextTest: action.nextTest
+              falsifier: action.falsifier, uncertainty: action.uncertainty, nextTest: action.nextTest,
+              sourceSnapshotRevision: action.sourceSnapshotRevision,
+              originFailureEventId: action.originFailureEventId
             })).digest;
             const expectedObservationId = 'source-observation-' + digest;
             if (action.observationId !== expectedObservationId || requestId !== expectedObservationId) {
               fail('INVALID_SOURCE_OBSERVATION_ID', 'Observation ID must match this actor, selected version and normalized note content.');
             }
           }
-          const actionFingerprint = artifactReceipt(canonicalStringify({ actor: { id: actor.id, role: actor.role }, action })).digest;
+          const fingerprintAction = action.type === 'record-source-observation'
+            ? Object.fromEntries(Object.entries(action).filter(([key]) => key !== 'sourceSnapshotReceipt'))
+            : action;
+          const actionFingerprint = artifactReceipt(canonicalStringify({ actor: { id: actor.id, role: actor.role }, action: fingerprintAction })).digest;
           const previous = store.value.world.events.find(event => event.requestId === requestId);
           if (previous) {
             if (previous.actionFingerprint !== actionFingerprint || previous.actor.id !== actor.id || previous.actor.role !== actor.role) fail('IDEMPOTENCY_CONFLICT', 'This request ID is already bound to a different actor or action.', 409);
             return await json(response, 200, { ...dto(session), result: previous.actionResult, requestId, idempotentReplay: true });
+          }
+          let sourceSnapshotReceiptDigest = null;
+          if (action.type === 'record-source-observation' && action.sourceSnapshotReceipt !== undefined) {
+            const receipt = session.sourceSnapshotReceipts instanceof Map
+              ? session.sourceSnapshotReceipts.get(action.sourceSnapshotRevision)
+              : null;
+            if (sessions.get(session.token) !== session || !receipt || receipt.token !== action.sourceSnapshotReceipt ||
+                receipt.revision !== action.sourceSnapshotRevision || !Number.isSafeInteger(receipt.expiresAt) || receipt.expiresAt <= Date.now()) {
+              fail('INVALID_SOURCE_SNAPSHOT_RECEIPT', 'The server-delivered snapshot receipt is missing, expired, belongs to another session, or names a different revision. Refresh the accepted snapshot and reopen the note.', 409);
+            }
+            sourceSnapshotReceiptDigest = artifactReceipt(action.sourceSnapshotReceipt).digest;
           }
           // A client-side tap is not a location check. Shared discovery is retained
           // only when this session's server-checked position is near the guide.
@@ -1856,7 +2033,8 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
           let outcome;
           try {
             outcome = await applyAction(store.value.world, action, actor, {
-            requestId, actionFingerprint, allowTransfers: true, allowGuildLeadershipTransfers: true, allowSourceArchivePredicate: true
+            requestId, actionFingerprint, allowTransfers: true, allowGuildLeadershipTransfers: true, allowSourceArchivePredicate: true,
+            sourceSnapshotReceiptDigest
           });
           } catch (error) {
             if (!Number.isSafeInteger(error.status) && typeof error.code === 'string' && (error.code.startsWith('COMBAT_') || error.code.startsWith('INVALID_COMBAT_') || error.code === 'UNKNOWN_COMBAT_OPPONENT')) {

@@ -1,10 +1,50 @@
 import { FIELD_EQUIPMENT_SLOTS, projectCharacter } from './character-sheet.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
-import { projectResearchRecords, projectSourceArchivePredicateContrasts, sameResearchActor } from './research-records.mjs';
+import { projectResearchRecords, projectSourceArchivePredicateContrasts, sameResearchActor, retainedWorldEventHistoryPositions, retainedWorldEventHistoryOptions } from './research-records.mjs';
 
 import { isStrictTimestamp } from "./timestamps.mjs";
+import { PLACES, institutionDestinationsForEvent } from "./world-view.mjs";
 
 const INVALID_EVENT_TIMESTAMP_WARNING = "The retained event has no valid strict RFC 3339 timestamp; its append position is preserved, but cross-stream placement is approximate.";
+
+/**
+ * Resolve the view a World Chronicle may display without silently advancing an
+ * explicitly pinned snapshot. This is a read-only UI policy over accepted
+ * snapshots; it never fetches, mutates world state, or creates progression.
+ */
+export function resolveWorldChronicleSnapshotState({
+  currentSnapshot,
+  pinnedSnapshot,
+  explicitlyPinned = false,
+  disconnected = false
+} = {}) {
+  if (typeof explicitlyPinned !== "boolean" || typeof disconnected !== "boolean") {
+    throw new TypeError("Chronicle pin and connection state must be explicit booleans.");
+  }
+  const currentRevision = currentSnapshot?.revision;
+  const pinnedRevision = pinnedSnapshot?.revision;
+  const currentRevisionValid = Number.isSafeInteger(currentRevision) && currentRevision >= 0;
+  const pinnedRevisionValid = Number.isSafeInteger(pinnedRevision) && pinnedRevision >= 0;
+  const revisionUnavailable = !currentRevisionValid || (explicitlyPinned && !pinnedRevisionValid);
+  const revisionRegressed = pinnedRevisionValid && currentRevisionValid && currentRevision < pinnedRevision;
+  const revisionMismatch = explicitlyPinned && pinnedRevisionValid &&
+    currentRevisionValid && currentRevision !== pinnedRevision;
+  const stale = disconnected || revisionUnavailable || revisionRegressed || revisionMismatch;
+  const staleReason = disconnected
+    ? "disconnected"
+    : revisionUnavailable
+      ? "revision-unavailable"
+      : revisionRegressed
+        ? "revision-regression"
+        : revisionMismatch
+          ? "revision-mismatch"
+          : "current";
+  const snapshot = stale ? (pinnedSnapshot || currentSnapshot) : currentSnapshot;
+  const refreshAvailable = explicitlyPinned && !disconnected && !revisionUnavailable &&
+    !revisionRegressed && pinnedRevisionValid && currentRevisionValid &&
+    currentRevision > pinnedRevision;
+  return Object.freeze({ snapshot, stale, staleReason, refreshAvailable });
+}
 
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
@@ -25,6 +65,11 @@ const actorName = actor => typeof actor === "string"
   ? actor
   : text(actor?.name) || text(actor?.id) || "unknown actor";
 const actorId = actor => typeof actor === "string" ? actor : text(actor?.id);
+const recordedActorId = actor => {
+  const value = typeof actor?.id === "string" ? actor.id : "";
+  return value && value.trim() === value && value.length <= 128 ? value : "";
+};
+const recordedActorRole = actor => ["founder", "witness"].includes(actor?.role) ? actor.role : "";
 const timestamp = value => isStrictTimestamp(value) ? value : "";
 const eventTime = value => isStrictTimestamp(value) ? Date.parse(value) : null;
 
@@ -225,12 +270,12 @@ function malformedCollectionEntry(source) {
   };
 }
 
-function malformedEventEntry(source, index) {
+function malformedEventEntry(source, index, streamPosition = index + 1) {
   const institutional = source === "kernel";
   return {
     id: `${source}:unclassified-${index}`,
     source,
-    streamPosition: index + 1,
+    streamPosition: Number.isSafeInteger(streamPosition) && streamPosition > 0 ? streamPosition : null,
     eventType: "unknown",
     at: "",
     actor: "unknown actor",
@@ -258,8 +303,8 @@ function findVersion(creations, creationId, version) {
   return matchingVersions.length === 1 ? matchingVersions[0] : null;
 }
 
-function sourceContrastEntriesByPosition(events, creations, eventPositionsById) {
-  const records = projectResearchRecords(events, creations);
+function sourceContrastEntriesByPosition(events, creations, eventPositionsById, streamPositions = [], historyOptions = {}) {
+  const records = projectResearchRecords(events, creations, historyOptions);
   const groups = projectSourceArchivePredicateContrasts(records);
   const byPosition = new Map();
 
@@ -293,7 +338,8 @@ function sourceContrastEntriesByPosition(events, creations, eventPositionsById) 
       const entry = {
         id: 'world:derived-source-predicate-conflict:' + firstConflict.id + ':' + lastConflict.id,
         source: 'world',
-        streamPosition: lastConflict._projection.index + 1,
+        streamPosition: Number.isSafeInteger(streamPositions[lastConflict._projection.index])
+          ? streamPositions[lastConflict._projection.index] : null,
         eventType: 'source-archive-predicate-conflict-projection',
         at: timestamp(lastConflict.at),
         actor: actorName(lastConflict.actor),
@@ -350,7 +396,8 @@ function sourceContrastEntriesByPosition(events, creations, eventPositionsById) 
     const entry = {
       id: 'world:derived-source-contrast:' + first.id + ':' + second.id,
       source: 'world',
-      streamPosition: secondIndex + 1,
+      streamPosition: Number.isSafeInteger(streamPositions[secondIndex])
+        ? streamPositions[secondIndex] : null,
       eventType: 'source-archive-predicate-contrast-projection',
       at: timestamp(second.at),
       actor: actorName(second.actor),
@@ -506,7 +553,7 @@ function markUnvalidatedCombatEntry(entry, event) {
   entry.warning = "Combat history failed closed; inspect the retained sequence. This record is not real-world skill evidence, a truth verdict, approval, or authority.";
 }
 
-function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIds=new Set(),fieldItemTransferValidEventIds=new Set(),combatProjection=null){
+function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIds=new Set(),fieldItemTransferValidEventIds=new Set(),combatProjection=null,streamPosition=index+1){
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   const creationId = text(event?.creationId) || text(event?.sourceCreationId) || text(event?.evidenceCreationId);
@@ -515,14 +562,22 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     : Number.isInteger(event?.sourceVersion) ? event.sourceVersion
     : Number.isInteger(event?.evidenceVersion) ? event.evidenceVersion : null;
   const target = findVersion(creations, creationId, version);
-  const location = PLACE_NAMES[event?.locationId];
+  const recordedLocation = type === "discover" && typeof event?.locationId === "string"
+    ? PLACES.find(place => place.type === "discovery" && place.id === event.locationId)
+    : null;
+  const location = recordedLocation?.name || "";
   const entry = {
     id: `world:${id}`,
     source: "world",
-    streamPosition: index + 1,
+    locationId: recordedLocation?.id || null,
+    locationName: recordedLocation?.name || null,
+    institutionDestinations: institutionDestinationsForEvent(event),
+    streamPosition: Number.isSafeInteger(streamPosition) && streamPosition > 0 ? streamPosition : null,
     eventType: type,
     at: timestamp(event?.at),
     actor: actorName(event?.actor),
+    actorId: recordedActorId(event?.actor),
+    actorRole: recordedActorRole(event?.actor),
     title: "Unclassified retained world event",
     category: "WORLD ACTIVITY",
     summary: "The event is retained; no unrecorded consequence is inferred.",
@@ -774,17 +829,23 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     entry.detail = text(event?.text);
     entry.warning = "A message records what an actor said, not whether the statement is correct or independently observed.";
   } else if (type === "message-reported") {
-    entry.title = "Commons message reported for human review";
+    entry.title = "Commons message reported for Founder-session review";
     entry.category = "THE COMMONS · PRIVATE REPORT";
-    entry.summary = "An actor privately requested human review. A report is not a verdict, finding, or proof of misconduct.";
+    entry.summary = "An actor privately requested Founder-session review. A report is not a verdict, finding, or proof of misconduct.";
     entry.detail = [`Message: ${text(event?.messageId) || "not identified"}`, `Reason: ${text(event?.reason) || "not recorded"}`, `Details: ${text(event?.details) || "not recorded"}`].join(" · ");
     entry.warning = "Report details are visible only to the reporting actor and authenticated Founder; other public views omit this event.";
   } else if (type === "message-moderated") {
-    entry.title = `Commons message ${text(event?.disposition) || "moderated"} by the Founder`;
-    entry.category = "THE COMMONS · HUMAN MODERATION";
-    entry.summary = "A human changed the public presentation of a retained message. The original post and moderation history remain in the Chronicle.";
+    entry.title = `Commons message ${text(event?.disposition) || "moderated"} by the Founder session`;
+    entry.category = "THE COMMONS · FOUNDER MODERATION";
+    entry.summary = "A Founder session changed the public presentation of a retained message. The original post and moderation history remain in the Chronicle.";
     entry.detail = [`Message: ${text(event?.messageId) || "not identified"}`, `Disposition: ${text(event?.disposition) || "not recorded"}`, `Reason: ${text(event?.reason) || "not recorded"}`].join(" · ");
     entry.warning = "Moderation changes visibility, not historical authorship, truth, evidence, approval, authority, or XP.";
+  } else if (type === "message-report-reviewed") {
+    entry.title = "Commons report review recorded";
+    entry.category = "THE COMMONS · PRIVATE REPORT REVIEW";
+    entry.summary = "A Founder session recorded a process record, not a verdict, for a private report. It does not change message visibility or establish factual truth.";
+    entry.detail = [`Report: ${text(event?.reportId) || "not identified"}`, `Message: ${text(event?.messageId) || "not identified"}`, `Founder-session note: ${text(event?.note) || "not recorded"}`].join(" · ");
+    entry.warning = "This process record is not a factual finding, adjudication, independent review, approval, or NGL authority.";
   } else if (type === "contribute" || type === "report") {
     const isReport = type === "report";
     const records = isReport ? notes.reports : notes.contributions;
@@ -898,8 +959,21 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     entry.title = `Source observation · ${text(event?.claim) || "untitled claim"}`;
     entry.category = "RESEARCH NOTE";
     entry.summary = `${text(event?.actor?.name) || text(event?.actor?.id) || "An actor"} recorded a self-classified ${sourceKind} note against a user-selected Source Observatory version.`;
-    entry.detail = `Source/attribution: ${text(event?.source) || "NOT PROVIDED"}. Falsifier: ${text(event?.falsifier) || "NOT PROVIDED"}. Uncertainty: ${text(event?.uncertainty) || "NOT PROVIDED"}. Next test: ${text(event?.nextTest) || "NOT PROVIDED"}.`;
-    entry.warning = `${sourceWarning} The selected version is a user-supplied binding; export origin is not cryptographically established. Source retrieval NOT_PERFORMED; independent verification NOT_PERFORMED; execution NOT_EXECUTED.`;
+    const snapshotReference = Number.isSafeInteger(event?.sourceSnapshotRevision) && event.sourceSnapshotRevision >= 0
+      ? `Declared snapshot reference: world revision ${event.sourceSnapshotRevision} (actor-declared history-prefix reference; it does not prove the actor viewed that snapshot).`
+      : event?.sourceSnapshotRevision === undefined
+        ? "Snapshot reference: not recorded on this legacy note."
+        : "Snapshot reference: malformed or unavailable; no revision is inferred.";
+    const receiptDigest = typeof event?.sourceSnapshotReceiptDigest === "string" && /^[a-f0-9]{64}$/.test(event.sourceSnapshotReceiptDigest)
+      ? event.sourceSnapshotReceiptDigest
+      : null;
+    const snapshotBinding = event?.bindingMode === "SERVER_SESSION_RECEIPT" && receiptDigest
+      ? `Recorded snapshot binding: SERVER_SESSION_RECEIPT (retained SHA-256 digest ${receiptDigest}). The shared service validates session delivery when appending the event; in private/imported history this field is an unverified claim, not a signature. It does not prove a person viewed, read or understood the snapshot.`
+      : event?.bindingMode === "USER_SELECTED"
+        ? "Snapshot binding: author-declared only; no server-delivery receipt is retained."
+        : "Snapshot binding: malformed or unavailable; no delivery is inferred.";
+    entry.detail = `Source/attribution: ${text(event?.source) || "NOT PROVIDED"}. Falsifier: ${text(event?.falsifier) || "NOT PROVIDED"}. Uncertainty: ${text(event?.uncertainty) || "NOT PROVIDED"}. Next test: ${text(event?.nextTest) || "NOT PROVIDED"}. ${snapshotReference} ${snapshotBinding}`;
+    entry.warning = `${sourceWarning} The selected version is a user-supplied binding; export origin is not cryptographically established. The declared snapshot reference does not prove the actor viewed that prefix. ${snapshotBinding} Source retrieval NOT_PERFORMED; independent verification NOT_PERFORMED; execution NOT_EXECUTED.`;
   } else if (type === "source-observation-challenged") {
     const challengeType = text(event?.challengeType) || "unclassified";
     entry.title = `Source observation challenged · ${challengeType.toUpperCase()}`;
@@ -1021,6 +1095,7 @@ function kernelEntry(event, index, creations, derivedWork = null, priorGrantCoun
   return {
     id: `kernel:${id}`,
     source: "kernel",
+    institutionDestinations: institutionDestinationsForEvent(event, "kernel"),
     streamPosition: index + 1,
     eventType: type,
     at: timestamp(event?.at),
@@ -1085,6 +1160,10 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   const worldEvents = worldCollection.value;
   const kernelEvents = kernelCollection.value;
   const worldEventSnapshots = worldEvents.map(event => safeEventSnapshot(event));
+  const worldStreamPositions = worldCollection.valid
+    ? retainedWorldEventHistoryPositions(world, worldEventSnapshots)
+    : worldEventSnapshots.map(() => null);
+  const worldHistoryOptions = retainedWorldEventHistoryOptions(world, worldEventSnapshots);
   const worldEventPositionsById = new Map();
   for (let index = 0; index < worldEventSnapshots.length; index += 1) {
     const event = worldEventSnapshots[index];
@@ -1110,7 +1189,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     schema:"ngl.world.v2",
     id:"chronicle-world",
     founderName:"Chronicle projection",
-    revision:worldEventSnapshots.length,
+    revision:worldHistoryOptions.revisionPresent ? worldHistoryOptions.revision : worldEventSnapshots.length,
     xp:0,
     createdAt:worldEventSnapshots.find(event=>timestamp(event?.at))?.at||"2026-01-01T00:00:00.000Z",
     updatedAt:lastValidWorldTimestamp,
@@ -1127,17 +1206,17 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   // Complete contrast dossiers are derived from already validated, linked records.
   // Anchor each immediately after its later predicate event; never append a new world event.
   const sourceContrastEntries = worldCollection.valid && creationsCollection.valid
-    ? sourceContrastEntriesByPosition(worldEventSnapshots, creations, worldEventPositionsById)
+    ? sourceContrastEntriesByPosition(worldEventSnapshots, creations, worldEventPositionsById, worldStreamPositions, worldHistoryOptions)
     : new Map();
 
   for (let index = 0; index < worldEventSnapshots.length; index += 1) {
     const event = worldEventSnapshots[index];
     if (!event) {
       malformed += 1;
-      worldEntries.push(malformedEventEntry("world", index));
+      worldEntries.push(malformedEventEntry("world", index, worldStreamPositions[index]));
       continue;
     }
-    worldEntries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds,combatProjection));
+    worldEntries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds,combatProjection,worldStreamPositions[index]));
     for (const derivedEntry of sourceContrastEntries.get(index) || []) {
       worldEntries.push(derivedEntry);
     }

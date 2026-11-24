@@ -162,7 +162,8 @@ test('retained experiment dissent challenges another actor without rewriting the
       type: 'challenge-experiment-report',
       reportId: reported.result.reportId,
       challengeType: 'reproducibility',
-      challengeText: 'The stated procedure omits the measurement settings.'
+      challengeText: 'The stated procedure omits the measurement settings.',
+      resolutionRequest: 'Repeat the procedure with the measurement settings retained.'
     }, witness, { now: '2026-10-27T00:00:05.000Z' }),
     error => error.code === 'SELF_CHALLENGE' && error.status === 409
   );
@@ -172,7 +173,8 @@ test('retained experiment dissent challenges another actor without rewriting the
     type: 'challenge-experiment-report',
     reportId: reported.result.reportId,
     challengeType: 'reproducibility',
-    challengeText: 'The stated procedure omits the measurement settings.'
+    challengeText: 'The stated procedure omits the measurement settings.',
+    resolutionRequest: 'Repeat the procedure with the measurement settings retained.'
   }, founder, {
     now: '2026-10-27T00:00:05.000Z',
     requestId: 'experiment-challenge-1',
@@ -216,6 +218,7 @@ test('a retained challenge may cite only an evidence version that existed at the
     reportId: reported.result.reportId,
     challengeType: 'missing-evidence',
     challengeText: 'The cited method omits measurement settings.',
+    resolutionRequest: 'Repeat the method with the missing measurement settings recorded.',
     evidenceCreationId: published.result.creationId,
     evidenceVersion: 1
   };

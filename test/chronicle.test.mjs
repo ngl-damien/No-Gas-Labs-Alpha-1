@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { projectChronicle } from "../game/chronicle.mjs";
-import { projectCharacter } from "../game/character-sheet.mjs";
+import { projectChronicle, resolveWorldChronicleSnapshotState } from "../game/chronicle.mjs";
+import { institutionActivityCount, institutionDestinationsForEvent } from "../game/world-view.mjs";
+import { projectCharacter, findRetainedPublicationEventId } from "../game/character-sheet.mjs";
 import { createWorld, applyAction } from "../game/model.mjs";
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from "../game/artifacts.mjs";
 import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from "../game/research-records.mjs";
@@ -317,6 +318,41 @@ test("reports remain visible against their exact retained version with the actua
   assert.equal(report.detail, "The claim needs a source.");
   assert.match(report.summary, /report.*not an adjudication/i);
 });
+
+test("Source Observation Chronicle shows declared snapshot references without treating them as proof", () => {
+  const { world, kernel } = fixture();
+  const base = {
+    type: "source-observation-recorded",
+    creationId: "creation-observatory",
+    version: 1,
+    actor: { id: "damien", name: "Damien", role: "founder" },
+    claim: "A model says the bridge is open.",
+    sourceKind: "model-assertion",
+    source: "Model output only; no primary source retrieved.",
+    falsifier: "A direct inspection finds it closed.",
+    uncertainty: "No independent observation.",
+    nextTest: "Inspect the bridge."
+  };
+  world.events.push(
+    { ...base, id: "source-observation-snapshot", sourceSnapshotRevision: 1, at: "2026-10-26T10:08:00.000Z" },
+    { ...base, id: "source-observation-legacy", at: "2026-10-26T10:09:00.000Z" },
+    { ...base, id: "source-observation-malformed", sourceSnapshotRevision: "1", at: "2026-10-26T10:10:00.000Z" }
+  );
+  const before = structuredClone(world);
+  const entries = projectChronicle({ world, kernel }).entries;
+  const snapshot = entries.find(entry => entry.id === "world:source-observation-snapshot");
+  const legacy = entries.find(entry => entry.id === "world:source-observation-legacy");
+  const malformed = entries.find(entry => entry.id === "world:source-observation-malformed");
+
+  assert.ok(snapshot);
+  assert.match(snapshot.detail, /Declared snapshot reference: world revision 1/);
+  assert.match(snapshot.detail, /actor-declared/i);
+  assert.match(snapshot.detail, /does not prove the actor viewed that snapshot/i);
+  assert.match(legacy.detail, /not recorded on this legacy note/i);
+  assert.match(malformed.detail, /malformed or unavailable/i);
+  assert.deepEqual(world, before, "Chronicle snapshot-reference disclosure is read-only");
+});
+
 
 test("orphaned reports remain visible and are not assigned an invented target", () => {
   const { world, kernel } = fixture();
@@ -1024,7 +1060,7 @@ test("source-observation challenges appear as linked dissent, not adjudication o
 });
 
 
-test("Commons conversation, private reports, and human moderation are first-class Chronicle entries", () => {
+test("Commons conversation, private reports, Founder-session review, and moderation are first-class Chronicle entries", () => {
   const { world, kernel } = fixture();
   world.events.push(
     {
@@ -1034,7 +1070,7 @@ test("Commons conversation, private reports, and human moderation are first-clas
     },
     {
       id: "commons-report-1", type: "message-reported", reportId: "report-1", messageId: "message-1",
-      reason: "privacy", details: "A human should review this wording.",
+      reason: "privacy", details: "A Founder session should review this wording.",
       actor: { id: "witness-2", name: "Second Witness", role: "witness" }, at: "2026-10-26T10:09:00.000Z",
     },
     {
@@ -1042,20 +1078,32 @@ test("Commons conversation, private reports, and human moderation are first-clas
       disposition: "hide", reason: "privacy",
       actor: { id: "damien", name: "Damien", role: "founder" }, at: "2026-10-26T10:10:00.000Z",
     },
+    {
+      id: "commons-review-1", type: "message-report-reviewed", reviewId: "review-1",
+      reportId: "report-1", messageId: "message-1",
+      note: "Reviewed as a process record; no factual finding.",
+      actor: { id: "damien", name: "Damien", role: "founder" }, at: "2026-10-26T10:11:00.000Z",
+    },
   );
   const chronicle = projectChronicle({ world, kernel });
   const post = chronicle.entries.find(entry => entry.id === "world:commons-post-1");
   const report = chronicle.entries.find(entry => entry.id === "world:commons-report-1");
   const moderation = chronicle.entries.find(entry => entry.id === "world:commons-hide-1");
+  const review = chronicle.entries.find(entry => entry.id === "world:commons-review-1");
   assert.equal(post.category, "THE COMMONS");
   assert.match(post.summary, /Conversation only; not evidence/i);
   assert.match(post.detail, /retained without being treated as evidence/i);
   assert.match(report.category, /PRIVATE REPORT/);
   assert.match(report.summary, /not a verdict/i);
   assert.match(report.warning, /reporting actor and authenticated Founder/i);
-  assert.match(moderation.category, /HUMAN MODERATION/);
+  assert.match(moderation.category, /FOUNDER MODERATION/);
   assert.match(moderation.summary, /original post and moderation history remain/i);
   assert.match(moderation.warning, /not historical authorship/i);
+  assert.match(review.category, /PRIVATE REPORT REVIEW/);
+  assert.match(review.summary, /process record, not a verdict/i);
+  assert.match(review.detail, /Reviewed as a process record/);
+  assert.match(review.warning, /not a factual finding, adjudication, independent review/i);
+  assert.deepEqual(review.institutionDestinations.map(place => place.id), ["town-square"]);
 });
 
 
@@ -1786,8 +1834,10 @@ test("Chronicle ignores untrusted event-supplied combat outcome and XP fields", 
   const entry = projectChronicle({ world }).entries.find(item => item.eventType === "combat-move-resolved");
   assert.equal(entry.category, "COMBAT YARD");
   assert.match(entry.summary, /encounter remains active/i);
-  assert.doesNotMatch(entry.summary, /victory|999/i);
-  assert.doesNotMatch(entry.detail, /999/);
+  // Encounter IDs are random and may contain the digits 999; assert the forged fields, not arbitrary digits.
+  assert.doesNotMatch(entry.summary, /victory/i);
+  assert.doesNotMatch(entry.summary, /\bXP\b/i);
+  assert.doesNotMatch(entry.summary + ' ' + entry.detail, /\b(?:outcome|xpAwarded)\b/i);
 });
 
 test("Chronicle fails closed for malformed combat history instead of displaying a forged victory", async () => {
@@ -1913,4 +1963,273 @@ test("Chronicle does not let Date.parse leniency promote malformed retained time
     "invalid timestamps must not reorder the retained institutional stream"
   );
   assert.deepEqual({ world, kernel }, before, "invalid-time Chronicle inspection must remain read-only");
+});
+
+
+test("institution activity counters include retained Commons, guild, and field-item transfer events", () => {
+  const types = [
+    "message-posted", "message-reported", "message-moderated", "message-report-reviewed",
+    "guild-created", "guild-joined", "guild-left", "guild-disbanded",
+    "guild-leadership-transfer-offered", "guild-leadership-transfer-cancelled",
+    "guild-leadership-transfer-declined", "guild-leadership-transferred",
+    "field-item-transfer-offered", "field-item-transfer-cancelled",
+    "field-item-transfer-declined", "field-item-transferred",
+  ];
+  const events = types.map((type, index) => ({
+    id: "institution-route-fixture-" + index,
+    type,
+  }));
+  const world = { revision: events.length, events };
+
+  assert.equal(institutionActivityCount("town-square", world), 4,
+    "all four retained Commons message lifecycle events belong to TownSquare");
+  assert.equal(institutionActivityCount("guild_hall", world), 8,
+    "guild founding, membership, closure and leadership handoffs belong to Guild Hall");
+  assert.equal(institutionActivityCount("forge", world), 4,
+    "field-item transfer offers, refusals and acceptance belong to the Forge");
+  assert.deepEqual(institutionDestinationsForEvent({ type: "message-posted" }).map(place => place.id),
+    ["town-square"]);
+  assert.deepEqual(institutionDestinationsForEvent({ type: "message-report-reviewed" }).map(place => place.id),
+    ["town-square"]);
+  assert.deepEqual(institutionDestinationsForEvent({ type: "guild-created" }).map(place => place.id),
+    ["guild_hall"]);
+  assert.deepEqual(institutionDestinationsForEvent({ type: "field-item-transferred" }).map(place => place.id),
+    ["forge"]);
+  assert.deepEqual(institutionDestinationsForEvent({ type: "execute" }, "kernel").map(place => place.id),
+    ["forge", "evidence_archive", "town-square"]);
+  const accessorEvent = Object.defineProperty({}, "type", {
+    get() { throw new Error("retained event accessors must not execute during route projection"); }
+  });
+  assert.deepEqual(institutionDestinationsForEvent(accessorEvent), [],
+    "route projection reads only own data properties and never invokes retained accessors");
+});
+
+test("Chronicle entries carry institutional destinations and explicit discovery locations without conflating them", () => {
+  const { world, kernel } = fixture();
+  const chronicle = projectChronicle({ world, kernel });
+  const report = chronicle.entries.find(entry => entry.id === "world:report-v1");
+  const publication = chronicle.entries.find(entry => entry.id === "world:publish-v1");
+  const adjudication = chronicle.entries.find(entry => entry.id === "kernel:adjudicate-1");
+
+  assert.deepEqual(report.institutionDestinations?.map(place => place.id),
+    ["evidence_archive", "town-square"]);
+  assert.equal(report.locationId, null,
+    "related institutions are not a claim about the report's physical location");
+  assert.deepEqual(publication.institutionDestinations?.map(place => place.id),
+    ["forge", "evidence_archive", "publication_house"]);
+  assert.deepEqual(adjudication.institutionDestinations?.map(place => place.id),
+    ["guild_hall", "evidence_archive", "town-square", "decision_chamber"]);
+
+  const discoveryWorld = {
+    events: [{
+      id: "visit-overlook",
+      type: "discover",
+      locationId: "overlook",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-10-26T10:08:00.000Z",
+    }],
+    discoveries: [],
+  };
+  const discovery = projectChronicle({ world: discoveryWorld }).entries
+    .find(entry => entry.id === "world:visit-overlook");
+  assert.equal(discovery.locationId, "overlook");
+  assert.equal(discovery.locationName, "The Long View");
+  assert.deepEqual(discovery.institutionDestinations || [], [],
+    "a discovery event uses its explicitly retained map location, not an inferred institution route");
+});
+
+test("Publication House links one exact retained version to its unique publication event without awarding XP", () => {
+  const publishedAtV1 = "2026-11-20T10:00:00.000Z";
+  const publishedAtV2 = "2026-11-20T11:00:00.000Z";
+  const receipt = { algorithm: "sha256", digest: "a".repeat(64), size: 12 };
+  const creation = {
+    id: "publication-object", title: "Publication fixture", version: 2,
+    publishedAt: publishedAtV2, receipt,
+    versions: [{ version: 1, publishedAt: publishedAtV1, receipt }]
+  };
+  const events = [
+    { id: "publication-v1", type: "publish", creationId: creation.id, version: 1,
+      actor: { id: "damien", name: "Damien", role: "founder" }, at: publishedAtV1 },
+    { id: "publication-v2", type: "publish", creationId: creation.id, version: 2,
+      actor: { id: "damien", name: "Damien", role: "founder" }, at: publishedAtV2 }
+  ];
+  const world = { creations: [creation], events, reports: [], contributions: [], discoveries: [], methods: [], xp: 0 };
+  const before = structuredClone(world);
+
+  assert.equal(findRetainedPublicationEventId(world, creation.id, 1), "publication-v1",
+    "a historical version links to its own retained publication event");
+  assert.equal(findRetainedPublicationEventId(world, creation.id, 2), "publication-v2",
+    "the current version links to its own retained publication event");
+  assert.equal(findRetainedPublicationEventId(world, creation.id, 3), null,
+    "a version with no retained bytes cannot acquire a Chronicle link");
+  assert.equal(projectCharacter(world, { id: "damien", role: "founder" }).xp, 0,
+    "a publication link does not manufacture a publication reward");
+  assert.deepEqual(world, before, "resolving publication lineage is read-only");
+});
+
+test("Publication House withholds Chronicle links for missing, duplicate, malformed, or mismatched publication lineage", () => {
+  const publishedAt = "2026-11-20T10:00:00.000Z";
+  const receipt = { algorithm: "sha256", digest: "b".repeat(64), size: 8 };
+  const creation = {
+    id: "publication-object", title: "Publication fixture", version: 1,
+    publishedAt, receipt, versions: []
+  };
+  const publication = {
+    id: "publication-event", type: "publish", creationId: creation.id, version: 1,
+    actor: { id: "damien", name: "Damien", role: "founder" }, at: publishedAt
+  };
+  const worldWith = events => ({ creations: [creation], events });
+
+  assert.equal(findRetainedPublicationEventId(worldWith([]), creation.id, 1), null,
+    "missing publication history stays unlinked");
+  assert.equal(findRetainedPublicationEventId(worldWith([publication, { ...publication, id: "publication-duplicate" }]), creation.id, 1), null,
+    "two publication events for one version remain ambiguous");
+  assert.equal(findRetainedPublicationEventId(worldWith([publication, { id: publication.id, type: "report" }]), creation.id, 1), null,
+    "a publication event ID collision across event types remains ambiguous");
+  assert.equal(findRetainedPublicationEventId(worldWith([{ ...publication, id: " padded-event-id " }]), creation.id, 1), null,
+    "an unnormalized event ID cannot be used as a Chronicle destination");
+  assert.equal(findRetainedPublicationEventId(worldWith([{ ...publication, actor: { id: "damien", name: "Damien", role: "witness" } }]), creation.id, 1), null,
+    "a non-Founder publication actor cannot supply canonical publication lineage");
+  assert.equal(findRetainedPublicationEventId(worldWith([{ ...publication, at: "2026-11-20T10:00:01.000Z" }]), creation.id, 1), null,
+    "a publication timestamp that disagrees with the retained version stays unlinked");
+  const duplicateVersion = { ...creation, versions: [{ version: 1, publishedAt, receipt }] };
+  assert.equal(findRetainedPublicationEventId({ creations: [duplicateVersion], events: [publication] }, creation.id, 1), null,
+    "duplicate retained version identities remain ambiguous");
+});
+
+
+test("Chronicle preserves server-projected global positions after actor filtering", () => {
+  const visibleEvents = [
+    { id: "event-public-1", type: "discover", at: "2026-11-20T12:00:00.000Z", historyPosition: 1 },
+    { id: "event-public-3", type: "report", at: "2026-11-20T12:01:00.000Z", historyPosition: 3 },
+    { id: "event-public-6", type: "discover", at: "2026-11-20T12:02:00.000Z", historyPosition: 6 },
+  ];
+  const world = {
+    revision: 6,
+    events: visibleEvents,
+    creations: [],
+    reports: [],
+    contributions: [],
+    discoveries: [],
+    methods: [],
+  };
+  const entries = projectChronicle({ world }).entries.filter(entry => entry.source === "world");
+  assert.deepEqual(entries.map(entry => entry.streamPosition), [6, 3, 1]);
+
+  const partialLegacyWorld = {
+    ...world,
+    events: visibleEvents.map(({ historyPosition, ...event }) => event),
+  };
+  const partialEntries = projectChronicle({ world: partialLegacyWorld }).entries
+    .filter(entry => entry.source === "world");
+  assert.ok(partialEntries.every(entry => !Number.isSafeInteger(entry.streamPosition)),
+    "a filtered legacy snapshot without global position metadata must not invent positions");
+
+  const completeLocalWorld = { ...partialLegacyWorld, revision: 3 };
+  const localEntries = projectChronicle({ world: completeLocalWorld }).entries
+    .filter(entry => entry.source === "world");
+  assert.deepEqual(localEntries.map(entry => entry.streamPosition), [3, 2, 1],
+    "a complete local history may retain the array-index fallback");
+
+  const malformedPositionsWorld = {
+    ...world,
+    events: [
+      { ...visibleEvents[0], historyPosition: 3 },
+      { ...visibleEvents[1], historyPosition: 2 },
+      visibleEvents[2],
+    ],
+  };
+  const malformedEntries = projectChronicle({ world: malformedPositionsWorld }).entries
+    .filter(entry => entry.source === "world");
+  assert.ok(malformedEntries.every(entry => !Number.isSafeInteger(entry.streamPosition)),
+    "duplicate or regressing projection positions must fail closed");
+});
+
+test('Chronicle preserves global append positions when a public snapshot omits earlier events', () => {
+  const { world } = fixture();
+  const filtered = structuredClone(world);
+  filtered.revision = 5;
+  filtered.methods = [];
+  filtered.events = [
+    { ...world.events[0], historyPosition: 2 },
+    { ...world.events[2], historyPosition: 5 }
+  ];
+  const before = structuredClone(filtered);
+
+  const chronicle = projectChronicle({ world: filtered, kernel: null });
+  const byId = new Map(chronicle.entries
+    .filter(entry => entry.source === 'world')
+    .map(entry => [entry.id, entry]));
+
+  assert.equal(byId.get('world:publish-v1')?.streamPosition, 2);
+  assert.equal(byId.get('world:orphan-report')?.streamPosition, 5);
+  assert.deepEqual(filtered, before, 'Chronicle projection must not mutate the filtered snapshot');
+});
+
+
+test('World Chronicle snapshot policy keeps an explicit pin while a newer accepted revision exists', () => {
+  const pinned = Object.freeze({ revision: 7, marker: 'pinned' });
+  const current = Object.freeze({ revision: 8, marker: 'current' });
+  const state = resolveWorldChronicleSnapshotState({
+    currentSnapshot: current,
+    pinnedSnapshot: pinned,
+    explicitlyPinned: true,
+    disconnected: false
+  });
+  assert.equal(state.snapshot, pinned);
+  assert.equal(state.stale, true);
+  assert.equal(state.staleReason, 'revision-mismatch');
+  assert.equal(state.refreshAvailable, true);
+});
+
+test('World Chronicle snapshot policy lets unpinned live views follow accepted updates', () => {
+  const previous = Object.freeze({ revision: 7 });
+  const current = Object.freeze({ revision: 8 });
+  const state = resolveWorldChronicleSnapshotState({
+    currentSnapshot: current,
+    pinnedSnapshot: previous,
+    explicitlyPinned: false,
+    disconnected: false
+  });
+  assert.equal(state.snapshot, current);
+  assert.equal(state.stale, false);
+  assert.equal(state.staleReason, 'current');
+  assert.equal(state.refreshAvailable, false);
+});
+
+test('World Chronicle snapshot policy fails closed for offline, unavailable and regressed pins', () => {
+  const pinned = Object.freeze({ revision: 8 });
+  const newer = Object.freeze({ revision: 9 });
+  const offline = resolveWorldChronicleSnapshotState({
+    currentSnapshot: newer,
+    pinnedSnapshot: pinned,
+    explicitlyPinned: true,
+    disconnected: true
+  });
+  assert.equal(offline.snapshot, pinned);
+  assert.equal(offline.stale, true);
+  assert.equal(offline.staleReason, 'disconnected');
+  assert.equal(offline.refreshAvailable, false);
+
+  const regressed = resolveWorldChronicleSnapshotState({
+    currentSnapshot: Object.freeze({ revision: 7 }),
+    pinnedSnapshot: pinned,
+    explicitlyPinned: true,
+    disconnected: false
+  });
+  assert.equal(regressed.snapshot, pinned);
+  assert.equal(regressed.stale, true);
+  assert.equal(regressed.staleReason, 'revision-regression');
+  assert.equal(regressed.refreshAvailable, false);
+
+  const unavailable = resolveWorldChronicleSnapshotState({
+    currentSnapshot: Object.freeze({}),
+    pinnedSnapshot: pinned,
+    explicitlyPinned: true,
+    disconnected: false
+  });
+  assert.equal(unavailable.snapshot, pinned);
+  assert.equal(unavailable.stale, true);
+  assert.equal(unavailable.staleReason, 'revision-unavailable');
+  assert.equal(unavailable.refreshAvailable, false);
 });

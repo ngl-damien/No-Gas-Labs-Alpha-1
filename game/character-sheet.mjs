@@ -1,6 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { projectCommonsMessages } from './social.mjs';
-import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor, retainedWorldEventHistoryOptions } from './research-records.mjs';
 import { projectCombatHistory } from './combat.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
 import { isSafeFieldItemReferenceId, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
@@ -25,7 +25,8 @@ export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
   Object.freeze({id:'research',label:'Moonshot Compass',kinds:Object.freeze(['experiment-report','moonshot-proposal']),sourceTypes:Object.freeze(['moonshot-proposed','experiment-reported']),description:'A falsifiable proposal or retained attempt, including failure and inconclusive outcomes.'}),
   Object.freeze({id:'adversarial',label:'Contradiction Ward',kinds:Object.freeze(['experiment-challenge','source-observation-challenge']),sourceTypes:Object.freeze(['experiment-challenged','source-observation-challenged']),description:'A retained challenge to another actor’s experiment report or Source Observatory note; dissent remains unadjudicated.'}),
   Object.freeze({id:'collaboration',label:'Relay Sigil',kinds:Object.freeze(['guild-folio']),sourceTypes:Object.freeze(['collaborator-response-recorded']),description:'A source-bound collaborator response preserved for human review, not approval.'}),
-  Object.freeze({id:'restoration',label:'Repair Gloves',kinds:Object.freeze(['checked-repair']),sourceTypes:Object.freeze(['publish']),description:'A repair method linked to a checked publication sequence; it is not independent validation.'})
+  Object.freeze({id:'restoration',label:'Repair Gloves',kinds:Object.freeze(['checked-repair']),sourceTypes:Object.freeze(['publish']),description:'A repair method linked to a checked publication sequence; it is not independent validation.'}),
+  Object.freeze({id:'recovery',label:'Recovery Ledger',kinds:Object.freeze(['source-archive-recovery']),sourceTypes:Object.freeze(['publish']),description:'A later server-rechecked capture linked to one unique earlier service-observed retryable failure. It records retrieval lineage only; it is not source truth, independent verification or authority.'})
 ]);
 
 export const FIELD_ITEM_SOURCE_PAGE_SIZE = MAX_FIELD_EQUIPMENT_CHOICES;
@@ -175,6 +176,22 @@ function retainedPublicationEvents(world) {
     for (const candidate of selected) retained.push(candidate.event);
   }
   return retained;
+}
+
+/**
+ * Resolve the exact retained publication event for one artifact version.
+ * This reuses the character projection's unique-version and publication
+ * lineage rules; a receipt identifies retained bytes, not truth or XP.
+ */
+export function findRetainedPublicationEventId(world, creationId, version) {
+  if (typeof creationId !== 'string' || !creationId || creationId.trim() !== creationId ||
+      !Number.isSafeInteger(version) || version < 1) return null;
+  const matches = retainedPublicationEvents(world).filter(event =>
+    event.creationId === creationId && event.version === version &&
+    typeof event.id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.id) &&
+    !['constructor', 'prototype', '__proto__'].includes(event.id)
+  );
+  return matches.length === 1 ? matches[0].id : null;
 }
 
 // A publication is an XP receipt only when the exact fixed reward is present.
@@ -347,7 +364,7 @@ export function projectCharacter(world, viewer, options = {}) {
       typeof event.reportId === 'string' && reportCounts.get(event.reportId) === 1 &&
       proposalIds.has(event.moonshotId) && Number.isInteger(proposalIndex) &&
       (positionByEvent.get(event) ?? -1) > proposalIndex && isStrictTimestamp(event.at) &&
-      isStrictTimestamp(proposal.at) && Date.parse(proposal.at) <= Date.parse(event.at) &&
+      isStrictTimestamp(proposal.at) &&
       typeof event.actor?.id === 'string' && event.actor.id.trim() &&
       ['founder', 'witness'].includes(event.actor.role) &&
       typeof event.procedure === 'string' && event.procedure.trim() &&
@@ -355,18 +372,16 @@ export function projectCharacter(world, viewer, options = {}) {
       ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome);
   });
   const experimentReports = mine(validExperimentReports, viewer);
-  const challengeCounts = new Map();
-  for (const event of allEvents) {
-    if (event?.type === 'experiment-challenged' && typeof event.challengeId === 'string') {
-      challengeCounts.set(event.challengeId, (challengeCounts.get(event.challengeId) || 0) + 1);
-    }
-  }
-  const reportById = new Map(validExperimentReports.map(event => [event.reportId, event]));
   const retainedVersions = retainedVersionIndex(world);
   const retainedPublications = retainedPublicationEvents(world);
   const retainedPublicationByVersion = new Map(retainedPublications.map(event => [
     versionKey(event.creationId, event.version), event
   ]));
+  const retainedPublicationCountsByVersion = new Map();
+  for (const publication of retainedPublications) {
+    const key = versionKey(publication.creationId, publication.version);
+    retainedPublicationCountsByVersion.set(key, (retainedPublicationCountsByVersion.get(key) || 0) + 1);
+  }
   const retainedPublicationIds = new Set(retainedPublications.map(event => event.id));
   const retainedPublishedVersionKeys = new Set(retainedPublications.map(event =>
     versionKey(event.creationId, event.version)
@@ -379,6 +394,27 @@ export function projectCharacter(world, viewer, options = {}) {
     return publicationPosition >= 0 && activityPosition > publicationPosition &&
       isStrictTimestamp(publication.at) && isStrictTimestamp(event.at) &&
       Date.parse(publication.at) <= Date.parse(event.at);
+  };
+  const hasEarlierPublicationByAppendPosition = event => {
+    const key = versionKey(event.creationId, event.version);
+    const publication = retainedPublicationByVersion.get(key);
+    const publicationPosition = publication ? (positionByEvent.get(publication) ?? -1) : -1;
+    const activityPosition = positionByEvent.get(event) ?? -1;
+    return retainedPublicationCountsByVersion.get(key) === 1 &&
+      publicationPosition >= 0 && activityPosition > publicationPosition &&
+      isStrictTimestamp(publication.at) && isStrictTimestamp(event.at);
+  };
+  const hasEarlierPublishedVersionForEvent = (creationId, versionNumber, event) => {
+    const key = versionKey(creationId, versionNumber);
+    const publication = retainedPublicationByVersion.get(key);
+    const publicationPosition = publication ? (positionByEvent.get(publication) ?? -1) : -1;
+    const activityPosition = positionByEvent.get(event) ?? -1;
+    const version = retainedVersions.get(key);
+    return retainedPublicationCountsByVersion.get(key) === 1 &&
+      !!version && retainedPublishedVersionKeys.has(key) &&
+      publicationPosition >= 0 && activityPosition > publicationPosition &&
+      isStrictTimestamp(publication.at) && isStrictTimestamp(version.publishedAt) &&
+      publication.at === version.publishedAt;
   };
   const matchedDiscoveries = matchedActivityRecords(
     'discover', world?.discoveries, allEvents, ['locationId'], viewer,
@@ -418,38 +454,19 @@ export function projectCharacter(world, viewer, options = {}) {
     'publish', world?.methods, allEvents, ['creationId', 'version'], viewer,
     event => event.version > 1 && retainedPublicationIds.has(event.id) && hasUniquePriorRepair(event)
   );
-  const experimentChallenges = events.filter(event => {
-    const report = reportById.get(event?.reportId);
-    const reportPosition = report ? (positionByEvent.get(report) ?? -1) : -1;
-    const challengePosition = positionByEvent.get(event) ?? -1;
-    if (event.type !== 'experiment-challenged' ||
-        typeof event.challengeId !== 'string' || challengeCounts.get(event.challengeId) !== 1 ||
-        typeof event.reportId !== 'string' || !report ||
-        typeof event.moonshotId !== 'string' || report.moonshotId !== event.moonshotId ||
-        sameResearchActor(report.actor, event.actor) ||
-        !['founder', 'witness'].includes(report.actor?.role) ||
-        !['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'].includes(event.challengeType) ||
-        typeof event.challengeText !== 'string' || !event.challengeText.trim() ||
-        Array.from(event.challengeText).length > 1000 ||
-        reportPosition < 0 || challengePosition <= reportPosition ||
-        !isStrictTimestamp(event.at) || !isStrictTimestamp(report.at) ||
-        Date.parse(report.at) > Date.parse(event.at)) return false;
-
-    const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
-    const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
-    if (hasEvidenceId !== hasEvidenceVersion) return false;
-    if (!hasEvidenceId && (
-      (event.evidenceCreationId !== undefined && event.evidenceCreationId !== null) ||
-      (event.evidenceVersion !== undefined && event.evidenceVersion !== null)
-    )) return false;
-    if (hasEvidenceId) {
-      const evidenceKey = versionKey(event.evidenceCreationId, event.evidenceVersion);
-      const version = retainedVersions.get(evidenceKey);
-      if (!version || !retainedPublishedVersionKeys.has(evidenceKey) ||
-          !isStrictTimestamp(version.publishedAt) || Date.parse(version.publishedAt) > Date.parse(event.at)) return false;
-    }
-    return true;
-  });
+  // Quest Board, Evidence Archive and Character Sheet share one fail-closed
+  // research projection; malformed present resolution requests cannot mint skill.
+  const experimentResearchRecords = projectResearchRecords(
+    world?.events, world?.creations, retainedWorldEventHistoryOptions(world, world?.events)
+  );
+  const experimentChallenges = experimentResearchRecords.filter(record =>
+    record?.type === 'experiment-challenged' &&
+    record?._projection?.recordSafe === true &&
+    record?._projection?.eventIdUnique === true &&
+    record?._projection?.proposalStatus === 'linked' &&
+    record?._projection?.challengeStatus === 'linked' &&
+    sameResearchActor(record.actor, viewer)
+  );
   const studyIdCounts = new Map();
   for (const event of allEvents) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const publishedStudyVersions = retainedPublishedVersionKeys;
@@ -461,7 +478,7 @@ export function projectCharacter(world, viewer, options = {}) {
         typeof event.nextCheck !== 'string' || !event.nextCheck.trim() || Array.from(event.nextCheck).length > 500 ||
         !isStrictTimestamp(event.at)) return false;
     const key = versionKey(event.creationId, event.version), version = retainedVersions.get(key);
-    return Boolean(version && publishedStudyVersions.has(key) && isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
+    return Boolean(version && publishedStudyVersions.has(key) && isStrictTimestamp(version.publishedAt) && hasEarlierPublicationByAppendPosition(event));
   });
   const reviewIdCounts = new Map(), reviewedStudyCounts = new Map();
   for (const event of allEvents) if (event?.type === 'study-reviewed') {
@@ -479,12 +496,11 @@ export function projectCharacter(world, viewer, options = {}) {
         source.creationId !== event.creationId || source.version !== event.version ||
         sourceIndex < 0 || reviewIndex <= sourceIndex ||
         !isStrictTimestamp(event.at) || !isStrictTimestamp(source.at) ||
-        Date.parse(source.at) >= Date.parse(event.at) ||
         typeof event.response !== 'string' || !event.response.trim() || Array.from(event.response).length > 1000 ||
         typeof event.reflection !== 'string' || !event.reflection.trim() || Array.from(event.reflection).length > 1000) return false;
     const version = retainedVersions.get(versionKey(event.creationId, event.version));
     return Boolean(version && publishedStudyVersions.has(versionKey(event.creationId, event.version)) &&
-      isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
+      isStrictTimestamp(version.publishedAt) && hasEarlierPublicationByAppendPosition(event));
   });
   const studyReviewById = new Map(studyReviews.map(event => [event.studyId, event]));
   const studyCardEntries = studyEvents
@@ -529,7 +545,7 @@ export function projectCharacter(world, viewer, options = {}) {
   const worldXp = Number.isSafeInteger(earnedWorld) ? earnedWorld : 0;
   const level = 1 + Math.floor(xp / LEVEL_SPAN);
 
-  const allSourceObservationRecords = projectSourceObservationRecords(world?.events, world?.creations)
+  const allSourceObservationRecords = projectSourceObservationRecords(world?.events, world?.creations, retainedWorldEventHistoryOptions(world, world?.events))
     .filter(record => record.projectionStatus === 'linked');
   const sourceObservationRecords = allSourceObservationRecords
     .filter(record => record.actor?.id === viewer?.id && record.actor?.role === viewer?.role);
@@ -555,9 +571,7 @@ export function projectCharacter(world, viewer, options = {}) {
   const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
     (record.challenges || []).flatMap(challenge => challenge.responses || [])
   ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
-  // Reuse the defensive experiment-research projection so a response counts
-  // only when its unique event, challenge, report, actor and chronology link.
-  const experimentResearchRecords = projectResearchRecords(world?.events, world?.creations);
+  // The same projection above also binds original-author responses and source predicates.
   const experimentChallengeResponses = experimentResearchRecords.filter(record =>
     record?.type === 'experiment-challenge-responded' &&
     record?._projection?.targetChallengeStatus === 'linked' &&
@@ -607,6 +621,9 @@ export function projectCharacter(world, viewer, options = {}) {
 
   const validFieldItemSourceEventIdsBySlot=projectValidFieldItemSourceEventIds(world);
   const questTrail = getQuestTrail(world, viewer, { validFieldItemSourceEventIdsBySlot });
+  const satireIssueObjective = questTrail.find(item => item.id === 'founder-agp-satire-issue');
+  const satireIssuePublicationCount = Array.isArray(satireIssueObjective?.evidenceIds)
+    ? satireIssueObjective.evidenceIds.length : 0;
   // Source-specific milestones can classify the same retained action as a broader
   // objective. Keep the extra Quest Board detail without double-counting that action
   // as another Questkeeper skill increment.
@@ -687,10 +704,15 @@ export function projectCharacter(world, viewer, options = {}) {
     publications.find(event=>event.creationId===record.creationId&&event.version===record.version&&event.at===record.at)?.id
   ).filter(Boolean));
   const restorationSourceEvents=publications.filter(event=>restorationSourceIds.has(event.id));
+  const recoveryLinks=Array.isArray(validFieldItemSourceEventIdsBySlot.recoveryLinks)
+    ?validFieldItemSourceEventIdsBySlot.recoveryLinks:[];
+  const recoveryLinkByPublicationEventId=new Map(recoveryLinks.map(link=>[link.publicationEventId,link]));
+  const recoverySourceIds=new Set(recoveryLinkByPublicationEventId.keys());
+  const recoverySourceEvents=publications.filter(event=>recoverySourceIds.has(event.id));
   const sourceEventsByType={
     // Every retained publication version has its own immutable event and receipt.
-    // Checked-repair publications belong to Restoration rather than two slots.
-    publish:publications.filter(event=>!restorationSourceIds.has(event.id)),
+    // Checked-repair and failure-recovery publications belong to their specific slots.
+    publish:publications.filter(event=>!restorationSourceIds.has(event.id)&&!recoverySourceIds.has(event.id)),
     discover:discoverySourceEvents,
     contribute:contributionSourceEvents,
     report:reportSourceEvents,
@@ -747,12 +769,15 @@ export function projectCharacter(world, viewer, options = {}) {
       reference.creationId||event.creationId||event.sourceCreationId||event.evidenceCreationId||'retained activity';
   };
   const sourceItemForEvent=(event,slot)=>{
-    const kind=slot.id==='restoration'?'checked-repair':fieldItemKindByType[event.type];
+    const recoveryLink=slot.id==='recovery'?recoveryLinkByPublicationEventId.get(event.id):null;
+    const kind=slot.id==='restoration'?'checked-repair':slot.id==='recovery'?'source-archive-recovery':fieldItemKindByType[event.type];
     const reference=sourceReferenceForEvent(event);
     const sourceCreationId=reference.creationId;
     const sourceVersion=reference.version;
     const version=sourceCreationId&&sourceVersion?retainedVersions.get(versionKey(sourceCreationId,sourceVersion)):null;
-    const title=event.type==='publish'?'Publication · '+creationTitleForEvent(event)+' · v'+event.version:
+    const title=slot.id==='recovery'&&recoveryLink
+      ?'Recovery Ledger · '+recoveryLink.repository+'/'+recoveryLink.path+' · '+recoveryLink.commitSha.slice(0,8)
+      :event.type==='publish'?'Publication · '+creationTitleForEvent(event)+' · v'+event.version:
       event.type==='discover'?'Discovery · '+String(event.locationId):
       event.type==='contribute'?'Field note · '+creationTitleForEvent(event):
       event.type==='report'?'Report · '+creationTitleForEvent(event):
@@ -811,7 +836,8 @@ export function projectCharacter(world, viewer, options = {}) {
       eventId:event.id,kind,title,at:event.at,sourceCreationId,sourceVersion,
       receipt:version?.receipt&&typeof version.receipt.digest==='string'
         ?Object.freeze({digest:version.receipt.digest,size:version.receipt.size}):null,
-      action,dissent
+      action,dissent,
+      recovery:recoveryLink?Object.freeze({...recoveryLink}):null
     });
   };
   // Keep domain validation and cross-slot ambiguity checks, but retain only
@@ -821,13 +847,15 @@ export function projectCharacter(world, viewer, options = {}) {
   const sourceUseCounts = new Map();
   for (const slot of FIELD_EQUIPMENT_SLOTS) {
     const sourceEvents = slot.id === 'restoration' ? restorationSourceEvents
+      : slot.id === 'recovery' ? recoverySourceEvents
       : slot.sourceTypes.flatMap(type => sourceEventsByType[type] || []);
     const seen = new Set();
     const ids = new Set();
     for (const event of sourceEvents) {
       if (!event || !isSafeFieldItemReferenceId(event.id) || seen.has(event.id)) continue;
       seen.add(event.id);
-      const kind = slot.id === 'restoration' ? 'checked-repair' : fieldItemKindByType[event.type];
+      const kind = slot.id === 'restoration' ? 'checked-repair'
+        : slot.id === 'recovery' ? 'source-archive-recovery' : fieldItemKindByType[event.type];
       if (!kind || !slot.kinds.includes(kind) ||
           !validFieldItemSourceEventIdsBySlot[slot.id]?.has(event.id)) continue;
       ids.add(event.id);
@@ -989,6 +1017,7 @@ export function projectCharacter(world, viewer, options = {}) {
       sourceCreationId:sourceItem.sourceCreationId??null,
       sourceVersion:sourceItem.sourceVersion??null,receipt:sourceItem.receipt??null,
       sourceDissent:sourceItem.dissent??null,
+      sourceRecovery:sourceItem.recovery??null,
       action:sourceItem.action??null,
       transferOffer:activeOffer?Object.freeze({...activeOffer}):null,
       transferHistory,
@@ -1049,6 +1078,7 @@ export function projectCharacter(world, viewer, options = {}) {
           itemId:item.itemId,title:item.title,slotLabel:item.slotLabel,eventId:item.eventId,
           sourceEventId:item.sourceEventId,sourceKind:item.sourceKind,
           sourceCreationId:item.sourceCreationId,sourceVersion:item.sourceVersion,
+          sourceRecovery:item.sourceRecovery??null,
           action:item.action,ownerId:item.ownerId,ownerRole:item.ownerRole
         })
       }))
@@ -1105,6 +1135,14 @@ export function projectCharacter(world, viewer, options = {}) {
       count: publications.length,
       record: 'version-matched published versions',
       basis: 'Unique Founder publication events matched to retained artifact versions and timestamps.'
+    },
+    {
+      id: 'satirist',
+      label: 'Satirist',
+      count: satireIssuePublicationCount,
+      record: 'published America’s Got Problems issue editions',
+      recordSingular: 'published America’s Got Problems issue edition',
+      basis: 'Unique Founder publication events matched to retained canonical America’s Got Problems issue artifacts, including separately published follow-up editions. Drafts do not count. This records publication activity, not factual accuracy, satire quality, source retrieval, independent verification, external publication, mastery, XP or NGL authority.'
     },
     {
       id: 'explorer',

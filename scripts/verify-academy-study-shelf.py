@@ -232,6 +232,43 @@ def enter_nearby_institution(page, place_id, accessible_name, title, timeout=300
         timeout=timeout
     )
 
+def wait_for_nearby_npc(page, role_id, npc_id, name, timeout=30000):
+    page.bring_to_front()
+    aria_label = 'Talk to nearby collaborator ' + name
+    try:
+        page.wait_for_function(
+            """expected => {
+                const world = document.querySelector('#world');
+                const sheet = document.querySelector('#sheet');
+                const button = document.querySelector('#interact-button');
+                return world?.dataset.nearbyNpcRole === expected.roleId &&
+                    world?.dataset.navigationTargetId === expected.npcId &&
+                    world?.dataset.navigationState === 'arrived' &&
+                    sheet?.hidden === true &&
+                    button && !button.hidden &&
+                    button.getAttribute('aria-label') === expected.ariaLabel;
+            }""",
+            arg={'roleId': role_id, 'npcId': npc_id, 'ariaLabel': aria_label},
+            timeout=timeout
+        )
+    except Exception as error:
+        diagnostics = page.evaluate("""() => {
+          const world = document.querySelector('#world');
+          const button = document.querySelector('#interact-button');
+          return {
+            navigationTargetId: world?.dataset.navigationTargetId ?? null,
+            navigationState: world?.dataset.navigationState ?? null,
+            nearbyNpcRole: world?.dataset.nearbyNpcRole ?? null,
+            interactLabel: button?.getAttribute('aria-label') ?? null,
+            interactHidden: button?.hidden ?? null,
+            sheetHidden: document.querySelector('#sheet')?.hidden ?? null
+          };
+        }""")
+        raise AssertionError(
+            'Player did not reach the explicit Interact prompt for ' + name + ': ' + json.dumps(diagnostics)
+        ) from error
+
+
 def open_academy(page):
     page.bring_to_front()
     page.locator('#places-button').tap()
@@ -308,6 +345,112 @@ def run_viewport(browser, url, out, width):
         )
         expect(shelf.locator('[data-study-card]')).to_have_count(0)
         expect(shelf).to_contain_text('No linked study attempts have been recorded for this character yet.')
+
+        # Stage 10 must route to the named Synthesis Clerk NPC, not merely the
+        # Guild Hall landmark. Arrival still requires the player's explicit Interact.
+        stage10_action = codex.locator('[data-charter-stage-action="engineer-for-use"]')
+        expect(stage10_action).to_be_visible()
+        expect(stage10_action).to_contain_text('Inspect related room · Guild Hall · Synthesis Clerk')
+        stage10_action.tap()
+        page.wait_for_function("""() => {
+          const world = document.querySelector('#world');
+          return document.querySelector('#sheet')?.hidden === true &&
+            world?.dataset.navigationTargetId === 'guild-npc-synthesizer' &&
+            ['walking', 'arrived'].includes(world?.dataset.navigationState);
+        }""", timeout=30000)
+        wait_for_nearby_npc(page, 'synthesizer', 'guild-npc-synthesizer', 'Synthesis Clerk')
+        before_clerk_interaction = read_state(page)
+        assert before_clerk_interaction['viewer']['role'] == 'witness'
+        assert before_clerk_interaction['xp'] == codex_before['xp'], (
+            'Routing to the Synthesis Clerk must not award XP.'
+        )
+        page.locator('#interact-button').tap()
+        page.wait_for_function("""() => {
+          const sheet = document.querySelector('#sheet');
+          const snapshot = document.querySelector('#sheet-content [data-project-state-snapshot="true"]');
+          return sheet?.hidden === false &&
+            document.querySelector('#sheet-title')?.textContent === 'Guild Hall' &&
+            snapshot && snapshot.dataset.projectStateStatus !== 'loading';
+        }""", timeout=30000)
+        expect(page.locator('#sheet-kicker')).to_have_text('COUNCIL · CAPABILITIES · EVIDENCE')
+        expect(page.locator('#sheet-content')).to_contain_text('SYNTHESIS CLERK · BOUNDED COLLABORATOR')
+        expect(page.locator('#sheet-content')).to_contain_text(
+            'Synthesis Clerk reads a bounded public GitHub snapshot bundled with this build.'
+        )
+        clerk_snapshot = page.locator('#sheet-content [data-project-state-snapshot="true"]')
+        expect(clerk_snapshot).to_have_attribute('aria-label', 'Bundled public GitHub project-state snapshot')
+        clerk_snapshot_status = clerk_snapshot.get_attribute('data-project-state-status')
+        assert clerk_snapshot_status in ('receipt-verified', 'unavailable'), (
+            'The Synthesis Clerk snapshot must report a bounded receipt state, never an inferred success.'
+        )
+        if clerk_snapshot_status == 'receipt-verified':
+            expect(clerk_snapshot).to_contain_text('SHA-256 RECEIPT MATCHED · NOT LIVE')
+            expect(clerk_snapshot).to_contain_text('This identifies payload bytes only')
+        else:
+            expect(clerk_snapshot).to_contain_text('No project queue is inferred from an unavailable snapshot.')
+        after_clerk_interaction = read_state(page)
+        assert after_clerk_interaction['revision'] == before_clerk_interaction['revision']
+        assert after_clerk_interaction['xp'] == before_clerk_interaction['xp']
+        assert after_clerk_interaction['eventIds'] == before_clerk_interaction['eventIds'], (
+            'Inspecting the Synthesis Clerk and its snapshot must not append canonical state.'
+        )
+        clerk_screenshot = out / ('academy-synthesis-clerk-' + str(width) + '.png')
+        page.screenshot(path=str(clerk_screenshot), full_page=True)
+        page.locator('#sheet-close').tap()
+
+        # Stage 11 routes to the actual human-gated Decision Chamber. A Witness
+        # can inspect its records but receives no APPROVE/REJECT/DEFER controls.
+        shelf = open_academy(page)
+        codex = page.locator('[data-charter-codex]')
+        codex.locator('summary').tap()
+        stage11_action = codex.locator('[data-charter-stage-action="deploy-share-commercialize"]')
+        expect(stage11_action).to_be_visible()
+        expect(stage11_action).to_contain_text('Inspect related room · Founder Gate · Decision Chamber')
+        stage11_action.tap()
+        page.wait_for_function("""() => {
+          const world = document.querySelector('#world');
+          return document.querySelector('#sheet')?.hidden === true &&
+            world?.dataset.navigationTargetId === 'decision_chamber' &&
+            ['walking', 'arrived'].includes(world?.dataset.navigationState);
+        }""", timeout=30000)
+        page.wait_for_function("""() => {
+          const world = document.querySelector('#world');
+          const sheet = document.querySelector('#sheet');
+          const button = document.querySelector('#interact-button');
+          return world?.dataset.nearbyInstitutionId === 'decision_chamber' &&
+            world?.dataset.navigationTargetId === 'decision_chamber' &&
+            world?.dataset.navigationState === 'arrived' &&
+            sheet?.hidden === true &&
+            button && !button.hidden &&
+            button.getAttribute('aria-label') === 'Enter Founder Gate';
+        }""", timeout=30000)
+        before_decision_entry = read_state(page)
+        assert before_decision_entry['viewer']['role'] == 'witness'
+        assert before_decision_entry['xp'] == codex_before['xp'], (
+            'Routing to Founder Gate must not award XP.'
+        )
+        page.locator('#interact-button').tap()
+        page.wait_for_function("""() => {
+          const sheet = document.querySelector('#sheet');
+          return sheet?.hidden === false &&
+            document.querySelector('#sheet-title')?.textContent === 'Decision Chamber' &&
+            document.querySelector('#sheet-kicker')?.textContent === 'HUMAN GATE · DECISIONS';
+        }""", timeout=30000)
+        expect(page.locator('#sheet-content [data-witness-disposition-controls-withheld="true"]')).to_have_count(1)
+        expect(page.locator('#sheet-content [data-gate-action]')).to_have_count(0)
+        expect(page.locator('#sheet-content')).to_contain_text(
+            'This server-reported readiness check is not a decision, evidence, approval, or authority grant.'
+        )
+        after_decision_entry = read_state(page)
+        assert after_decision_entry['revision'] == before_decision_entry['revision']
+        assert after_decision_entry['xp'] == before_decision_entry['xp']
+        assert after_decision_entry['eventIds'] == before_decision_entry['eventIds'], (
+            'Entering the Decision Chamber for inspection must not append a decision or approval.'
+        )
+        decision_screenshot = out / ('academy-decision-chamber-' + str(width) + '.png')
+        page.screenshot(path=str(decision_screenshot), full_page=True)
+        page.locator('#sheet-close').tap()
+        shelf = open_academy(page)
 
         page.get_by_role('button', name='Record study note →', exact=True).tap()
         page.locator('#academy-study-question').fill(
@@ -411,12 +554,19 @@ def run_viewport(browser, url, out, width):
             'charterCodexReadOnly': True,
             'charterCodexCollapsedByDefault': True,
             'charterCodexUnsupportedStagesRemainUnrepresented': True,
+            'charterCodexStage10RoutesToSynthesizerNpc': True,
+            'synthesisClerkWorkbenchOpened': True,
+            'synthesisSnapshotPanelStatus': clerk_snapshot_status,
+            'synthesisClerkInspectionReadOnly': True,
+            'charterCodexStage11RoutesToDecisionChamber': True,
+            'decisionChamberWitnessControlsWithheld': True,
+            'decisionChamberInspectionReadOnly': True,
             'retainedNoteVisibleToOtherActor': True,
             'studyAwardedNoXp': True,
             'sourceInspectionReadOnly': True,
             'eventHistoryUnchangedByInspection': True,
             'pageErrors': errors,
-            'screenshots': [screenshot.name, other_screenshot.name]
+            'screenshots': [clerk_screenshot.name, decision_screenshot.name, screenshot.name, other_screenshot.name]
         }
     finally:
         if other_context is not None:

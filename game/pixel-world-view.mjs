@@ -1250,7 +1250,8 @@ const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
 
 const PLAYER_APPROACH_REPLAN_DISTANCE = 24;
 
-const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet-backdrop, #sheet, #portal, #toast';
+// The sheet backdrop is pointer-transparent; only the actual sheet blocks map hit-testing.
+const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet, #portal, #toast';
 
 export class PixelWorldView extends WorldView {
   constructor(canvas, options = {}) {
@@ -1297,6 +1298,16 @@ export class PixelWorldView extends WorldView {
       previousActorId.length > 0 &&
       nextActorId === previousActorId
     ) ? this.playerApproach : null;
+    const navigationTarget = positionStreamChanged ? null : this.navigationTarget;
+    const pendingTargetId = !positionStreamChanged && typeof this.target === 'string'
+      ? this.target : null;
+    const pendingTargetType = pendingTargetId ? this.targetType : null;
+    const routeDestination = !positionStreamChanged && !playerApproach &&
+      !navigationTarget && !pendingTargetId && Array.isArray(this.route) && this.route.length > 0
+      ? this.route[this.route.length - 1] : null;
+    const groundDestination = routeDestination &&
+      Number.isFinite(routeDestination.x) && Number.isFinite(routeDestination.y)
+      ? { x: routeDestination.x, y: routeDestination.y } : null;
     if (positionStreamChanged) {
       this.keys?.clear?.();
       this.input = { x: 0, y: 0 };
@@ -1311,17 +1322,6 @@ export class PixelWorldView extends WorldView {
     } else if (actorSessionChanged) {
       this.positionEpoch = null;
     }
-    const navigationTarget = positionStreamChanged ? null : this.navigationTarget;
-    const preserveNavigationTarget = Boolean(
-      !positionStreamChanged &&
-      navigationTarget?.type === 'institution' &&
-      typeof navigationTarget.id === 'string' &&
-      Array.isArray(this.route) &&
-      this.route.length === 0 &&
-      Number.isFinite(player?.x) &&
-      Number.isFinite(player?.y) &&
-      (typeof player?.id !== 'string' || player.id === this.player?.id)
-    );
     super.setPlayer(player);
     if (playerApproach) {
       const target = Array.isArray(this.presence)
@@ -1337,18 +1337,33 @@ export class PixelWorldView extends WorldView {
       if (target && Number.isFinite(distance) &&
           distance >= interactionPromptRange({ type: 'player' })) {
         // Same-session state snapshots may omit x/y while a local route is
-        // active. Keep the current rendered coordinate in that case, but
-        // always rebuild waypoints from the post-snapshot player position.
-        // Never carry stale waypoints or a replaced remote identity forward.
+        // active. Rebuild from the accepted position; never carry stale
+        // waypoints or a replaced remote identity forward.
         this.routeBesidePlayer(target);
         return;
       }
     }
-    if (!preserveNavigationTarget || !navigationTarget) return;
-    const destination = this.nearest(navigationTarget.id, navigationTarget.type);
-    if (destination && Number.isFinite(destination.distance) &&
-        destination.distance < interactionPromptRange(destination)) {
-      this.navigationTarget = navigationTarget;
+    if (navigationTarget) {
+      const destination = this.nearest(navigationTarget.id, navigationTarget.type);
+      if (destination && Number.isFinite(destination.distance)) {
+        if (destination.distance < interactionPromptRange(destination)) {
+          this.navigationTarget = navigationTarget;
+        } else {
+          // Position receipts supersede coordinates, not the player's chosen
+          // institution/NPC destination. Rebuild the route from accepted state.
+          this.goTo(navigationTarget.id, navigationTarget.type);
+        }
+      }
+      return;
+    }
+    if (pendingTargetId) {
+      this.goTo(pendingTargetId, pendingTargetType);
+      return;
+    }
+    if (groundDestination) {
+      // A freeform map tap has no canonical target ID. Preserve only its final
+      // coordinate and recompute waypoints after each same-session receipt.
+      this.goTo(groundDestination);
     }
   }
 
@@ -1678,11 +1693,8 @@ export class PixelWorldView extends WorldView {
     );
     if (institutionId) {
       event.preventDefault?.();
-      const nearest = this.nearest(institutionId, 'institution');
-      if (nearest?.type === 'institution' && nearest.distance < 160) {
-        this.interact(institutionId);
-        return;
-      }
+      // A landmark tap selects a destination, even when the player is already
+      // nearby. The separate nearby Interact control is the only entry action.
       this.goTo(institutionId);
       this.canvas.focus({ preventScroll: true });
       return;
@@ -1749,10 +1761,11 @@ export class PixelWorldView extends WorldView {
     }
     this.route = route;
     this.route.shift();
-    // Arrival leaves the player beside the NPC. The player must still use
-    // the explicit interact control; navigation alone is not a world event.
+    // Preserve the exact NPC destination across same-session position
+    // receipts. Arrival still requires the explicit Interact control.
     this.target = null;
     this.targetType = null;
+    this.navigationTarget = { id: npc.id, type: 'npc' };
     this.scheduleFrame?.();
   }
 
@@ -1891,15 +1904,22 @@ export class PixelWorldView extends WorldView {
   setWorld(world, institutionSummary = this.institutionSummary, viewer = null) {
     const previousWorld = this.world;
     const previousRouteObstacleSignature = this.routeObstacleSignature;
+    const groundRouteDestination = Array.isArray(this.route) && this.route.length > 0 &&
+      !this.navigationTarget && !this.playerApproach && !this.target
+      ? this.route[this.route.length - 1] : null;
     super.setWorld(world, institutionSummary, viewer);
     if (this.world !== previousWorld) {
       this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
       this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
       this.updateResearchAccessibility();
     }
-    if (this.navigationTarget && this.route.length > 0 &&
-        this.routeObstacleSignature !== previousRouteObstacleSignature) {
-      this.goTo(this.navigationTarget.id, 'institution');
+    if (this.routeObstacleSignature !== previousRouteObstacleSignature) {
+      if (this.navigationTarget && Array.isArray(this.route) && this.route.length > 0) {
+        this.goTo(this.navigationTarget.id, this.navigationTarget.type);
+      } else if (groundRouteDestination &&
+          Number.isFinite(groundRouteDestination.x) && Number.isFinite(groundRouteDestination.y)) {
+        this.goTo({ x: groundRouteDestination.x, y: groundRouteDestination.y });
+      }
     }
   }
 
@@ -2335,6 +2355,12 @@ export class PixelWorldView extends WorldView {
     this.refreshMapOverlayRectsIfNeeded();
     this.mapAvoidRects = Array.isArray(this.mapOverlayRects) ? [...this.mapOverlayRects] : [];
     if (this.canvas.dataset) {
+      // These coordinates describe the local renderer only. They support
+      // deterministic diagnostics and offline-map acceptance; they are not
+      // server-authoritative position receipts or evidence of shared activity.
+      this.canvas.dataset.playerX = Number.isFinite(this.player?.x) ? String(this.player.x) : 'unavailable';
+      this.canvas.dataset.playerY = Number.isFinite(this.player?.y) ? String(this.player.y) : 'unavailable';
+      this.canvas.dataset.playerPositionSource = 'local-renderer';
       this.canvas.dataset.mapOverlayCount = String(this.mapAvoidRects.length);
       this.canvas.dataset.mapOverlayVisibility = this.mapOverlayVisibility ? 'visible' : 'hidden';
     }
@@ -2433,10 +2459,15 @@ export class PixelWorldView extends WorldView {
       ? ` A separate Enter control is available for ${nearbyInstitution.name}.`
       : '';
     if (navigationWaiting && navigationTarget) {
-      const destinationName = PLACES.find(place => place.id === navigationTarget.id)?.name ||
-        'the selected institution';
+      const destination = navigationTarget.type === 'npc'
+        ? WORLD_NPCS.find(npc => npc.id === navigationTarget.id)
+        : PLACES.find(place => place.id === navigationTarget.id);
+      const destinationName = destination?.name || 'the selected destination';
+      const navigationBoundary = navigationTarget.type === 'npc'
+        ? 'navigation alone does not open the interaction.'
+        : 'navigation alone does not enter the institution.';
       this.canvas.setAttribute('aria-description', navigationPending
-        ? `Walking to ${destinationName}. Nearby interaction prompts are paused until arrival; navigation alone does not enter the institution.`
+        ? `Walking to ${destinationName}. Nearby interaction prompts are paused until arrival; ${navigationBoundary}`
         : `The selected destination ${destinationName} is not within interaction range. Move closer or choose another destination.`);
     } else if (nearbyNpc) {
       const npcDescription = nearbyNpc.protocol === 'fixed-local'

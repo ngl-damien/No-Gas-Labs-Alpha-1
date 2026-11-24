@@ -27,7 +27,7 @@
       <h1 id="doorway-title">A world worth<br><em>making.</em></h1>
       <p class="hero-copy">Walk a little. Find a question. Make something real.<br class="desktop-break"> Every creation becomes a place in the world.</p>
       <div class="door-actions"><button id="start-private" class="primary-button">Play your world <span aria-hidden="true">↗</span></button><button id="start-shared" class="secondary-button">Enter the shared world</button></div>
-      <p class="door-footnote">Private play saves on this device. Shared play requires the live game server.</p>
+      <p class="door-footnote">Private play saves on this device. Shared play uses the live server; a last accepted public snapshot can reopen read-only when offline.</p>
       <div class="hero-divider"><span></span><b>OR, JUST HIT THE BIG BUTTON</b><span></span></div>
       <button id="caveman-launch" class="caveman-button"><span class="caveman-icon" aria-hidden="true">↟</span><span><strong>Caveman Launchpad</strong><small>One button. Three creations. Your own local exhibition.</small></span><span class="caveman-arrow" aria-hidden="true">↗</span></button>
       <p class="rehearsal-note">An actual launch rehearsal. You choose what to share.</p>
@@ -43,8 +43,8 @@
       <button id="enter-institution-button" class="interact-button enter-institution-button" type="button" hidden aria-label="Enter nearby institution"><span>Enter institution</span></button>
     </div>
 
-    <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
-    <section id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden><div class="sheet-top"><span class="eyebrow" id="sheet-kicker">FIELD NOTES</span><button id="sheet-close" class="close-button" aria-label="Close panel">×</button></div><h2 id="sheet-title"></h2><div id="sheet-content"></div></section>
+    <div id="sheet-backdrop" class="sheet-backdrop" aria-hidden="true" hidden></div>
+    <section id="sheet" class="sheet" role="region" aria-labelledby="sheet-title" aria-describedby="sheet-world-hint" hidden><div class="sheet-top"><span class="eyebrow" id="sheet-kicker">FIELD NOTES</span><button id="sheet-close" class="close-button" aria-label="Close panel">×</button></div><p id="sheet-world-hint" class="sheet-world-hint">WORLD LIVE · Tap the visible map to walk; this panel stays open.</p><h2 id="sheet-title"></h2><div id="sheet-content"></div></section>
     <section id="portal" class="portal" role="dialog" aria-modal="true" aria-labelledby="portal-title" hidden><header class="portal-header"><div><span class="eyebrow" id="portal-kicker">A LIVING CREATION</span><h2 id="portal-title"></h2></div><button id="portal-close" class="close-button" aria-label="Close creation">×</button></header><iframe id="artifact-frame" title="Sandboxed creation" sandbox="allow-scripts allow-forms allow-downloads" allow="autoplay" referrerpolicy="no-referrer"></iframe><footer id="portal-footer"></footer></section>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   </main>
