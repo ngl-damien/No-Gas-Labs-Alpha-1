@@ -25,7 +25,7 @@
 ### Repository and coordination
 
 - Current `main`: 21677d8. Runtime PR #718: 514 ahead / 9 behind, 52 changed paths, open/draft/unmerged. Do not merge or force-update the stack.
-- Documentation PR #722 is being synchronized to runtime head 0f6cc60 with a two-parent commit (runtime first parent, prior docs head second), preserving the six documentation-only paths.
+- Documentation PR #722 is synchronized by two-parent commit [b50f777](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/b50f777609cd787c509896ec5daf493f100aca20): runtime head 0f6cc607 is first parent and prior docs head f4380a1 is second. Effective compare is 151 commits ahead / 0 behind with six documentation-only paths. PR metadata still reports base SHA b430a9 and 14 changed files; the exact-ref tree comparison is the current path-level check.
 - Worker A PR #723 (head dae04d8, 18 paths) is a separate invariant-kernel proposal; no game-path overlap. PR #456 owns the Guild Hall Browser helper; PR #533 owns Android acceptance/runner paths. Do not edit their files.
 - Nine main-only governance skill/index/receipt paths remain non-overlapping instruction artifacts, not executable enforcement. No merge into #718.
 - Reuse: Alpha-1's own `projectResearchRecords` and `sameResearchActor` are the projection authority for the response display. No donor code copied. RAE/Relay receipt-vs-truth, Mesh append order, Guild catalogue roles and Decision Chamber human-gate boundaries remain intact.
