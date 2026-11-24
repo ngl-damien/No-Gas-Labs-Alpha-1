@@ -341,7 +341,7 @@ export function projectTownSquare(world, viewer, options = {}) {
         reviewId: reportReview?.event.reviewId ?? null,
         reviewNote: reportReview?.event.note ?? null,
         reviewAt: reportReview?.event.at ?? null,
-        reviewWarning,
+        ...(reviewUnavailable ? { reviewWarning } : {}),
         subsequentModerationEventId: subsequentModeration?.event.id ?? null,
         subsequentModerationDisposition: subsequentModeration?.event.disposition ?? null
       } : null;
@@ -386,8 +386,10 @@ export function projectTownSquare(world, viewer, options = {}) {
       reason: event.reason,
       details: event.details,
       at: event.at,
-      reviewStatus: reviewUnavailable ? 'review-status-unavailable' : 'awaiting-founder-review',
-      reviewWarning: reviewUnavailable ? COMMONS_REVIEW_HISTORY_WARNING : null,
+      ...(reviewUnavailable ? {
+        reviewStatus: 'review-status-unavailable',
+        reviewWarning: COMMONS_REVIEW_HISTORY_WARNING
+      } : {}),
       canReview: !reviewUnavailable && !(event.actor?.id === viewer?.id && event.actor?.role === viewer?.role),
       reporter: {
         id: event.actor?.id ?? '',
@@ -412,7 +414,7 @@ export function projectTownSquare(world, viewer, options = {}) {
     omittedMessageCount: Math.max(0, posts.length - recentPosts.length),
     pendingReportTotal: pending.length,
     omittedPendingReportCount: Math.max(0, pending.length - pendingReports.length),
-    reviewHistoryWarning: reviewHistory.invalidReviewHistory ? COMMONS_REVIEW_HISTORY_WARNING : null,
+    ...(reviewHistory.invalidReviewHistory ? { reviewHistoryWarning: COMMONS_REVIEW_HISTORY_WARNING } : {}),
     canPost: true,
     founder
   };
