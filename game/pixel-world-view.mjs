@@ -1638,7 +1638,7 @@ export class PixelWorldView extends WorldView {
     const retainedIds = new Set();
     let visibleCount = 0;
 
-    if (available && geometryAvailable) {
+    if (geometryAvailable) {
       for (const object of objects.slice(0, 16)) {
         const id = object?.id;
         const eventId = object?.eventId;
@@ -1697,15 +1697,13 @@ export class PixelWorldView extends WorldView {
           screenX - half < overlay.right && screenX + half > overlay.left &&
           screenY - half < overlay.bottom && screenY + half > overlay.top
         );
-        const visible = [screenX, screenY, left, top, viewportWidth, viewportHeight].every(Number.isFinite) &&
+        const visible = available && [screenX, screenY, left, top, viewportWidth, viewportHeight].every(Number.isFinite) &&
           left - half >= 0 && top - half >= 0 &&
           left + half <= viewportWidth && top + half <= viewportHeight &&
           screenX - half >= 0 && screenY - half >= 0 &&
           screenX + half <= this.width && screenY + half <= this.height &&
           !intersectsOverlay;
-        if (button.hidden === !visible) {
-          // Keep the current visibility state; avoid mutation-observer churn.
-        } else button.hidden = !visible;
+        if (button.hidden !== !visible) button.hidden = !visible;
         if (!visible) continue;
 
         const leftText = left + 'px';
