@@ -64,7 +64,7 @@ const COMMONS_REVIEW_HISTORY_WARNING =
  * events. This read-only projection is shared by TownSquare and the Quest Board
  * so their status and progress cannot disagree on malformed history.
  */
-export function projectCommonsReportReviewHistory(world) {
+export function projectCommonsReportReviewHistory(world, founderActorId = COMMONS_FOUNDER_ACTOR_ID) {
   const events = eventsOf(world);
   const eventIdCounts = new Map();
   const postsByMessageId = new Map();
@@ -117,9 +117,7 @@ export function projectCommonsReportReviewHistory(world) {
 
   const validActor = actor => {
     const key = commonsActorKey(actor);
-    return key !== null &&
-      validCommonsProjectionId(actor.id) &&
-      (actor.role !== 'founder' || actor.id === COMMONS_FOUNDER_ACTOR_ID);
+    return key !== null && validCommonsProjectionId(actor.id);
   };
   const invalidReportIds = new Set();
   for (const [reportId, reportRecords] of reportsById) {
@@ -161,7 +159,7 @@ export function projectCommonsReportReviewHistory(world) {
       eventIdCounts.get(postEvent.id) === 1 &&
       reviewEvent.messageId === reportEvent?.messageId &&
       reportEvent.messageId === postEvent?.messageId &&
-      reviewActor?.id === COMMONS_FOUNDER_ACTOR_ID &&
+      reviewActor?.id === founderActorId &&
       reviewActor?.role === 'founder' &&
       validActor(reportActor) &&
       validActor(postActor) &&
@@ -278,12 +276,14 @@ function normalizeMutedAuthors(value, viewer) {
  */
 export function projectTownSquare(world, viewer, options = {}) {
   const events = eventsOf(world);
-  const founder = viewer?.role === 'founder' && viewer?.id === COMMONS_FOUNDER_ACTOR_ID;
+  const founder = viewer?.role === 'founder';
   const viewerKey = commonsActorKey(viewer);
   const mutedAuthors = normalizeMutedAuthors(options?.mutedAuthors, viewer);
   const mutedKeys = new Set(mutedAuthors.map(commonsActorKey));
   const latest = latestModerationRecords(world);
-  const reviewHistory = projectCommonsReportReviewHistory(world);
+  const reviewHistory = projectCommonsReportReviewHistory(
+    world, founder ? viewer?.id : COMMONS_FOUNDER_ACTOR_ID
+  );
   const validReviewsByReport = new Map(reviewHistory.validReviews.map(record => [record.reportId, record]));
   const invalidReviewReportIds = new Set(reviewHistory.invalidReportIds);
   const posts = [];

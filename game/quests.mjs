@@ -386,7 +386,7 @@ function projectFounderCommonsReportReviewMilestone(world, viewer, events) {
     );
   }
 
-  const reviewHistory = projectCommonsReportReviewHistory(world);
+  const reviewHistory = projectCommonsReportReviewHistory(world, viewer?.id);
   const firstValidReview = reviewHistory.validReviews[0]?.event ?? null;
   const invalidReviewHistory = reviewHistory.invalidReviewHistory;
   let action = null;
@@ -1346,7 +1346,7 @@ export function getQuestTrail(world, viewer, options = {}) {
   const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
   const commonsMessages = projectCommonsMessages(world, { id: actorId, role: actorRole });
   const firstCommonsMessage = commonsMessages[0] || null;
-  const founderCommonsReportReviewMilestone = actorRole === 'founder' && actorId === COMMONS_FOUNDER_ACTOR_ID
+  const founderCommonsReportReviewMilestone = actorRole === 'founder'
     ? projectFounderCommonsReportReviewMilestone(world, viewer, events)
     : null;
   const guildMembership = currentPlayerGuildMembership(world, viewer, events);

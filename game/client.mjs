@@ -286,7 +286,7 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
     }
     content.append(card);
   }
-  if(viewer.id===COMMONS_FOUNDER_ACTOR_ID&&viewer.role==='founder'&&(feed.pendingReports.length||feed.reviewHistoryWarning)){
+  if(viewer.role==='founder'&&(feed.pendingReports.length||feed.reviewHistoryWarning)){
     const panel=node('section',{id:'commons-pending-reports',class:'field-card'});
     panel.append(node('h3',{text:feed.pendingReports.length?'PENDING FOUNDER REVIEW · '+feed.pendingReportTotal:'FOUNDER REVIEW HISTORY · STATUS UNAVAILABLE'}));
     panel.append(paragraph('Review notes are private to the reporting actor and Founder session. Recording a review does not change message visibility or establish factual truth, adjudication, or NGL authority.','form-help'));
