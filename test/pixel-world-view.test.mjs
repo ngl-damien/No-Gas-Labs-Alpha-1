@@ -3943,6 +3943,120 @@ test('TownSquare review control rejects stale clicks while modal is open or play
   }
 });
 
+test('TownSquare review controls separate 44px touch targets when map objects share a mobile cluster', () => {
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const previousInnerWidth = Object.getOwnPropertyDescriptor(globalThis, 'innerWidth');
+  const previousInnerHeight = Object.getOwnPropertyDescriptor(globalThis, 'innerHeight');
+  const makeElement = () => {
+    const attributes = new Map();
+    return {
+      dataset: {},
+      style: {},
+      hidden: false,
+      textContent: '',
+      title: '',
+      addEventListener() {},
+      setAttribute(name, value) { attributes.set(name, String(value)); },
+      getAttribute(name) { return attributes.has(name) ? attributes.get(name) : null; },
+      remove() { this.removed = true; }
+    };
+  };
+  const group = makeElement();
+  group.children = [];
+  group.appendChild = child => group.children.push(child);
+  const canvas = {
+    dataset: {},
+    getBoundingClientRect: () => ({
+      left: 0, top: 0, width: 320, height: 844, right: 320, bottom: 844
+    })
+  };
+  const objects = Array.from({ length: 16 }, (_, index) => ({
+    id: 'town-review-touch-' + String(index).padStart(2, '0'),
+    eventId: 'town-review-touch-' + String(index).padStart(2, '0'),
+    reportId: 'town-report-touch-' + String(index).padStart(2, '0'),
+    type: 'town-square-review',
+    status: index === 0 ? 'awaiting-founder-review' : 'process-record-not-adjudication',
+    mapVisible: true,
+    x: 1260 + (index % 4) * 10,
+    y: 520 + Math.floor(index / 4) * 10
+  }));
+  const world = { revision: 1, events: [{ id: 'retained-world-event', type: 'fixture' }] };
+  const worldBefore = structuredClone(world);
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { x: 1000, y: 400 },
+    world,
+    townSquareReviewObjects: objects,
+    townSquareReviewControlGroup: group,
+    townSquareReviewControlButtons: new Map(),
+    mapOverlayRects: [{ left: 0, top: 0, right: 80, bottom: 80 }],
+    width: 320,
+    height: 844,
+    camera: { x: 1140, y: 390 },
+    zoom: 0.78,
+    canvas,
+    playUiVisible: () => true
+  });
+  globalThis.document = { createElement: () => makeElement() };
+  Object.defineProperty(globalThis, 'innerWidth', {
+    configurable: true, enumerable: true, writable: true, value: 320
+  });
+  Object.defineProperty(globalThis, 'innerHeight', {
+    configurable: true, enumerable: true, writable: true, value: 844
+  });
+
+  try {
+    view.updateTownSquareReviewControls(false);
+    const controls = [...view.townSquareReviewControlButtons.entries()];
+    assert.equal(controls.length, 16);
+    assert.equal(group.hidden, false);
+    assert.equal(canvas.dataset.townSquareReviewControlVisibleCount, '16');
+
+    const centers = controls.map(([id, button]) => {
+      const object = objects.find(candidate => candidate.id === id);
+      assert.ok(object, 'every control remains bound to an exact projected event');
+      assert.equal(button.hidden, false);
+      assert.equal(button.dataset.eventId, id);
+      assert.equal(button.dataset.worldX, String(object.x));
+      assert.equal(button.dataset.worldY, String(object.y));
+      const left = Number.parseFloat(button.style.left);
+      const top = Number.parseFloat(button.style.top);
+      assert.ok(Number.isFinite(left) && Number.isFinite(top));
+      assert.ok(left - 22 >= 0 && left + 22 <= 320, '44px control stays inside the mobile viewport width');
+      assert.ok(top - 22 >= 0 && top + 22 <= 844, '44px control stays inside the mobile viewport height');
+      return { id, left, top };
+    });
+
+    for (let leftIndex = 0; leftIndex < centers.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < centers.length; rightIndex += 1) {
+        const left = centers[leftIndex];
+        const right = centers[rightIndex];
+        assert.ok(
+          Math.abs(left.left - right.left) >= 44 || Math.abs(left.top - right.top) >= 44,
+          '44px touch targets must not overlap: ' + left.id + ' / ' + right.id
+        );
+      }
+    }
+
+    const overlay = { left: 0, top: 0, right: 80, bottom: 80 };
+    for (const center of centers) {
+      assert.ok(
+        !(center.left - 22 < overlay.right && center.left + 22 > overlay.left &&
+          center.top - 22 < overlay.bottom && center.top + 22 > overlay.top),
+        'review controls must not cover reserved HUD overlays'
+      );
+    }
+    assert.deepEqual(world, worldBefore, 'laying out map controls does not mutate canonical world state');
+  } finally {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+    if (previousInnerWidth) Object.defineProperty(globalThis, 'innerWidth', previousInnerWidth);
+    else delete globalThis.innerWidth;
+    if (previousInnerHeight) Object.defineProperty(globalThis, 'innerHeight', previousInnerHeight);
+    else delete globalThis.innerHeight;
+  }
+});
+
 test('TownSquare map prioritizes pending reports over the bounded retained-review marker lane', async () => {
   const project = worldViewModule.projectTownSquareReviewObjects;
   const projectQueue = worldViewModule.projectTownSquareReviewQueueSummary;
