@@ -1417,10 +1417,6 @@ def run_town_square_report_review(browser, url, out, width):
                     markerCount: canvas.dataset.townSquareReviewVisibleCount || null,
                     markerObjects: canvas.dataset.townSquareReviewObjects || null,
                     pointerType: canvas.dataset.townSquareReviewPointerType || null,
-                    tapPoint: {
-                      x: point.x, y: point.y, localX: point.localX, localY: point.localY,
-                      objectX: point.objectX, objectY: point.objectY
-                    },
                     camera: {
                       x: canvas.dataset.cameraX || null, y: canvas.dataset.cameraY || null,
                       zoom: canvas.dataset.zoom || null
@@ -1428,6 +1424,9 @@ def run_town_square_report_review(browser, url, out, width):
                     eventId
                   };
                 }""", review_event['id'])
+                diagnostics['tapPoint'] = {
+                    key: point[key] for key in ('x', 'y', 'localX', 'localY', 'objectX', 'objectY')
+                }
                 screenshot = Path(out) / f'town-square-{label.lower()}-{width}px-map-tap-failure.png'
                 page.screenshot(path=str(screenshot), full_page=True)
                 raise AssertionError(
