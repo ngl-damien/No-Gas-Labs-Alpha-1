@@ -1,4 +1,4 @@
-import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT, findRoute } from './world-view.mjs';
+import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT, findRoute, projectTownSquareReviewQueueSummary } from './world-view.mjs';
 import { COLLABORATOR_ROLES, isCollaboratorPacket, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectSourceObservationRecords } from './research-records.mjs';
 
@@ -412,6 +412,7 @@ export function projectTownSquareReviewPointerTarget(point, camera, zoom, width,
         TOWNSQUARE_REVIEW_POINTER_FORBIDDEN_IDS.has(id) ||
         TOWNSQUARE_REVIEW_POINTER_FORBIDDEN_IDS.has(eventId) ||
         id !== eventId || ownDataValue(object, 'type') !== 'town-square-review' ||
+        !['awaiting-founder-review', 'process-record-not-adjudication'].includes(ownDataValue(object, 'status')) ||
         ownDataValue(object, 'mapVisible') !== true || seenIds.has(id) ||
         objectX === null || objectY === null) return null;
     seenIds.add(id);
@@ -1323,6 +1324,7 @@ export class PixelWorldView extends WorldView {
     this.playerApproach = null;
     this.updateResearchAccessibility();
     this.createNpcControls();
+    this.createTownSquareReviewControls();
     this.observeMapOverlays();
   }
 
@@ -1591,6 +1593,199 @@ export class PixelWorldView extends WorldView {
         button.dataset.guildNpcAriaLabel = accessibleLabel;
       }
     }
+  }
+
+  createTownSquareReviewControls() {
+    if (typeof document === 'undefined' || !document.body ||
+        typeof document.createElement !== 'function' ||
+        typeof document.body.appendChild !== 'function') return;
+    try {
+      const group = document.createElement('div');
+      group.className = 'ngl-town-square-review-controls';
+      group.dataset.townSquareReviewControls = 'true';
+      group.setAttribute('role', 'group');
+      group.setAttribute('aria-label', 'TownSquare report and process review map objects');
+      Object.assign(group.style, {
+        position: 'fixed', left: '0', top: '0', width: '100vw', height: '100vh',
+        margin: '0', padding: '0', pointerEvents: 'none', zIndex: '1000'
+      });
+      group.hidden = true;
+      this.townSquareReviewControlButtons = new Map();
+      document.body.appendChild(group);
+      this.townSquareReviewControlGroup = group;
+    } catch {
+      try { this.townSquareReviewControlGroup?.remove?.(); } catch {}
+      this.townSquareReviewControlGroup = null;
+      this.townSquareReviewControlButtons = new Map();
+    }
+  }
+
+  updateTownSquareReviewControls(modalOpen = false) {
+    const group = this.townSquareReviewControlGroup;
+    const buttons = this.townSquareReviewControlButtons;
+    if (!group || !(buttons instanceof Map)) return;
+    const available = modalOpen !== true && this.playUiVisible();
+    const objects = safeTownSquareReviewObjects(this);
+    let rect = null;
+    try { rect = this.canvas?.getBoundingClientRect?.(); } catch {}
+    const geometryAvailable = rect && [
+      rect.left, rect.top, rect.width, rect.height, this.width, this.height,
+      this.camera?.x, this.camera?.y, this.zoom
+    ].every(Number.isFinite) && rect.width > 0 && rect.height > 0 &&
+      this.width > 0 && this.height > 0 && this.zoom > 0;
+    const viewportWidth = Number.isFinite(globalThis.innerWidth) ? globalThis.innerWidth : rect?.right;
+    const viewportHeight = Number.isFinite(globalThis.innerHeight) ? globalThis.innerHeight : rect?.bottom;
+    const overlays = Array.isArray(this.mapOverlayRects) ? this.mapOverlayRects : [];
+    const retainedIds = new Set();
+    let visibleCount = 0;
+
+    if (geometryAvailable) {
+      for (const object of objects.slice(0, 16)) {
+        const id = object?.id;
+        const eventId = object?.eventId;
+        if (typeof id !== 'string' || id !== eventId ||
+            !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id) ||
+            object?.type !== 'town-square-review' || object?.mapVisible !== true ||
+            !['awaiting-founder-review', 'process-record-not-adjudication'].includes(object?.status) ||
+            !Number.isFinite(object?.x) || !Number.isFinite(object?.y)) continue;
+        retainedIds.add(id);
+        let button = buttons.get(id);
+        if (!button) {
+          try {
+            button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.townSquareReviewControl = id;
+            button.dataset.eventId = eventId;
+            button.textContent = 'R';
+            button.title = 'Inspect retained TownSquare process review';
+            button.setAttribute('aria-label',
+              'Inspect retained TownSquare process review in World Chronicle. Read-only process record; not moderation, adjudication, approval, truth, or XP.');
+            Object.assign(button.style, {
+              position: 'fixed', left: '0', top: '0',
+              transform: 'translate(-50%, -50%)',
+              display: 'grid', placeItems: 'center',
+              width: '44px', height: '44px', minWidth: '44px', minHeight: '44px',
+              margin: '0', padding: '0',
+              border: '2px solid #a85f42', borderRadius: '8px',
+              background: '#141512', color: '#e8e6dc',
+              font: 'bold 13px ui-monospace, monospace',
+              boxShadow: '0 2px 8px rgba(0,0,0,.45)',
+              pointerEvents: 'auto', touchAction: 'manipulation', cursor: 'pointer'
+            });
+            button.addEventListener('pointerdown', event => {
+              const pointerType = typeof event?.pointerType === 'string' ? event.pointerType : 'unknown';
+              button.dataset.pointerType = pointerType;
+              if (this.canvas?.dataset) this.canvas.dataset.townSquareReviewControlPointerType = pointerType;
+            });
+            button.addEventListener('click', event => {
+              event?.preventDefault?.();
+              event?.stopPropagation?.();
+              this.handleTownSquareReviewAction(id);
+            });
+            group.appendChild(button);
+            buttons.set(id, button);
+          } catch {
+            try { button?.remove?.(); } catch {}
+            continue;
+          }
+        }
+
+        const pending = object.status === 'awaiting-founder-review';
+        const markerText = pending ? 'P' : 'R';
+        if (button.textContent !== markerText) button.textContent = markerText;
+        if (button.dataset.townSquareReviewStatus !== object.status) {
+          button.dataset.townSquareReviewStatus = object.status;
+        }
+        const distance = Number.isFinite(this.player?.x) && Number.isFinite(this.player?.y)
+          ? Math.hypot(object.x - this.player.x, object.y + 10 - this.player.y)
+          : Infinity;
+        const canInspect = distance < interactionPromptRange({ type: 'town-square-review' });
+        const label = pending
+          ? canInspect
+            ? 'Inspect pending TownSquare report in World Chronicle. This is a read-only process record, not moderation, adjudication, approval, truth, or XP.'
+            : 'Walk to the pending TownSquare report, then inspect its exact Chronicle event. Navigation is read-only and creates no progress or XP.'
+          : canInspect
+            ? 'Inspect retained TownSquare process review in World Chronicle. This is a read-only process record, not moderation, adjudication, approval, truth, or XP.'
+            : 'Walk to the retained TownSquare process review, then inspect its exact Chronicle event. Navigation is read-only and creates no progress or XP.';
+        if (button.dataset.reviewAction !== (canInspect ? 'inspect' : 'approach')) {
+          button.dataset.reviewAction = canInspect ? 'inspect' : 'approach';
+        }
+        if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
+        if (button.title !== label) button.title = label;
+
+        const screenX = (object.x - this.camera.x) * this.zoom + this.width / 2;
+        const screenY = (object.y - this.camera.y) * this.zoom + this.height / 2;
+        const left = rect.left + screenX;
+        const top = rect.top + screenY;
+        const half = 22;
+        const intersectsOverlay = overlays.some(overlay =>
+          screenX - half < overlay.right && screenX + half > overlay.left &&
+          screenY - half < overlay.bottom && screenY + half > overlay.top
+        );
+        const visible = available && [screenX, screenY, left, top, viewportWidth, viewportHeight].every(Number.isFinite) &&
+          left - half >= 0 && top - half >= 0 &&
+          left + half <= viewportWidth && top + half <= viewportHeight &&
+          screenX - half >= 0 && screenY - half >= 0 &&
+          screenX + half <= this.width && screenY + half <= this.height &&
+          !intersectsOverlay;
+        if (button.hidden !== !visible) button.hidden = !visible;
+        if (!visible) continue;
+
+        const leftText = left + 'px';
+        const topText = top + 'px';
+        if (button.style.left !== leftText) button.style.left = leftText;
+        if (button.style.top !== topText) button.style.top = topText;
+        const worldX = String(object.x);
+        const worldY = String(object.y);
+        if (button.dataset.worldX !== worldX) button.dataset.worldX = worldX;
+        if (button.dataset.worldY !== worldY) button.dataset.worldY = worldY;
+        visibleCount += 1;
+      }
+    }
+
+    for (const [id, button] of buttons) {
+      if (retainedIds.has(id)) continue;
+      try { button.remove(); } catch {}
+      buttons.delete(id);
+    }
+    const hidden = !available || visibleCount === 0;
+    if (group.hidden !== hidden) group.hidden = hidden;
+    if (group.getAttribute('aria-hidden') !== String(hidden)) {
+      group.setAttribute('aria-hidden', String(hidden));
+    }
+    if (this.canvas?.dataset) {
+      const count = String(visibleCount);
+      if (this.canvas.dataset.townSquareReviewControlVisibleCount !== count) {
+        this.canvas.dataset.townSquareReviewControlVisibleCount = count;
+      }
+    }
+  }
+
+  handleTownSquareReviewAction(id) {
+    // A queued or programmatically dispatched click can outlive the marker's visibility.
+    // Recheck the playable surface and modal boundary at action time, as NPC controls do.
+    if (typeof document === 'undefined' || !this.playUiVisible() ||
+        document.body?.classList?.contains?.('modal-open') === true) return false;
+    const object = safeTownSquareReviewObjects(this).find(candidate =>
+      candidate?.id === id && candidate.eventId === id &&
+      candidate.type === 'town-square-review' && candidate.mapVisible === true &&
+      ['awaiting-founder-review', 'process-record-not-adjudication'].includes(candidate.status)
+    );
+    if (!object || !Number.isFinite(this.player?.x) || !Number.isFinite(this.player?.y)) return false;
+    const distance = Math.hypot(object.x - this.player.x, object.y + 10 - this.player.y);
+    if (!Number.isFinite(distance)) return false;
+    if (distance < interactionPromptRange({ type: 'town-square-review' })) {
+      this.cancelRoute();
+      this.callbacks.onInteract({
+        type: 'town-square-review',
+        eventId: object.eventId,
+        reportId: object.reportId
+      });
+    } else {
+      this.goTo(object.id, 'town-square-review');
+    }
+    this.canvas.focus?.({ preventScroll: true });
+    return true;
   }
 
   handleNpcAction(id) {
@@ -2034,21 +2229,38 @@ export class PixelWorldView extends WorldView {
     ).join(';');
     const npcAccessibility = guildNpcAccessibilityText(npcReadiness);
     const reviewProjection = this.townSquareReviewProjection;
-    const reviewCount = Number.isSafeInteger(reviewProjection?.totalCount)
-      ? reviewProjection.totalCount : 0;
+    const reviewQueue = projectTownSquareReviewQueueSummary(reviewProjection);
+    const reviewCount = reviewQueue.available
+      ? reviewQueue.pendingCount + reviewQueue.processRecordCount : 0;
     const reviewStatus = typeof reviewProjection?.historyStatus === 'string'
       ? reviewProjection.historyStatus : 'history-unavailable';
     const safeReviewMapObjects = (Array.isArray(this.townSquareReviewObjects)
-      ? this.townSquareReviewObjects : []).map(object => ({
-        id: object.id, eventId: object.eventId, x: object.x, y: object.y
+      ? this.townSquareReviewObjects : [])
+      .filter(object => object?.type === 'town-square-review' && object?.mapVisible === true &&
+        ['awaiting-founder-review', 'process-record-not-adjudication'].includes(object?.status))
+      .map(object => ({
+        id: object.id,
+        eventId: object.eventId,
+        x: object.x,
+        y: object.y,
+        ...(object.status === 'awaiting-founder-review' ? { status: object.status } : {})
       }));
-    this.canvas.dataset.townSquareReviewCount = String(reviewCount);
-    this.canvas.dataset.townSquareReviewVisibleCount = String(safeReviewMapObjects.length);
+    const omittedReviewCount = ownDataValue(reviewProjection, 'omittedCount');
+    const markerLimitNote = Number.isSafeInteger(omittedReviewCount) && omittedReviewCount > 0
+      ? ` ${omittedReviewCount} additional record(s) are included in the counts but do not have individual map markers because the marker lane is bounded.`
+      : '';
+    this.canvas.dataset.townSquareReviewCount = reviewQueue.available ? String(reviewCount) : 'unavailable';
+    this.canvas.dataset.townSquareReviewVisibleCount = reviewQueue.available
+      ? String(safeReviewMapObjects.length) : 'unavailable';
+    this.canvas.dataset.townSquareReviewPendingCount = reviewQueue.available
+      ? String(reviewQueue.pendingCount) : 'unavailable';
+    this.canvas.dataset.townSquareReviewRecordCount = reviewQueue.available
+      ? String(reviewQueue.processRecordCount) : 'unavailable';
     this.canvas.dataset.townSquareReviewHistoryStatus = reviewStatus;
     this.canvas.dataset.townSquareReviewObjects = JSON.stringify(safeReviewMapObjects);
-    const reviewAccessibility = reviewStatus === 'actor-visible-links-validated'
-      ? `TownSquare has ${reviewCount} actor-visible process review map object(s). Inspection opens an exact retained Chronicle event and is not moderation, adjudication, evidence certification, approval, truth, or XP.`
-      : `TownSquare review history is ${reviewStatus}; no missing review or map object is inferred.`;
+    const reviewAccessibility = reviewQueue.available
+      ? `TownSquare has ${reviewCount} actor-visible report/review record(s): ${reviewQueue.pendingCount} pending report(s) and ${reviewQueue.processRecordCount} retained process review record(s).${markerLimitNote} Pending markers open the exact retained report event; reviewed markers open the exact Founder review event. Inspection is read-only, not moderation, adjudication, evidence certification, approval, truth, or XP.`
+      : `TownSquare report/review history is ${reviewStatus}; queue counts are unavailable, not zero; no missing report or review is inferred.`;
     if (!counts?.available) {
       this.canvas.dataset.sourceObservationCounts = 'unavailable';
       this.researchAccessibilityLabel =
@@ -2220,6 +2432,10 @@ export class PixelWorldView extends WorldView {
     }
     this.drawMapLabel('TOWNSQUARE', 1040, 478, 12);
     this.drawMapLabel(pixelInstitutionActivityLabel(this.institutionCounts['town-square'], 'retained records'), 1040, 508, 10);
+    const reviewQueue = projectTownSquareReviewQueueSummary(this.townSquareReviewProjection);
+    this.drawMapLabel(reviewQueue.available
+      ? `P${reviewQueue.pendingCount} · R${reviewQueue.processRecordCount}`
+      : 'QUEUE UNAVAILABLE', 1040, 523, 9);
     this.drawResearchCounterPanel(1040, 538);
   }
 
@@ -2569,6 +2785,7 @@ export class PixelWorldView extends WorldView {
       ? institutionInteractionCopy(near, this.width)
       : null;
     this.updateNpcControls(modalOpen || navigationPending);
+    this.updateTownSquareReviewControls(modalOpen || navigationPending);
     this.canvas.dataset.navigationTargetId = navigationTarget?.id ?? 'none';
     this.canvas.dataset.navigationState = !navigationTarget ? 'idle'
       : navigationPending ? 'walking'
@@ -2677,6 +2894,9 @@ export class PixelWorldView extends WorldView {
     try { this.npcControlGroup?.remove?.(); } catch {}
     this.npcControlGroup = null;
     this.npcControlButtons?.clear?.();
+    try { this.townSquareReviewControlGroup?.remove?.(); } catch {}
+    this.townSquareReviewControlGroup = null;
+    this.townSquareReviewControlButtons?.clear?.();
     try { this.mapOverlayMutationObserver?.disconnect?.(); } catch {}
     this.mapOverlayMutationObserver = null;
     super.destroy();

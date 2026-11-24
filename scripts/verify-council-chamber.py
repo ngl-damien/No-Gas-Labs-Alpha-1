@@ -958,6 +958,67 @@ def run_town_square_report_review(browser, url, out, width):
         if report_one_id == report_two_id:
             raise AssertionError('Independent report events must have distinct IDs.')
 
+        founder_before_review = read_shared_state(founder_page)
+        report_events_before = [
+            event for event in founder_before_review['world']['events']
+            if event.get('type') == 'message-reported' and event.get('reportId') == report_one_id
+        ]
+        if len(report_events_before) != 1:
+            raise AssertionError('The pending map object must bind one exact retained report event.')
+        pending_report_event = report_events_before[0]
+        pending_report_details = 'Please review the retained message as a process matter; no verdict is requested.'
+
+        def assert_pending_report_map_object(page, label):
+            canvas = page.locator('#world')
+            page.wait_for_function(
+                """expected => {
+                  const canvas = document.querySelector('#world');
+                  const objects = JSON.parse(canvas?.dataset.townSquareReviewObjects || '[]');
+                  return objects.some(object =>
+                    object.eventId === expected && object.status === 'awaiting-founder-review'
+                  );
+                }""",
+                arg=pending_report_event['id'],
+                timeout=15000
+            )
+            expect(canvas).to_have_attribute('data-town-square-review-count', '1')
+            expect(canvas).to_have_attribute('data-town-square-review-visible-count', '1')
+            expect(canvas).to_have_attribute('data-town-square-review-pending-count', '1')
+            expect(canvas).to_have_attribute('data-town-square-review-record-count', '0')
+            queue_accessibility = canvas.get_attribute('aria-label') or ''
+            if '1 pending report(s)' not in queue_accessibility or \
+                    '0 retained process review record(s)' not in queue_accessibility:
+                raise AssertionError(label + ' TownSquare landmark accessibility must expose its actor-visible pending/process counts.')
+            expect(canvas).to_have_attribute(
+                'data-town-square-review-history-status', 'actor-visible-links-validated'
+            )
+            objects = canvas.evaluate(
+                "canvas => JSON.parse(canvas.dataset.townSquareReviewObjects || '[]')"
+            )
+            if len(objects) != 1 or objects[0].get('eventId') != pending_report_event['id'] or \
+                    objects[0].get('status') != 'awaiting-founder-review':
+                raise AssertionError(label + ' must receive the exact pending report map object: ' + json.dumps(objects))
+            if set(objects[0]) != {'id', 'eventId', 'x', 'y', 'status'}:
+                raise AssertionError(label + ' pending map object must expose only navigation identity, coordinates and status.')
+            control = page.locator(
+                '[data-town-square-review-control="' + pending_report_event['id'] + '"]'
+            )
+            expect(control).to_have_count(1)
+            expect(control).to_have_text('P')
+            expect(control).to_have_attribute(
+                'data-town-square-review-status', 'awaiting-founder-review'
+            )
+            control_label = control.get_attribute('aria-label') or ''
+            serialized = json.dumps(objects) + control_label
+            if pending_report_details in serialized or 'pending TownSquare report' not in control_label:
+                raise AssertionError(label + ' pending map marker must not expose private report text and must name its bounded action.')
+            return objects
+
+        founder_pending_map = assert_pending_report_map_object(founder_page, 'Founder')
+        reporter_pending_map = assert_pending_report_map_object(reporter_page, 'reporter')
+        if founder_pending_map != reporter_pending_map:
+            raise AssertionError('Founder and reporting Witness must receive the same deterministic pending report marker.')
+
         reporter_page.wait_for_function(
             """messageId => document.querySelector('[data-commons-own-report="' + messageId + '"]')?.dataset.commonsOwnReportStatus === 'awaiting-founder-review'""",
             arg=message_one_id,
@@ -1275,6 +1336,12 @@ def run_town_square_report_review(browser, url, out, width):
             canvas = page.locator('#world')
             expect(canvas).to_have_attribute('data-town-square-review-count', str(expected_count))
             expect(canvas).to_have_attribute('data-town-square-review-visible-count', str(expected_count))
+            expect(canvas).to_have_attribute('data-town-square-review-pending-count', '0')
+            expect(canvas).to_have_attribute('data-town-square-review-record-count', str(expected_count))
+            queue_accessibility = canvas.get_attribute('aria-label') or ''
+            if '0 pending report(s)' not in queue_accessibility or \
+                    f'{expected_count} retained process review record(s)' not in queue_accessibility:
+                raise AssertionError(label + ' TownSquare accessibility counts must remain actor-scoped after review.')
             expect(canvas).to_have_attribute('data-town-square-review-history-status', 'actor-visible-links-validated')
             objects = canvas.evaluate(
                 "canvas => JSON.parse(canvas.dataset.townSquareReviewObjects || '[]')"
@@ -1289,6 +1356,13 @@ def run_town_square_report_review(browser, url, out, width):
                 serialized = json.dumps(objects)
                 if review_note in serialized or report_event.get('details', '') in serialized:
                     raise AssertionError(label + ' map object must not copy private report or review text.')
+            controls = page.locator('[data-town-square-review-control]')
+            expect(controls).to_have_count(expected_count)
+            if expected_count:
+                expect(controls.first).to_have_attribute('data-event-id', review_event['id'])
+                control_label = controls.first.get_attribute('aria-label') or ''
+                if review_note in control_label or report_event.get('details', '') in control_label:
+                    raise AssertionError(label + ' map control must not expose private report or review text.')
             return objects
 
         founder_map_objects = actor_visible_review_objects(founder_page, 'Founder', 1)
@@ -1303,7 +1377,26 @@ def run_town_square_report_review(browser, url, out, width):
                 page.locator('#sheet-close').tap()
             expect(page.locator('#sheet')).to_be_hidden()
             before = read_shared_state(page)['world']
-            point = page.locator('#world').evaluate("""(canvas, eventId) => {
+            control_selector = '[data-town-square-review-control="' + review_event['id'] + '"]'
+            control = page.locator(control_selector)
+            expect(control).to_have_count(1)
+            expect(control).to_be_visible()
+            expect(control).to_have_attribute('data-event-id', review_event['id'])
+            control_state = control.evaluate("""button => {
+              button.dataset.testPointerType = 'not-observed';
+              button.addEventListener('pointerdown', event => {
+                button.dataset.testPointerType = event.pointerType;
+              }, { once: true });
+              const rect = button.getBoundingClientRect();
+              return {
+                eventId: button.dataset.eventId || null,
+                worldX: Number(button.dataset.worldX),
+                worldY: Number(button.dataset.worldY),
+                centerX: rect.left + rect.width / 2,
+                centerY: rect.top + rect.height / 2
+              };
+            }""")
+            marker = page.locator('#world').evaluate("""(canvas, eventId) => {
               const objects = JSON.parse(canvas.dataset.townSquareReviewObjects || '[]');
               const object = objects.find(item => item.eventId === eventId);
               const rect = canvas.getBoundingClientRect();
@@ -1314,36 +1407,30 @@ def run_town_square_report_review(browser, url, out, width):
               const height = Number(canvas.dataset.viewportHeight);
               if (!object || ![cameraX, cameraY, zoom, width, height].every(Number.isFinite) ||
                   zoom <= 0 || width <= 0 || height <= 0) return null;
-              const centerX = (object.x - cameraX) * zoom + width / 2;
-              const centerY = (object.y - cameraY) * zoom + height / 2;
-              const offsets = [[0, 0], [12, 0], [-12, 0], [0, 12], [0, -12],
-                [10, 10], [-10, 10], [10, -10], [-10, -10], [18, 0], [-18, 0], [0, 18], [0, -18]];
-              const candidates = offsets.map(([dx, dy]) => {
-                const x = centerX + dx;
-                const y = centerY + dy;
-                const element = x >= 0 && y >= 0 && x <= width && y <= height
-                  ? document.elementFromPoint(rect.left + x, rect.top + y) : null;
-                return {
-                  x: rect.left + x, y: rect.top + y, localX: x, localY: y,
-                  inside: x >= 0 && y >= 0 && x <= width && y <= height,
-                  exposed: element === canvas,
-                  element: element ? {
-                    tag: element.tagName, id: element.id || null,
-                    className: typeof element.className === 'string' ? element.className : null
-                  } : null
-                };
-              });
-              const selected = candidates.find(candidate => candidate.inside && candidate.exposed);
-              return selected
-                ? { ...selected, eventId: object.eventId, objectX: object.x, objectY: object.y }
-                : { inside: centerX >= 0 && centerY >= 0 && centerX <= width && centerY <= height,
-                    blocked: true, eventId: object.eventId, objectX: object.x, objectY: object.y,
-                    centerElement: candidates[0]?.element, candidates };
+              return {
+                eventId: object.eventId,
+                worldX: object.x,
+                worldY: object.y,
+                screenX: rect.left + (object.x - cameraX) * zoom + width / 2,
+                screenY: rect.top + (object.y - cameraY) * zoom + height / 2
+              };
             }""", review_event['id'])
-            if not point or not point['inside'] or point.get('blocked'):
-                raise AssertionError(label + ' TownSquare review map object has no unobstructed mobile tap point: ' +
-                                     json.dumps(point, sort_keys=True))
-            page.mouse.click(point['x'], point['y'])
+            if not marker or control_state['eventId'] != review_event['id'] or \
+                    control_state['worldX'] != marker['worldX'] or \
+                    control_state['worldY'] != marker['worldY'] or \
+                    abs(control_state['centerX'] - marker['screenX']) > 3 or \
+                    abs(control_state['centerY'] - marker['screenY']) > 3:
+                raise AssertionError(
+                    label + ' touch control must be anchored to the exact actor-visible map event: ' +
+                    json.dumps({'control': control_state, 'marker': marker}, sort_keys=True)
+                )
+            control.tap()
+            pointer_type = control.get_attribute('data-test-pointer-type')
+            if pointer_type != 'touch':
+                raise AssertionError(
+                    label + ' TownSquare review control must receive a real touch pointer; observed ' +
+                    str(pointer_type)
+                )
             try:
                 page.wait_for_function(
                     """expected => {
@@ -1363,11 +1450,13 @@ def run_town_square_report_review(browser, url, out, width):
                 diagnostics = page.locator('#world').evaluate("""(canvas, eventId) => {
                   const sheet = document.querySelector('#sheet');
                   const button = document.querySelector('#interact-button');
-                  const rect = canvas.getBoundingClientRect();
-                  const element = document.elementFromPoint(rect.left + 160, rect.top + 422);
+                  const control = document.querySelector(
+                    '[data-town-square-review-control="' + eventId + '"]'
+                  );
                   return {
                     navigationTargetId: canvas.dataset.navigationTargetId || null,
                     navigationState: canvas.dataset.navigationState || null,
+                    movementEnabled: canvas.dataset.movementEnabled || null,
                     nearbyPlayerName: canvas.dataset.nearbyPlayerName || null,
                     nearbyNpcRole: canvas.dataset.nearbyNpcRole || null,
                     nearbyInstitutionId: canvas.dataset.nearbyInstitutionId || null,
@@ -1375,19 +1464,17 @@ def run_town_square_report_review(browser, url, out, width):
                     sheetTitle: document.querySelector('#sheet-title')?.textContent ?? null,
                     interactButtonHidden: button?.hidden ?? null,
                     interactButtonLabel: button?.getAttribute('aria-label') ?? null,
-                    centerElement: element ? {
-                      tag: element.tagName, id: element.id || null,
-                      className: typeof element.className === 'string' ? element.className : null
-                    } : null,
+                    controlHidden: control?.hidden ?? null,
+                    controlPointerType: control?.dataset.testPointerType ?? null,
                     markerCount: canvas.dataset.townSquareReviewVisibleCount || null,
                     markerObjects: canvas.dataset.townSquareReviewObjects || null,
                     eventId
                   };
                 }""", review_event['id'])
-                screenshot = Path(out) / f'town-square-{label.lower()}-{width}px-map-tap-failure.png'
+                screenshot = Path(out) / f'town-square-{label.lower()}-{width}px-control-tap-failure.png'
                 page.screenshot(path=str(screenshot), full_page=True)
                 raise AssertionError(
-                    label + ' map tap did not route to or open the exact Chronicle event: ' +
+                    label + ' map-object touch control did not route to or open the exact Chronicle event: ' +
                     json.dumps(diagnostics, sort_keys=True)
                 ) from error
             if page.locator('#sheet').is_hidden():
@@ -1427,9 +1514,10 @@ def run_town_square_report_review(browser, url, out, width):
                     after['creations'] != before['creations']:
                 raise AssertionError(label + ' map-object inspection must be read-only and XP-neutral.')
             page.locator('#sheet-close').tap()
+            return pointer_type
 
-        inspect_town_square_review_map_object(founder_page, 'Founder')
-        inspect_town_square_review_map_object(reporter_page, 'reporter')
+        founder_pointer_type = inspect_town_square_review_map_object(founder_page, 'Founder')
+        reporter_pointer_type = inspect_town_square_review_map_object(reporter_page, 'reporter')
 
         def open_quest_board(page):
             if page.locator('#sheet').is_visible():
@@ -1620,6 +1708,8 @@ def run_town_square_report_review(browser, url, out, width):
             'reporterQuestReviewEventId': review_event['id'],
             'reporterQuestChronicleNavigation': True,
             'reporterChronicleReadOnly': True,
+            'mapInputPointerType': reporter_pointer_type,
+            'mapInputPointerTypes': {'founder': founder_pointer_type, 'reporter': reporter_pointer_type},
             'pageErrors': errors,
             'screenshots': [
                 reporter_screenshot.name,
