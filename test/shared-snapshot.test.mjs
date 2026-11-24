@@ -20,11 +20,13 @@ const founder = { id: 'damien', name: 'Damien', role: 'founder', position: { x: 
   positionRevision: 9 };
 function fixture(role = 'founder') {
   const world = createWorld({ id: 'offline-snapshot-world', now });
-  world.revision = 4;
+  world.revision = 6;
   world.events = [
     { id: 'draft-event', type: 'draft', actor: founder, at: now, semantics: 'private draft' },
     { id: 'repair-event', type: 'repair', actor: founder, at: now, semantics: 'private repair' },
-    { id: 'report-event', type: 'message-reported', actor: founder, at: now, semantics: 'private report' },
+    { id: 'commons-post-event', type: 'message-posted', actor: { id: 'witness-2', name: 'Author', role: 'witness' }, at: now, semantics: 'public message', messageId: 'message-1', channel: 'commons', text: 'A public message remains in history.' },
+    { id: 'report-event', type: 'message-reported', actor: { id: 'witness-1', name: 'Reporter', role: 'witness' }, at: now, semantics: 'private report', reportId: 'report-1', messageId: 'message-1', reason: 'privacy', details: 'PRIVATE-REPORT-DETAILS' },
+    { id: 'review-event', type: 'message-report-reviewed', actor: founder, at: now, semantics: 'Founder-session process record', reviewId: 'review-1', reportId: 'report-1', messageId: 'message-1', note: 'PRIVATE-REVIEW-NOTE' },
     { id: 'contribution-event', type: 'contribute', actor: { id: 'witness-1', role: 'witness' }, at: now, semantics: 'public contribution' }
   ];
   world.drafts = [{ id: 'private-draft', title: 'Do not cache' }];
@@ -54,17 +56,45 @@ test('shared cache is a redacted public projection, never a session, receipt, pr
   assert.ok(envelope);
   assert.equal(envelope.schema, 'ngl.shared-public-snapshot.v1');
   assert.equal(envelope.scope, 'public-witness-projection');
-  assert.equal(envelope.world.revision, 4);
+  assert.equal(envelope.world.revision, 6);
   assert.equal(envelope.world.drafts.length, 0);
+  assert.deepEqual(envelope.world.historyCoverage.omittedEventTypes, {
+    draft: 1, repair: 1, 'message-reported': 1, 'message-report-reviewed': 1
+  });
   assert.deepEqual(envelope.world.events.map(event => [event.id, event.historyPosition]), [
-    ['contribution-event', 4]
+    ['commons-post-event', 3],
+    ['contribution-event', 6]
   ]);
   assert.deepEqual(envelope.viewer.position, { x: 180, y: 640 });
   assert.deepEqual(Object.keys(envelope.viewer).sort(), ['id', 'name', 'position', 'role']);
   assert.deepEqual(Object.keys(envelope).sort(), ['cachedAt', 'schema', 'scope', 'viewer', 'world']);
   const serialized = JSON.stringify(envelope);
-  assert.doesNotMatch(serialized, /session-only-presence-id|session-only-source-receipt|private-draft|private report/);
+  assert.doesNotMatch(serialized, /session-only-presence-id|session-only-source-receipt|private-draft|PRIVATE-REPORT-DETAILS|PRIVATE-REVIEW-NOTE/);
   assert.doesNotMatch(serialized, /presenceId|positionEpoch|positionRevision|sourceSnapshotReceipt|institution/);
+});
+
+
+test('offline public snapshot parser rejects a leaked private report-review event', () => {
+  const envelope = createSharedSnapshotEnvelope(fixture('founder'), { now: 1000 });
+  assert.ok(envelope);
+  const leaked = structuredClone(envelope);
+  leaked.world.revision = 7;
+  leaked.world.events.push({
+    id: 'leaked-review-event',
+    type: 'message-report-reviewed',
+    actor: { id: 'damien', role: 'founder' },
+    at: now,
+    semantics: 'private Founder-session process record',
+    reviewId: 'leaked-review',
+    reportId: 'report-1',
+    messageId: 'message-1',
+    note: 'PRIVATE-REVIEW-NOTE',
+    historyPosition: 7
+  });
+  leaked.world.historyCoverage.sourceEventCount = 7;
+  leaked.world.historyCoverage.suppliedEventCount = 3;
+  leaked.world.historyCoverage.omittedEventCount = 4;
+  assert.equal(parseSharedSnapshotEnvelope(JSON.stringify(leaked)), null);
 });
 
 test('Witness DTO history gaps remain original positions instead of being renumbered', () => {
@@ -72,21 +102,22 @@ test('Witness DTO history gaps remain original positions instead of being renumb
   const envelope = createSharedSnapshotEnvelope(dto, { now: 1000 });
   assert.ok(envelope);
   assert.deepEqual(envelope.world.events.map(event => [event.id, event.historyPosition]), [
-    ['contribution-event', 4]
+    ['commons-post-event', 3],
+    ['contribution-event', 6]
   ]);
-  assert.equal(envelope.world.revision, 4);
-  assert.equal(envelope.world.events.length, 1);
+  assert.equal(envelope.world.revision, 6);
+  assert.equal(envelope.world.events.length, 2);
 });
 
 test('snapshot round-trip and accepted position cache are actor- and revision-bound', () => {
   const storage = memoryStorage();
   const dto = fixture('founder');
   const written = writeSharedSnapshotCache(storage, dto, { now: 1000 });
-  assert.deepEqual(written, { stored: true, revision: 4, viewerId: 'damien', viewerRole: 'founder' });
+  assert.deepEqual(written, { stored: true, revision: 6, viewerId: 'damien', viewerRole: 'founder' });
   assert.equal(writeSharedPositionCache(storage, dto.viewer, dto.world.id, 4, { x: 300, y: 650 }, { now: 1100 }), true);
   const snapshot = readSharedSnapshotCache(storage);
   assert.ok(snapshot);
-  assert.equal(parseSharedSnapshotEnvelope(JSON.stringify(snapshot)).world.revision, 4);
+  assert.equal(parseSharedSnapshotEnvelope(JSON.stringify(snapshot)).world.revision, 6);
   assert.deepEqual(readSharedPositionCache(storage, snapshot), { x: 300, y: 650 });
   const positionEnvelope = JSON.parse(storage.getItem(SHARED_POSITION_CACHE_KEY));
   assert.equal(positionEnvelope.schema, 'ngl.shared-accepted-position.v2');
@@ -97,14 +128,14 @@ test('snapshot round-trip and accepted position cache are actor- and revision-bo
   }), null);
   assert.equal(readSharedPositionCache(storage, {
     ...snapshot,
-    world: { ...snapshot.world, revision: 5 }
+    world: { ...snapshot.world, revision: 7 }
   }), null);
 });
 
 test('older accepted snapshots cannot overwrite a newer public cache', () => {
   const storage = memoryStorage();
   const newer = fixture('founder');
-  newer.world.revision = 5;
+  newer.world.revision = 7;
   newer.world.events.push({
     id: 'newer-event', type: 'contribute', actor: { id: 'witness-2', role: 'witness' },
     at: now, semantics: 'newer contribution'
@@ -113,7 +144,7 @@ test('older accepted snapshots cannot overwrite a newer public cache', () => {
   const older = fixture('founder');
   const result = writeSharedSnapshotCache(storage, older, { now: 3000 });
   assert.equal(result.reason, 'newer-cache-preserved');
-  assert.equal(readSharedSnapshotCache(storage).world.revision, 5);
+  assert.equal(readSharedSnapshotCache(storage).world.revision, 7);
 });
 
 test('legacy accepted-position caches without world identity are rejected', () => {
@@ -147,7 +178,7 @@ test('malformed, oversized and unavailable storage fails closed without manufact
 test('older accepted snapshots cannot replace a newer same-world cache after actor changes', () => {
   const storage = memoryStorage();
   const newer = fixture('founder');
-  newer.world.revision = 5;
+  newer.world.revision = 7;
   newer.world.events.push({
     id: 'newer-event', type: 'contribute', actor: { id: 'witness-2', role: 'witness' },
     at: now, semantics: 'newer contribution'
@@ -161,7 +192,7 @@ test('older accepted snapshots cannot replace a newer same-world cache after act
 
   assert.equal(result.reason, 'newer-cache-preserved');
   assert.equal(readSharedSnapshotCache(storage).world.id, 'offline-snapshot-world');
-  assert.equal(readSharedSnapshotCache(storage).world.revision, 5);
+  assert.equal(readSharedSnapshotCache(storage).world.revision, 7);
   assert.equal(readSharedSnapshotCache(storage).viewer.id, 'damien');
 });
 
@@ -227,7 +258,7 @@ test('first live shared snapshot is not compared against a higher-revision priva
   const createGuard = sharedSnapshot.createSharedSnapshotAcceptanceGuard;
   assert.equal(typeof createGuard, 'function', 'shared acceptance needs an explicit provenance guard');
   const guard = createGuard();
-  const importedPrivateWorld = { id: 'same-world', revision: 500 };
+  const importedPrivateWorld = { id: 'same-world', revision: 700 };
   const firstServerWorld = { id: 'same-world', revision: 7 };
 
   assert.equal(guard.hasAcceptedSnapshot, false);

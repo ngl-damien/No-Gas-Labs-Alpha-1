@@ -2677,6 +2677,61 @@ test('shared Commons report review is Founder-only, private to the reporter, and
   assert.equal(founderAfterReview.body.world.events.filter(event => event.type === 'message-report-reviewed').length, 1);
   assert.equal(founderAfterReview.body.world.revision, initialRevision + 4);
   assert.equal(founderAfterReview.body.world.xp, initialXp);
+
+  const proposal = await unrelated.request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'Reconstruct a public collaborator snapshot after private report review',
+    hypothesis: 'A Witness packet omits another actor’s report and its Founder-session review.',
+    falsifier: 'The packet contains the private report or review note, or its source count is inconsistent.',
+    evidenceNeeded: 'The exact retained public prefix.'
+  });
+  assert.equal(proposal.response.status, 200, JSON.stringify(proposal.body));
+  const attempt = await unrelated.request('/api/action', {
+    type: 'report-experiment',
+    moonshotId: proposal.body.result.moonshotId,
+    procedure: 'Record one bounded attempt.',
+    observation: 'The report is self-described and not independently verified.',
+    reportedOutcome: 'failed'
+  });
+  assert.equal(attempt.response.status, 200, JSON.stringify(attempt.body));
+  const packetState = await unrelated.request('/api/state');
+  assert.equal(packetState.response.status, 200);
+  assert.equal(packetState.body.world.events.some(event => event.type === 'message-reported'), false);
+  assert.equal(packetState.body.world.events.some(event => event.type === 'message-report-reviewed'), false);
+  const packet = projectCollaboratorPackets(packetState.body.world).find(candidate =>
+    candidate.id === 'adversary' && candidate.available === true &&
+    candidate.moonshotId === proposal.body.result.moonshotId
+  );
+  assert.ok(packet, 'the redacted public prefix must still produce a bounded collaborator packet');
+  const reportEvent = packetState.body.world.events.find(event =>
+    event.type === 'experiment-reported' && event.reportId === attempt.body.result.reportId
+  );
+  assert.ok(reportEvent);
+  const responseText = JSON.stringify({
+    targetEventId: reportEvent.id,
+    challengeType: 'missing-evidence',
+    challengeDraft: 'The attempt has no independently observed measurement.',
+    distinctnessAssessment: 'No earlier challenge is included in this packet.',
+    duplicateOfEventIds: [],
+    counterexample: 'A controlled repeat could contradict the report.',
+    evidenceNeeded: ['A retained independent measurement.'],
+    unknowns: ['The reported outcome remains self-reported.']
+  });
+  const recorded = await unrelated.request('/api/action', {
+    type: 'record-collaborator-response',
+    role: 'adversary',
+    moonshotId: proposal.body.result.moonshotId,
+    packetJson: packet.packetJson,
+    sourceEventIds: packet.inputRefs,
+    responseText,
+    requestId: 'commons-private-review-packet-response-001'
+  });
+  assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
+  assert.equal(recorded.body.world.xp, initialXp);
+  const retainedResponse = recorded.body.world.events.at(-1);
+  assert.equal(retainedResponse.type, 'collaborator-response-recorded');
+  assert.equal(retainedResponse.packetJson.includes(reviewAction.note), false);
+  assert.equal(retainedResponse.packetJson.includes('PRIVATE-FOUNDER-REPORT-DETAILS'), false);
 });
 
 

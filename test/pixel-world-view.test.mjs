@@ -2423,26 +2423,50 @@ test('Guild Hall NPC readiness marks role-redacted event views as partial instea
     at: '2026-10-29T04:03:00.000Z',
     draftId: 'draft-1'
   });
-  world.revision += 1;
+  world.events.push(
+    {
+      id: 'commons-post-event-1', type: 'message-posted', messageId: 'message-1',
+      channel: 'commons', text: 'A retained public message.',
+      actor: { id: 'witness-3', name: 'Author', role: 'witness' },
+      at: '2026-10-29T04:04:00.000Z', semantics: 'public conversation'
+    },
+    {
+      id: 'commons-report-event-1', type: 'message-reported', reportId: 'report-1',
+      messageId: 'message-1', reason: 'privacy', details: 'Private report details.',
+      actor: { id: 'witness-2', name: 'Reporter', role: 'witness' },
+      at: '2026-10-29T04:05:00.000Z', semantics: 'private report'
+    },
+    {
+      id: 'commons-review-event-1', type: 'message-report-reviewed', reviewId: 'review-1',
+      reportId: 'report-1', messageId: 'message-1', note: 'Private process note.',
+      actor: { id: 'damien', name: 'Damien', role: 'founder' },
+      at: '2026-10-29T04:06:00.000Z', semantics: 'Founder-session process record'
+    }
+  );
+  world.revision += 4;
   const worldBefore = structuredClone(world);
 
   const founderReadiness = projectGuildNpcReadiness(world);
   assert.ok(founderReadiness.every(entry =>
     entry.status === 'ready' && entry.sourceSnapshotCoverage === 'count-matched' &&
-    entry.revision === 4 && entry.suppliedEventCount === 4
+    entry.revision === 7 && entry.suppliedEventCount === 7
   ));
 
   const witnessWorld = publicWorld(world, { id: 'witness-1', role: 'witness' });
-  assert.equal(witnessWorld.revision, 4);
-  assert.equal(witnessWorld.events.length, 3,
+  assert.equal(witnessWorld.revision, 7);
+  assert.equal(witnessWorld.events.length, 4,
     'the Witness projection omits the private Founder draft while retaining the canonical revision');
+  assert.deepEqual(witnessWorld.historyCoverage.omittedEventTypes, {
+    draft: 1, 'message-reported': 1, 'message-report-reviewed': 1
+  });
+  assert.equal(witnessWorld.events.some(event => event.type === 'message-report-reviewed'), false);
   const witnessBefore = structuredClone(witnessWorld);
   const witnessReadiness = projectGuildNpcReadiness(witnessWorld);
   assert.ok(witnessReadiness.every(entry =>
     entry.status === 'partial' && entry.label === 'READY · PARTIAL' &&
     entry.sourceSnapshotStatus === 'identified' &&
     entry.sourceSnapshotCoverage === 'below-revision' &&
-    entry.revision === 4 && entry.suppliedEventCount === 3 &&
+    entry.revision === 7 && entry.suppliedEventCount === 4 &&
     /role-redacted or otherwise incomplete/.test(entry.reason)
   ));
 

@@ -1060,7 +1060,7 @@ test("source-observation challenges appear as linked dissent, not adjudication o
 });
 
 
-test("Commons conversation, private reports, and human moderation are first-class Chronicle entries", () => {
+test("Commons conversation, private reports, Founder-session review, and moderation are first-class Chronicle entries", () => {
   const { world, kernel } = fixture();
   world.events.push(
     {
@@ -1070,7 +1070,7 @@ test("Commons conversation, private reports, and human moderation are first-clas
     },
     {
       id: "commons-report-1", type: "message-reported", reportId: "report-1", messageId: "message-1",
-      reason: "privacy", details: "A human should review this wording.",
+      reason: "privacy", details: "A Founder session should review this wording.",
       actor: { id: "witness-2", name: "Second Witness", role: "witness" }, at: "2026-10-26T10:09:00.000Z",
     },
     {
@@ -1078,11 +1078,18 @@ test("Commons conversation, private reports, and human moderation are first-clas
       disposition: "hide", reason: "privacy",
       actor: { id: "damien", name: "Damien", role: "founder" }, at: "2026-10-26T10:10:00.000Z",
     },
+    {
+      id: "commons-review-1", type: "message-report-reviewed", reviewId: "review-1",
+      reportId: "report-1", messageId: "message-1",
+      note: "Reviewed as a process record; no factual finding.",
+      actor: { id: "damien", name: "Damien", role: "founder" }, at: "2026-10-26T10:11:00.000Z",
+    },
   );
   const chronicle = projectChronicle({ world, kernel });
   const post = chronicle.entries.find(entry => entry.id === "world:commons-post-1");
   const report = chronicle.entries.find(entry => entry.id === "world:commons-report-1");
   const moderation = chronicle.entries.find(entry => entry.id === "world:commons-hide-1");
+  const review = chronicle.entries.find(entry => entry.id === "world:commons-review-1");
   assert.equal(post.category, "THE COMMONS");
   assert.match(post.summary, /Conversation only; not evidence/i);
   assert.match(post.detail, /retained without being treated as evidence/i);
@@ -1092,6 +1099,11 @@ test("Commons conversation, private reports, and human moderation are first-clas
   assert.match(moderation.category, /HUMAN MODERATION/);
   assert.match(moderation.summary, /original post and moderation history remain/i);
   assert.match(moderation.warning, /not historical authorship/i);
+  assert.match(review.category, /PRIVATE REPORT REVIEW/);
+  assert.match(review.summary, /process record, not a verdict/i);
+  assert.match(review.detail, /Reviewed as a process record/);
+  assert.match(review.warning, /not a factual finding, adjudication, independent review/i);
+  assert.deepEqual(review.institutionDestinations.map(place => place.id), ["town-square"]);
 });
 
 
@@ -1956,7 +1968,7 @@ test("Chronicle does not let Date.parse leniency promote malformed retained time
 
 test("institution activity counters include retained Commons, guild, and field-item transfer events", () => {
   const types = [
-    "message-posted", "message-reported", "message-moderated",
+    "message-posted", "message-reported", "message-moderated", "message-report-reviewed",
     "guild-created", "guild-joined", "guild-left", "guild-disbanded",
     "guild-leadership-transfer-offered", "guild-leadership-transfer-cancelled",
     "guild-leadership-transfer-declined", "guild-leadership-transferred",
@@ -1969,13 +1981,15 @@ test("institution activity counters include retained Commons, guild, and field-i
   }));
   const world = { revision: events.length, events };
 
-  assert.equal(institutionActivityCount("town-square", world), 3,
+  assert.equal(institutionActivityCount("town-square", world), 4,
     "all three retained Commons message lifecycle events belong to TownSquare");
   assert.equal(institutionActivityCount("guild_hall", world), 8,
     "guild founding, membership, closure and leadership handoffs belong to Guild Hall");
   assert.equal(institutionActivityCount("forge", world), 4,
     "field-item transfer offers, refusals and acceptance belong to the Forge");
   assert.deepEqual(institutionDestinationsForEvent({ type: "message-posted" }).map(place => place.id),
+    ["town-square"]);
+  assert.deepEqual(institutionDestinationsForEvent({ type: "message-report-reviewed" }).map(place => place.id),
     ["town-square"]);
   assert.deepEqual(institutionDestinationsForEvent({ type: "guild-created" }).map(place => place.id),
     ["guild_hall"]);
