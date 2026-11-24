@@ -3475,3 +3475,87 @@ test('missing TownSquare review projection is treated as an empty optional map l
   assert.equal(cancelled.length, 2,
     'invalid typed review targets are cancelled without creating an interaction');
 });
+
+
+test('TownSquare review map requires complete actor-visible history coverage', async () => {
+  const project = worldViewModule.projectTownSquareReviewObjects;
+  const base = Date.parse('2026-11-24T12:00:00.000Z');
+  const at = offset => new Date(base + offset).toISOString();
+  const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const author = { id: 'coverage-author-one', name: 'Author One', role: 'witness' };
+  const reporter = { id: 'coverage-reporter-one', name: 'Reporter One', role: 'witness' };
+  const otherAuthor = { id: 'coverage-author-two', name: 'Author Two', role: 'witness' };
+  const otherReporter = { id: 'coverage-reporter-two', name: 'Reporter Two', role: 'witness' };
+  const created = createWorld({ id: 'town-square-review-coverage', now: at(0) });
+
+  const appendReview = async (current, messageAuthor, reportActor, suffix, offset) => {
+    const posted = await applyAction(current, {
+      type: 'post-message', text: 'Public process message ' + suffix
+    }, messageAuthor, { now: at(offset + 1000) });
+    const reported = await applyAction(posted.world, {
+      type: 'report-message', messageId: posted.result.messageId,
+      reason: 'privacy', details: 'Private report details ' + suffix
+    }, reportActor, { now: at(offset + 2000) });
+    const reviewed = await applyAction(reported.world, {
+      type: 'review-message-report', reportId: reported.result.reportId,
+      note: 'Private process review note ' + suffix
+    }, founder, { now: at(offset + 3000) });
+    return {
+      world: reviewed.world,
+      reviewEventId: reviewed.world.events.at(-1).id
+    };
+  };
+
+  const first = await appendReview(created, author, reporter, 'one', 1000);
+  const second = await appendReview(first.world, otherAuthor, otherReporter, 'two', 5000);
+  const before = structuredClone(second.world);
+
+  const founderProjection = project(publicWorld(second.world, founder), founder);
+  const reporterSnapshot = publicWorld(second.world, reporter);
+  const reporterProjection = project(reporterSnapshot, reporter);
+  const otherReporterProjection = project(publicWorld(second.world, otherReporter), otherReporter);
+
+  assert.equal(founderProjection.historyStatus, 'actor-visible-links-validated');
+  assert.equal(founderProjection.objects.length, 2);
+  assert.equal(reporterSnapshot.historyCoverage.omittedEventCount, 2);
+  assert.deepEqual(
+    reporterSnapshot.historyCoverage.omittedEventTypes,
+    { 'message-reported': 1, 'message-report-reviewed': 1 }
+  );
+  assert.equal(reporterProjection.historyStatus, 'actor-visible-links-validated',
+    'complete witness history may omit only the other actors’ private report/review events');
+  assert.equal(reporterProjection.objects.length, 1);
+  assert.equal(reporterProjection.objects[0].eventId, first.reviewEventId);
+  assert.equal(otherReporterProjection.historyStatus, 'actor-visible-links-validated');
+  assert.equal(otherReporterProjection.objects.length, 1);
+  assert.equal(otherReporterProjection.objects[0].eventId, second.reviewEventId);
+
+  const incompleteSource = structuredClone(second.world);
+  incompleteSource.revision += 1;
+  const incompleteSnapshot = publicWorld(incompleteSource, reporter);
+  assert.equal(Object.hasOwn(incompleteSnapshot, 'historyCoverage'), false);
+  const incompleteProjection = project(incompleteSnapshot, reporter);
+  assert.equal(incompleteProjection.objects.length, 0,
+    'a revision-mismatched witness snapshot must not project a retained review as complete');
+  assert.equal(incompleteProjection.historyStatus, 'actor-visible-links-incomplete');
+
+  const truncatedSnapshot = structuredClone(reporterSnapshot);
+  truncatedSnapshot.events.pop();
+  const truncatedProjection = project(truncatedSnapshot, reporter);
+  assert.equal(truncatedProjection.objects.length, 0,
+    'a post-receipt event truncation must fail closed even when the own review chain remains');
+  assert.equal(truncatedProjection.historyStatus, 'actor-visible-links-incomplete');
+
+  const invalidOmissionSnapshot = structuredClone(reporterSnapshot);
+  invalidOmissionSnapshot.historyCoverage.omittedEventTypes = {
+    'message-reported': 1,
+    'source-archive-attempt-failed': 1
+  };
+  const invalidOmissionProjection = project(invalidOmissionSnapshot, reporter);
+  assert.equal(invalidOmissionProjection.objects.length, 0,
+    'unrecognized omitted event families cannot certify actor-visible review history');
+  assert.equal(invalidOmissionProjection.historyStatus, 'actor-visible-links-incomplete');
+
+  assert.deepEqual(second.world, before, 'coverage checks and map projection must not mutate canonical history');
+  assert.equal(second.world.xp, 0, 'review history and map inspection remain XP-neutral');
+});
