@@ -5012,16 +5012,16 @@ function openExperimentChallengeResponse(report,challenge){
     node('h3',{text:'Exact retained challenge'}),
     paragraph('Challenge ID: '+challenge.challengeId,'form-help'),
     paragraph('Challenge category: '+displayText(challenge.challengeType),'form-help'),
-    paragraph('Counterargument: '+displayText(challenge.challengeText))
+    paragraph('Counterargument: '+displayText(challenge.challengeText)),
+    node('p',{
+      class:'form-help',
+      'data-experiment-challenge-resolution-request':'true',
+      text:resolutionRequest
+        ? 'Requested resolution: '+resolutionRequest
+        : 'No resolution request was recorded for this legacy challenge.'
+    })
   ]);
   content.append(context);
-  content.append(node('p',{
-    class:'form-help',
-    'data-experiment-challenge-resolution-request':'true',
-    text:resolutionRequest
-      ? 'Requested resolution: '+resolutionRequest
-      : 'No resolution request was recorded for this legacy challenge.'
-  }));
   const form=node('form',{
     class:'field-card',
     'data-experiment-challenge-response-form':'true',
