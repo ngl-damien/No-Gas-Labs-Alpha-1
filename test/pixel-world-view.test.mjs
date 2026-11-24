@@ -3880,3 +3880,65 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   assert.deepEqual(reviewed.world, before, 'queue summaries and map rendering are read-only');
   assert.equal(reviewed.world.xp, 0, 'report/review queue inspection awards no XP');
 });
+
+test('TownSquare review control rejects stale clicks while modal is open or play UI hidden', () => {
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  let modalOpen = true;
+  let playUiHidden = false;
+  const interactions = [];
+  globalThis.document = {
+    body: { classList: { contains: name => name === 'modal-open' && modalOpen } },
+    getElementById(id) {
+      assert.equal(id, 'play-ui');
+      return { hidden: playUiHidden };
+    }
+  };
+
+  const review = Object.freeze({
+    id: 'town-review-stale-click',
+    eventId: 'town-review-stale-click',
+    reportId: 'town-report-stale-click',
+    type: 'town-square-review',
+    status: 'awaiting-founder-review',
+    mapVisible: true,
+    x: 100,
+    y: 100
+  });
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { x: 100, y: 110 },
+    townSquareReviewObjects: [review],
+    callbacks: { onInteract: value => interactions.push(value) },
+    canvas: { focus: () => interactions.push('focus') },
+    cancelRoute: () => interactions.push('cancel-route'),
+    goTo: (...args) => interactions.push(['goTo', ...args])
+  });
+
+  try {
+    assert.equal(view.handleTownSquareReviewAction(review.id), false,
+      'a stale review-control click must not open a Chronicle sheet behind an active modal');
+    assert.deepEqual(interactions, []);
+
+    modalOpen = false;
+    playUiHidden = true;
+    assert.equal(view.handleTownSquareReviewAction(review.id), false,
+      'a hidden play surface must not accept a stale or programmatic review-control click');
+    assert.deepEqual(interactions, []);
+
+    playUiHidden = false;
+    assert.equal(view.handleTownSquareReviewAction(review.id), true,
+      'the same retained review control remains usable when the play surface is visible and unobstructed');
+    assert.deepEqual(interactions, [
+      'cancel-route',
+      {
+        type: 'town-square-review',
+        eventId: review.eventId,
+        reportId: review.reportId
+      },
+      'focus'
+    ]);
+  } finally {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+  }
+});
