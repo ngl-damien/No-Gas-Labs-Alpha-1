@@ -3395,19 +3395,19 @@ test('TownSquare pending reports become actor-scoped map objects until a retaine
     reportId: reported.result.reportId
   }, 'the pending map object opens its exact retained report event without creating an action');
 
-  const founderPost = await applyAction(reported.world, {
+  const founderReportedPost = await applyAction(reported.world, {
     type: 'post-message', text: 'A Founder-authored report cannot be self-reviewed.'
-  }, founder, { now: at(3000) });
-  const selfReported = await applyAction(founderPost.world, {
-    type: 'report-message', messageId: founderPost.result.messageId,
+  }, reporter, { now: at(3000) });
+  const founderReported = await applyAction(founderReportedPost.world, {
+    type: 'report-message', messageId: founderReportedPost.result.messageId,
     reason: 'other', details: 'Founder self-review boundary fixture.'
   }, founder, { now: at(4000) });
-  const founderWithSelfReport = project(publicWorld(selfReported.world, founder), founder);
+  const founderWithSelfReport = project(publicWorld(founderReported.world, founder), founder);
   assert.equal(founderWithSelfReport.totalCount, 1,
     'a Founder-authored report remains visible in Commons but is not offered as a reviewable map objective');
   assert.equal(founderWithSelfReport.objects[0].reportId, reported.result.reportId);
 
-  const reviewed = await applyAction(selfReported.world, {
+  const reviewed = await applyAction(founderReported.world, {
     type: 'review-message-report', reportId: reported.result.reportId,
     note: 'Recorded as a process step, not a factual verdict.'
   }, founder, { now: at(5000) });
