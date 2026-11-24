@@ -325,12 +325,57 @@ function isSafeCommonsReviewReferenceId(value) {
     !COMMONS_REVIEW_FORBIDDEN_IDS.has(value);
 }
 
+function hasCompleteFounderHistorySnapshot(world, events) {
+  try {
+    if (!Array.isArray(events) || !Number.isSafeInteger(world?.revision) ||
+        world.revision < 0 || world.revision !== events.length) return false;
+    for (let index = 0; index < events.length; index += 1) {
+      if (!Object.hasOwn(events, String(index))) return false;
+    }
+
+    const coverageDescriptor = Object.getOwnPropertyDescriptor(world, 'historyCoverage');
+    if (!coverageDescriptor) return true;
+    if (!Object.hasOwn(coverageDescriptor, 'value')) return false;
+    const coverage = coverageDescriptor.value;
+    if (!coverage || typeof coverage !== 'object' || Array.isArray(coverage)) return false;
+    const coveragePrototype = Object.getPrototypeOf(coverage);
+    if (coveragePrototype !== Object.prototype && coveragePrototype !== null) return false;
+
+    const fields = [
+      'schema', 'sourceComplete', 'sourceEventCount', 'suppliedEventCount',
+      'omittedEventCount', 'omittedEventTypes', 'viewerRole'
+    ];
+    const descriptors = Object.getOwnPropertyDescriptors(coverage);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length !== fields.length || keys.some(key => !fields.includes(key))) return false;
+    for (const field of fields) {
+      const descriptor = descriptors[field];
+      if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value')) return false;
+    }
+
+    const omittedTypes = descriptors.omittedEventTypes.value;
+    if (!omittedTypes || typeof omittedTypes !== 'object' || Array.isArray(omittedTypes)) return false;
+    const omittedPrototype = Object.getPrototypeOf(omittedTypes);
+    if (omittedPrototype !== Object.prototype && omittedPrototype !== null) return false;
+    if (Reflect.ownKeys(omittedTypes).length !== 0) return false;
+
+    return descriptors.schema.value === 'ngl.public-world-history.v1' &&
+      descriptors.sourceComplete.value === true &&
+      descriptors.viewerRole.value === 'founder' &&
+      descriptors.sourceEventCount.value === world.revision &&
+      descriptors.suppliedEventCount.value === events.length &&
+      descriptors.omittedEventCount.value === 0;
+  } catch {
+    return false;
+  }
+}
+
 function projectFounderCommonsReportReviewMilestone(world, viewer, events, validEventIds) {
   const interpretation = 'This Founder-only objective records a Founder-session process review of a private Commons report from another actor. The retained review event is a process record, not a factual verdict. It is complete only when the exact retained original message, report and Founder review events are uniquely linked and append-ordered. It does not establish factual truth, moderation, independent review, evidence certification, approval, distinct-human identity or NGL authority. It grants no XP; NPCs, collaborators, models and UI cannot create or complete it.';
-  const historyComplete = Number.isSafeInteger(world?.revision) &&
-    world.revision >= 0 &&
-    world.revision === events.length &&
-    !Object.hasOwn(world, 'historyCoverage');
+  // publicWorld() attaches historyCoverage to complete shared snapshots too.
+  // Accept only a dense, revision-matched Founder receipt with zero omissions;
+  // Witness-filtered, partial, malformed and accessor-backed receipts fail closed.
+  const historyComplete = hasCompleteFounderHistorySnapshot(world, events);
   if (!historyComplete) {
     return trailMilestone(
       'founder-commons-report-review',
