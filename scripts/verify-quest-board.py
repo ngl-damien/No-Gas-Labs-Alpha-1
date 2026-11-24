@@ -9936,10 +9936,170 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
         assert inventory_cache_page.evaluate(
             "() => document.documentElement.scrollWidth <= window.innerWidth"
         ), 'The 320px cached inventory Chronicle must not create horizontal overflow.'
+        inventory_cache_forge_chronicle_page_errors = list(inventory_cache_page_errors)
         inventory_cache_page.screenshot(
             path=str(out / 'recovery-ledger-owned-inventory-forge-chronicle-cache-only-320.png'),
             full_page=True
         )
+
+        # A carried, already accepted Recovery Ledger must also open its exact
+        # captured artifact edition and publication event from the same cached
+        # world snapshot at the narrow viewport.
+        inventory_cache_page.locator('#sheet-close').tap()
+        inventory_cache_page.locator('#character-button').tap()
+        inventory_cache_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && !document.querySelector('#sheet').hidden"
+        )
+        inventory_cache_owned_recovery_item = inventory_cache_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Recovery Ledger')
+        expect(inventory_cache_owned_recovery_item).to_have_count(1)
+        expect(inventory_cache_owned_recovery_item).to_contain_text(
+            'current owner ' + witness_id + ' (witness)'
+        )
+        inventory_cache_artifact_link = inventory_cache_owned_recovery_item.locator(
+            '[data-field-item-recovery-artifact="' + published_creation_id + '"]'
+        )
+        expect(inventory_cache_artifact_link).to_have_count(1)
+        expect(inventory_cache_artifact_link).to_have_attribute(
+            'data-field-item-recovery-artifact-version', '1'
+        )
+        inventory_cache_before_artifact = inventory_cache_page.evaluate("""() => ({
+          raw: localStorage.getItem('ngl.common-ground.shared-snapshot.v1'),
+          pending: localStorage.getItem('ngl.common-ground.pending-shared-action.v1'),
+          revision: document.querySelector('#world')?.dataset.sharedSnapshotRevision ?? null,
+          cacheOnly: document.querySelector('#world')?.dataset.sharedSnapshotCacheOnly ?? null
+        })""")
+        assert inventory_cache_before_artifact == inventory_cache_before, (
+            'Reopening the owned Recovery Ledger from its cached snapshot must not change the accepted cache.'
+        )
+        inventory_cache_api_requests_before_artifact = list(inventory_cache_api_requests)
+        inventory_cache_page_errors.clear()
+        inventory_cache_artifact_link.tap()
+        inventory_cache_artifact_detail = inventory_cache_page.locator(
+            '#sheet-content[data-creation-detail="true"]'
+        )
+        expect(inventory_cache_artifact_detail).to_have_attribute(
+            'data-creation-id', published_creation_id
+        )
+        expect(inventory_cache_artifact_detail).to_have_attribute(
+            'data-creation-version', '1'
+        )
+        expect(inventory_cache_artifact_detail.locator(
+            '[data-creation-version-receipt]'
+        )).to_have_attribute('data-creation-version', '1')
+        inventory_cache_artifact_publication_link = inventory_cache_artifact_detail.locator(
+            '#publication-chronicle-link'
+        )
+        expect(inventory_cache_artifact_publication_link).to_have_attribute(
+            'data-publication-chronicle-event-id', publication_event_id
+        )
+        inventory_cache_artifact_publication_link.tap()
+        expect(inventory_cache_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        inventory_cache_artifact_publication_card = inventory_cache_page.locator(
+            '#sheet-content [data-event-id="world:' + publication_event_id + '"]'
+        )
+        expect(inventory_cache_artifact_publication_card).to_have_count(1)
+        expect(inventory_cache_artifact_publication_card).to_have_attribute(
+            'data-event-source', 'world'
+        )
+        expect(inventory_cache_page.locator('#sheet-content')).to_have_attribute(
+            'data-chronicle-snapshot-revision', str(inventory_cache_world['revision'])
+        )
+        assert inventory_cache_api_requests == inventory_cache_api_requests_before_artifact, (
+            'Opening the exact Recovery Ledger artifact and publication event offline must make no API requests.'
+        )
+        inventory_cache_artifact_after = inventory_cache_page.evaluate("""() => ({
+          raw: localStorage.getItem('ngl.common-ground.shared-snapshot.v1'),
+          pending: localStorage.getItem('ngl.common-ground.pending-shared-action.v1'),
+          revision: document.querySelector('#world')?.dataset.sharedSnapshotRevision ?? null,
+          cacheOnly: document.querySelector('#world')?.dataset.sharedSnapshotCacheOnly ?? null
+        })""")
+        assert inventory_cache_artifact_after == inventory_cache_before, (
+            'Artifact and publication inspection must leave the accepted snapshot and pending-action store unchanged.'
+        )
+        assert not any(request['method'].upper() == 'POST' for request in inventory_cache_api_requests), (
+            'Offline Recovery Ledger inspection must not submit a shared action.'
+        )
+
+        # Recheck the opaque artifact boundary on the publication Chronicle
+        # reached from the carried item; no sandbox permission is broadened.
+        inventory_cache_artifact_chronicle_frame_element = inventory_cache_page.locator(
+            '#artifact-frame'
+        )
+        expect(inventory_cache_artifact_chronicle_frame_element).to_have_count(1)
+        inventory_cache_artifact_chronicle_sandbox_attribute = (
+            inventory_cache_artifact_chronicle_frame_element.get_attribute('sandbox') or ''
+        )
+        inventory_cache_artifact_chronicle_sandbox_tokens = set(
+            inventory_cache_artifact_chronicle_sandbox_attribute.split()
+        )
+        assert 'allow-scripts' in inventory_cache_artifact_chronicle_sandbox_tokens
+        assert 'allow-same-origin' not in inventory_cache_artifact_chronicle_sandbox_tokens, (
+            'The carried artifact must retain its opaque-origin sandbox.'
+        )
+        inventory_cache_artifact_chronicle_frames = [
+            frame for frame in inventory_cache_page.frames
+            if frame != inventory_cache_page.main_frame
+        ]
+        assert len(inventory_cache_artifact_chronicle_frames) == 1, (
+            'The publication Chronicle must retain exactly one isolated artifact frame: ' +
+            json.dumps([
+                {'name': frame.name, 'url': frame.url}
+                for frame in inventory_cache_artifact_chronicle_frames
+            ], sort_keys=True)
+        )
+        inventory_cache_artifact_chronicle_frame = inventory_cache_artifact_chronicle_frames[0]
+        inventory_cache_artifact_chronicle_frame_url = (
+            inventory_cache_artifact_chronicle_frame.url
+        )
+        assert inventory_cache_artifact_chronicle_frame_url in ('about:blank', 'about:srcdoc')
+        inventory_cache_artifact_chronicle_sandbox_probe = (
+            inventory_cache_artifact_chronicle_frame.evaluate("""() => {
+              let serviceWorkerAccess = 'accessible';
+              try { void navigator.serviceWorker; } catch (error) { serviceWorkerAccess = error.name; }
+              let localStorageAccess = 'accessible';
+              try { void localStorage; } catch (error) { localStorageAccess = error.name; }
+              return { origin: self.origin, serviceWorkerAccess, localStorageAccess };
+            }""")
+        )
+        assert inventory_cache_artifact_chronicle_sandbox_probe == {
+            'origin': 'null',
+            'serviceWorkerAccess': 'SecurityError',
+            'localStorageAccess': 'SecurityError'
+        }, (
+            'The carried artifact must remain opaque and deny storage access: ' +
+            json.dumps(inventory_cache_artifact_chronicle_sandbox_probe, sort_keys=True)
+        )
+        unexpected_inventory_cache_artifact_chronicle_errors = [
+            error for error in inventory_cache_page_errors
+            if error.get('name') != 'SecurityError'
+            or error.get('message') not in expected_inventory_cache_sandbox_denials
+        ]
+        observed_inventory_cache_artifact_chronicle_denials = [
+            error.get('message') for error in inventory_cache_page_errors
+        ]
+        assert len(observed_inventory_cache_artifact_chronicle_denials) == len(
+            set(observed_inventory_cache_artifact_chronicle_denials)
+        ), (
+            'The carried artifact may emit each exact sandbox denial at most once: ' +
+            json.dumps(inventory_cache_page_errors, sort_keys=True)
+        )
+        assert not unexpected_inventory_cache_artifact_chronicle_errors, (
+            'No non-sandbox page error is allowed during cached artifact navigation: ' +
+            json.dumps({
+                'pageErrors': inventory_cache_page_errors,
+                'unexpectedPageErrors': unexpected_inventory_cache_artifact_chronicle_errors
+            }, sort_keys=True)
+        )
+        assert inventory_cache_page.evaluate(
+            "() => document.documentElement.scrollWidth <= window.innerWidth"
+        ), 'The 320px owned Recovery Ledger artifact journey must not create horizontal overflow.'
+        inventory_cache_page.screenshot(
+            path=str(out / 'recovery-ledger-owned-inventory-artifact-chronicle-cache-only-320.png'),
+            full_page=True
+        )
+        inventory_cache_artifact_chronicle_page_errors = list(inventory_cache_page_errors)
         retry_diagnostics['recoveryLedgerOwnedInventoryCacheOnly'] = {
             'viewportWidth': 320,
             'viewerRole': 'witness',
@@ -9951,13 +10111,25 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'pendingActionStored': inventory_cache_after['pending'] is not None,
             'equippedActionDisabled': True,
             'inspectionXPDelta': 0,
+            'exactArtifactCreationId': published_creation_id,
+            'exactArtifactVersionOpened': True,
+            'exactPublicationEventId': publication_event_id,
+            'exactPublicationEventOpened': True,
+            'artifactNavigationReadOnly': inventory_cache_artifact_after == inventory_cache_before,
+            'apiRequestsDuringArtifactNavigation': len(inventory_cache_api_requests) - len(inventory_cache_api_requests_before_artifact),
+            'artifactChronicleSandboxAttribute': inventory_cache_artifact_chronicle_sandbox_attribute,
+            'artifactChronicleSandboxFrameUrl': inventory_cache_artifact_chronicle_frame_url,
+            'artifactChronicleSandboxProbe': inventory_cache_artifact_chronicle_sandbox_probe,
+            'artifactChronicleExpectedSandboxDenials': observed_inventory_cache_artifact_chronicle_denials,
+            'forgeChroniclePageErrors': inventory_cache_forge_chronicle_page_errors,
+            'artifactChroniclePageErrors': inventory_cache_artifact_chronicle_page_errors,
             'horizontalOverflow': False,
             'sandboxAttribute': inventory_cache_sandbox_attribute,
             'sandboxFrameUrl': inventory_cache_artifact_frame_url,
             'sandboxProbe': inventory_cache_sandbox_probe,
             'expectedSandboxDenials': observed_inventory_cache_denials,
-            'unexpectedPageErrors': unexpected_inventory_cache_page_errors,
-            'pageErrors': inventory_cache_page_errors
+            'unexpectedPageErrors': unexpected_inventory_cache_page_errors + unexpected_inventory_cache_artifact_chronicle_errors,
+            'pageErrors': inventory_cache_forge_chronicle_page_errors + inventory_cache_artifact_chronicle_page_errors
         }
 
 
