@@ -3785,6 +3785,19 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   assert.ok(labels.includes('P1 · R1'),
     'the TownSquare landmark must expose one pending report and one retained process record');
 
+  const pixelLabels = [];
+  const pixelWorldView = Object.create(PixelWorldView.prototype);
+  Object.assign(pixelWorldView, {
+    ctx: { fillRect() {}, strokeRect() {} },
+    institutionCounts: { 'town-square': reviewed.world.events.length },
+    townSquareReviewProjection: projection,
+    drawMapLabel(value) { pixelLabels.push(value); },
+    drawResearchCounterPanel() {}
+  });
+  pixelWorldView.drawTownSquare();
+  assert.ok(pixelLabels.includes('P1 · R1'),
+    'the actual pixel-world TownSquare landmark must expose the validated queue summary');
+
   const attributes = {};
   const canvas = {
     dataset: {},
@@ -3823,6 +3836,11 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   worldView.townSquareReviewObjects = emptyProjection.objects;
   worldView.drawTownSquare();
   assert.ok(labels.includes('P0 · R0'));
+  pixelLabels.length = 0;
+  pixelWorldView.townSquareReviewProjection = emptyProjection;
+  pixelWorldView.drawTownSquare();
+  assert.ok(pixelLabels.includes('P0 · R0'),
+    'the pixel-world landmark may show zero only for a complete empty history');
   accessibilityView.townSquareReviewProjection = emptyProjection;
   accessibilityView.townSquareReviewObjects = emptyProjection.objects;
   accessibilityView.updateResearchAccessibility();
@@ -3846,6 +3864,12 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   assert.ok(labels.includes('QUEUE UNAVAILABLE'));
   assert.equal(labels.includes('P0 · R0'), false,
     'incomplete history must never be presented as an empty queue');
+  pixelLabels.length = 0;
+  pixelWorldView.townSquareReviewProjection = unavailableProjection;
+  pixelWorldView.drawTownSquare();
+  assert.ok(pixelLabels.includes('QUEUE UNAVAILABLE'),
+    'the pixel-world landmark must fail closed when actor-visible history is incomplete');
+  assert.equal(pixelLabels.includes('P0 · R0'), false);
 
   accessibilityView.townSquareReviewProjection = unavailableProjection;
   accessibilityView.townSquareReviewObjects = unavailableProjection.objects;

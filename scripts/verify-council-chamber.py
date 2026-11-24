@@ -983,6 +983,12 @@ def run_town_square_report_review(browser, url, out, width):
             )
             expect(canvas).to_have_attribute('data-town-square-review-count', '1')
             expect(canvas).to_have_attribute('data-town-square-review-visible-count', '1')
+            expect(canvas).to_have_attribute('data-town-square-review-pending-count', '1')
+            expect(canvas).to_have_attribute('data-town-square-review-record-count', '0')
+            queue_accessibility = canvas.get_attribute('aria-label') or ''
+            if '1 pending report(s)' not in queue_accessibility or \
+                    '0 retained process review record(s)' not in queue_accessibility:
+                raise AssertionError(label + ' TownSquare landmark accessibility must expose its actor-visible pending/process counts.')
             expect(canvas).to_have_attribute(
                 'data-town-square-review-history-status', 'actor-visible-links-validated'
             )
@@ -1330,6 +1336,12 @@ def run_town_square_report_review(browser, url, out, width):
             canvas = page.locator('#world')
             expect(canvas).to_have_attribute('data-town-square-review-count', str(expected_count))
             expect(canvas).to_have_attribute('data-town-square-review-visible-count', str(expected_count))
+            expect(canvas).to_have_attribute('data-town-square-review-pending-count', '0')
+            expect(canvas).to_have_attribute('data-town-square-review-record-count', str(expected_count))
+            queue_accessibility = canvas.get_attribute('aria-label') or ''
+            if '0 pending report(s)' not in queue_accessibility or \
+                    f'{expected_count} retained process review record(s)' not in queue_accessibility:
+                raise AssertionError(label + ' TownSquare accessibility counts must remain actor-scoped after review.')
             expect(canvas).to_have_attribute('data-town-square-review-history-status', 'actor-visible-links-validated')
             objects = canvas.evaluate(
                 "canvas => JSON.parse(canvas.dataset.townSquareReviewObjects || '[]')"
