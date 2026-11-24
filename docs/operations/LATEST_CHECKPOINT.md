@@ -979,9 +979,9 @@ G0–G8 remain **IN_PROGRESS**; G9 **NOT_STARTED**; Founder trust **NOT_ENROLLED
 
 ### Next
 
-1. Read terminal Quest Board, Synthesis Clerk, and Android results on 8f6b3dc; do not infer emulator or physical-device acceptance.
+1. Read the terminal Android Alpha-1 emulator/JUnit result on 8f6b3dc; do not infer physical-device acceptance from APK assembly or browser tests.
 2. Keep the Guild Hall Browser selector and Android instrumentation ownership with Worker A.
-3. Diagnose the shared Source Archive 502 separately; do not weaken the 409 mismatch assertion to turn an upstream retrieval outage into a pass.
+3. Preserve the two initial Source Archive 502 attempts in history; the third exact-head retry passed, so no server code change is justified by this transient failure.
 4. Reconcile PR #472's overlapping Commons paths and the 589-ahead/9-behind stack against main path-by-path before any integration decision.
 
 
