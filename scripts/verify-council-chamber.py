@@ -1271,6 +1271,74 @@ def run_town_square_report_review(browser, url, out, width):
         reporter_page.screenshot(path=str(reporter_screenshot), full_page=True)
         founder_page.screenshot(path=str(founder_screenshot), full_page=True)
 
+        def actor_visible_review_objects(page, label, expected_count):
+            canvas = page.locator('#world')
+            expect(canvas).to_have_attribute('data-town-square-review-count', str(expected_count))
+            expect(canvas).to_have_attribute('data-town-square-review-visible-count', str(expected_count))
+            expect(canvas).to_have_attribute('data-town-square-review-history-status', 'actor-visible-links-validated')
+            objects = canvas.evaluate(
+                "canvas => JSON.parse(canvas.dataset.townSquareReviewObjects || '[]')"
+            )
+            if len(objects) != expected_count:
+                raise AssertionError(label + ' received an unexpected number of TownSquare review map objects: ' + json.dumps(objects))
+            if expected_count:
+                if objects[0].get('eventId') != review_event['id']:
+                    raise AssertionError(label + ' map object must link the exact retained Founder review event.')
+                if set(objects[0]) != {'id', 'eventId', 'x', 'y'}:
+                    raise AssertionError(label + ' map object must expose only its safe navigation identity and coordinates.')
+                serialized = json.dumps(objects)
+                if review_note in serialized or report_event.get('details', '') in serialized:
+                    raise AssertionError(label + ' map object must not copy private report or review text.')
+            return objects
+
+        founder_map_objects = actor_visible_review_objects(founder_page, 'Founder', 1)
+        reporter_map_objects = actor_visible_review_objects(reporter_page, 'reporter', 1)
+        actor_visible_review_objects(author_page, 'message author', 0)
+        actor_visible_review_objects(unrelated_page, 'unrelated Witness', 0)
+        if founder_map_objects != reporter_map_objects:
+            raise AssertionError('Founder and reporting Witness must receive the same deterministic map identity for their shared exact review record.')
+
+        def inspect_town_square_review_map_object(page, label):
+            if page.locator('#sheet').is_visible():
+                page.locator('#sheet-close').tap()
+            before = read_shared_state(page)['world']
+            point = page.locator('#world').evaluate("""(canvas, eventId) => {
+              const objects = JSON.parse(canvas.dataset.townSquareReviewObjects || '[]');
+              const object = objects.find(item => item.eventId === eventId);
+              const rect = canvas.getBoundingClientRect();
+              const cameraX = Number(canvas.dataset.cameraX);
+              const cameraY = Number(canvas.dataset.cameraY);
+              const zoom = Number(canvas.dataset.zoom);
+              const width = Number(canvas.dataset.viewportWidth);
+              const height = Number(canvas.dataset.viewportHeight);
+              if (!object || ![cameraX, cameraY, zoom, width, height].every(Number.isFinite) ||
+                  zoom <= 0 || width <= 0 || height <= 0) return null;
+              const x = (object.x - cameraX) * zoom + width / 2;
+              const y = (object.y - cameraY) * zoom + height / 2;
+              return {
+                x: rect.left + x,
+                y: rect.top + y,
+                inside: x >= 0 && y >= 0 && x <= width && y <= height
+              };
+            }""", review_event['id'])
+            if not point or not point['inside']:
+                raise AssertionError(label + ' TownSquare review map object must be inside the mobile world viewport.')
+            page.mouse.click(point['x'], point['y'])
+            expect(page.locator('#sheet-title')).to_have_text('World Chronicle', timeout=20000)
+            exact = page.locator('#sheet-content [data-event-id="world:' + review_event['id'] + '"]')
+            expect(exact).to_have_count(1)
+            expect(exact).to_have_attribute('data-event-source', 'world')
+            expect(exact).to_contain_text(review_note)
+            after = read_shared_state(page)['world']
+            if after['revision'] != before['revision'] or after['xp'] != before['xp'] or \
+                    [event['id'] for event in after['events']] != [event['id'] for event in before['events']] or \
+                    after['creations'] != before['creations']:
+                raise AssertionError(label + ' map-object inspection must be read-only and XP-neutral.')
+            page.locator('#sheet-close').tap()
+
+        inspect_town_square_review_map_object(founder_page, 'Founder')
+        inspect_town_square_review_map_object(reporter_page, 'reporter')
+
         def open_quest_board(page):
             if page.locator('#sheet').is_visible():
                 page.locator('#sheet-close').tap()

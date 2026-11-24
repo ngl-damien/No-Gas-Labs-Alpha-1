@@ -16,6 +16,8 @@ import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { createHash } from 'node:crypto';
 import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
+import * as worldViewModule from '../game/world-view.mjs';
+import * as pixelWorldViewModule from '../game/pixel-world-view.mjs';
 import {
   projectSourceObservationMapCounts,
   projectQuestMapTarget,
@@ -3308,3 +3310,121 @@ test('world canvas publishes renderer-local player, camera and route telemetry w
   assert.equal(JSON.stringify(view.world), before,
     'publishing or clearing renderer telemetry must remain outside canonical world state');
 });
+
+
+test('TownSquare process-review map objects are exact, actor-scoped, and read-only', async () => {
+  const project = worldViewModule.projectTownSquareReviewObjects;
+  const projectPointer = pixelWorldViewModule.projectTownSquareReviewPointerTarget;
+  assert.equal(typeof project, 'function', 'the world must project retained TownSquare review objects');
+  assert.equal(typeof projectPointer, 'function', 'the pixel map must resolve taps to exact review objects');
+
+  const base = Date.parse('2026-11-24T12:00:00.000Z');
+  const at = offset => new Date(base + offset).toISOString();
+  const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const author = { id: 'town-map-author', name: 'Message Author', role: 'witness' };
+  const reporter = { id: 'town-map-reporter', name: 'Reporting Witness', role: 'witness' };
+  const unrelated = { id: 'town-map-unrelated', name: 'Unrelated Witness', role: 'witness' };
+  const created = createWorld({ id: 'town-square-review-map', now: at(0) });
+  const posted = await applyAction(created, {
+    type: 'post-message', text: 'A public message whose private report remains private.'
+  }, author, { now: at(1000) });
+  const reported = await applyAction(posted.world, {
+    type: 'report-message', messageId: posted.result.messageId,
+    reason: 'privacy', details: 'PRIVATE REPORT DETAILS'
+  }, reporter, { now: at(2000) });
+  const reviewNote = 'PRIVATE REVIEW NOTE';
+  const reviewed = await applyAction(reported.world, {
+    type: 'review-message-report', reportId: reported.result.reportId, note: reviewNote
+  }, founder, { now: at(3000) });
+  const reviewEvent = reviewed.world.events.at(-1);
+  const sourceEventIds = reviewed.world.events.map(event => event.id);
+  const before = structuredClone(reviewed.world);
+
+  const founderProjection = project(publicWorld(reviewed.world, founder), founder);
+  const reporterProjection = project(publicWorld(reviewed.world, reporter), reporter);
+  const authorProjection = project(publicWorld(reviewed.world, author), author);
+  const unrelatedProjection = project(publicWorld(reviewed.world, unrelated), unrelated);
+
+  for (const projection of [founderProjection, reporterProjection]) {
+    assert.equal(projection.totalCount, 1);
+    assert.equal(projection.omittedCount, 0);
+    assert.equal(projection.historyStatus, 'actor-visible-links-validated');
+    assert.equal(projection.objects.length, 1);
+    const object = projection.objects[0];
+    assert.equal(object.type, 'town-square-review');
+    assert.equal(object.eventId, reviewEvent.id);
+    assert.equal(object.reportId, reported.result.reportId);
+    assert.deepEqual(object.sourceEventIds, sourceEventIds);
+    assert.equal(object.status, 'process-record-not-adjudication');
+    assert.equal(object.mapVisible, true);
+    assert.equal(Object.hasOwn(object, 'note'), false);
+    assert.equal(Object.hasOwn(object, 'details'), false);
+    assert.equal(JSON.stringify(object).includes(reviewNote), false);
+    assert.equal(JSON.stringify(object).includes('PRIVATE REPORT DETAILS'), false);
+    assert.ok(Object.isFrozen(object));
+    assert.ok(Object.isFrozen(object.sourceEventIds));
+  }
+  assert.deepEqual(reporterProjection.objects, founderProjection.objects,
+    'the same exact retained review receives the same deterministic map identity and coordinates');
+  for (const projection of [authorProjection, unrelatedProjection]) {
+    assert.equal(projection.totalCount, 0);
+    assert.equal(projection.objects.length, 0,
+      'the message author and unrelated Witness must not receive a private review map object');
+    assert.equal(projection.historyStatus, 'actor-visible-links-validated');
+  }
+  assert.equal(project(reviewed.world, unrelated).objects.length, 0,
+    'actor scoping must hold even if the caller supplies an unredacted world');
+  assert.equal(project(reviewed.world, { id: 'forged-founder', name: 'Other', role: 'founder' }).objects.length, 0,
+    'the Founder map view is bound to the configured Founder actor');
+
+  const object = reporterProjection.objects[0];
+  const pointerTarget = projectPointer(
+    { x: 195, y: 422 }, { x: object.x, y: object.y }, 1, 390, 844,
+    reporterProjection.objects
+  );
+  assert.deepEqual(pointerTarget, { id: object.id, eventId: reviewEvent.id });
+  assert.ok(Object.isFrozen(pointerTarget));
+  assert.equal(projectPointer(
+    { x: -1, y: 422 }, { x: object.x, y: object.y }, 1, 390, 844,
+    reporterProjection.objects
+  ), null);
+  assert.equal(projectPointer(
+    { x: 195, y: 422 }, { x: object.x, y: object.y }, 0, 390, 844,
+    reporterProjection.objects
+  ), null);
+  let getterCalls = 0;
+  const hostilePoint = Object.defineProperty({}, 'x', {
+    get() { getterCalls += 1; return 195; }
+  });
+  assert.equal(projectPointer(
+    hostilePoint, { x: object.x, y: object.y }, 1, 390, 844,
+    reporterProjection.objects
+  ), null);
+  assert.equal(getterCalls, 0, 'map pointer projection must not invoke accessor-backed coordinates');
+
+  let interaction = null;
+  const view = Object.create(WorldView.prototype);
+  view.player = { x: object.x, y: object.y + 10 };
+  view.world = reviewed.world;
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.townSquareReviewObjects = reporterProjection.objects;
+  view.callbacks = { onInteract: value => { interaction = value; }, onDiscover: () => {} };
+  view.cancelRoute = () => {};
+  view.interact(object.id, 'town-square-review');
+  assert.deepEqual(interaction, {
+    type: 'town-square-review',
+    eventId: reviewEvent.id,
+    reportId: reported.result.reportId
+  }, 'interacting with the map object must open its exact retained review event');
+
+  const malformed = structuredClone(reviewed.world);
+  malformed.events.at(-1).actor = { ...reporter };
+  const malformedProjection = project(malformed, founder);
+  assert.equal(malformedProjection.objects.length, 0,
+    'an invalid Founder review link must never become a map object');
+  assert.equal(malformedProjection.historyStatus, 'actor-visible-links-incomplete');
+  assert.deepEqual(reviewed.world, before, 'map projection and inspection must not mutate canonical history');
+  assert.equal(reviewed.world.xp, 0, 'review projection and inspection are XP-neutral');
+});
+
