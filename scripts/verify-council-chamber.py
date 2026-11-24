@@ -788,22 +788,43 @@ def run_town_square_report_review(browser, url, out, width):
         founder_page.locator('#founder-name').fill('Damien')
         founder_page.locator('#founder-key').fill('fake-browser-fixture-key-not-a-secret')
         founder_page.locator('#verify-founder').tap()
+        # The UI login handler does not finish when /api/login first returns:
+        # it accepts that DTO, then startShared() revalidates the session and opens
+        # the shared stream before emitting this success toast. Wait for that whole
+        # transition so the next authoritative read cannot race the second fetch.
         founder_page.wait_for_function(
-            """async () => {
-              const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
-              if (!response.ok) return false;
-              const dto = await response.json();
-              return dto.viewer?.role === 'founder';
+            """() => {
+              const toast = document.querySelector('#toast');
+              const login = document.querySelector('#login-button');
+              const logout = document.querySelector('#logout-button');
+              return Boolean(
+                toast && !toast.hidden &&
+                toast.textContent === 'Founder session verified by the local service.' &&
+                login?.hidden === true &&
+                logout?.hidden === false
+              );
             }""",
             timeout=15000
         )
         founder = read_shared_state(founder_page)['viewer']
+        observed_actors = {
+            'author': {'id': author.get('id'), 'role': author.get('role')},
+            'reporter': {'id': reporter.get('id'), 'role': reporter.get('role')},
+            'unrelated': {'id': unrelated.get('id'), 'role': unrelated.get('role')},
+            'founder': {'id': founder.get('id'), 'role': founder.get('role')}
+        }
         if len({author['id'], reporter['id'], unrelated['id'], founder['id']}) != 4:
-            raise AssertionError('Author, reporter, unrelated Witness and Founder must be distinct actors.')
+            raise AssertionError(
+                'Author, reporter, unrelated Witness and Founder must be distinct actors: ' +
+                json.dumps(observed_actors, sort_keys=True)
+            )
         if founder.get('role') != 'founder' or any(
             actor.get('role') != 'witness' for actor in (author, reporter, unrelated)
         ):
-            raise AssertionError('Only the authenticated Founder session may review Commons reports.')
+            raise AssertionError(
+                'Only the authenticated Founder session may review Commons reports: ' +
+                json.dumps(observed_actors, sort_keys=True)
+            )
 
         # Enter through the map's TownSquare route and its explicit nearby Interact action.
         open_town_square(reporter_page)
