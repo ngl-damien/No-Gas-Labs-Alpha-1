@@ -1323,6 +1323,7 @@ export class PixelWorldView extends WorldView {
     this.playerApproach = null;
     this.updateResearchAccessibility();
     this.createNpcControls();
+    this.createTownSquareReviewControls();
     this.observeMapOverlays();
   }
 
@@ -1591,6 +1592,184 @@ export class PixelWorldView extends WorldView {
         button.dataset.guildNpcAriaLabel = accessibleLabel;
       }
     }
+  }
+
+  createTownSquareReviewControls() {
+    if (typeof document === 'undefined' || !document.body ||
+        typeof document.createElement !== 'function' ||
+        typeof document.body.appendChild !== 'function') return;
+    try {
+      const group = document.createElement('div');
+      group.className = 'ngl-town-square-review-controls';
+      group.dataset.townSquareReviewControls = 'true';
+      group.setAttribute('role', 'group');
+      group.setAttribute('aria-label', 'TownSquare process review map objects');
+      Object.assign(group.style, {
+        position: 'fixed', left: '0', top: '0', width: '100vw', height: '100vh',
+        margin: '0', padding: '0', pointerEvents: 'none', zIndex: '1000'
+      });
+      group.hidden = true;
+      this.townSquareReviewControlButtons = new Map();
+      document.body.appendChild(group);
+      this.townSquareReviewControlGroup = group;
+    } catch {
+      try { this.townSquareReviewControlGroup?.remove?.(); } catch {}
+      this.townSquareReviewControlGroup = null;
+      this.townSquareReviewControlButtons = new Map();
+    }
+  }
+
+  updateTownSquareReviewControls(modalOpen = false) {
+    const group = this.townSquareReviewControlGroup;
+    const buttons = this.townSquareReviewControlButtons;
+    if (!group || !(buttons instanceof Map)) return;
+    const available = modalOpen !== true && this.playUiVisible();
+    const objects = safeTownSquareReviewObjects(this);
+    let rect = null;
+    try { rect = this.canvas?.getBoundingClientRect?.(); } catch {}
+    const geometryAvailable = rect && [
+      rect.left, rect.top, rect.width, rect.height, this.width, this.height,
+      this.camera?.x, this.camera?.y, this.zoom
+    ].every(Number.isFinite) && rect.width > 0 && rect.height > 0 &&
+      this.width > 0 && this.height > 0 && this.zoom > 0;
+    const viewportWidth = Number.isFinite(globalThis.innerWidth) ? globalThis.innerWidth : rect?.right;
+    const viewportHeight = Number.isFinite(globalThis.innerHeight) ? globalThis.innerHeight : rect?.bottom;
+    const overlays = Array.isArray(this.mapOverlayRects) ? this.mapOverlayRects : [];
+    const retainedIds = new Set();
+    let visibleCount = 0;
+
+    if (available && geometryAvailable) {
+      for (const object of objects.slice(0, 16)) {
+        const id = object?.id;
+        const eventId = object?.eventId;
+        if (typeof id !== 'string' || id !== eventId ||
+            !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id) ||
+            object?.type !== 'town-square-review' || object?.mapVisible !== true ||
+            !Number.isFinite(object?.x) || !Number.isFinite(object?.y)) continue;
+        retainedIds.add(id);
+        let button = buttons.get(id);
+        if (!button) {
+          try {
+            button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.townSquareReviewControl = id;
+            button.dataset.eventId = eventId;
+            button.textContent = 'R';
+            button.title = 'Inspect retained TownSquare process review';
+            button.setAttribute('aria-label',
+              'Inspect retained TownSquare process review in World Chronicle. Read-only process record; not moderation, adjudication, approval, truth, or XP.');
+            Object.assign(button.style, {
+              position: 'fixed', left: '0', top: '0',
+              transform: 'translate(-50%, -50%)',
+              display: 'grid', placeItems: 'center',
+              width: '44px', height: '44px', minWidth: '44px', minHeight: '44px',
+              margin: '0', padding: '0',
+              border: '2px solid #a85f42', borderRadius: '8px',
+              background: '#141512', color: '#e8e6dc',
+              font: 'bold 13px ui-monospace, monospace',
+              boxShadow: '0 2px 8px rgba(0,0,0,.45)',
+              pointerEvents: 'auto', touchAction: 'manipulation', cursor: 'pointer'
+            });
+            button.addEventListener('pointerdown', event => {
+              const pointerType = typeof event?.pointerType === 'string' ? event.pointerType : 'unknown';
+              button.dataset.pointerType = pointerType;
+              if (this.canvas?.dataset) this.canvas.dataset.townSquareReviewControlPointerType = pointerType;
+            });
+            button.addEventListener('click', event => {
+              event?.preventDefault?.();
+              event?.stopPropagation?.();
+              this.handleTownSquareReviewAction(id);
+            });
+            group.appendChild(button);
+            buttons.set(id, button);
+          } catch {
+            try { button?.remove?.(); } catch {}
+            continue;
+          }
+        }
+
+        const screenX = (object.x - this.camera.x) * this.zoom + this.width / 2;
+        const screenY = (object.y - this.camera.y) * this.zoom + this.height / 2;
+        const left = rect.left + screenX;
+        const top = rect.top + screenY;
+        const half = 22;
+        const intersectsOverlay = overlays.some(overlay =>
+          screenX - half < overlay.right && screenX + half > overlay.left &&
+          screenY - half < overlay.bottom && screenY + half > overlay.top
+        );
+        const visible = [screenX, screenY, left, top, viewportWidth, viewportHeight].every(Number.isFinite) &&
+          left - half >= 0 && top - half >= 0 &&
+          left + half <= viewportWidth && top + half <= viewportHeight &&
+          screenX - half >= 0 && screenY - half >= 0 &&
+          screenX + half <= this.width && screenY + half <= this.height &&
+          !intersectsOverlay;
+        if (button.hidden === !visible) {
+          // Keep the current visibility state; avoid mutation-observer churn.
+        } else button.hidden = !visible;
+        if (!visible) continue;
+
+        const leftText = left + 'px';
+        const topText = top + 'px';
+        if (button.style.left !== leftText) button.style.left = leftText;
+        if (button.style.top !== topText) button.style.top = topText;
+        const worldX = String(object.x);
+        const worldY = String(object.y);
+        if (button.dataset.worldX !== worldX) button.dataset.worldX = worldX;
+        if (button.dataset.worldY !== worldY) button.dataset.worldY = worldY;
+        const distance = Number.isFinite(this.player?.x) && Number.isFinite(this.player?.y)
+          ? Math.hypot(object.x - this.player.x, object.y + 10 - this.player.y)
+          : Infinity;
+        const canInspect = distance < interactionPromptRange({ type: 'town-square-review' });
+        const label = canInspect
+          ? 'Inspect retained TownSquare process review in World Chronicle. This is a read-only process record, not moderation, adjudication, approval, truth, or XP.'
+          : 'Walk to the retained TownSquare process review, then inspect its exact Chronicle event. Navigation is read-only and creates no progress or XP.';
+        if (button.dataset.reviewAction !== (canInspect ? 'inspect' : 'approach')) {
+          button.dataset.reviewAction = canInspect ? 'inspect' : 'approach';
+        }
+        if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
+        if (button.title !== label) button.title = label;
+        visibleCount += 1;
+      }
+    }
+
+    for (const [id, button] of buttons) {
+      if (retainedIds.has(id)) continue;
+      try { button.remove(); } catch {}
+      buttons.delete(id);
+    }
+    const hidden = !available || visibleCount === 0;
+    if (group.hidden !== hidden) group.hidden = hidden;
+    if (group.getAttribute('aria-hidden') !== String(hidden)) {
+      group.setAttribute('aria-hidden', String(hidden));
+    }
+    if (this.canvas?.dataset) {
+      const count = String(visibleCount);
+      if (this.canvas.dataset.townSquareReviewControlVisibleCount !== count) {
+        this.canvas.dataset.townSquareReviewControlVisibleCount = count;
+      }
+    }
+  }
+
+  handleTownSquareReviewAction(id) {
+    const object = safeTownSquareReviewObjects(this).find(candidate =>
+      candidate?.id === id && candidate.eventId === id &&
+      candidate.type === 'town-square-review' && candidate.mapVisible === true
+    );
+    if (!object || !Number.isFinite(this.player?.x) || !Number.isFinite(this.player?.y)) return false;
+    const distance = Math.hypot(object.x - this.player.x, object.y + 10 - this.player.y);
+    if (!Number.isFinite(distance)) return false;
+    if (distance < interactionPromptRange({ type: 'town-square-review' })) {
+      this.cancelRoute();
+      this.callbacks.onInteract({
+        type: 'town-square-review',
+        eventId: object.eventId,
+        reportId: object.reportId
+      });
+    } else {
+      this.goTo(object.id, 'town-square-review');
+    }
+    this.canvas.focus?.({ preventScroll: true });
+    return true;
   }
 
   handleNpcAction(id) {
@@ -2569,6 +2748,7 @@ export class PixelWorldView extends WorldView {
       ? institutionInteractionCopy(near, this.width)
       : null;
     this.updateNpcControls(modalOpen || navigationPending);
+    this.updateTownSquareReviewControls(modalOpen || navigationPending);
     this.canvas.dataset.navigationTargetId = navigationTarget?.id ?? 'none';
     this.canvas.dataset.navigationState = !navigationTarget ? 'idle'
       : navigationPending ? 'walking'
@@ -2677,6 +2857,9 @@ export class PixelWorldView extends WorldView {
     try { this.npcControlGroup?.remove?.(); } catch {}
     this.npcControlGroup = null;
     this.npcControlButtons?.clear?.();
+    try { this.townSquareReviewControlGroup?.remove?.(); } catch {}
+    this.townSquareReviewControlGroup = null;
+    this.townSquareReviewControlButtons?.clear?.();
     try { this.mapOverlayMutationObserver?.disconnect?.(); } catch {}
     this.mapOverlayMutationObserver = null;
     super.destroy();
