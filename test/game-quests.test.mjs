@@ -5,7 +5,7 @@ import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQu
 import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
-import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
+import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
 import { buildSatireIssueBody, createArtifact, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from '../game/artifacts.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
@@ -4764,6 +4764,51 @@ test('Founder Commons report-review quest requires an exact linked Founder-sessi
   assert.equal(getQuestTrail(reviewed.world, reporter).some(item =>
     item.id === 'founder-commons-report-review'
   ), false, 'Witness Quest Boards must not expose the Founder-only review objective');
+
+  // The production shared-world API wraps a complete Founder history in an
+  // explicit coverage receipt. That receipt proves no role-filtered events
+  // were omitted; its mere presence must not make the Founder history partial.
+  const completeFounderSnapshot = publicWorld(reviewed.world, founder);
+  const founderCoverage = completeFounderSnapshot.historyCoverage;
+  assert.equal(founderCoverage.schema, 'ngl.public-world-history.v1');
+  assert.equal(founderCoverage.sourceComplete, true);
+  assert.equal(founderCoverage.viewerRole, 'founder');
+  assert.equal(founderCoverage.sourceEventCount, reviewed.world.revision);
+  assert.equal(founderCoverage.suppliedEventCount, completeFounderSnapshot.events.length);
+  assert.equal(founderCoverage.omittedEventCount, 0);
+  assert.deepEqual(founderCoverage.omittedEventTypes, {});
+  const completeFromPublicSnapshot = getQuestTrail(completeFounderSnapshot, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(completeFromPublicSnapshot.progress, 1,
+    'a complete Founder public-world coverage receipt must preserve exact review progress');
+  assert.deepEqual(completeFromPublicSnapshot.evidenceIds, [reviewEvent.id]);
+
+  // A Witness-filtered snapshot is not a complete Founder view, even when
+  // the caller pairs it with a Founder viewer object.
+  const witnessSnapshot = publicWorld(reviewed.world, witness);
+  assert.ok(witnessSnapshot.historyCoverage.omittedEventCount > 0);
+  const founderOnWitnessSnapshot = getQuestTrail(witnessSnapshot, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(founderOnWitnessSnapshot.progress, 0);
+  assert.equal(founderOnWitnessSnapshot.action, null);
+  assert.match(founderOnWitnessSnapshot.blockedReason, /incomplete|revision|coverage/i);
+
+  const forgedPartialCoverage = {
+    ...completeFounderSnapshot,
+    historyCoverage: {
+      ...founderCoverage,
+      omittedEventCount: 1,
+      omittedEventTypes: { 'message-reported': 1 }
+    }
+  };
+  const blockedForgedCoverage = getQuestTrail(forgedPartialCoverage, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(blockedForgedCoverage.progress, 0);
+  assert.equal(blockedForgedCoverage.action, null);
+  assert.match(blockedForgedCoverage.blockedReason, /incomplete|revision|coverage/i);
 });
 
 test('Founder Commons report-review quest fails closed on self-review, invalid linkage, and partial history', async () => {
