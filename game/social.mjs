@@ -60,9 +60,9 @@ const COMMONS_REVIEW_HISTORY_WARNING =
   'A retained Commons report/review link is invalid or ambiguous; inspect its exact Chronicle history. No review is treated as recorded.';
 
 /**
- * Validate Founder-session report reviews against their exact retained source
- * events. This read-only projection is shared by TownSquare and the Quest Board
- * so their status and progress cannot disagree on malformed history.
+ * Validate retained Commons reports and Founder-review chains against exact
+ * source events. Pending reports and completed reviews remain distinct records;
+ * this read-only projection is shared by TownSquare and the Quest Board.
  */
 export function projectCommonsReportReviewHistory(world, founderActorId = COMMONS_FOUNDER_ACTOR_ID) {
   const events = eventsOf(world);
@@ -76,6 +76,13 @@ export function projectCommonsReportReviewHistory(world, founderActorId = COMMON
   let highWater = -Infinity;
   let priorTimestampsValid = true;
   let invalidReviewHistory = false;
+  const invalidReportIds = new Set();
+  const invalidReportActorKeys = new Set();
+  const markInvalidReport = (reportId, actor) => {
+    if (validCommonsProjectionId(reportId)) invalidReportIds.add(reportId);
+    invalidReportActorKeys.add(commonsActorKey(actor) ?? '*');
+    invalidReviewHistory = true;
+  };
   const append = (map, key, record) => {
     const records = map.get(key) || [];
     records.push(record);
@@ -91,13 +98,18 @@ export function projectCommonsReportReviewHistory(world, founderActorId = COMMON
     }
     if (event?.type === 'message-posted' && validCommonsProjectionId(event.messageId)) {
       append(postsByMessageId, event.messageId, { event, index });
-    } else if (event?.type === 'message-reported' && validCommonsProjectionId(event.reportId)) {
-      append(reportsById, event.reportId, { event, index });
+    } else if (event?.type === 'message-reported') {
+      if (validCommonsProjectionId(event.reportId)) {
+        append(reportsById, event.reportId, { event, index });
+      } else {
+        markInvalidReport(null, event.actor);
+      }
     } else if (event?.type === 'message-report-reviewed') {
       if (validCommonsProjectionId(event.reportId)) {
         append(reviewsByReportId, event.reportId, { event, index });
       } else {
         invalidReviewHistory = true;
+        invalidReportActorKeys.add('*');
       }
       if (validCommonsProjectionId(event.reviewId)) {
         reviewIdCounts.set(event.reviewId, (reviewIdCounts.get(event.reviewId) || 0) + 1);
@@ -119,19 +131,40 @@ export function projectCommonsReportReviewHistory(world, founderActorId = COMMON
     const key = commonsActorKey(actor);
     return key !== null && validCommonsProjectionId(actor.id);
   };
-  const invalidReportIds = new Set();
   for (const [reportId, reportRecords] of reportsById) {
     if (reportRecords.length !== 1) {
-      invalidReportIds.add(reportId);
-      invalidReviewHistory = true;
+      for (const record of reportRecords) markInvalidReport(reportId, record.event.actor);
+    }
+  }
+
+  const reportActorsByMessage = new Map();
+  for (const [reportId, reportRecords] of reportsById) {
+    for (const record of reportRecords) {
+      const actorKey = commonsActorKey(record.event.actor);
+      if (!actorKey) {
+        markInvalidReport(reportId, record.event.actor);
+        continue;
+      }
+      const key = JSON.stringify([record.event.messageId, actorKey]);
+      const previous = reportActorsByMessage.get(key);
+      if (previous) {
+        markInvalidReport(previous.reportId, previous.actor);
+        markInvalidReport(reportId, record.event.actor);
+      } else {
+        reportActorsByMessage.set(key, { reportId, actor: record.event.actor });
+      }
     }
   }
 
   const validReviews = [];
   for (const [reportId, reviewRecords] of reviewsByReportId) {
     if (reviewRecords.length !== 1) {
-      invalidReportIds.add(reportId);
-      invalidReviewHistory = true;
+      const reportRecords = reportsById.get(reportId) || [];
+      if (reportRecords.length) {
+        for (const record of reportRecords) markInvalidReport(reportId, record.event.actor);
+      } else {
+        markInvalidReport(reportId, null);
+      }
       continue;
     }
     const { event: reviewEvent, index: reviewIndex } = reviewRecords[0];
@@ -145,7 +178,8 @@ export function projectCommonsReportReviewHistory(world, founderActorId = COMMON
     const postActor = postEvent?.actor;
     const reviewActor = reviewEvent?.actor;
     const note = reviewEvent.note;
-    const valid = validCommonsProjectionId(reviewEvent.id) &&
+    const valid = !invalidReportIds.has(reportId) &&
+      validCommonsProjectionId(reviewEvent.id) &&
       eventIdCounts.get(reviewEvent.id) === 1 &&
       validCommonsProjectionId(reportId) &&
       validCommonsProjectionId(reviewEvent.messageId) &&
@@ -191,8 +225,7 @@ export function projectCommonsReportReviewHistory(world, founderActorId = COMMON
       postRecord.index < reportRecord.index &&
       reportRecord.index < reviewIndex;
     if (!valid) {
-      invalidReportIds.add(reportId);
-      invalidReviewHistory = true;
+      markInvalidReport(reportId, reportActor);
       continue;
     }
     validReviews.push(Object.freeze({
@@ -206,9 +239,62 @@ export function projectCommonsReportReviewHistory(world, founderActorId = COMMON
     }));
   }
 
+  const validPendingReports = [];
+  for (const [reportId, reportRecords] of reportsById) {
+    if (reviewsByReportId.has(reportId) || invalidReportIds.has(reportId) ||
+        reportRecords.length !== 1) continue;
+    const { event: reportEvent, index: reportIndex } = reportRecords[0];
+    const postRecords = postsByMessageId.get(reportEvent.messageId) || [];
+    const postRecord = postRecords.length === 1 ? postRecords[0] : null;
+    const postEvent = postRecord?.event;
+    const reportActor = reportEvent.actor;
+    const valid = validCommonsProjectionId(reportEvent.id) &&
+      eventIdCounts.get(reportEvent.id) === 1 &&
+      validCommonsProjectionId(reportId) &&
+      validCommonsProjectionId(reportEvent.messageId) &&
+      postRecords.length === 1 &&
+      validCommonsProjectionId(postEvent?.id) &&
+      eventIdCounts.get(postEvent.id) === 1 &&
+      reportEvent.messageId === postEvent?.messageId &&
+      validActor(reportActor) &&
+      validActor(postEvent?.actor) &&
+      postEvent.channel === COMMONS_CHANNEL &&
+      typeof postEvent.text === 'string' &&
+      postEvent.text === postEvent.text.trim() &&
+      postEvent.text.length > 0 &&
+      Array.from(postEvent.text).length <= COMMONS_MESSAGE_LIMIT &&
+      COMMONS_REASONS.includes(reportEvent.reason) &&
+      typeof reportEvent.details === 'string' &&
+      reportEvent.details === reportEvent.details.trim() &&
+      reportEvent.details.length > 0 &&
+      Array.from(reportEvent.details).length <= COMMONS_REVIEW_NOTE_LIMIT &&
+      isStrictTimestamp(postEvent.at) &&
+      isStrictTimestamp(reportEvent.at) &&
+      !invalidTimestampBefore[postRecord.index] &&
+      !invalidTimestampBefore[reportIndex] &&
+      Date.parse(postEvent.at) >= highWaterBefore[postRecord.index] &&
+      Date.parse(reportEvent.at) >= highWaterBefore[reportIndex] &&
+      postRecord.index < reportIndex;
+    if (!valid) {
+      markInvalidReport(reportId, reportActor);
+      continue;
+    }
+    validPendingReports.push(Object.freeze({
+      reportId,
+      event: reportEvent,
+      index: reportIndex,
+      reportEvent,
+      reportIndex,
+      postEvent,
+      postIndex: postRecord.index
+    }));
+  }
+
   return Object.freeze({
     validReviews: Object.freeze(validReviews),
+    validPendingReports: Object.freeze(validPendingReports),
     invalidReportIds: Object.freeze([...invalidReportIds]),
+    invalidReportActorKeys: Object.freeze([...invalidReportActorKeys].sort()),
     invalidReviewHistory
   });
 }
