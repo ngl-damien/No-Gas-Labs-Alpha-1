@@ -1762,6 +1762,10 @@ export class PixelWorldView extends WorldView {
   }
 
   handleTownSquareReviewAction(id) {
+    // A queued or programmatically dispatched click can outlive the marker's visibility.
+    // Recheck the playable surface and modal boundary at action time, as NPC controls do.
+    if (typeof document === 'undefined' || !this.playUiVisible() ||
+        document.body?.classList?.contains?.('modal-open') === true) return false;
     const object = safeTownSquareReviewObjects(this).find(candidate =>
       candidate?.id === id && candidate.eventId === id &&
       candidate.type === 'town-square-review' && candidate.mapVisible === true &&
