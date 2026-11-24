@@ -365,6 +365,8 @@ export function projectTownSquareReviewObjects(world, viewer) {
   const empty = historyStatus => Object.freeze({
     totalCount: 0,
     omittedCount: 0,
+    pendingCount: null,
+    processRecordCount: null,
     historyStatus,
     objects: Object.freeze([])
   });
@@ -465,9 +467,69 @@ export function projectTownSquareReviewObjects(world, viewer) {
   return Object.freeze({
     totalCount,
     omittedCount: totalCount - objects.length,
+    pendingCount: visiblePendingReports.length,
+    processRecordCount: visibleReviews.length,
     historyStatus,
     objects: Object.freeze(objects)
   });
+}
+
+/**
+ * Summarize the actor-visible TownSquare queue without treating a partial or
+ * malformed projection as an empty queue. Counts come from the complete
+ * validated report/review chain before the bounded map-marker slice.
+ */
+export function projectTownSquareReviewQueueSummary(projection) {
+  const unavailable = () => Object.freeze({
+    available: false,
+    pendingCount: null,
+    processRecordCount: null
+  });
+  try {
+    if (!isPlainProjectionRecord(projection) ||
+        ownDataValue(projection, 'historyStatus') !== 'actor-visible-links-validated') {
+      return unavailable();
+    }
+    const totalCount = ownDataValue(projection, 'totalCount');
+    const omittedCount = ownDataValue(projection, 'omittedCount');
+    const pendingCount = ownDataValue(projection, 'pendingCount');
+    const processRecordCount = ownDataValue(projection, 'processRecordCount');
+    const objects = ownDataValue(projection, 'objects');
+    const length = ownDataValue(objects, 'length');
+    if (!isArraySafely(objects) ||
+        !Number.isSafeInteger(totalCount) || totalCount < 0 ||
+        !Number.isSafeInteger(omittedCount) || omittedCount < 0 ||
+        !Number.isSafeInteger(pendingCount) || pendingCount < 0 ||
+        !Number.isSafeInteger(processRecordCount) || processRecordCount < 0 ||
+        pendingCount + processRecordCount !== totalCount ||
+        !Number.isSafeInteger(length) || length < 0 || length > MAX_WORLD_EVENT_SCAN ||
+        omittedCount !== totalCount - length) {
+      return unavailable();
+    }
+
+    let visiblePending = 0;
+    let visibleProcessRecords = 0;
+    for (let index = 0; index < length; index += 1) {
+      const object = ownDataValue(objects, String(index));
+      if (!isPlainProjectionRecord(object) ||
+          ownDataValue(object, 'type') !== 'town-square-review' ||
+          ownDataValue(object, 'mapVisible') !== true) {
+        return unavailable();
+      }
+      const status = ownDataValue(object, 'status');
+      if (status === 'awaiting-founder-review') visiblePending += 1;
+      else if (status === 'process-record-not-adjudication') visibleProcessRecords += 1;
+      else return unavailable();
+    }
+    if (visiblePending > pendingCount || visibleProcessRecords > processRecordCount ||
+        (omittedCount === 0 &&
+          (visiblePending !== pendingCount || visibleProcessRecords !== processRecordCount))) {
+      return unavailable();
+    }
+    return Object.freeze({ available: true, pendingCount, processRecordCount });
+  } catch {
+    return unavailable();
+  }
 }
 
 
@@ -1497,7 +1559,7 @@ export class WorldView {
       this.cancelRoute();
     }else this.scheduleFrame?.();
   }
-  drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(institutionActivityLabel(this.institutionCounts['town-square'],'retained records'),0,77,9,'#687756');c.restore();}
+  drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(institutionActivityLabel(this.institutionCounts['town-square'],'retained records'),0,77,9,'#687756');const queue=projectTownSquareReviewQueueSummary(this.townSquareReviewProjection);this.text(queue.available?'P'+queue.pendingCount+' · R'+queue.processRecordCount:'QUEUE UNAVAILABLE',0,90,queue.available?9:8,'#687756');c.restore();}
   drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');const gate=place.id==='decision_chamber'?decisionSummaryState(ownDataValue(this.institutionSummary,'decisionSummary')):null;const count=this.institutionCounts[place.id];const hasCount=Number.isSafeInteger(count)&&count>=0;const countLabel=institutionActivityLabel(count,place.id==='council_chamber'?'role attempts':'records');const label=place.id==='quest_board'?'actor-scoped objectives':place.id==='decision_chamber'&&this.institutionSummary?(gate?.available&&hasCount?countLabel+' · '+gate.counts.PENDING+' pending':hasCount?'gate ledger unavailable':'history incomplete'):countLabel;this.text(label,0,53,9,'#687756');c.restore();}
   setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){this.player={...this.player,x:player.x,y:player.y};this.cancelRoute();}}
   getPlayer(){return {...this.player};}
