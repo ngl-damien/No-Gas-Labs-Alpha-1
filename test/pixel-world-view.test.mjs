@@ -4469,3 +4469,84 @@ test('TownSquare map prioritizes pending reports over the bounded retained-revie
   assert.deepEqual(current, beforeProjection,
     'overflow prioritization is a read-only projection and does not alter retained world history');
 });
+
+test('TownSquare overflow dispatch rechecks actor visibility after a session change', async () => {
+  const base = Date.parse('2026-11-24T12:00:00.000Z');
+  const at = offset => new Date(base + offset).toISOString();
+  const author = { id: 'town-overflow-session-author', name: 'Message Author', role: 'witness' };
+  const reporter = { id: 'town-overflow-session-reporter', name: 'Reporting Witness', role: 'witness' };
+  const unrelated = { id: 'town-overflow-session-unrelated', name: 'Unrelated Witness', role: 'witness' };
+  let current = createWorld({ id: 'town-square-overflow-session-boundary', now: at(0) });
+  let overflowEventId = null;
+
+  for (let index = 0; index < 17; index += 1) {
+    const offset = index * 61000;
+    const posted = await applyAction(current, {
+      type: 'post-message', text: 'Public overflow session message ' + index
+    }, author, { now: at(offset + 1000) });
+    const reported = await applyAction(posted.world, {
+      type: 'report-message',
+      messageId: posted.result.messageId,
+      reason: 'other',
+      details: 'Private report detail ' + index
+    }, reporter, { now: at(offset + 2000) });
+    current = reported.world;
+    overflowEventId = current.events.at(-1).id;
+  }
+
+  const reporterWorld = publicWorld(current, reporter);
+  const reporterProjection = worldViewModule.projectTownSquareReviewObjects(reporterWorld, reporter);
+  assert.equal(reporterProjection.historyStatus, 'actor-visible-links-validated');
+  assert.equal(reporterProjection.totalCount, 17);
+  assert.equal(reporterProjection.pendingCount, 17);
+  assert.equal(reporterProjection.processRecordCount, 0);
+  assert.equal(reporterProjection.objects.length, 16);
+  assert.equal(reporterProjection.overflowObject?.eventId, overflowEventId);
+  assert.equal(reporterProjection.overflowObject?.status, 'awaiting-founder-review');
+  assert.equal(reporterWorld.events.some(event => event.id === overflowEventId), true);
+  assert.equal(
+    worldViewModule.projectTownSquareReviewObjects(reporterWorld, unrelated).overflowObject,
+    null,
+    'the same retained event is not part of the unrelated Witness projection'
+  );
+
+  const interactions = [];
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    world: reporterWorld,
+    viewer: reporter,
+    townSquareReviewProjection: reporterProjection,
+    townSquareReviewObjects: reporterProjection.objects,
+    callbacks: { onInteract: value => interactions.push(value) },
+    canvas: { focus() {} },
+    cancelRoute() {},
+    playUiVisible: () => true
+  });
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  globalThis.document = { body: { classList: { contains: () => false } } };
+
+  try {
+    assert.equal(view.handleTownSquareReviewOverflowAction(overflowEventId), true,
+      'the reporting Witness can inspect the first unmapped report in their own actor-visible history');
+    assert.deepEqual(interactions, [
+      { type: 'town-square-review', eventId: overflowEventId }
+    ]);
+    const before = structuredClone(reporterWorld);
+
+    // Simulate a session transition before a queued C-button click is delivered:
+    // the old actor-scoped snapshot/projection remains, but the active actor changed.
+    // Dispatch must recompute visibility for the current actor rather than trust the
+    // previously rendered projection.
+    view.viewer = unrelated;
+    assert.equal(view.handleTownSquareReviewOverflowAction(overflowEventId), false,
+      'a stale overflow target from the previous Witness must not cross the actor boundary');
+    assert.deepEqual(interactions, [
+      { type: 'town-square-review', eventId: overflowEventId }
+    ], 'the stale click must not open the prior actor’s private Chronicle event');
+    assert.deepEqual(reporterWorld, before, 'dispatch-time visibility checks are read-only');
+    assert.equal(reporterWorld.xp, 0, 'report and inspection activity remains XP-neutral');
+  } finally {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+  }
+});
