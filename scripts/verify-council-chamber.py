@@ -407,6 +407,9 @@ def seed_council_review_fixture(page):
               statement: 'The failed outcome is retained, while the methodology challenge disputes whether the procedure supports the stated inference.'
             }],
             dissentPreserved: includedChallenges.map(event => event.id),
+            authorResponsesPreserved: packetPayload.inputRecords
+              .filter(record => record.type === 'experiment-challenge-responded')
+              .map(record => record.eventId),
             unknowns: ['The report is not independently verified.'],
             nextDiscriminatingExperiment: {
               procedure: 'Repeat with a defined control and retain the observation.',
