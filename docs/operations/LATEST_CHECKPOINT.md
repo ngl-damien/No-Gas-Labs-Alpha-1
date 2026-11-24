@@ -1,6 +1,6 @@
 ## Run 358 — fail closed on incomplete TownSquare Witness history — 2026-11-24
 
-**Runtime child PR #727**: branch `test/townsquare-review-touch-pointer-20261124-run357`, exact head `bed3232544cf00ac0d190b48a52f3acef40234d0`, base #726 head `0b274390b0bc239a65dcaa4debae15f844e5a4af`. PR #726 is based on #718 head `b48858033910381281ccd3db158486b4c56bb522`; #718 targets main `21677d88cb027f3d16adacf92dbdd0ec08e96dbd` and remains open/draft/unmerged at 553 ahead / 9 behind. #726 remains open/unmerged at 556 ahead / 9 behind. #727 is open/draft/unmerged with four changed paths relative to #726. Main is unchanged. Do not merge or rebase the accumulated stack wholesale.
+**Runtime child PR #727**: branch `test/townsquare-review-touch-pointer-20261124-run357`, exact head `bed3232544cf00ac0d190b48a52f3acef40234d0`, base #726 head `0b274390b0bc239a65dcaa4debae15f844e5a4af`. PR #726 is based on #718 head `b48858033910381281ccd3db158486b4c56bb522`; #718 targets main `21677d88cb027f3d16adacf92dbdd0ec08e96dbd` and remains open/draft/unmerged at 553 ahead / 9 behind. #726 remains open/unmerged at 561 ahead / 9 behind; #727 is 573 ahead / 9 behind main (compare-commits, exact head bed3232). #727 is open/draft/unmerged with four changed paths relative to #726. Main is unchanged. Do not merge or rebase the accumulated stack wholesale.
 
 **Defect**: `projectTownSquareReviewObjects` validated complete history for Founder views but did not validate the response-only `ngl.public-world-history.v1` coverage receipt for Witness views. A complete Witness snapshot legitimately omits other actors' private report/review events. A revision-mismatched or post-receipt-truncated Witness snapshot could nevertheless project a locally valid review marker as `actor-visible-links-validated`.
 
@@ -18,6 +18,19 @@
 - Quest Board [45393724005](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45393724005), Synthesis Clerk [45393724084](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45393724084), and Android Alpha-1 [45393724167](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45393724167) were still running at checkpoint capture; no terminal result is inferred.
 - Browser Acceptance [45393723986](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45393723986) **FAIL**s in Worker A-owned `scripts/verify-browser.py:254` after offline-PWA/private recovery passes: nearby `guild_hall`, visible `Enter Guild Hall`, hidden `Enter Forge`, movement enabled, modal closed, legitimate +100 first-discovery notice. Artifact [14918779476](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45393723986/artifacts/14918779476); handoff [#456 comment 7131529611](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/456#issuecomment-7131529611). No Worker A-owned file was edited.
 - The earlier Source Archive 502 did not reproduce: [45393613657](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45393613657) and current [45393723991](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45393723991) both pass.
+
+Main-only governance paths inspected against main `21677d88` (nine commits behind the runtime stack):
+- `docs/operations/GOVERNANCE-SKILL-SUITE-BUILD-2026-11-23.md`
+- `skills/README.md`
+- `skills/ngl-authorization-and-secrets/SKILL.md`
+- `skills/ngl-constitutional-reconciliation/SKILL.md`
+- `skills/ngl-independent-ci-governance/SKILL.md`
+- `skills/ngl-ledger-integrity/SKILL.md`
+- `skills/ngl-safe-execution-boundaries/SKILL.md`
+- `skills/ngl-traceability-and-recovery/SKILL.md`
+- `skills/ngl-validation-completeness/SKILL.md`
+
+The build receipt explicitly says these are human/AI reviewer instruction artifacts, not executable enforcement. It reports no governance preflight, package validator, repository tests, CI, or runtime enforcement was run for their creation; the skill loader and automated enforcement remain Unknown. It also records a bootstrap-order/process deviation on the main-only creation run. These nine paths are additive governance material, not runtime behavior. Preserve them during future reconciliation, but do not treat the skill text as proof that the prescribed controls exist.
 
 **Donor and authority boundaries**: reuses Alpha-1's `publicWorld` coverage receipt and exact `projectCommonsReportReviewHistory` links; retains #472's explicit report-review semantics and #726's Relay request-ID idempotent replay without copying a whole donor system. PR #472 remains an open overlapping proposal and must not be merged alongside the independent #718 implementation without path-by-path reconciliation. RAE exact event linkage, Mesh lineage/authority separation, Guild bounded roles, Decision Chamber human gate and AGP publication boundaries remain distinct. The coverage receipt is a structural response check, not a cryptographic signature or proof of truth.
 
