@@ -1564,6 +1564,17 @@ def assert_offline_preview_keeps_local_route(page, label):
 
 def open_synthesis_clerk(page, packet, inspect_source_events=False):
     before = authoritative_snapshot(page)
+    sheet = page.locator("#sheet")
+    if sheet.is_visible() and page.locator("#sheet-title").text_content() != "Guild Hall":
+        # A preceding research-response step may leave Moonshot Field open.
+        # Close that read-only panel before starting the Guild Hall NPC route.
+        page.locator("#sheet-close").tap()
+        expect(sheet).to_be_hidden()
+        after_close = authoritative_snapshot(page)
+        assert_canonical_state_unchanged(
+            before, after_close,
+            "Closing a prior non-Guild-Hall sheet before navigating to the Synthesis Clerk"
+        )
     control = page.locator('[data-guild-npc-control="synthesizer"]')
     expect(control).to_have_count(1)
     control.evaluate("button => button.focus()")
