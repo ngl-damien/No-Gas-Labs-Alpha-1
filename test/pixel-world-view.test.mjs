@@ -3942,3 +3942,88 @@ test('TownSquare review control rejects stale clicks while modal is open or play
     else delete globalThis.document;
   }
 });
+
+test('TownSquare map prioritizes pending reports over the bounded retained-review marker lane', async () => {
+  const project = worldViewModule.projectTownSquareReviewObjects;
+  const projectQueue = worldViewModule.projectTownSquareReviewQueueSummary;
+  const projectPointer = pixelWorldViewModule.projectTownSquareReviewPointerTarget;
+  assert.equal(typeof project, 'function');
+  assert.equal(typeof projectQueue, 'function');
+  assert.equal(typeof projectPointer, 'function');
+
+  const base = Date.parse('2026-11-24T12:00:00.000Z');
+  const at = offset => new Date(base + offset).toISOString();
+  const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const author = { id: 'town-square-overflow-author', name: 'Overflow Author', role: 'witness' };
+  const reporter = { id: 'town-square-overflow-reporter', name: 'Overflow Reporter', role: 'witness' };
+  let current = createWorld({ id: 'town-square-review-marker-overflow', now: at(0) });
+  const reviewedEventIds = [];
+
+  for (let index = 0; index < 17; index += 1) {
+    const offset = index * 3000;
+    const posted = await applyAction(current, {
+      type: 'post-message', text: 'Public process message ' + index
+    }, author, { now: at(offset + 1000) });
+    const reported = await applyAction(posted.world, {
+      type: 'report-message', messageId: posted.result.messageId,
+      reason: 'other', details: 'Private report details ' + index
+    }, reporter, { now: at(offset + 2000) });
+    const reviewed = await applyAction(reported.world, {
+      type: 'review-message-report', reportId: reported.result.reportId,
+      note: 'Private process review note ' + index
+    }, founder, { now: at(offset + 3000) });
+    current = reviewed.world;
+    reviewedEventIds.push(current.events.at(-1).id);
+  }
+
+  const pendingOffset = 17 * 3000;
+  const pendingPost = await applyAction(current, {
+    type: 'post-message', text: 'A new public message with an actionable pending report.'
+  }, author, { now: at(pendingOffset + 1000) });
+  const pendingReport = await applyAction(pendingPost.world, {
+    type: 'report-message', messageId: pendingPost.result.messageId,
+    reason: 'privacy', details: 'PRIVATE NEW PENDING REPORT DETAILS'
+  }, reporter, { now: at(pendingOffset + 2000) });
+  current = pendingReport.world;
+  const pendingEventId = current.events.at(-1).id;
+  const beforeProjection = structuredClone(current);
+
+  const projection = project(publicWorld(current, founder), founder);
+  assert.equal(projection.historyStatus, 'actor-visible-links-validated');
+  assert.equal(projection.totalCount, 18);
+  assert.equal(projection.pendingCount, 1);
+  assert.equal(projection.processRecordCount, 17);
+  assert.equal(projection.objects.length, 16);
+  assert.equal(projection.omittedCount, 2);
+
+  assert.equal(projection.objects[0].eventId, pendingEventId,
+    'the only actionable pending report must not be crowded off the bounded map by older completed records');
+  assert.deepEqual(projection.objects.map(object => object.status), [
+    'awaiting-founder-review',
+    ...Array(15).fill('process-record-not-adjudication')
+  ]);
+  assert.deepEqual(
+    projection.objects.slice(1).map(object => object.eventId),
+    reviewedEventIds.slice(0, 15),
+    'completed process records retain append order after pending work is reserved map capacity'
+  );
+  assert.deepEqual(projectQueue(projection), {
+    available: true,
+    pendingCount: 1,
+    processRecordCount: 17
+  });
+
+  const pendingObject = projection.objects[0];
+  assert.deepEqual(projectPointer(
+    { x: 160, y: 120 },
+    { x: pendingObject.x, y: pendingObject.y },
+    1, 320, 240, projection.objects
+  ), { id: pendingEventId, eventId: pendingEventId },
+  'the pending map object remains a resolvable exact touch target');
+  const mapJson = JSON.stringify(projection.objects);
+  assert.equal(mapJson.includes('PRIVATE NEW PENDING REPORT DETAILS'), false);
+  assert.equal(mapJson.includes('Private report details'), false);
+  assert.equal(mapJson.includes('Private process review note'), false);
+  assert.deepEqual(current, beforeProjection,
+    'overflow prioritization is a read-only projection and does not alter retained world history');
+});
