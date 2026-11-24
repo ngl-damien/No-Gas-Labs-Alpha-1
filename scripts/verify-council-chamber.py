@@ -1289,6 +1289,13 @@ def run_town_square_report_review(browser, url, out, width):
                 serialized = json.dumps(objects)
                 if review_note in serialized or report_event.get('details', '') in serialized:
                     raise AssertionError(label + ' map object must not copy private report or review text.')
+            controls = page.locator('[data-town-square-review-control]')
+            expect(controls).to_have_count(expected_count)
+            if expected_count:
+                expect(controls.first).to_have_attribute('data-event-id', review_event['id'])
+                control_label = controls.first.get_attribute('aria-label') or ''
+                if review_note in control_label or report_event.get('details', '') in control_label:
+                    raise AssertionError(label + ' map control must not expose private report or review text.')
             return objects
 
         founder_map_objects = actor_visible_review_objects(founder_page, 'Founder', 1)
@@ -1440,9 +1447,10 @@ def run_town_square_report_review(browser, url, out, width):
                     after['creations'] != before['creations']:
                 raise AssertionError(label + ' map-object inspection must be read-only and XP-neutral.')
             page.locator('#sheet-close').tap()
+            return pointer_type
 
-        inspect_town_square_review_map_object(founder_page, 'Founder')
-        inspect_town_square_review_map_object(reporter_page, 'reporter')
+        founder_pointer_type = inspect_town_square_review_map_object(founder_page, 'Founder')
+        reporter_pointer_type = inspect_town_square_review_map_object(reporter_page, 'reporter')
 
         def open_quest_board(page):
             if page.locator('#sheet').is_visible():
@@ -1633,7 +1641,8 @@ def run_town_square_report_review(browser, url, out, width):
             'reporterQuestReviewEventId': review_event['id'],
             'reporterQuestChronicleNavigation': True,
             'reporterChronicleReadOnly': True,
-            'mapInputPointerType': pointer_type,
+            'mapInputPointerType': reporter_pointer_type,
+            'mapInputPointerTypes': {'founder': founder_pointer_type, 'reporter': reporter_pointer_type},
             'pageErrors': errors,
             'screenshots': [
                 reporter_screenshot.name,
