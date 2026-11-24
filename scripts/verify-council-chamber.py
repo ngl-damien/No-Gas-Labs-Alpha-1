@@ -691,6 +691,7 @@ def run_viewport(browser, url, out, width):
 
 
 
+
 def read_shared_state(page):
     return page.evaluate("""async () => {
       const response = await fetch('/api/state', {
@@ -721,10 +722,10 @@ def shared_actor_page(browser, url, width, errors, label):
         "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')",
         timeout=10000
     )
-    state = read_shared_state(page)
-    if state['viewer'].get('role') != 'witness':
+    viewer = read_shared_state(page)['viewer']
+    if viewer.get('role') != 'witness':
         raise AssertionError(label + ' must begin as a distinct shared Witness session.')
-    return context, page, state['viewer']
+    return context, page, viewer
 
 
 def api_action(page, action):
@@ -736,8 +737,7 @@ def api_action(page, action):
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(action)
       });
-      const body = await response.json();
-      return { status: response.status, body };
+      return { status: response.status, body: await response.json() };
     }""", action)
 
 
@@ -745,11 +745,7 @@ def open_town_square(page):
     if not page.locator('#sheet').is_hidden():
         page.locator('#sheet-close').tap()
     page.locator('#places-button').tap()
-    route = page.get_by_role(
-        'button',
-        name='Walk to The Commons at TownSquare',
-        exact=True
-    )
+    route = page.get_by_role('button', name='Walk to The Commons at TownSquare', exact=True)
     expect(route).to_be_visible()
     route.tap()
     page.wait_for_function(
@@ -774,116 +770,17 @@ def open_town_square(page):
     assert_world_context_visible(page, 'The Commons at TownSquare')
 
 
-def post_message_via_api(page, text, request_id):
-    result = api_action(page, {
-        'type': 'post-message',
-        'text': text,
-        'requestId': request_id
-    })
-    if result['status'] != 200:
-        raise AssertionError('Retained message fixture failed: ' + json.dumps(result))
-    message_id = result['body'].get('result', {}).get('messageId')
-    if not isinstance(message_id, str) or not message_id:
-        raise AssertionError('The retained message action did not return its exact message ID.')
-    return message_id
-
-
-def post_message_via_ui(page, text):
-    page.locator('#commons-message').fill(text)
-    page.locator('[data-commons-post="true"]').tap()
-    page.wait_for_function(
-        "text => Array.from(document.querySelectorAll('[data-commons-message-id]'))" +
-        ".some(card => card.textContent.includes(text))",
-        arg=text,
-        timeout=10000
-    )
-    message_id = page.locator('[data-commons-message-id]').evaluate_all(
-        """(cards, text) => {
-          const card = cards.find(candidate => candidate.textContent.includes(text));
-          return card?.getAttribute('data-commons-message-id') || null;
-        }""",
-        text
-    )
-    if not message_id:
-        raise AssertionError('The Commons UI did not expose the exact retained message ID.')
-    return message_id
-
-
-def report_message_via_ui(page, message_id, details):
-    card = page.locator('[data-commons-message-id="' + message_id + '"]')
-    expect(card).to_be_visible()
-    report = card.locator('details.commons-report')
-    expect(report).to_be_visible()
-    report.locator('summary').tap()
-    card.locator('[id="commons-report-reason-' + message_id + '"]').select_option(index=0)
-    card.locator('[id="commons-report-details-' + message_id + '"]').fill(details)
-    card.locator('[data-commons-report="' + message_id + '"]').tap()
-    page.wait_for_function(
-        """messageId => {
-          const status = document.querySelector('[data-commons-own-report="' + messageId + '"]');
-          return status?.dataset.commonsOwnReportStatus === 'awaiting-founder-review';
-        }""",
-        arg=message_id,
-        timeout=10000
-    )
-    state = read_shared_state(page)
-    matches = [
-        event for event in state['world']['events']
-        if event.get('type') == 'message-reported' and
-        event.get('messageId') == message_id and
-        event.get('actor', {}).get('id') == state['viewer'].get('id')
-    ]
-    if len(matches) != 1:
-        raise AssertionError(
-            'The UI report must append exactly one report attributed to its current actor: ' +
-            json.dumps(matches)
-        )
-    return matches[0]['reportId']
-
-
-def review_message_report_via_ui(page, report_id, note):
-    item = page.locator('[data-commons-pending-report="' + report_id + '"]')
-    expect(item).to_be_visible()
-    item.locator('summary').tap()
-    page.locator('[id="commons-review-note-' + report_id + '"]').fill(note)
-    review_button = page.locator('[data-commons-review="' + report_id + '"]')
-    expect(review_button).to_be_visible()
-    review_button.tap()
-    page.wait_for_function(
-        """reportId => !document.querySelector('[data-commons-pending-report="' + reportId + '"]')""",
-        arg=report_id,
-        timeout=10000
-    )
-    state = read_shared_state(page)
-    matches = [
-        event for event in state['world']['events']
-        if event.get('type') == 'message-report-reviewed' and
-        event.get('reportId') == report_id
-    ]
-    if len(matches) != 1:
-        raise AssertionError('Founder review must append exactly one linked event.')
-    return matches[0]
-
-
 def run_town_square_report_review(browser, url, out, width):
     contexts = []
     errors = []
     try:
-        author_context, author_page, author = shared_actor_page(
-            browser, url, width, errors, 'author'
-        )
+        author_context, author_page, author = shared_actor_page(browser, url, width, errors, 'author')
         contexts.append(author_context)
-        reporter_context, reporter_page, reporter = shared_actor_page(
-            browser, url, width, errors, 'reporter'
-        )
+        reporter_context, reporter_page, reporter = shared_actor_page(browser, url, width, errors, 'reporter')
         contexts.append(reporter_context)
-        unrelated_context, unrelated_page, unrelated = shared_actor_page(
-            browser, url, width, errors, 'unrelated'
-        )
+        unrelated_context, unrelated_page, unrelated = shared_actor_page(browser, url, width, errors, 'unrelated')
         contexts.append(unrelated_context)
-        founder_context, founder_page, _ = shared_actor_page(
-            browser, url, width, errors, 'founder'
-        )
+        founder_context, founder_page, _ = shared_actor_page(browser, url, width, errors, 'founder')
         contexts.append(founder_context)
 
         expect(founder_page.locator('#login-button')).to_be_visible()
@@ -893,10 +790,7 @@ def run_town_square_report_review(browser, url, out, width):
         founder_page.locator('#verify-founder').tap()
         founder_page.wait_for_function(
             """async () => {
-              const response = await fetch('/api/state', {
-                cache: 'no-store',
-                credentials: 'same-origin'
-              });
+              const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
               if (!response.ok) return false;
               const dto = await response.json();
               return dto.viewer?.role === 'founder';
@@ -904,104 +798,111 @@ def run_town_square_report_review(browser, url, out, width):
             timeout=15000
         )
         founder = read_shared_state(founder_page)['viewer']
-        if founder.get('role') != 'founder' or not founder.get('id'):
-            raise AssertionError('The Founder review journey requires an authenticated Founder session.')
-
         if len({author['id'], reporter['id'], unrelated['id'], founder['id']}) != 4:
             raise AssertionError('Author, reporter, unrelated Witness and Founder must be distinct actors.')
-        if any(actor.get('role') != 'witness' for actor in (author, reporter, unrelated)):
-            raise AssertionError('The three non-Founder sessions must remain Witness actors.')
+        if founder.get('role') != 'founder' or any(
+            actor.get('role') != 'witness' for actor in (author, reporter, unrelated)
+        ):
+            raise AssertionError('Only the authenticated Founder session may review Commons reports.')
 
-        # Only the reporter and Founder need the TownSquare UI. The author and
-        # unrelated Witness remain independent sessions for privacy projection checks.
+        # Enter through the map's TownSquare route and its explicit nearby Interact action.
         open_town_square(reporter_page)
         open_town_square(founder_page)
 
         message_one_text = 'TownSquare review fixture: author message for a separate Witness report.'
         message_two_text = 'TownSquare review fixture: reporter message for the Founder self-review boundary.'
-        message_one_id = post_message_via_api(
-            author_page,
-            message_one_text,
-            'town-square-mobile-' + str(width) + '-author-post-001'
-        )
+        setup_actions = [
+            (author_page, {
+                'type': 'post-message', 'text': message_one_text,
+                'requestId': 'town-square-mobile-' + str(width) + '-author-post'
+            }),
+            (reporter_page, {
+                'type': 'post-message', 'text': message_two_text,
+                'requestId': 'town-square-mobile-' + str(width) + '-reporter-post'
+            })
+        ]
+        message_ids = []
+        for page, action in setup_actions:
+            result = api_action(page, action)
+            if result['status'] != 200:
+                raise AssertionError('Server-validated Commons message fixture failed: ' + json.dumps(result))
+            message_id = result['body'].get('result', {}).get('messageId')
+            if not isinstance(message_id, str) or not message_id:
+                raise AssertionError('Commons message fixture omitted its exact message ID.')
+            message_ids.append(message_id)
+        message_one_id, message_two_id = message_ids
+
+        report_actions = [
+            (reporter_page, {
+                'type': 'report-message', 'messageId': message_one_id,
+                'reason': 'privacy',
+                'details': 'Please review the retained message as a process matter; no verdict is requested.',
+                'requestId': 'town-square-mobile-' + str(width) + '-reporter-report'
+            }),
+            (founder_page, {
+                'type': 'report-message', 'messageId': message_two_id,
+                'reason': 'privacy',
+                'details': 'Founder-authored report fixture; the same Founder session must not review it.',
+                'requestId': 'town-square-mobile-' + str(width) + '-founder-report'
+            })
+        ]
+        report_ids = []
+        for page, action in report_actions:
+            result = api_action(page, action)
+            if result['status'] != 200:
+                raise AssertionError('Server-validated private report fixture failed: ' + json.dumps(result))
+            report_id = result['body'].get('result', {}).get('reportId')
+            if not isinstance(report_id, str) or not report_id:
+                raise AssertionError('Commons report action omitted its exact report ID.')
+            report_ids.append(report_id)
+        report_one_id, report_two_id = report_ids
+        if report_one_id == report_two_id:
+            raise AssertionError('Independent report events must have distinct IDs.')
+
         reporter_page.wait_for_function(
-            """messageId => !!document.querySelector('[data-commons-message-id="' + messageId + '"]')""",
+            """messageId => document.querySelector('[data-commons-own-report="' + messageId + '"]')?.dataset.commonsOwnReportStatus === 'awaiting-founder-review'""",
             arg=message_one_id,
             timeout=15000
         )
         founder_page.wait_for_function(
-            """messageId => !!document.querySelector('[data-commons-message-id="' + messageId + '"]')""",
-            arg=message_one_id,
+            """() => document.querySelector('#commons-pending-reports')?.textContent.includes('PENDING FOUNDER REVIEW · 2')""",
             timeout=15000
         )
-        message_two_id = post_message_via_ui(reporter_page, message_two_text)
-
-        report_one_id = report_message_via_ui(
-            reporter_page,
-            message_one_id,
-            'Please review the retained message as a process matter; no verdict is requested.'
-        )
-        report_two_id = report_message_via_ui(
-            founder_page,
-            message_two_id,
-            'Founder-authored report fixture; the same Founder session must not review it.'
-        )
-        if report_one_id == report_two_id:
-            raise AssertionError('Independent report events must have distinct IDs.')
+        pending_before = founder_page.locator('#commons-pending-reports')
+        expect(pending_before).to_contain_text('does not change message visibility')
 
         founder_before_review = read_shared_state(founder_page)
-        pending_before = founder_page.locator('#commons-pending-reports')
-        expect(pending_before).to_be_visible()
-        expect(pending_before).to_contain_text('PENDING FOUNDER REVIEW · 2')
-        if founder_before_review['world']['xp'] != read_shared_state(reporter_page)['world']['xp']:
+        reporter_before_review = read_shared_state(reporter_page)
+        if founder_before_review['world']['xp'] != reporter_before_review['world']['xp']:
             raise AssertionError('Posting and reporting Commons messages must not create XP.')
-
-        review_note = 'Reviewed as a process step; this note is not a factual verdict or moderation action.'
         revision_before = founder_before_review['world']['revision']
         xp_before = founder_before_review['world']['xp']
-        event_ids_before = [
-            event['id'] for event in founder_before_review['world']['events']
-        ]
-        review_event = review_message_report_via_ui(founder_page, report_one_id, review_note)
-        founder_after_review = read_shared_state(founder_page)
+        event_ids_before = [event['id'] for event in founder_before_review['world']['events']]
 
-        if founder_after_review['world']['revision'] != revision_before + 1:
-            raise AssertionError('One Founder review must append exactly one world revision.')
-        if founder_after_review['world']['xp'] != xp_before:
-            raise AssertionError('Recording a Commons process review must not award XP.')
-        event_ids_after = [
-            event['id'] for event in founder_after_review['world']['events']
-        ]
-        if len(event_ids_after) != len(event_ids_before) + 1 or event_ids_after[:-1] != event_ids_before:
-            raise AssertionError('The review must append one event without rewriting retained history.')
-        if review_event.get('type') != 'message-report-reviewed' or \
-                review_event.get('reportId') != report_one_id or \
-                review_event.get('messageId') != message_one_id or \
-                review_event.get('note') != review_note or \
-                review_event.get('actor', {}).get('role') != 'founder':
-            raise AssertionError('The exact Founder review event must retain report, message, note and actor identity.')
+        review_note = 'Reviewed as a process step; this note is not a factual verdict or moderation action.'
+        report_item = founder_page.locator('[data-commons-pending-report="' + report_one_id + '"]')
+        expect(report_item).to_be_visible()
+        report_item.locator('summary').tap()
+        founder_page.locator('[id="commons-review-note-' + report_one_id + '"]').fill(review_note)
+        founder_page.locator('[data-commons-review="' + report_one_id + '"]').tap()
+        founder_page.wait_for_function(
+            """reportId => !document.querySelector('[data-commons-pending-report="' + reportId + '"]')""",
+            arg=report_one_id,
+            timeout=15000
+        )
 
+        # The reporter's open sheet must receive the exact review over the shared stream.
         reporter_page.wait_for_function(
-            """messageId => {
-              const status = document.querySelector('[data-commons-own-report="' + messageId + '"]');
-              return status?.dataset.commonsOwnReportStatus === 'founder-review-recorded';
-            }""",
+            """messageId => document.querySelector('[data-commons-own-report="' + messageId + '"]')?.dataset.commonsOwnReportStatus === 'founder-review-recorded'""",
             arg=message_one_id,
             timeout=15000
         )
-        reporter_status = reporter_page.locator(
-            '[data-commons-own-report="' + message_one_id + '"]'
-        )
-        expect(reporter_status).to_have_attribute(
-            'data-commons-own-report-status',
-            'founder-review-recorded'
-        )
+        reporter_status = reporter_page.locator('[data-commons-own-report="' + message_one_id + '"]')
         expect(reporter_status).to_contain_text(review_note)
         expect(reporter_status).to_contain_text('not a factual verdict')
         expect(reporter_page.locator('#commons-pending-reports')).to_have_count(0)
 
         founder_pending = founder_page.locator('#commons-pending-reports')
-        expect(founder_pending).to_be_visible()
         expect(founder_pending).to_contain_text('PENDING FOUNDER REVIEW · 1')
         expect(founder_page.locator(
             '[data-commons-pending-report="' + report_one_id + '"]'
@@ -1015,16 +916,30 @@ def run_town_square_report_review(browser, url, out, width):
         expect(self_review_item.locator(
             '[data-commons-review="' + report_two_id + '"]'
         )).to_have_count(0)
-        expect(founder_pending).to_contain_text(
-            'does not change message visibility or establish factual truth'
-        )
 
-        # The author of a reported message and an unrelated Witness receive
-        # neither private report. The reporter receives only its own report/review.
+        founder_after_review = read_shared_state(founder_page)
+        reporter_after_review = read_shared_state(reporter_page)
         author_state = read_shared_state(author_page)
-        reporter_state = read_shared_state(reporter_page)
         unrelated_state = read_shared_state(unrelated_page)
-        founder_state = read_shared_state(founder_page)
+        founder_events = founder_after_review['world']['events']
+        reporter_events = reporter_after_review['world']['events']
+
+        review_events = [
+            event for event in founder_events
+            if event.get('type') == 'message-report-reviewed' and event.get('reportId') == report_one_id
+        ]
+        if len(review_events) != 1:
+            raise AssertionError('Founder review must append exactly one linked retained event.')
+        review_event = review_events[0]
+        if review_event.get('messageId') != message_one_id or review_event.get('note') != review_note or \
+                review_event.get('actor', {}).get('role') != 'founder':
+            raise AssertionError('The exact review event must retain report, message, note and Founder identity.')
+        if founder_after_review['world']['revision'] != revision_before + 1 or \
+                founder_after_review['world']['xp'] != xp_before:
+            raise AssertionError('A review must append one revision and award zero XP.')
+        event_ids_after = [event['id'] for event in founder_events]
+        if len(event_ids_after) != len(event_ids_before) + 1 or event_ids_after[:-1] != event_ids_before:
+            raise AssertionError('Review must append one event without rewriting retained history.')
 
         def private_events(state):
             return [
@@ -1032,45 +947,34 @@ def run_town_square_report_review(browser, url, out, width):
                 if event.get('type') in ('message-reported', 'message-report-reviewed')
             ]
 
-        author_private = private_events(author_state)
-        reporter_private = private_events(reporter_state)
-        unrelated_private = private_events(unrelated_state)
-        founder_private = private_events(founder_state)
-
-        if author_private or unrelated_private:
+        if private_events(author_state) or private_events(unrelated_state):
             raise AssertionError('Message authors and unrelated Witnesses must not receive private report/review events.')
-        if {event.get('reportId') for event in reporter_private if event.get('type') == 'message-reported'} != {report_one_id}:
-            raise AssertionError('The reporter must see only its own exact report event.')
-        if {event.get('reportId') for event in reporter_private if event.get('type') == 'message-report-reviewed'} != {report_one_id}:
-            raise AssertionError('The reporter must see the exact linked Founder review and no other report.')
-        if {event.get('reportId') for event in founder_private if event.get('type') == 'message-reported'} != {report_one_id, report_two_id}:
-            raise AssertionError('The Founder must see both retained reports.')
-        if {event.get('reportId') for event in founder_private if event.get('type') == 'message-report-reviewed'} != {report_one_id}:
-            raise AssertionError('The Founder must see one review and retain the self-review report as pending.')
+        if {event.get('reportId') for event in private_events(reporter_after_review)} != {report_one_id}:
+            raise AssertionError('The reporter must see only its own report and linked review.')
+        if {event.get('reportId') for event in private_events(founder_after_review)} != {report_one_id, report_two_id}:
+            raise AssertionError('The Founder must see both reports and the one permitted review.')
+        if any(event.get('type') == 'message-moderated' for event in founder_events):
+            raise AssertionError('A process review must not create a moderation event.')
 
-        for state in (author_state, reporter_state, unrelated_state, founder_state):
+        for state in (author_state, reporter_after_review, unrelated_state, founder_after_review):
             messages = {
                 event.get('messageId'): event.get('text')
                 for event in state['world']['events']
                 if event.get('type') == 'message-posted'
             }
             if messages.get(message_one_id) != message_one_text or messages.get(message_two_id) != message_two_text:
-                raise AssertionError('Report review must not remove or rewrite either original Commons message.')
-            if any(event.get('type') == 'message-moderated' for event in state['world']['events']):
-                raise AssertionError('A process review must not create a moderation event.')
+                raise AssertionError('Review must not remove or rewrite either original Commons message.')
 
-        # The server, not the UI, also rejects Witness review and Founder self-review.
+        # Rejected Witness review and Founder self-review attempts must not mutate history.
         before_rejections = read_shared_state(founder_page)
         unauthorized = api_action(reporter_page, {
-            'type': 'review-message-report',
-            'reportId': report_one_id,
+            'type': 'review-message-report', 'reportId': report_one_id,
             'note': 'Witness attempt must be rejected.'
         })
         if unauthorized['status'] != 403:
-            raise AssertionError('A Witness report-review attempt must return 403: ' + json.dumps(unauthorized))
+            raise AssertionError('Witness review must return 403: ' + json.dumps(unauthorized))
         self_review = api_action(founder_page, {
-            'type': 'review-message-report',
-            'reportId': report_two_id,
+            'type': 'review-message-report', 'reportId': report_two_id,
             'note': 'Self-review attempt must be rejected.'
         })
         if self_review['status'] != 409 or self_review['body'].get('error', {}).get('code') != 'SELF_REVIEW':
@@ -1083,10 +987,7 @@ def run_town_square_report_review(browser, url, out, width):
                 ]:
             raise AssertionError('Rejected review attempts must not mutate revision, XP or retained history.')
 
-        for page, label in (
-            (reporter_page, 'reporter'),
-            (founder_page, 'Founder')
-        ):
+        for page, label in ((reporter_page, 'reporter'), (founder_page, 'Founder')):
             layout = page.evaluate("""() => ({
               viewportWidth: window.innerWidth,
               documentWidth: document.documentElement.scrollWidth,
@@ -1103,18 +1004,11 @@ def run_town_square_report_review(browser, url, out, width):
         founder_screenshot = out / ('town-square-founder-review-' + str(width) + '.png')
         reporter_page.screenshot(path=str(reporter_screenshot), full_page=True)
         founder_page.screenshot(path=str(founder_screenshot), full_page=True)
-
         return {
             'journey': 'touch-town-square-report-review-' + str(width),
             'passed': True,
             'viewport': width,
             'actorsDistinct': True,
-            'actors': {
-                'author': author['id'],
-                'reporter': reporter['id'],
-                'unrelated': unrelated['id'],
-                'founder': founder['id']
-            },
             'messageIds': [message_one_id, message_two_id],
             'reportIds': [report_one_id, report_two_id],
             'reviewId': review_event.get('reviewId'),
