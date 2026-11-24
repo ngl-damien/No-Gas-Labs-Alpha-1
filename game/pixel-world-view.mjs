@@ -2428,6 +2428,10 @@ export class PixelWorldView extends WorldView {
     }
     this.drawMapLabel('TOWNSQUARE', 1040, 478, 12);
     this.drawMapLabel(pixelInstitutionActivityLabel(this.institutionCounts['town-square'], 'retained records'), 1040, 508, 10);
+    const reviewQueue = projectTownSquareReviewQueueSummary(this.townSquareReviewProjection);
+    this.drawMapLabel(reviewQueue.available
+      ? `P${reviewQueue.pendingCount} · R${reviewQueue.processRecordCount}`
+      : 'QUEUE UNAVAILABLE', 1040, 523, 9);
     this.drawResearchCounterPanel(1040, 538);
   }
 
