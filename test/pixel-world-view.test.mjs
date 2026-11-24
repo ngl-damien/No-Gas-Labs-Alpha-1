@@ -4019,6 +4019,8 @@ test('TownSquare review controls separate 44px touch targets when map objects sh
       assert.equal(button.dataset.eventId, id);
       assert.equal(button.dataset.worldX, String(object.x));
       assert.equal(button.dataset.worldY, String(object.y));
+      assert.equal(button.style.width, '44px');
+      assert.equal(button.style.height, '44px');
       const left = Number.parseFloat(button.style.left);
       const top = Number.parseFloat(button.style.top);
       assert.ok(Number.isFinite(left) && Number.isFinite(top));
@@ -4046,6 +4048,17 @@ test('TownSquare review controls separate 44px touch targets when map objects sh
         'review controls must not cover reserved HUD overlays'
       );
     }
+    view.mapOverlayRects = [{ left: 0, top: 0, right: 320, bottom: 844 }];
+    view.updateTownSquareReviewControls(false);
+    assert.equal(view.townSquareReviewControlButtons.size, 16,
+      'exact event-bound controls remain in the DOM while every panel placement is blocked');
+    assert.equal(group.hidden, true,
+      'controls remain hidden rather than covering a full-screen reserved overlay');
+    assert.equal(canvas.dataset.townSquareReviewControlVisibleCount, '0');
+    assert.ok(
+      [...view.townSquareReviewControlButtons.values()].every(button => button.hidden),
+      'no control is exposed when there is no safe panel position'
+    );
     assert.deepEqual(world, worldBefore, 'laying out map controls does not mutate canonical world state');
   } finally {
     if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
