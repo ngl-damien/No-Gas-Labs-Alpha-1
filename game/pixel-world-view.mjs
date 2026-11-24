@@ -1,4 +1,4 @@
-import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT, findRoute } from './world-view.mjs';
+import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT, findRoute, projectTownSquareReviewQueueSummary } from './world-view.mjs';
 import { COLLABORATOR_ROLES, isCollaboratorPacket, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectSourceObservationRecords } from './research-records.mjs';
 
@@ -2225,8 +2225,9 @@ export class PixelWorldView extends WorldView {
     ).join(';');
     const npcAccessibility = guildNpcAccessibilityText(npcReadiness);
     const reviewProjection = this.townSquareReviewProjection;
-    const reviewCount = Number.isSafeInteger(reviewProjection?.totalCount)
-      ? reviewProjection.totalCount : 0;
+    const reviewQueue = projectTownSquareReviewQueueSummary(reviewProjection);
+    const reviewCount = reviewQueue.available
+      ? reviewQueue.pendingCount + reviewQueue.processRecordCount : 0;
     const reviewStatus = typeof reviewProjection?.historyStatus === 'string'
       ? reviewProjection.historyStatus : 'history-unavailable';
     const safeReviewMapObjects = (Array.isArray(this.townSquareReviewObjects)
@@ -2240,13 +2241,22 @@ export class PixelWorldView extends WorldView {
         y: object.y,
         ...(object.status === 'awaiting-founder-review' ? { status: object.status } : {})
       }));
-    this.canvas.dataset.townSquareReviewCount = String(reviewCount);
-    this.canvas.dataset.townSquareReviewVisibleCount = String(safeReviewMapObjects.length);
+    const omittedReviewCount = ownDataValue(reviewProjection, 'omittedCount');
+    const markerLimitNote = Number.isSafeInteger(omittedReviewCount) && omittedReviewCount > 0
+      ? ` ${omittedReviewCount} additional record(s) are included in the counts but do not have individual map markers because the marker lane is bounded.`
+      : '';
+    this.canvas.dataset.townSquareReviewCount = reviewQueue.available ? String(reviewCount) : 'unavailable';
+    this.canvas.dataset.townSquareReviewVisibleCount = reviewQueue.available
+      ? String(safeReviewMapObjects.length) : 'unavailable';
+    this.canvas.dataset.townSquareReviewPendingCount = reviewQueue.available
+      ? String(reviewQueue.pendingCount) : 'unavailable';
+    this.canvas.dataset.townSquareReviewRecordCount = reviewQueue.available
+      ? String(reviewQueue.processRecordCount) : 'unavailable';
     this.canvas.dataset.townSquareReviewHistoryStatus = reviewStatus;
     this.canvas.dataset.townSquareReviewObjects = JSON.stringify(safeReviewMapObjects);
-    const reviewAccessibility = reviewStatus === 'actor-visible-links-validated'
-      ? `TownSquare has ${reviewCount} actor-visible pending-report or process-review map object(s). Pending markers open the exact retained report event; reviewed markers open the exact Founder review event. Inspection is read-only, not moderation, adjudication, evidence certification, approval, truth, or XP.`
-      : `TownSquare report/review history is ${reviewStatus}; no missing report or review is inferred.`;
+    const reviewAccessibility = reviewQueue.available
+      ? `TownSquare has ${reviewCount} actor-visible report/review record(s): ${reviewQueue.pendingCount} pending report(s) and ${reviewQueue.processRecordCount} retained process review record(s).${markerLimitNote} Pending markers open the exact retained report event; reviewed markers open the exact Founder review event. Inspection is read-only, not moderation, adjudication, evidence certification, approval, truth, or XP.`
+      : `TownSquare report/review history is ${reviewStatus}; queue counts are unavailable, not zero; no missing report or review is inferred.`;
     if (!counts?.available) {
       this.canvas.dataset.sourceObservationCounts = 'unavailable';
       this.researchAccessibilityLabel =
