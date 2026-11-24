@@ -1,53 +1,50 @@
-## Run 348 — extend offline Recovery Ledger navigation to owned inventory at 320px — 2026-11-23T18:27-06:00
+## Run 348 — 2026-11-23T18:31-06:00 — owned Recovery Ledger artifact navigation passes at 320px
 
 **Runtime candidate:** draft PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head [4251ab3](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/4251ab3fce5fe71a37fa666ac0875cdc47da5add), 512 commits ahead / 9 behind current `main` [21677d8](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/21677d88cb027f3d16adacf92dbdd0ec08e96dbd), 52 changed paths. PR #718 remains open/draft/unmerged.
 
-**Highest-priority improvement:** verify that a player who already owns and has equipped the Recovery Ledger can open its exact captured artifact and publication history from the cached world at the narrow 320px viewport—not only from the separate 390px pending-offer journey.
+### Implementation
 
-**Change:** [4251ab3](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/4251ab3fce5fe71a37fa666ac0875cdc47da5add) changes only `scripts/verify-quest-board.py`. After the existing 320px cached Witness journey opens the exact Forge event, the test reopens the Character & field record, finds the uniquely Witness-owned Recovery Ledger, opens exact artifact creation/version 1, then follows its exact publication Chronicle event. It asserts:
-- the owned item and exact creation/version/event IDs are retained;
-- no additional API request or POST occurs;
-- the accepted snapshot and pending-action store remain byte-for-byte unchanged;
-- the Chronicle revision remains the accepted cached revision;
-- inspection adds no XP or world state;
-- no horizontal overflow appears at 320px;
-- the publication Chronicle's artifact frame still has `allow-scripts` but not `allow-same-origin`, opaque origin `null`, and denied service-worker/localStorage access;
-- only the two exact sandbox `SecurityError` diagnostics are tolerated; all other page errors remain failures.
+Commit [4251ab3](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/4251ab3fce5fe71a37fa666ac0875cdc47da5add) changes only `scripts/verify-quest-board.py`. It extends the 320px cache-only Witness journey after the exact Forge Chronicle event: reopen Character & field record; locate the already-owned/equipped Recovery Ledger; open the exact artifact creation/version 1; open the exact publication Chronicle event.
 
-The existing 390px pending-offer journey still covers exact artifact-version and publication-event navigation. This new 320px path adds the already-owned/equipped inventory state. No game runtime, canonical event, reward, ownership, authority, iframe permission or Android/Browser-owned file changed.
+The acceptance asserts exact item/creation/version/event identity; zero additional API requests and zero POSTs; accepted snapshot and pending-action store unchanged; cached Chronicle revision unchanged; no XP/world-state change; no horizontal overflow; and the same opaque artifact sandbox (`allow-scripts`, no `allow-same-origin`, origin `null`, service-worker and localStorage access denied). Only the two exact sandbox `SecurityError` diagnostics are tolerated. The existing 390px pending-offer path remains separate.
 
-**Exact-head verification on 4251ab3:**
-- Full Verify [45296264398](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264398): **PASS**. Hosted preflight `ready`, warnings 0, failures 0; Node tests, Python inspector, PWA package build and institutional exercise all exit 0; verification report `passed=true`.
+### Terminal exact-head verification
+
+- Quest Board [45296264448](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264448): **PASS** at 320px and 390px on exact head 4251ab3. The 320px cache-only script completed, so its new owned-item artifact/version/publication assertions passed. Artifact [14876842640](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264448/artifacts/14876842640). The 390px Source Archive retry path also passed: failure retained, same request ID retried, later-capture objective 2/2, exact artifact version and exact failure/publication Chronicle events opened. This is controlled fixture acceptance, not proof of external source truth or production persistence.
+- Synthesis Clerk [45296264563](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264563): **PASS** at 320px and 390px. The research notebook/Chronicle inspection is XP-neutral; page errors empty. The Witness's partial-history disclosure remains bounded: model assertions LEADS_ONLY, source observation NOT_PERFORMED, execution NOT_EXECUTED, XP delta 0.
+- Combat Yard [45296264409](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264409): **PASS**.
+- Council Chamber [45296264451](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264451): **PASS**.
+- Academy Study Shelf [45296264359](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264359): **PASS**.
+- Full Verify [45296264398](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264398): **PASS**. Hosted preflight `ready`, warnings 0, failures 0; Node tests, Python inspector, PWA package build and institutional exercise all exit 0; report `passed=true`.
 - Genesis Evidence Invariant [45296264450](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264450): **PASS**.
 - Live Source Archive [45296264347](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264347): **PASS**.
 - Phone PWA package build [45296264351](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264351): **PASS**; deployment skipped.
-- Council Chamber [45296264451](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264451): **PASS**.
-- Academy Study Shelf [45296264359](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264359): **PASS**.
-- Combat Yard [45296264409](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264409): **PASS**.
-- Quest Board [45296264448](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264448): **IN PROGRESS** at checkpoint capture after standalone build; the 320px/390px Playwright journey had not produced a terminal result. The new owned-item artifact journey is not yet claimed as passed.
-- Synthesis Clerk [45296264563](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264563): **IN PROGRESS** after repository verification and Playwright setup.
-- Android Alpha-1 [45296264360](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264360): **IN PROGRESS** after hosted preflight, SDK setup and debug APK assembly; no terminal JUnit/instrumentation result.
-- Browser Acceptance [45296264640](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264640): **FAIL** in Worker A-owned `scripts/verify-browser.py`. The visible primary control is `Enter Guild Hall`; the hidden secondary control is `Enter Forge`, while `nearbyInstitutionId=guild_hall`. Exact handoff updated on [PR #456 comment 7118044863](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/456#issuecomment-7118044863). Worker B did not edit Browser-owned code.
-- Prior Android run [45287768664](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45287768664) on parent head failed 3/15 instrumentation tests: a legitimate `discover(overlook)` arrival event was compared against a pre-route baseline; Source Observatory had one creation but no retained-version control (fixture/runtime projection not yet distinguished); Founder Gate's visible label was `Enter Founder Gate`, not the test's `Enter Decision Chamber`. Exact diagnostic handoff is recorded on [PR #533](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533). The new exact-head Android run remains in progress; no result is inferred.
+- Browser Acceptance [45296264640](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264640): **FAIL** in Worker A-owned `scripts/verify-browser.py`. The visible primary control is `Enter Guild Hall`, the hidden secondary control is `Enter Forge`, and `nearbyInstitutionId=guild_hall`. Exact handoff updated on [PR #456 comment 7118044863](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/456#issuecomment-7118044863). Worker B did not edit Browser-owned code.
+- Android Alpha-1 [45296264360](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264360): still **IN_PROGRESS** after hosted preflight, SDK setup and debug APK assembly; the offline-world emulator/JUnit journey has no terminal result. No physical-device acceptance or release APK is established.
 
-**Repository reconciliation:**
-- PR #718 remains a 512-ahead / 9-behind draft stack; no merge or force update.
-- The nine main-only paths were inspected individually: seven governance skill instruction files, `skills/README.md`, and the 2026-11-23 skill-suite build receipt. All are additions with no path overlap against #718's changed files. The receipt explicitly says the skills are instructions, not executable enforcement. They were not silently imported into the runtime stack.
-- PR #429 is merged into main at [d08658d](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/d08658d174a333346abb6e3ad9ec36c433443e3d).
-- PR #723's unified invariant kernel is a separate main-based Worker A proposal; inspected, not copied or merged.
-- PR #713's reconnect/clock-skew work is an ancestor of #718 (the #718 branch is 543 commits ahead / 0 behind #713); those mechanisms are already in the current stack.
-- PR #392 is divergent (the #718 branch is 1455 ahead / 95 behind it), but its bounded Cache Storage operation pattern is already present in #718's `game/sw.js`: 1-second Cache Storage operation bound and 30-second shell-install bound. No cherry-pick was needed.
-- RAE/Relay, Guild, Command Center, Decision Chamber, TownSquare, AGP and RuneUX provenance boundaries remain as recorded in the World Projection Contract. No donor code was copied in this run.
+### Documentation-child verification and authority caveat
 
-**Procedure:** root `AGENTS.md`, complete shared protocol and Institutional Charter were read sequentially; the Universal Agent Operating Contract, MMORPG Completion Contract, World Projection Contract, current checkpoint/ledger, worker steering/registry, open PRs, exact code and CI were inspected. Nested `AGENTS.md` files under `game`, `scripts`, `test`, `docs`, `docs/operations`, and `docs/operations/hourly-agents` were absent. Both authorized Desktop Commander devices were Offline, so no local pre-edit receipt or local Node/Playwright/Gradle execution was possible. Exact-head hosted preflight was `ready` with zero warnings/failures. Procedural compliance remains **PARTIAL** because local preflight was unavailable and the initial repository inspection preceded the sequential bootstrap restart.
+Documentation sync commit [48e8924](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/48e892436d27b001b9d12a7b1889abd6ed6f94dd) has runtime head 4251ab3 as first parent and prior documentation head fb9301a as second parent. Current compare to runtime branch is 149 commits ahead / 0 behind with six documentation paths only. PR metadata still reports base SHA `b430a9` and eight files; the effective compare must be checked before merge.
 
-**Disposition:** test-only acceptance improvement committed on the draft runtime branch. G0–G8 remain IN_PROGRESS; G9 remains NOT_STARTED; Founder trust NOT_ENROLLED. No runtime merge, release, deployment, Founder approval, truth verdict or authority transition.
+On docs head 48e8924: Full Verify [45297527093](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45297527093), Genesis [45297527115](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45297527115), Live Source Archive [45297527127](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45297527127), and Hourly Agents Enforcer [45297519046](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45297519046) **PASS**. The enforcer checks registry entries, steering-file presence and `do_not_delete` flags; its "trust anchor exists" message is file presence, not enrollment. The actual `docs/authority/founder.pub.json` says `status: NOT_ENROLLED`, `enrolled: false`, and `publicKeyJwk: null`. Its grep for the specific caller-supplied `verification?.valid` pattern is a narrow check, not a complete authority audit. Founder trust remains NOT_ENROLLED. Docs-branch Browser [45297527125](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45297527125) failed the same Worker A entry-control mismatch; docs-branch Synthesis [45297527174](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45297527174) and Android [45297527117](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45297527117) remain in progress.
 
-**Next execution:**
-1. Read terminal Quest Board [45296264448](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264448). If it passes, update the World Projection Contract with the exact 320px owned-item artifact/publication evidence; if it fails, inspect the retained artifact and repair only the attributable defect.
-2. Obtain terminal Synthesis [45296264563](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264563) and Android [45296264360](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45296264360) results.
-3. Have Worker A integrate its visible-primary-action Browser helper and reconcile the Android test baselines/retained-target diagnostics without weakening explicit entry or exact-version rules.
-4. Continue path-by-path review of the nine main-only governance additions before any branch integration decision.
+### Repository and donor disposition
+
+PR #718 remains 512 ahead / 9 behind main, 52 changed paths, draft/unmerged. Nine main-only paths were inspected individually: seven governance skill instruction files, `skills/README.md`, and the skill-suite build receipt. They are non-overlapping additions; the receipt explicitly says the skills are instructions, not executable enforcement. No merge into the runtime stack.
+
+PR #713 reconnect/clock-skew work is already an ancestor of #718. PR #392 is divergent, but its bounded Cache Storage pattern is already present in #718 `game/sw.js` (1-second Cache Storage operation bound, 30-second shell-install bound); no cherry-pick. PR #723's invariant kernel is a separate Worker A proposal; inspected, not copied. PR #429 is merged to main at d08658d. RAE/Relay, Guild, Command Center, Decision Chamber, TownSquare, AGP and RuneUX boundaries remain as recorded in the World Projection Contract.
+
+### Procedure and disposition
+
+Root `AGENTS.md`, complete shared protocol and Institutional Charter were read sequentially; Universal Agent Operating Contract, MMORPG Completion Contract, World Projection Contract, checkpoint/ledger, steering/registry, open PRs, exact code and CI were inspected. Nested `AGENTS.md` under game/scripts/test/docs/docs/operations/docs/operations/hourly-agents are absent. Both authorized Desktop Commander devices were Offline; no local pre-edit receipt or local Node/Playwright/Gradle execution. Exact-head hosted preflight was ready with zero warnings/failures. Procedural compliance remains PARTIAL because local preflight was unavailable and initial repository inspection preceded the sequential bootstrap restart.
+
+G0–G8 remain IN_PROGRESS; G9 NOT_STARTED; Founder trust NOT_ENROLLED. No runtime merge, release, deployment, Founder approval, truth verdict or authority transition.
+
+### Next
+
+1. Obtain terminal Android run 45296264360; do not claim APK instrumentation or physical-device acceptance until JUnit completes.
+2. Have Worker A carry its visible-primary-action Browser helper into the runtime branch and reconcile Android's navigation baseline, retained Source Observatory target diagnostics and Founder Gate label.
+3. Continue path-by-path review of the nine main-only governance additions before any integration decision.
 
 ## Run 347 — preserve the opaque artifact boundary in offline Field Kit acceptance — 2026-11-23
 
