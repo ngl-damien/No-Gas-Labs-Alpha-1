@@ -2703,6 +2703,10 @@ test('shared Commons report review is Founder-only, private to the reporter, and
     candidate.moonshotId === proposal.body.result.moonshotId
   );
   assert.ok(packet, 'the redacted public prefix must still produce a bounded collaborator packet');
+  assert.equal(packet.sourceSnapshot.worldId, packetState.body.world.id);
+  assert.equal(packet.sourceSnapshot.revision, packetState.body.world.revision);
+  assert.equal(packet.sourceSnapshot.suppliedEventCount, packetState.body.world.events.length,
+    'the packet snapshot count must match the exact public event prefix after private report and review redaction');
   const reportEvent = packetState.body.world.events.find(event =>
     event.type === 'experiment-reported' && event.reportId === attempt.body.result.reportId
   );

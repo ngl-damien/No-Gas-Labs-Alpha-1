@@ -1096,7 +1096,7 @@ test("Commons conversation, private reports, Founder-session review, and moderat
   assert.match(report.category, /PRIVATE REPORT/);
   assert.match(report.summary, /not a verdict/i);
   assert.match(report.warning, /reporting actor and authenticated Founder/i);
-  assert.match(moderation.category, /HUMAN MODERATION/);
+  assert.match(moderation.category, /FOUNDER MODERATION/);
   assert.match(moderation.summary, /original post and moderation history remain/i);
   assert.match(moderation.warning, /not historical authorship/i);
   assert.match(review.category, /PRIVATE REPORT REVIEW/);

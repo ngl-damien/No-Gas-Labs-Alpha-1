@@ -114,7 +114,7 @@ test('snapshot round-trip and accepted position cache are actor- and revision-bo
   const dto = fixture('founder');
   const written = writeSharedSnapshotCache(storage, dto, { now: 1000 });
   assert.deepEqual(written, { stored: true, revision: 6, viewerId: 'damien', viewerRole: 'founder' });
-  assert.equal(writeSharedPositionCache(storage, dto.viewer, dto.world.id, 4, { x: 300, y: 650 }, { now: 1100 }), true);
+  assert.equal(writeSharedPositionCache(storage, dto.viewer, dto.world.id, dto.world.revision, { x: 300, y: 650 }, { now: 1100 }), true);
   const snapshot = readSharedSnapshotCache(storage);
   assert.ok(snapshot);
   assert.equal(parseSharedSnapshotEnvelope(JSON.stringify(snapshot)).world.revision, 6);
