@@ -5,7 +5,7 @@ import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssueP
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceArchivePredicateContrasts, projectSourceObservationRecords, sameResearchActor, retainedWorldEventHistoryOptions } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
-import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
+import { projectCommonsMessages, projectTownSquare, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
 import { projectSourceArchiveFailureObjects } from './world-view.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
@@ -315,6 +315,143 @@ function uniqueEventIds(events) {
     counts.set(event.id, (counts.get(event.id) || 0) + 1);
   }
   return new Set([...counts].filter(([, count]) => count === 1).map(([id]) => id));
+}
+
+const COMMONS_REVIEW_REFERENCE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const COMMONS_REVIEW_FORBIDDEN_IDS = new Set(['__proto__', 'constructor', 'prototype']);
+function isSafeCommonsReviewReferenceId(value) {
+  return typeof value === 'string' &&
+    COMMONS_REVIEW_REFERENCE_ID.test(value) &&
+    !COMMONS_REVIEW_FORBIDDEN_IDS.has(value);
+}
+
+function projectFounderCommonsReportReviewMilestone(world, viewer, events, validEventIds) {
+  const interpretation = 'This Founder-only objective records a process review of a private Commons report from another actor. It is complete only when the exact retained original message, report and Founder review events are uniquely linked and append-ordered. It does not establish factual truth, moderation, independent review, evidence certification, approval, distinct-human identity or NGL authority. It grants no XP; NPCs, collaborators, models and UI cannot create or complete it.';
+  const historyComplete = Number.isSafeInteger(world?.revision) &&
+    world.revision >= 0 &&
+    world.revision === events.length &&
+    !Object.hasOwn(world, 'historyCoverage');
+  if (!historyComplete) {
+    return trailMilestone(
+      'founder-commons-report-review',
+      'Record a process review for another actor’s Commons report',
+      1, [], [], null,
+      'The accepted Founder world history is incomplete or revision-mismatched; no pending-report absence or review progress is inferred.',
+      interpretation
+    );
+  }
+
+  const postsByMessageId = new Map();
+  const reportsById = new Map();
+  const reviewsByReportId = new Map();
+  const reviewIdCounts = new Map();
+  const append = (map, key, record) => {
+    const records = map.get(key) || [];
+    records.push(record);
+    map.set(key, records);
+  };
+
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    if (event?.type === 'message-posted' && isSafeCommonsReviewReferenceId(event.messageId)) {
+      append(postsByMessageId, event.messageId, { event, index });
+    } else if (event?.type === 'message-reported' && isSafeCommonsReviewReferenceId(event.reportId)) {
+      append(reportsById, event.reportId, { event, index });
+    } else if (event?.type === 'message-report-reviewed') {
+      if (isSafeCommonsReviewReferenceId(event.reviewId)) {
+        reviewIdCounts.set(event.reviewId, (reviewIdCounts.get(event.reviewId) || 0) + 1);
+      }
+      if (isSafeCommonsReviewReferenceId(event.reportId)) {
+        append(reviewsByReportId, event.reportId, { event, index });
+      }
+    }
+  }
+
+  const validReviews = [];
+  let invalidReviewHistory = false;
+  for (const [reportId, reviewRecords] of reviewsByReportId) {
+    if (reviewRecords.length !== 1) {
+      invalidReviewHistory = true;
+      continue;
+    }
+    const { event: reviewEvent, index: reviewIndex } = reviewRecords[0];
+    const reportRecords = reportsById.get(reportId) || [];
+    const postRecords = postsByMessageId.get(reviewEvent.messageId) || [];
+    const reportRecord = reportRecords.length === 1 ? reportRecords[0] : null;
+    const postRecord = postRecords.length === 1 ? postRecords[0] : null;
+    const reportEvent = reportRecord?.event;
+    const postEvent = postRecord?.event;
+    const reportActor = reportEvent?.actor;
+    const postActor = postEvent?.actor;
+    const reviewActor = reviewEvent?.actor;
+    const valid = isSafeCommonsReviewReferenceId(reviewEvent.id) &&
+      validEventIds.has(reviewEvent.id) &&
+      isSafeCommonsReviewReferenceId(reportId) &&
+      isSafeCommonsReviewReferenceId(reviewEvent.messageId) &&
+      isSafeCommonsReviewReferenceId(reviewEvent.reviewId) &&
+      reviewIdCounts.get(reviewEvent.reviewId) === 1 &&
+      reportRecords.length === 1 &&
+      postRecords.length === 1 &&
+      validEventIds.has(reportEvent?.id) &&
+      validEventIds.has(postEvent?.id) &&
+      reviewEvent.messageId === reportEvent?.messageId &&
+      reviewActor?.id === viewer.id &&
+      reviewActor?.role === 'founder' &&
+      reportActor?.id !== viewer.id &&
+      ['founder', 'witness'].includes(reportActor?.role) &&
+      isSafeCommonsReviewReferenceId(reportActor?.id) &&
+      ['founder', 'witness'].includes(postActor?.role) &&
+      isSafeCommonsReviewReferenceId(postActor?.id) &&
+      !(reportActor.id === postActor.id && reportActor.role === postActor.role) &&
+      typeof reviewEvent.note === 'string' &&
+      reviewEvent.note.trim().length > 0 &&
+      isStrictTimestamp(postEvent?.at) &&
+      isStrictTimestamp(reportEvent?.at) &&
+      isStrictTimestamp(reviewEvent.at) &&
+      postRecord.index < reportRecord.index &&
+      reportRecord.index < reviewIndex;
+    if (!valid) {
+      invalidReviewHistory = true;
+      continue;
+    }
+    validReviews.push({ event: reviewEvent, index: reviewIndex });
+  }
+
+  const firstValidReview = validReviews[0]?.event ?? null;
+  let action = null;
+  let blockedReason = null;
+  if (!firstValidReview && invalidReviewHistory) {
+    blockedReason = 'A retained Commons review record has invalid or ambiguous report/message linkage; no objective progress is credited.';
+  } else if (!firstValidReview) {
+    try {
+      const commons = projectTownSquare(world, { id: viewer.id, role: viewer.role });
+      const eligiblePendingReport = trailRows(commons?.pendingReports).some(report =>
+        report?.canReview === true &&
+        isSafeCommonsReviewReferenceId(report?.reportId) &&
+        isSafeCommonsReviewReferenceId(report?.reporter?.id) &&
+        ['founder', 'witness'].includes(report?.reporter?.role) &&
+        !(report.reporter.id === viewer.id && report.reporter.role === viewer.role)
+      );
+      if (eligiblePendingReport) {
+        action = { type: 'location', id: 'town-square' };
+      } else {
+        blockedReason = 'No eligible pending private Commons report from another actor is currently retained. Self-review is prohibited; do not manufacture a report.';
+      }
+    } catch {
+      blockedReason = 'The retained Commons report projection is malformed; no progress or route is inferred.';
+    }
+  }
+
+  return trailMilestone(
+    'founder-commons-report-review',
+    'Record a process review for another actor’s Commons report',
+    1,
+    firstValidReview ? [firstValidReview.id] : [],
+    firstValidReview ? [firstValidReview] : [],
+    action,
+    blockedReason,
+    interpretation
+  );
 }
 
 function matchingTrailRecords(type, records, events, fields, actorId, actorRole) {
@@ -1238,6 +1375,9 @@ export function getQuestTrail(world, viewer, options = {}) {
   const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
   const commonsMessages = projectCommonsMessages(world, { id: actorId, role: actorRole });
   const firstCommonsMessage = commonsMessages[0] || null;
+  const founderCommonsReportReviewMilestone = actorRole === 'founder'
+    ? projectFounderCommonsReportReviewMilestone(world, viewer, events, validEventIds)
+    : null;
   const guildMembership = currentPlayerGuildMembership(world, viewer, events);
   const guildLeadershipHandoffs = guildLeadershipHandoffEvents(
     world, events, actorId, actorRole, eventPositionByReference
@@ -2267,6 +2407,7 @@ export function getQuestTrail(world, viewer, options = {}) {
         null,
         'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
       ),
+      founderCommonsReportReviewMilestone,
       ...combatMilestones,
     ]);
   }
