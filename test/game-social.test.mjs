@@ -666,6 +666,91 @@ test('Commons report status requires an explicit private Founder-session review,
 });
 
 
+test('TownSquare review projection fails closed on malformed or ambiguous Founder review history', async () => {
+  const created = createWorld({ id: 'commons-review-projection-integrity', now: at(0) });
+  const posted = await post(created, witnessA, 1000, 'A Commons message for review projection integrity.');
+  const reported = await report(
+    posted.world, witnessB, 2000, posted.result.messageId,
+    'privacy', 'Review projection must require an exact Founder-session record.'
+  );
+  const note = 'A retained process review; not a factual verdict.';
+  const reviewed = await applyAction(reported.world, {
+    type: 'review-message-report',
+    reportId: reported.result.reportId,
+    note
+  }, founder, { now: at(3000) });
+  const reviewEvent = reviewed.world.events.at(-1);
+  const reviewIndex = reviewed.world.events.findIndex(event => event.id === reviewEvent.id);
+  const reportId = reported.result.reportId;
+  const messageId = posted.result.messageId;
+
+  const validReporterFeed = projectTownSquare(publicWorld(reviewed.world, witnessB), witnessB);
+  const validReporterMessage = validReporterFeed.messages.find(message => message.messageId === messageId);
+  assert.equal(validReporterMessage.myReport.status, 'founder-review-recorded');
+  assert.equal(projectTownSquare(publicWorld(reviewed.world, founder), founder).pendingReports.length, 0);
+
+  const invalidCases = [
+    ['wrong reviewer role', world => {
+      world.events[reviewIndex].actor = { ...witnessA };
+    }],
+    ['wrong Founder identity', world => {
+      world.events[reviewIndex].actor = { ...founder, id: 'forged-founder' };
+    }],
+    ['mismatched message identity', world => {
+      world.events[reviewIndex].messageId = 'commons-missing-message';
+    }],
+    ['untrimmed note', world => {
+      world.events[reviewIndex].note = ' ' + note;
+    }],
+    ['overlong note', world => {
+      world.events[reviewIndex].note = 'x'.repeat(501);
+    }],
+    ['review timestamp regression', world => {
+      world.events[reviewIndex].at = at(1500);
+    }],
+    ['duplicate review', world => {
+      world.events.push({
+        ...reviewEvent,
+        id: 'commons-duplicate-review-event',
+        reviewId: 'commons-duplicate-review-id',
+        at: at(4000)
+      });
+      world.revision += 1;
+    }],
+    ['duplicate report identity', world => {
+      const reportEvent = world.events.find(event =>
+        event.type === 'message-reported' && event.reportId === reportId
+      );
+      world.events.push({ ...reportEvent, id: 'commons-duplicate-report-event', at: at(4000) });
+      world.revision += 1;
+    }],
+    ['duplicate event identity', world => {
+      world.events[reviewIndex].id = reported.world.events.at(-1).id;
+    }]
+  ];
+
+  for (const [label, mutate] of invalidCases) {
+    const tampered = structuredClone(reviewed.world);
+    mutate(tampered);
+    const beforeProjection = structuredClone(tampered);
+    const reporterFeed = projectTownSquare(publicWorld(tampered, witnessB), witnessB);
+    const reporterMessage = reporterFeed.messages.find(message => message.messageId === messageId);
+    assert.equal(reporterMessage.myReport.status, 'review-status-unavailable', label);
+    assert.equal(reporterMessage.myReport.reviewId, null, label);
+    assert.equal(reporterMessage.myReport.reviewNote, null, label);
+    assert.match(reporterMessage.myReport.reviewWarning, /invalid|ambiguous/i, label);
+
+    const founderFeed = projectTownSquare(publicWorld(tampered, founder), founder);
+    const pending = founderFeed.pendingReports.find(report => report.reportId === reportId);
+    assert.ok(pending, label + ': invalid history must not hide the report from the Founder queue');
+    assert.equal(pending.reviewStatus, 'review-status-unavailable', label);
+    assert.equal(pending.canReview, false, label);
+    assert.match(pending.reviewWarning, /invalid|ambiguous/i, label);
+    assert.match(founderFeed.reviewHistoryWarning, /invalid|ambiguous/i, label);
+    assert.deepEqual(tampered, beforeProjection, label + ': projection must remain read-only');
+  }
+});
+
 test('player-guild projection validates global response positions in filtered snapshots', async () => {
   const initial = createWorld({ id: 'guild-global-history-position', now: at(0) });
   const created = await applyAction(initial, {

@@ -4920,6 +4920,50 @@ test('Founder Commons report-review quest fails closed on self-review, invalid l
   assert.equal(duplicate.action, null);
   assert.match(duplicate.blockedReason, /invalid|ambiguous/i);
 
+  const malformedReviewCases = [
+    ['untrimmed review note', {
+      ...forgedMismatchedReview,
+      id: 'commons-forged-untrimmed-review-event',
+      reviewId: 'commons-forged-untrimmed-review',
+      messageId: posted.result.messageId,
+      actor: founder,
+      note: ' A process review note with surrounding whitespace. ',
+      at: '2026-11-23T11:07:00.000Z'
+    }],
+    ['overlong review note', {
+      ...forgedMismatchedReview,
+      id: 'commons-forged-overlong-review-event',
+      reviewId: 'commons-forged-overlong-review',
+      messageId: posted.result.messageId,
+      actor: founder,
+      note: 'x'.repeat(501),
+      at: '2026-11-23T11:07:00.000Z'
+    }],
+    ['review timestamp regression', {
+      ...forgedMismatchedReview,
+      id: 'commons-forged-regressed-review-event',
+      reviewId: 'commons-forged-regressed-review',
+      messageId: posted.result.messageId,
+      actor: founder,
+      note: 'A process review note with a regressed timestamp.',
+      at: '2026-11-23T11:03:00.000Z'
+    }]
+  ];
+  for (const [label, reviewEvent] of malformedReviewCases) {
+    const malformedWorld = {
+      ...reportedByWitness.world,
+      revision: reportedByWitness.world.revision + 1,
+      events: [...reportedByWitness.world.events, reviewEvent]
+    };
+    const malformedQuest = getQuestTrail(malformedWorld, founder).find(item =>
+      item.id === 'founder-commons-report-review'
+    );
+    assert.equal(malformedQuest.progress, 0, label);
+    assert.equal(malformedQuest.complete, false, label);
+    assert.equal(malformedQuest.action, null, label);
+    assert.match(malformedQuest.blockedReason, /invalid|ambiguous/i, label);
+  }
+
   const partialWorld = {
     ...reportedByWitness.world,
     revision: reportedByWitness.world.revision + 1
