@@ -184,8 +184,16 @@ function parsePacketPayload(packetJson, role, moonshotId, expectedInputRefs) {
   ];
   const snapshot = payload?.sourceSnapshot;
   const hasArchivistScopeVersion = payload !== null && typeof payload === 'object' && Object.hasOwn(payload, 'archivistScopeVersion');
-  const expectedPayloadKeys = hasArchivistScopeVersion ? [...payloadKeys, 'archivistScopeVersion'] : payloadKeys;
-  const scopeVersionValid = !hasArchivistScopeVersion || (role === 'archivist' && payload.archivistScopeVersion === 2);
+  const hasSynthesisResponseScopeVersion = payload !== null && typeof payload === 'object' && Object.hasOwn(payload, 'synthesisResponseScopeVersion');
+  const expectedPayloadKeys = [
+    ...payloadKeys,
+    ...(hasArchivistScopeVersion ? ['archivistScopeVersion'] : []),
+    ...(hasSynthesisResponseScopeVersion ? ['synthesisResponseScopeVersion'] : [])
+  ];
+  const scopeVersionValid =
+    (!hasArchivistScopeVersion || (role === 'archivist' && payload.archivistScopeVersion === 2)) &&
+    (!hasSynthesisResponseScopeVersion || (role === 'synthesizer' && payload.synthesisResponseScopeVersion === 2)) &&
+    !(hasArchivistScopeVersion && hasSynthesisResponseScopeVersion);
   const truncatedFieldCount = Array.isArray(payload?.inputRecords)
     ? payload.inputRecords.reduce((count, record) => {
         const fields = record?.truncatedFields;
@@ -250,12 +258,19 @@ function validateRoleResponse(payload, response) {
   }
 
   if (payload.role === 'synthesizer') {
-    const keys = ['scope', 'recordedSupport', 'contradictions', 'dissentPreserved', 'unknowns', 'nextDiscriminatingExperiment'];
-    // Scope is a completeness claim: the response must account for every event
-    // supplied and every omission ID disclosed in this exact packet. Dissent is
-    // complete only when every included challenge event is named exactly once.
+    const responseScopeV2 = payload.synthesisResponseScopeVersion === 2;
+    const keys = [
+      'scope', 'recordedSupport', 'contradictions', 'dissentPreserved',
+      ...(responseScopeV2 ? ['authorResponsesPreserved'] : []),
+      'unknowns', 'nextDiscriminatingExperiment'
+    ];
+    // Scope is a completeness claim: account for every supplied event and disclosed omission.
+    // Challenge and original-author response IDs remain separate, exact source classes.
     const includedChallengeIds = new Set(payload.inputRecords
       .filter(record => record?.type === 'experiment-challenged' && typeof record.eventId === 'string')
+      .map(record => record.eventId));
+    const includedAuthorResponseIds = new Set(payload.inputRecords
+      .filter(record => record?.type === 'experiment-challenge-responded' && typeof record.eventId === 'string')
       .map(record => record.eventId));
     if (!exactKeys(response, keys) ||
         !exactKeys(response.scope, ['moonshotId', 'includedEventIds', 'omittedEventIds']) ||
@@ -265,6 +280,7 @@ function validateRoleResponse(payload, response) {
         !sourceStatementList(response.recordedSupport, inputIds, { minimumSources: 1 }) ||
         !sourceStatementList(response.contradictions, inputIds, { minimumSources: 2 }) ||
         !exactStringIds(response.dissentPreserved, includedChallengeIds, { maximum: 32 }) ||
+        (responseScopeV2 && !exactStringIds(response.authorResponsesPreserved, includedAuthorResponseIds, { maximum: 32 })) ||
         !boundedStringList(response.unknowns, 32, 1000) ||
         !validNextDiscriminatingExperiment(response.nextDiscriminatingExperiment)) return false;
     return true;
@@ -413,7 +429,8 @@ export function validateRetainedCollaboratorResponse(world, eventId, viewer) {
       creations,
       events: visibleEvents
     }, {
-      legacyArchivist: role === 'archivist' && payload.archivistScopeVersion !== 2
+      legacyArchivist: role === 'archivist' && payload.archivistScopeVersion !== 2,
+      legacySynthesizer: role === 'synthesizer' && payload.synthesisResponseScopeVersion !== 2
     }).find(candidate => candidate.id === role && candidate.available === true && candidate.moonshotId === moonshotId);
     if (!expectedPacket || expectedPacket.packetJson !== packetJson) {
       return unavailable('RETAINED_RESPONSE_PACKET_MISMATCH');

@@ -2925,6 +2925,7 @@ function appendCouncilReviewSummary(card,response,review=validateRetainedCollabo
     appendCouncilReviewStatements(details,'Recorded support · collaborator claims',data.recordedSupport);
     appendCouncilReviewStatements(details,'Contradictions · dissent retained',data.contradictions);
     appendCouncilReviewList(details,'Dissent event IDs preserved',data.dissentPreserved);
+    appendCouncilReviewList(details,'Original-author response event IDs preserved · attributed speech',data.authorResponsesPreserved);
     appendCouncilReviewList(details,'Unknowns',data.unknowns);
     if(data.nextDiscriminatingExperiment)details.append(node('section',{class:'council-review-field'},[
       node('h4',{text:'Suggested next experiment · not run or approved'}),
