@@ -412,6 +412,7 @@ export function projectTownSquareReviewPointerTarget(point, camera, zoom, width,
         TOWNSQUARE_REVIEW_POINTER_FORBIDDEN_IDS.has(id) ||
         TOWNSQUARE_REVIEW_POINTER_FORBIDDEN_IDS.has(eventId) ||
         id !== eventId || ownDataValue(object, 'type') !== 'town-square-review' ||
+        !['awaiting-founder-review', 'process-record-not-adjudication'].includes(ownDataValue(object, 'status')) ||
         ownDataValue(object, 'mapVisible') !== true || seenIds.has(id) ||
         objectX === null || objectY === null) return null;
     seenIds.add(id);
@@ -1603,7 +1604,7 @@ export class PixelWorldView extends WorldView {
       group.className = 'ngl-town-square-review-controls';
       group.dataset.townSquareReviewControls = 'true';
       group.setAttribute('role', 'group');
-      group.setAttribute('aria-label', 'TownSquare process review map objects');
+      group.setAttribute('aria-label', 'TownSquare report and process review map objects');
       Object.assign(group.style, {
         position: 'fixed', left: '0', top: '0', width: '100vw', height: '100vh',
         margin: '0', padding: '0', pointerEvents: 'none', zIndex: '1000'
@@ -1645,6 +1646,7 @@ export class PixelWorldView extends WorldView {
         if (typeof id !== 'string' || id !== eventId ||
             !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id) ||
             object?.type !== 'town-square-review' || object?.mapVisible !== true ||
+            !['awaiting-founder-review', 'process-record-not-adjudication'].includes(object?.status) ||
             !Number.isFinite(object?.x) || !Number.isFinite(object?.y)) continue;
         retainedIds.add(id);
         let button = buttons.get(id);
@@ -1688,6 +1690,29 @@ export class PixelWorldView extends WorldView {
           }
         }
 
+        const pending = object.status === 'awaiting-founder-review';
+        const markerText = pending ? 'P' : 'R';
+        if (button.textContent !== markerText) button.textContent = markerText;
+        if (button.dataset.townSquareReviewStatus !== object.status) {
+          button.dataset.townSquareReviewStatus = object.status;
+        }
+        const distance = Number.isFinite(this.player?.x) && Number.isFinite(this.player?.y)
+          ? Math.hypot(object.x - this.player.x, object.y + 10 - this.player.y)
+          : Infinity;
+        const canInspect = distance < interactionPromptRange({ type: 'town-square-review' });
+        const label = pending
+          ? canInspect
+            ? 'Inspect pending TownSquare report in World Chronicle. This is a read-only process record, not moderation, adjudication, approval, truth, or XP.'
+            : 'Walk to the pending TownSquare report, then inspect its exact Chronicle event. Navigation is read-only and creates no progress or XP.'
+          : canInspect
+            ? 'Inspect retained TownSquare process review in World Chronicle. This is a read-only process record, not moderation, adjudication, approval, truth, or XP.'
+            : 'Walk to the retained TownSquare process review, then inspect its exact Chronicle event. Navigation is read-only and creates no progress or XP.';
+        if (button.dataset.reviewAction !== (canInspect ? 'inspect' : 'approach')) {
+          button.dataset.reviewAction = canInspect ? 'inspect' : 'approach';
+        }
+        if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
+        if (button.title !== label) button.title = label;
+
         const screenX = (object.x - this.camera.x) * this.zoom + this.width / 2;
         const screenY = (object.y - this.camera.y) * this.zoom + this.height / 2;
         const left = rect.left + screenX;
@@ -1714,18 +1739,6 @@ export class PixelWorldView extends WorldView {
         const worldY = String(object.y);
         if (button.dataset.worldX !== worldX) button.dataset.worldX = worldX;
         if (button.dataset.worldY !== worldY) button.dataset.worldY = worldY;
-        const distance = Number.isFinite(this.player?.x) && Number.isFinite(this.player?.y)
-          ? Math.hypot(object.x - this.player.x, object.y + 10 - this.player.y)
-          : Infinity;
-        const canInspect = distance < interactionPromptRange({ type: 'town-square-review' });
-        const label = canInspect
-          ? 'Inspect retained TownSquare process review in World Chronicle. This is a read-only process record, not moderation, adjudication, approval, truth, or XP.'
-          : 'Walk to the retained TownSquare process review, then inspect its exact Chronicle event. Navigation is read-only and creates no progress or XP.';
-        if (button.dataset.reviewAction !== (canInspect ? 'inspect' : 'approach')) {
-          button.dataset.reviewAction = canInspect ? 'inspect' : 'approach';
-        }
-        if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
-        if (button.title !== label) button.title = label;
         visibleCount += 1;
       }
     }
@@ -1751,7 +1764,8 @@ export class PixelWorldView extends WorldView {
   handleTownSquareReviewAction(id) {
     const object = safeTownSquareReviewObjects(this).find(candidate =>
       candidate?.id === id && candidate.eventId === id &&
-      candidate.type === 'town-square-review' && candidate.mapVisible === true
+      candidate.type === 'town-square-review' && candidate.mapVisible === true &&
+      ['awaiting-founder-review', 'process-record-not-adjudication'].includes(candidate.status)
     );
     if (!object || !Number.isFinite(this.player?.x) || !Number.isFinite(this.player?.y)) return false;
     const distance = Math.hypot(object.x - this.player.x, object.y + 10 - this.player.y);
@@ -2216,16 +2230,23 @@ export class PixelWorldView extends WorldView {
     const reviewStatus = typeof reviewProjection?.historyStatus === 'string'
       ? reviewProjection.historyStatus : 'history-unavailable';
     const safeReviewMapObjects = (Array.isArray(this.townSquareReviewObjects)
-      ? this.townSquareReviewObjects : []).map(object => ({
-        id: object.id, eventId: object.eventId, x: object.x, y: object.y
+      ? this.townSquareReviewObjects : [])
+      .filter(object => object?.type === 'town-square-review' && object?.mapVisible === true &&
+        ['awaiting-founder-review', 'process-record-not-adjudication'].includes(object?.status))
+      .map(object => ({
+        id: object.id,
+        eventId: object.eventId,
+        x: object.x,
+        y: object.y,
+        ...(object.status === 'awaiting-founder-review' ? { status: object.status } : {})
       }));
     this.canvas.dataset.townSquareReviewCount = String(reviewCount);
     this.canvas.dataset.townSquareReviewVisibleCount = String(safeReviewMapObjects.length);
     this.canvas.dataset.townSquareReviewHistoryStatus = reviewStatus;
     this.canvas.dataset.townSquareReviewObjects = JSON.stringify(safeReviewMapObjects);
     const reviewAccessibility = reviewStatus === 'actor-visible-links-validated'
-      ? `TownSquare has ${reviewCount} actor-visible process review map object(s). Inspection opens an exact retained Chronicle event and is not moderation, adjudication, evidence certification, approval, truth, or XP.`
-      : `TownSquare review history is ${reviewStatus}; no missing review or map object is inferred.`;
+      ? `TownSquare has ${reviewCount} actor-visible pending-report or process-review map object(s). Pending markers open the exact retained report event; reviewed markers open the exact Founder review event. Inspection is read-only, not moderation, adjudication, evidence certification, approval, truth, or XP.`
+      : `TownSquare report/review history is ${reviewStatus}; no missing report or review is inferred.`;
     if (!counts?.available) {
       this.canvas.dataset.sourceObservationCounts = 'unavailable';
       this.researchAccessibilityLabel =
