@@ -290,3 +290,94 @@ test('Moonshot Field challenge is an actor-scoped quest backed by a different ac
     .find(item => item.id === 'witness-challenge-experiment-report');
   assert.equal(witnessAfter.complete, false, 'another actor’s challenge cannot complete the Witness objective');
 });
+
+
+test('Moonshot original-author response completes only the author quest and preserves dissent without XP', async () => {
+  const published = await publishedSource();
+  const proposal = await applyAction(published.world, {
+    type: 'propose-moonshot',
+    title: 'A response must not erase dissent',
+    hypothesis: 'The stated procedure supports the proposal.',
+    falsifier: 'A controlled repeat contradicts the reported outcome.',
+    evidenceNeeded: 'A retained procedure and independent observation.',
+    sourceCreationId: published.result.creationId,
+    sourceVersion: 1
+  }, founder, { now: '2026-10-27T00:00:03.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The original author reports an inconclusive result.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, founder, { now: '2026-10-27T00:00:04.000Z' });
+  const challenged = await applyAction(report.world, {
+    type: 'challenge-experiment-report',
+    reportId: report.result.reportId,
+    challengeType: 'methodology',
+    challengeText: 'The procedure omits a reproducible measurement setting.',
+    resolutionRequest: 'Repeat the procedure with the missing measurement setting retained.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, witness, { now: '2026-10-27T00:00:05.000Z' });
+  const challengeEvent = challenged.world.events.at(-1);
+  const founderBefore = getQuestTrail(challenged.world, founder)
+    .find(item => item.id === 'founder-experiment-challenge-response');
+  assert.equal(founderBefore.complete, false);
+  assert.equal(founderBefore.progress, 0);
+  assert.equal(founderBefore.target, 1);
+  assert.deepEqual(founderBefore.evidenceIds, []);
+
+  const witnessBefore = getQuestTrail(challenged.world, witness)
+    .find(item => item.id === 'witness-experiment-challenge-response');
+  assert.equal(witnessBefore.complete, false);
+  assert.equal(witnessBefore.progress, 0);
+  assert.deepEqual(witnessBefore.evidenceIds, []);
+  assert.match(witnessBefore.blockedReason, /another actor must retain/i);
+
+  const responseText = 'The original observation remains inconclusive; I have not supplied the missing measurement setting or independently repeated the procedure.';
+  const beforeUnauthorizedAttempt = structuredClone(challenged.world);
+  await assert.rejects(applyAction(challenged.world, {
+    type: 'respond-experiment-challenge',
+    challengeId: challengeEvent.challengeId,
+    responseText
+  }, witness, { now: '2026-10-27T00:00:06.000Z' }), error => error.code === 'FORBIDDEN');
+  assert.deepEqual(challenged.world, beforeUnauthorizedAttempt,
+    'A non-author response attempt must leave the retained world unchanged.');
+
+  const responded = await applyAction(challenged.world, {
+    type: 'respond-experiment-challenge',
+    challengeId: challengeEvent.challengeId,
+    responseText
+  }, founder, { now: '2026-10-27T00:00:06.000Z' });
+  const valid = await validateWorld(responded.world);
+  const responseEvent = valid.events.at(-1);
+  assert.equal(responseEvent.type, 'experiment-challenge-responded');
+  assert.equal(responseEvent.actor.id, founder.id);
+  assert.equal(responseEvent.actor.role, founder.role);
+  assert.equal(responseEvent.challengeId, challengeEvent.challengeId);
+  assert.equal(responseEvent.reportId, report.result.reportId);
+  assert.equal(responseEvent.moonshotId, proposal.result.moonshotId);
+  assert.equal(responseEvent.responseText, responseText);
+  assert.equal(responseEvent.status, undefined);
+  assert.equal(responseEvent.outcome, undefined);
+  assert.equal(valid.xp, challenged.world.xp,
+    'An original-author response is attributed speech, not XP-bearing work.');
+  assert.equal(valid.revision, challenged.world.revision + 1);
+  assert.equal(valid.events.at(-2).id, challengeEvent.id,
+    'The original challenge remains immediately before the appended response.');
+
+  const founderAfter = getQuestTrail(valid, founder)
+    .find(item => item.id === 'founder-experiment-challenge-response');
+  assert.equal(founderAfter.complete, true);
+  assert.equal(founderAfter.progress, 1);
+  assert.equal(founderAfter.target, 1);
+  assert.deepEqual(founderAfter.evidenceIds, [responseEvent.id]);
+  const witnessAfter = getQuestTrail(valid, witness)
+    .find(item => item.id === 'witness-experiment-challenge-response');
+  assert.equal(witnessAfter.complete, false,
+    'The Founder response must not credit the Witness character.');
+  assert.equal(witnessAfter.progress, 0);
+  assert.deepEqual(witnessAfter.evidenceIds, []);
+});
