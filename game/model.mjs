@@ -980,7 +980,6 @@ export async function validateWorld(raw) {
       commonsReviewedReportIds.add(e.reportId);
       if(e.actionResult!==undefined&&(!e.actionResult||Object.keys(e.actionResult).sort().join(',')!=='reviewId'||e.actionResult.reviewId!==e.reviewId))invalid('Commons report review result mismatch.');
     }
-    }
   }
 
   for(const creation of raw.creations)for(const version of [...creation.versions,creation]){const publishedAt=Date.parse(version.publishedAt);const publications=publicationsByVersion.get(historyKey(version.id,version.version))||[];if(!isStrictTimestamp(version.publishedAt)||!Number.isFinite(publishedAt)||publications.length!==1||!isStrictTimestamp(publications[0].at)||Date.parse(publications[0].at)!==publishedAt)invalid('Published version timestamp does not match retained publication history.');}
