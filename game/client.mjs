@@ -4969,15 +4969,52 @@ function openExperimentChallengeResponse(report,challenge){
     Array.isArray(world?.events)?world.events:[],
     Array.isArray(world?.creations)?world.creations:[]
   ).find(record=>record?.type==='experiment-challenged'&&record.challengeId===challenge?.challengeId);
-  if(projectedChallenge?._projection?.challengeStatus!=='linked'){
-    toast('This retained challenge is invalid or unlinked; it cannot anchor a response or progress.',true);
+  const link=projectedChallenge?._projection;
+  const linkedReport=link?.targetReport;
+  if(link?.recordSafe!==true||
+      link?.eventIdUnique!==true||
+      link?.targetReportStatus!=='linked'||
+      link?.challengeStatus!=='linked'||
+      projectedChallenge?.id!==challenge?.id||
+      projectedChallenge?.challengeId!==challenge?.challengeId||
+      linkedReport?.id!==report?.id||
+      linkedReport?.reportId!==report?.reportId||
+      linkedReport?.moonshotId!==report?.moonshotId||
+      challenge?.reportId!==report?.reportId||
+      challenge?.moonshotId!==report?.moonshotId||
+      sameResearchActor(challenge?.actor,report?.actor)){
+    toast('This retained challenge is invalid, ambiguous, or unlinked; it cannot anchor an author response or progress.',true);
     openMoonshotField(report?.moonshotId||null,challenge?.challengeId||null);
     return;
   }
+  const displayText=value=>typeof value==='string'&&value.trim()?value:'not recorded';
   const resolutionRequest=typeof challenge?.resolutionRequest==='string'&&challenge.resolutionRequest.trim()
     ? challenge.resolutionRequest : null;
   const content=showSheet('Respond to experiment challenge','AUTHOR RESPONSE · NOT ADJUDICATION');
   content.append(paragraph('Preserve the original report author’s account beside this exact challenge. A response is append-only: it does not edit the report, resolve the dispute, verify the experiment, award XP, or grant authority.'));
+  const context=node('article',{
+    class:'field-card experiment-response-context',
+    'data-experiment-challenge-response-context':'true',
+    'data-report-event-id':report.id,
+    'data-report-id':report.reportId,
+    'data-moonshot-id':report.moonshotId,
+    'data-challenge-event-id':challenge.id,
+    'data-challenge-id':challenge.challengeId,
+    'data-report-author-id':report.actor.id,
+    'data-report-author-role':report.actor.role
+  },[
+    node('h3',{text:'Original experiment report'}),
+    paragraph('Report ID: '+report.reportId,'form-help'),
+    paragraph('Original author: '+displayText(report.actor.name||report.actor.id)+' ('+report.actor.role+')','form-help'),
+    paragraph('Procedure: '+displayText(report.procedure)),
+    paragraph('Observation: '+displayText(report.observation)),
+    paragraph('Reported outcome (self-reported): '+displayText(report.reportedOutcome),'form-help'),
+    node('h3',{text:'Exact retained challenge'}),
+    paragraph('Challenge ID: '+challenge.challengeId,'form-help'),
+    paragraph('Challenge category: '+displayText(challenge.challengeType),'form-help'),
+    paragraph('Counterargument: '+displayText(challenge.challengeText))
+  ]);
+  content.append(context);
   content.append(node('p',{
     class:'form-help',
     'data-experiment-challenge-resolution-request':'true',
@@ -4985,7 +5022,15 @@ function openExperimentChallengeResponse(report,challenge){
       ? 'Requested resolution: '+resolutionRequest
       : 'No resolution request was recorded for this legacy challenge.'
   }));
-  const form=node('form',{class:'field-card','data-experiment-challenge-response-form':'true'},[]);
+  const form=node('form',{
+    class:'field-card',
+    'data-experiment-challenge-response-form':'true',
+    'data-report-event-id':report.id,
+    'data-report-id':report.reportId,
+    'data-moonshot-id':report.moonshotId,
+    'data-challenge-event-id':challenge.id,
+    'data-challenge-id':challenge.challengeId
+  },[]);
   const responseText=node('textarea',{id:'experiment-challenge-response-text',maxlength:'1000',rows:'4',required:'required',placeholder:'Respond to the specific challenge. State what you can support and what remains unresolved.'});
   const submit=node('button',{id:'respond-experiment-challenge',class:'primary-button',type:'submit',text:'Preserve author response'});
   form.append(
