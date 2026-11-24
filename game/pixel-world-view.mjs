@@ -793,7 +793,8 @@ function projectTownSquareReviewOverflowControlSlot(object, camera, zoom, width,
     [right, Math.max(margin, Math.min(bottom, height * 0.35))],
     [right, Math.max(margin, Math.min(bottom, height * 0.65))],
     [centerX, margin],
-    [centerX, bottom]
+    [centerX, bottom],
+    [centerX, height / 2]
   ];
   for (const [screenX, screenY] of candidates) {
     const target = {
