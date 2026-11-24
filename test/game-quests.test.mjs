@@ -4701,3 +4701,164 @@ test('Source Archive investigation remains visible but blocked when failure hist
     'a complete, valid empty history should not invent a failure-investigation objective'
   );
 });
+
+
+test('Founder Commons report-review quest requires an exact linked human-gated event', async () => {
+  const start = '2026-11-23T10:00:00.000Z';
+  const author = { id: 'commons-author', name: 'Commons Author', role: 'witness' };
+  const reporter = { id: 'commons-reporter', name: 'Commons Reporter', role: 'witness' };
+  const created = createWorld({ id: 'commons-report-review-quest', now: start });
+  const posted = await applyAction(created, {
+    type: 'post-message',
+    text: 'A retained Commons message for a separate report.'
+  }, author, { now: '2026-11-23T10:01:00.000Z' });
+  const reported = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'privacy',
+    details: 'Please review this retained message as a process matter.'
+  }, reporter, { now: '2026-11-23T10:02:00.000Z' });
+
+  const open = getQuestTrail(reported.world, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.ok(open, 'the Founder trail must expose the TownSquare review objective');
+  assert.equal(open.title, 'Record a process review for another actor’s Commons report');
+  assert.equal(open.progress, 0);
+  assert.equal(open.target, 1);
+  assert.equal(open.complete, false);
+  assert.deepEqual(open.evidenceIds, []);
+  assert.deepEqual(open.action, { type: 'location', id: 'town-square' });
+  assert.equal(open.blockedReason, null);
+  assert.match(open.interpretation, /process record/i);
+  assert.match(open.interpretation, /not a factual verdict/i);
+  assert.match(open.interpretation, /no XP/i);
+
+  const xpBeforeReview = reported.world.xp;
+  const reviewed = await applyAction(reported.world, {
+    type: 'review-message-report',
+    reportId: reported.result.reportId,
+    note: 'Reviewed as a process step; this is not a factual verdict.'
+  }, founder, { now: '2026-11-23T10:03:00.000Z' });
+  const reviewEvent = reviewed.world.events.at(-1);
+  assert.equal(reviewEvent.type, 'message-report-reviewed');
+  assert.equal(reviewEvent.actor.id, founder.id);
+  assert.equal(reviewEvent.actor.role, 'founder');
+  assert.equal(reviewEvent.reportId, reported.result.reportId);
+  assert.equal(reviewEvent.messageId, posted.result.messageId);
+
+  const beforeProjection = structuredClone(reviewed.world);
+  const complete = getQuestTrail(reviewed.world, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(complete.progress, 1);
+  assert.equal(complete.target, 1);
+  assert.equal(complete.complete, true);
+  assert.deepEqual(complete.evidenceIds, [reviewEvent.id]);
+  assert.equal(complete.action, null);
+  assert.equal(complete.blockedReason, null);
+  assert.equal(reviewed.world.xp, xpBeforeReview,
+    'a process review and its Quest Board projection award no XP');
+  assert.deepEqual(reviewed.world, beforeProjection,
+    'the Quest Board objective is a read-only projection of the retained review event');
+  assert.equal(getQuestTrail(reviewed.world, reporter).some(item =>
+    item.id === 'founder-commons-report-review'
+  ), false, 'Witness Quest Boards must not expose the Founder-only review objective');
+});
+
+test('Founder Commons report-review quest fails closed on self-review, invalid linkage, and partial history', async () => {
+  const start = '2026-11-23T11:00:00.000Z';
+  const author = { id: 'commons-author-two', name: 'Commons Author Two', role: 'witness' };
+  const reporter = { id: 'commons-reporter-two', name: 'Commons Reporter Two', role: 'witness' };
+  const created = createWorld({ id: 'commons-report-review-quest-negative', now: start });
+  const posted = await applyAction(created, {
+    type: 'post-message',
+    text: 'A message used to test the Founder self-review boundary.'
+  }, author, { now: '2026-11-23T11:01:00.000Z' });
+
+  const founderReport = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'other',
+    details: 'A Founder-authored report cannot be reviewed by the same Founder session.'
+  }, founder, { now: '2026-11-23T11:02:00.000Z' });
+  const selfReviewBlocked = getQuestTrail(founderReport.world, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(selfReviewBlocked.progress, 0);
+  assert.equal(selfReviewBlocked.complete, false);
+  assert.equal(selfReviewBlocked.action, null);
+  assert.match(selfReviewBlocked.blockedReason, /eligible.*report|another actor/i);
+  const beforeRejectedSelfReview = structuredClone(founderReport.world);
+  await assert.rejects(
+    applyAction(founderReport.world, {
+      type: 'review-message-report',
+      reportId: founderReport.result.reportId,
+      note: 'The same Founder session cannot review its own report.'
+    }, founder, { now: '2026-11-23T11:03:00.000Z' }),
+    error => error.code === 'SELF_REVIEW' && error.status === 409
+  );
+  assert.deepEqual(founderReport.world, beforeRejectedSelfReview,
+    'a rejected self-review must not mutate the retained world');
+
+  const reportedByWitness = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'privacy',
+    details: 'A separate Witness report for malformed-history tests.'
+  }, reporter, { now: '2026-11-23T11:04:00.000Z' });
+  const reportEvent = reportedByWitness.world.events.at(-1);
+  const forgedWrongRoleReview = {
+    id: 'commons-forged-witness-review-event',
+    type: 'message-report-reviewed',
+    reviewId: 'commons-forged-witness-review',
+    reportId: reportedByWitness.result.reportId,
+    messageId: posted.result.messageId,
+    note: 'A Witness cannot author a Founder-session review.',
+    actor: reporter,
+    at: '2026-11-23T11:05:00.000Z'
+  };
+  const wrongRoleWorld = {
+    ...reportedByWitness.world,
+    revision: reportedByWitness.world.revision + 1,
+    events: [...reportedByWitness.world.events, forgedWrongRoleReview]
+  };
+  const wrongRole = getQuestTrail(wrongRoleWorld, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(wrongRole.progress, 0);
+  assert.equal(wrongRole.action, null);
+  assert.match(wrongRole.blockedReason, /invalid|ambiguous/i);
+
+  const forgedMismatchedReview = {
+    ...forgedWrongRoleReview,
+    id: 'commons-forged-mismatched-review-event',
+    reviewId: 'commons-forged-mismatched-review',
+    messageId: 'commons-nonexistent-message',
+    actor: founder,
+    at: '2026-11-23T11:06:00.000Z'
+  };
+  const mismatchedWorld = {
+    ...reportedByWitness.world,
+    revision: reportedByWitness.world.revision + 1,
+    events: [...reportedByWitness.world.events, forgedMismatchedReview]
+  };
+  const mismatched = getQuestTrail(mismatchedWorld, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(mismatched.progress, 0);
+  assert.equal(mismatched.action, null);
+  assert.match(mismatched.blockedReason, /invalid|ambiguous/i);
+
+  const partialWorld = {
+    ...reportedByWitness.world,
+    revision: reportedByWitness.world.revision + 1
+  };
+  const partial = getQuestTrail(partialWorld, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(partial.progress, 0);
+  assert.equal(partial.action, null);
+  assert.match(partial.blockedReason, /incomplete|revision/i);
+  assert.equal(reportEvent.type, 'message-reported');
+});
