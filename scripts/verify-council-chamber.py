@@ -1301,6 +1301,7 @@ def run_town_square_report_review(browser, url, out, width):
         def inspect_town_square_review_map_object(page, label):
             if page.locator('#sheet').is_visible():
                 page.locator('#sheet-close').tap()
+            expect(page.locator('#sheet')).to_be_hidden()
             before = read_shared_state(page)['world']
             point = page.locator('#world').evaluate("""(canvas, eventId) => {
               const objects = JSON.parse(canvas.dataset.townSquareReviewObjects || '[]');
@@ -1324,7 +1325,47 @@ def run_town_square_report_review(browser, url, out, width):
             if not point or not point['inside']:
                 raise AssertionError(label + ' TownSquare review map object must be inside the mobile world viewport.')
             page.mouse.click(point['x'], point['y'])
-            expect(page.locator('#sheet-title')).to_have_text('World Chronicle', timeout=20000)
+            page.wait_for_function(
+                """expected => {
+                  const sheet = document.querySelector('#sheet');
+                  const world = document.querySelector('#world');
+                  const chronicleOpen = sheet?.hidden === false &&
+                    document.querySelector('#sheet-title')?.textContent === 'World Chronicle';
+                  const routedToReview = sheet?.hidden === true &&
+                    world?.dataset.navigationTargetId === expected &&
+                    ['walking', 'arrived', 'awaiting-range'].includes(world.dataset.navigationState);
+                  return chronicleOpen || routedToReview;
+                }""",
+                arg=review_event['id'],
+                timeout=20000
+            )
+            if page.locator('#sheet').is_hidden():
+                page.wait_for_function(
+                    """expected => {
+                      const world = document.querySelector('#world');
+                      return world?.dataset.navigationTargetId === expected &&
+                        world?.dataset.navigationState === 'arrived' &&
+                        document.querySelector('#sheet')?.hidden === true;
+                    }""",
+                    arg=review_event['id'],
+                    timeout=90000
+                )
+                arrived = read_shared_state(page)['world']
+                if arrived['revision'] != before['revision'] or arrived['xp'] != before['xp'] or \
+                        [event['id'] for event in arrived['events']] != [event['id'] for event in before['events']] or \
+                        arrived['creations'] != before['creations']:
+                    raise AssertionError(label + ' navigation to the review object must remain read-only and XP-neutral.')
+                inspect_button = page.locator('#interact-button')
+                expect(inspect_button).to_be_visible()
+                expect(inspect_button).to_have_attribute(
+                    'aria-label', 'Inspect retained TownSquare process review in World Chronicle'
+                )
+                inspect_button.tap()
+            page.wait_for_function(
+                """() => document.querySelector('#sheet')?.hidden === false &&
+                  document.querySelector('#sheet-title')?.textContent === 'World Chronicle'""",
+                timeout=20000
+            )
             exact = page.locator('#sheet-content [data-event-id="world:' + review_event['id'] + '"]')
             expect(exact).to_have_count(1)
             expect(exact).to_have_attribute('data-event-source', 'world')

@@ -3428,3 +3428,50 @@ test('TownSquare process-review map objects are exact, actor-scoped, and read-on
   assert.equal(reviewed.world.xp, 0, 'review projection and inspection are XP-neutral');
 });
 
+
+
+
+test('missing TownSquare review projection is treated as an empty optional map lane', () => {
+  const cancelled = [];
+  const makeView = prototype => {
+    const view = Object.create(prototype);
+    Object.assign(view, {
+      player: { id: 'legacy-viewer', x: 180, y: 640 },
+      world: { creations: [] },
+      researchObjects: [],
+      researchActivityObjects: [],
+      route: [],
+      movementEnabled: true,
+      cancelRoute() {
+        cancelled.push(this);
+        this.route = [];
+      },
+      scheduleFrame() {},
+      syncCanvasState() {}
+    });
+    return view;
+  };
+
+  const worldView = makeView(WorldView.prototype);
+  assert.equal(
+    worldView.nearest('missing-review', 'town-square-review'),
+    null,
+    'an absent optional review projection is an empty target set'
+  );
+  assert.doesNotThrow(() =>
+    worldView.goTo('missing-review', 'town-square-review')
+  );
+
+  const pixelView = makeView(PixelWorldView.prototype);
+  pixelView.presence = [];
+  assert.equal(
+    pixelView.nearest('missing-review', 'town-square-review'),
+    null,
+    'the pixel renderer preserves the same fail-closed empty projection'
+  );
+  assert.doesNotThrow(() =>
+    pixelView.goTo('missing-review', 'town-square-review')
+  );
+  assert.equal(cancelled.length, 2,
+    'invalid typed review targets are cancelled without creating an interaction');
+});
