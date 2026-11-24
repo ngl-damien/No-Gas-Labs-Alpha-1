@@ -1239,6 +1239,11 @@ def respond_to_experiment_challenge(page, fixture, witness, founder_id, width, o
     assert_canonical_state_unchanged(
         before_open, after_open, "Opening the exact original-author response context"
     )
+    context_layout = assert_mobile_layout(page, width)
+    page.screenshot(
+        path=str(out / ("synthesis-author-response-context-" + str(width) + ".png")),
+        full_page=True
+    )
 
     response_text = (
         "The original fixture records only a self-reported failed attempt. I have not repeated "
@@ -1329,6 +1334,7 @@ def respond_to_experiment_challenge(page, fixture, witness, founder_id, width, o
         "packetPayload": payload,
         "worldRevision": after_submit["revision"],
         "xp": after_submit["xp"],
+        "responseContextLayout": context_layout,
         "routeDiscoveries": route_discoveries
     }
 
@@ -3499,6 +3505,7 @@ def run_viewport(browser, width, out):
                         "moonshotId": experiment_author_response["moonshotId"],
                         "worldRevision": experiment_author_response["worldRevision"],
                         "xp": experiment_author_response["xp"],
+                        "responseContextLayout": experiment_author_response["responseContextLayout"],
                         "routeDiscoveries": experiment_author_response["routeDiscoveries"]
                     },
                     "packetInputRefs": witness["packet"]["inputRefs"],
