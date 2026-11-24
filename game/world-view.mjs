@@ -278,14 +278,14 @@ function copySafeCommonsReviewEvent(event) {
   return copy;
 }
 
-function hasCompleteTownSquareFounderHistory(world, events) {
+function hasCompleteTownSquareReviewHistory(world, events, viewerRole) {
   try {
-    if (!isPlainProjectionRecord(world)) return false;
+    if (!isPlainProjectionRecord(world) || !['founder', 'witness'].includes(viewerRole)) return false;
     const revision = ownDataValue(world, 'revision');
-    if (!Number.isSafeInteger(revision) || revision < 0 || revision !== events.length) return false;
+    if (!Number.isSafeInteger(revision) || revision < 0) return false;
     const coverageDescriptor = Object.getOwnPropertyDescriptor(world, 'historyCoverage');
-    if (!coverageDescriptor) return true;
-    if (!Object.hasOwn(coverageDescriptor, 'value')) return false;
+    if (!coverageDescriptor) return revision === events.length;
+    if (coverageDescriptor.enumerable !== true || !Object.hasOwn(coverageDescriptor, 'value')) return false;
     const coverage = coverageDescriptor.value;
     if (!isPlainProjectionRecord(coverage)) return false;
     const fields = [
@@ -299,14 +299,39 @@ function hasCompleteTownSquareFounderHistory(world, events) {
       const descriptor = descriptors[field];
       if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value')) return false;
     }
+
+    const sourceEventCount = descriptors.sourceEventCount.value;
+    const suppliedEventCount = descriptors.suppliedEventCount.value;
+    const omittedEventCount = descriptors.omittedEventCount.value;
     const omittedTypes = descriptors.omittedEventTypes.value;
-    if (!isPlainProjectionRecord(omittedTypes) || Reflect.ownKeys(omittedTypes).length !== 0) return false;
-    return descriptors.schema.value === 'ngl.public-world-history.v1' &&
-      descriptors.sourceComplete.value === true &&
-      descriptors.viewerRole.value === 'founder' &&
-      descriptors.sourceEventCount.value === revision &&
-      descriptors.suppliedEventCount.value === events.length &&
-      descriptors.omittedEventCount.value === 0;
+    if (!isPlainProjectionRecord(omittedTypes) ||
+        descriptors.schema.value !== 'ngl.public-world-history.v1' ||
+        descriptors.sourceComplete.value !== true ||
+        descriptors.viewerRole.value !== viewerRole ||
+        !Number.isSafeInteger(sourceEventCount) || sourceEventCount < 0 ||
+        sourceEventCount > MAX_WORLD_EVENT_SCAN || sourceEventCount !== revision ||
+        !Number.isSafeInteger(suppliedEventCount) || suppliedEventCount < 0 ||
+        suppliedEventCount !== events.length ||
+        !Number.isSafeInteger(omittedEventCount) || omittedEventCount < 0 ||
+        omittedEventCount !== sourceEventCount - suppliedEventCount) return false;
+
+    const omittedDescriptors = Object.getOwnPropertyDescriptors(omittedTypes);
+    const omittedKeys = Reflect.ownKeys(omittedDescriptors);
+    const allowedOmissions = viewerRole === 'witness'
+      ? new Set(['draft', 'repair', 'message-reported', 'message-report-reviewed'])
+      : new Set();
+    let countedOmissions = 0;
+    for (const key of omittedKeys) {
+      if (typeof key !== 'string' || !allowedOmissions.has(key)) return false;
+      const descriptor = omittedDescriptors[key];
+      if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value')) return false;
+      const count = descriptor.value;
+      if (!Number.isSafeInteger(count) || count < 1) return false;
+      countedOmissions += count;
+      if (!Number.isSafeInteger(countedOmissions)) return false;
+    }
+    if (countedOmissions !== omittedEventCount) return false;
+    return viewerRole === 'witness' || omittedEventCount === 0;
   } catch {
     return false;
   }
@@ -378,9 +403,9 @@ export function projectTownSquareReviewObjects(world, viewer) {
     ? history.invalidReviewHistory
     : ownReportIds.size > 0 && history.invalidReviewHistory &&
       history.invalidReportIds.some(reportId => ownReportIds.has(reportId));
-  const founderHistoryIncomplete = viewerRole === 'founder' &&
-    !hasCompleteTownSquareFounderHistory(world, safeEvents);
-  const historyStatus = relevantInvalidHistory || founderHistoryIncomplete
+  const snapshotHistoryIncomplete =
+    !hasCompleteTownSquareReviewHistory(world, safeEvents, viewerRole);
+  const historyStatus = relevantInvalidHistory || snapshotHistoryIncomplete
     ? 'actor-visible-links-incomplete'
     : 'actor-visible-links-validated';
 
