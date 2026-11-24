@@ -3723,3 +3723,118 @@ test('TownSquare pending report projection rejects a self-reported message chain
   assert.equal(reported.world.xp, 0, 'the original report remains XP-neutral');
   assert.equal(malformed.xp, 0, 'rejecting a malformed map projection creates no XP');
 });
+
+
+test('TownSquare landmark and accessibility expose actor-visible queue counts without inventing zero on incomplete history', async () => {
+  const projectReviewObjects = worldViewModule.projectTownSquareReviewObjects;
+  const projectQueueSummary = worldViewModule.projectTownSquareReviewQueueSummary;
+  assert.equal(typeof projectReviewObjects, 'function');
+  assert.equal(typeof projectQueueSummary, 'function');
+
+  const base = Date.parse('2026-11-24T12:00:00.000Z');
+  const at = offset => new Date(base + offset).toISOString();
+  const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const firstAuthor = { id: 'queue-author-one', name: 'First Author', role: 'witness' };
+  const firstReporter = { id: 'queue-reporter-one', name: 'First Reporter', role: 'witness' };
+  const secondAuthor = { id: 'queue-author-two', name: 'Second Author', role: 'witness' };
+  const secondReporter = { id: 'queue-reporter-two', name: 'Second Reporter', role: 'witness' };
+  const created = createWorld({ id: 'town-square-queue-summary', now: at(0) });
+
+  const firstPost = await applyAction(created, {
+    type: 'post-message', text: 'A public message with a pending private report.'
+  }, firstAuthor, { now: at(1000) });
+  const firstReport = await applyAction(firstPost.world, {
+    type: 'report-message', messageId: firstPost.result.messageId,
+    reason: 'privacy', details: 'Private pending report details.'
+  }, firstReporter, { now: at(2000) });
+  const secondPost = await applyAction(firstReport.world, {
+    type: 'post-message', text: 'A second public message with a retained process review.'
+  }, secondAuthor, { now: at(3000) });
+  const secondReport = await applyAction(secondPost.world, {
+    type: 'report-message', messageId: secondPost.result.messageId,
+    reason: 'other', details: 'Private reviewed report details.'
+  }, secondReporter, { now: at(4000) });
+  const reviewed = await applyAction(secondReport.world, {
+    type: 'review-message-report', reportId: secondReport.result.reportId,
+    note: 'A process record, not a factual verdict.'
+  }, founder, { now: at(5000) });
+
+  const before = structuredClone(reviewed.world);
+  const snapshot = publicWorld(reviewed.world, founder);
+  const projection = projectReviewObjects(snapshot, founder);
+  const summary = projectQueueSummary(projection);
+  assert.deepEqual(summary, {
+    available: true,
+    pendingCount: 1,
+    processRecordCount: 1
+  });
+
+  const labels = [];
+  const worldView = Object.create(WorldView.prototype);
+  Object.assign(worldView, {
+    ctx: {
+      save() {}, restore() {}, translate() {}, fillRect() {}, strokeRect() {}
+    },
+    ellipse() {},
+    text(value) { labels.push(value); },
+    institutionCounts: { 'town-square': reviewed.world.events.length },
+    townSquareReviewProjection: projection,
+    townSquareReviewObjects: projection.objects
+  });
+  worldView.drawTownSquare();
+  assert.ok(labels.includes('P1 · R1'),
+    'the TownSquare landmark must expose one pending report and one retained process record');
+
+  const attributes = {};
+  const canvas = {
+    dataset: {},
+    setAttribute(name, value) { attributes[name] = value; }
+  };
+  const accessibilityView = Object.create(PixelWorldView.prototype);
+  Object.assign(accessibilityView, {
+    canvas,
+    sourceObservationMapCounts: {
+      available: false, notes: null, dissent: null, responses: null, pending: null, review: null
+    },
+    guildNpcReadiness: [],
+    world: reviewed.world,
+    townSquareReviewProjection: projection,
+    townSquareReviewObjects: projection.objects,
+    researchObjects: [],
+    researchActivityObjects: [],
+    questAction: null,
+    updateQuestAccessibility() {}
+  });
+  accessibilityView.updateResearchAccessibility();
+  assert.equal(canvas.dataset.townSquareReviewPendingCount, '1');
+  assert.equal(canvas.dataset.townSquareReviewRecordCount, '1');
+  assert.match(accessibilityView.researchAccessibilityLabel, /1 pending report/);
+  assert.match(accessibilityView.researchAccessibilityLabel, /1 process review record/);
+
+  const incompleteSnapshot = structuredClone(snapshot);
+  incompleteSnapshot.revision += 1;
+  const unavailableProjection = projectReviewObjects(incompleteSnapshot, founder);
+  const unavailableSummary = projectQueueSummary(unavailableProjection);
+  assert.deepEqual(unavailableSummary, {
+    available: false,
+    pendingCount: null,
+    processRecordCount: null
+  });
+
+  labels.length = 0;
+  worldView.townSquareReviewProjection = unavailableProjection;
+  worldView.townSquareReviewObjects = unavailableProjection.objects;
+  worldView.drawTownSquare();
+  assert.ok(labels.includes('QUEUE UNAVAILABLE'));
+  assert.equal(labels.includes('P0 · R0'), false,
+    'incomplete history must never be presented as an empty queue');
+
+  accessibilityView.townSquareReviewProjection = unavailableProjection;
+  accessibilityView.townSquareReviewObjects = unavailableProjection.objects;
+  accessibilityView.updateResearchAccessibility();
+  assert.equal(canvas.dataset.townSquareReviewPendingCount, 'unavailable');
+  assert.equal(canvas.dataset.townSquareReviewRecordCount, 'unavailable');
+  assert.match(accessibilityView.researchAccessibilityLabel, /queue counts are unavailable, not zero/);
+  assert.deepEqual(reviewed.world, before, 'queue summaries and map rendering are read-only');
+  assert.equal(reviewed.world.xp, 0, 'report/review queue inspection awards no XP');
+});
