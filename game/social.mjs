@@ -248,6 +248,7 @@ export function projectCommonsReportReviewHistory(world, founderActorId = COMMON
     const postRecord = postRecords.length === 1 ? postRecords[0] : null;
     const postEvent = postRecord?.event;
     const reportActor = reportEvent.actor;
+    const postActor = postEvent?.actor;
     const valid = validCommonsProjectionId(reportEvent.id) &&
       eventIdCounts.get(reportEvent.id) === 1 &&
       validCommonsProjectionId(reportId) &&
@@ -257,7 +258,8 @@ export function projectCommonsReportReviewHistory(world, founderActorId = COMMON
       eventIdCounts.get(postEvent.id) === 1 &&
       reportEvent.messageId === postEvent?.messageId &&
       validActor(reportActor) &&
-      validActor(postEvent?.actor) &&
+      validActor(postActor) &&
+      !(reportActor.id === postActor.id && reportActor.role === postActor.role) &&
       postEvent.channel === COMMONS_CHANNEL &&
       typeof postEvent.text === 'string' &&
       postEvent.text === postEvent.text.trim() &&
