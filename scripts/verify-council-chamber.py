@@ -1303,6 +1303,31 @@ def run_town_square_report_review(browser, url, out, width):
                 page.locator('#sheet-close').tap()
             expect(page.locator('#sheet')).to_be_hidden()
             before = read_shared_state(page)['world']
+            page.locator('#world').evaluate("""canvas => {
+              canvas.dataset.townSquareReviewPointerType = 'not-observed';
+              canvas.addEventListener('pointerdown', event => {
+                canvas.dataset.townSquareReviewPointerType = event.pointerType;
+              }, { capture: true, once: true });
+            }""")
+            page.evaluate("""async () => {
+              const canvas = document.querySelector('#world');
+              const read = () => [
+                Number(canvas.dataset.cameraX),
+                Number(canvas.dataset.cameraY),
+                Number(canvas.dataset.zoom)
+              ];
+              let previous = read();
+              let stableFrames = 0;
+              for (let frame = 0; frame < 120 && stableFrames < 3; frame += 1) {
+                await new Promise(requestAnimationFrame);
+                const current = read();
+                if (current.every((value, index) => Number.isFinite(value) &&
+                    Math.abs(value - previous[index]) < 0.05)) stableFrames += 1;
+                else stableFrames = 0;
+                previous = current;
+              }
+              if (stableFrames < 3) throw new Error('TownSquare map camera did not settle before touch hit-testing.');
+            }""")
             point = page.locator('#world').evaluate("""(canvas, eventId) => {
               const objects = JSON.parse(canvas.dataset.townSquareReviewObjects || '[]');
               const object = objects.find(item => item.eventId === eventId);
@@ -1343,17 +1368,9 @@ def run_town_square_report_review(browser, url, out, width):
             if not point or not point['inside'] or point.get('blocked'):
                 raise AssertionError(label + ' TownSquare review map object has no unobstructed mobile tap point: ' +
                                      json.dumps(point, sort_keys=True))
-            page.locator('#world').evaluate("""canvas => {
-              canvas.dataset.townSquareReviewPointerType = 'not-observed';
-              canvas.addEventListener('pointerdown', event => {
-                canvas.dataset.townSquareReviewPointerType = event.pointerType;
-              }, { capture: true, once: true });
-            }""")
-            # Use Playwright's touch-backed tap; mouse.click emits pointerType=mouse
-            # even when the mobile browser context has has_touch=True.
-            page.locator('#world').tap(position={
-                'x': point['localX'], 'y': point['localY']
-            })
+            # Use the viewport-coordinate touch API so the point we hit-tested
+            # is the point the browser receives; locator.tap may auto-scroll first.
+            page.touchscreen.tap(point['x'], point['y'])
             pointer_type = page.locator('#world').get_attribute(
                 'data-town-square-review-pointer-type'
             )
@@ -1399,6 +1416,15 @@ def run_town_square_report_review(browser, url, out, width):
                     } : null,
                     markerCount: canvas.dataset.townSquareReviewVisibleCount || null,
                     markerObjects: canvas.dataset.townSquareReviewObjects || null,
+                    pointerType: canvas.dataset.townSquareReviewPointerType || null,
+                    tapPoint: {
+                      x: point.x, y: point.y, localX: point.localX, localY: point.localY,
+                      objectX: point.objectX, objectY: point.objectY
+                    },
+                    camera: {
+                      x: canvas.dataset.cameraX || null, y: canvas.dataset.cameraY || null,
+                      zoom: canvas.dataset.zoom || null
+                    },
                     eventId
                   };
                 }""", review_event['id'])
