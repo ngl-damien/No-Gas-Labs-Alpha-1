@@ -320,7 +320,10 @@ function townSquareReviewCoordinates(eventId) {
   }
   const unsigned = hash >>> 0;
   return Object.freeze({
-    x: 1100 + (unsigned % 61),
+    // Keep the deterministic review cluster in TownSquare's eastern courtyard.
+    // At the TownSquare arrival camera, this clears the 320px mobile quest-card
+    // overlay while remaining a real walkable map destination.
+    x: 1260 + (unsigned % 41),
     y: 520 + ((unsigned >>> 8) % 41)
   });
 }
