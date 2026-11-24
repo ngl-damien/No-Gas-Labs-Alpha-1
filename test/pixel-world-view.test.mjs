@@ -4263,7 +4263,10 @@ test('TownSquare map prioritizes pending reports over the bounded retained-revie
   assert.deepEqual(projectQueue(projection), {
     available: true,
     pendingCount: 1,
-    processRecordCount: 17
+    processRecordCount: 17,
+    mappedCount: 16,
+    omittedCount: 2,
+    totalCount: 18
   });
 
   const pendingObject = projection.objects[0];
