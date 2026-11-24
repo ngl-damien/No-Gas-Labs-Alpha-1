@@ -326,7 +326,7 @@ function isSafeCommonsReviewReferenceId(value) {
 }
 
 function projectFounderCommonsReportReviewMilestone(world, viewer, events, validEventIds) {
-  const interpretation = 'This Founder-only objective records a process review of a private Commons report from another actor. It is complete only when the exact retained original message, report and Founder review events are uniquely linked and append-ordered. It does not establish factual truth, moderation, independent review, evidence certification, approval, distinct-human identity or NGL authority. It grants no XP; NPCs, collaborators, models and UI cannot create or complete it.';
+  const interpretation = 'This Founder-only objective records a Founder-session process review of a private Commons report from another actor. The retained review event is a process record, not a factual verdict. It is complete only when the exact retained original message, report and Founder review events are uniquely linked and append-ordered. It does not establish factual truth, moderation, independent review, evidence certification, approval, distinct-human identity or NGL authority. It grants no XP; NPCs, collaborators, models and UI cannot create or complete it.';
   const historyComplete = Number.isSafeInteger(world?.revision) &&
     world.revision >= 0 &&
     world.revision === events.length &&
@@ -397,7 +397,7 @@ function projectFounderCommonsReportReviewMilestone(world, viewer, events, valid
       reviewEvent.messageId === reportEvent?.messageId &&
       reviewActor?.id === viewer.id &&
       reviewActor?.role === 'founder' &&
-      reportActor?.id !== viewer.id &&
+      !(reportActor?.id === viewer.id && reportActor?.role === viewer.role) &&
       ['founder', 'witness'].includes(reportActor?.role) &&
       isSafeCommonsReviewReferenceId(reportActor?.id) &&
       ['founder', 'witness'].includes(postActor?.role) &&

@@ -1017,6 +1017,11 @@ def run_town_square_report_review(browser, url, out, width):
                 raise AssertionError(label + ' TownSquare caused horizontal overflow: ' + json.dumps(layout))
             assert_world_context_visible(page, 'The Commons at TownSquare')
 
+        reporter_screenshot = out / ('town-square-reporter-review-' + str(width) + '.png')
+        founder_screenshot = out / ('town-square-founder-review-' + str(width) + '.png')
+        reporter_page.screenshot(path=str(reporter_screenshot), full_page=True)
+        founder_page.screenshot(path=str(founder_screenshot), full_page=True)
+
         def open_quest_board(page):
             if page.locator('#sheet').is_visible():
                 page.locator('#sheet-close').tap()
@@ -1062,6 +1067,14 @@ def run_town_square_report_review(browser, url, out, width):
         )
         if not isinstance(board_revision, str) or not board_revision.isdigit():
             raise AssertionError('The Founder Quest Board must expose its accepted snapshot revision.')
+        founder_quest_layout = founder_page.evaluate("""() => ({
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth
+        })""")
+        if founder_quest_layout['documentWidth'] > founder_quest_layout['viewportWidth'] + 1:
+            raise AssertionError('Founder Quest Board caused horizontal overflow: ' + json.dumps(founder_quest_layout))
+        founder_quest_screenshot = out / ('town-square-founder-review-quest-' + str(width) + '.png')
+        founder_page.screenshot(path=str(founder_quest_screenshot), full_page=True)
 
         before_chronicle = read_shared_state(founder_page)['world']
         event_link.tap()
@@ -1082,9 +1095,13 @@ def run_town_square_report_review(browser, url, out, width):
                     event['id'] for event in before_chronicle['events']
                 ] or after_chronicle['creations'] != before_chronicle['creations']:
             raise AssertionError('Quest evidence and Chronicle inspection must not mutate the world.')
-        founder_quest_screenshot = out / ('town-square-founder-review-quest-' + str(width) + '.png')
+        founder_chronicle_layout = founder_page.evaluate("""() => ({
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth
+        })""")
+        if founder_chronicle_layout['documentWidth'] > founder_chronicle_layout['viewportWidth'] + 1:
+            raise AssertionError('Founder World Chronicle caused horizontal overflow: ' + json.dumps(founder_chronicle_layout))
         founder_chronicle_screenshot = out / ('town-square-founder-review-chronicle-' + str(width) + '.png')
-        founder_page.screenshot(path=str(founder_quest_screenshot), full_page=True)
         founder_page.screenshot(path=str(founder_chronicle_screenshot), full_page=True)
 
         open_quest_board(reporter_page)
@@ -1093,27 +1110,18 @@ def run_town_square_report_review(browser, url, out, width):
         expect(reporter_quest_content).to_have_attribute('data-actor-role', 'witness')
         expect(reporter_quest_content.locator(
             '[data-objective-id="founder-commons-report-review"]'
-        )).to_have_count(0, 'Witness Quest Boards must not expose the Founder-only review objective')
+        )).to_have_count(0)
         reporter_quest_layout = reporter_page.evaluate("""() => ({
           viewportWidth: window.innerWidth,
           documentWidth: document.documentElement.scrollWidth
         })""")
         if reporter_quest_layout['documentWidth'] > reporter_quest_layout['viewportWidth'] + 1:
             raise AssertionError('Witness Quest Board caused horizontal overflow: ' + json.dumps(reporter_quest_layout))
-        founder_quest_layout = founder_page.evaluate("""() => ({
-          viewportWidth: window.innerWidth,
-          documentWidth: document.documentElement.scrollWidth
-        })""")
-        if founder_quest_layout['documentWidth'] > founder_quest_layout['viewportWidth'] + 1:
-            raise AssertionError('Founder Quest Board/Chronicle caused horizontal overflow: ' + json.dumps(founder_quest_layout))
+        reporter_quest_screenshot = out / ('town-square-reporter-quest-board-' + str(width) + '.png')
+        reporter_page.screenshot(path=str(reporter_quest_screenshot), full_page=True)
 
         if errors:
             raise AssertionError('Browser page errors: ' + json.dumps(errors))
-
-        reporter_screenshot = out / ('town-square-reporter-review-' + str(width) + '.png')
-        founder_screenshot = out / ('town-square-founder-review-' + str(width) + '.png')
-        reporter_page.screenshot(path=str(reporter_screenshot), full_page=True)
-        founder_page.screenshot(path=str(founder_screenshot), full_page=True)
         return {
             'journey': 'touch-town-square-report-review-' + str(width),
             'passed': True,
@@ -1140,7 +1148,8 @@ def run_town_square_report_review(browser, url, out, width):
                 reporter_screenshot.name,
                 founder_screenshot.name,
                 founder_quest_screenshot.name,
-                founder_chronicle_screenshot.name
+                founder_chronicle_screenshot.name,
+                reporter_quest_screenshot.name
             ]
         }
     finally:

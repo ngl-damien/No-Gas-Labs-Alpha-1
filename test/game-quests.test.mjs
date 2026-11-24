@@ -4703,7 +4703,7 @@ test('Source Archive investigation remains visible but blocked when failure hist
 });
 
 
-test('Founder Commons report-review quest requires an exact linked human-gated event', async () => {
+test('Founder Commons report-review quest requires an exact linked Founder-session event', async () => {
   const start = '2026-11-23T10:00:00.000Z';
   const author = { id: 'commons-author', name: 'Commons Author', role: 'witness' };
   const reporter = { id: 'commons-reporter', name: 'Commons Reporter', role: 'witness' };
@@ -4849,6 +4849,31 @@ test('Founder Commons report-review quest fails closed on self-review, invalid l
   assert.equal(mismatched.progress, 0);
   assert.equal(mismatched.action, null);
   assert.match(mismatched.blockedReason, /invalid|ambiguous/i);
+
+  const duplicateReview = {
+    ...forgedMismatchedReview,
+    id: 'commons-duplicate-review-event-one',
+    reviewId: 'commons-duplicate-review-id',
+    messageId: posted.result.messageId,
+    actor: founder,
+    at: '2026-11-23T11:07:00.000Z'
+  };
+  const duplicateReviewAgain = {
+    ...duplicateReview,
+    id: 'commons-duplicate-review-event-two',
+    at: '2026-11-23T11:08:00.000Z'
+  };
+  const duplicateWorld = {
+    ...reportedByWitness.world,
+    revision: reportedByWitness.world.revision + 2,
+    events: [...reportedByWitness.world.events, duplicateReview, duplicateReviewAgain]
+  };
+  const duplicate = getQuestTrail(duplicateWorld, founder).find(item =>
+    item.id === 'founder-commons-report-review'
+  );
+  assert.equal(duplicate.progress, 0);
+  assert.equal(duplicate.action, null);
+  assert.match(duplicate.blockedReason, /invalid|ambiguous/i);
 
   const partialWorld = {
     ...reportedByWitness.world,
