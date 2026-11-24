@@ -1031,13 +1031,17 @@ def run_town_square_report_review(browser, url, out, width):
         founder_page.locator('[id="commons-review-note-' + report_one_id + '"]').fill(review_note)
         founder_page.route('**/api/action', drop_first_committed_review_response)
         founder_page.locator('[data-commons-review="' + report_one_id + '"]').tap()
-        if not lost_review_response['attempted'] or lost_review_response['serverStatus'] != 200:
-            raise AssertionError('The fault injector did not observe a committed review response to drop.')
 
+        # The route handler marks attempted before its nested route.fetch() has
+        # completed. Wait for the offline transition it triggers after the server
+        # has committed the review; checking the Python receipt immediately after
+        # tap races that handler and can close the context while route.fetch runs.
         founder_page.wait_for_function(
             """() => document.querySelector('#connection-dot')?.dataset.connectionState === 'offline'""",
             timeout=15000
         )
+        if not lost_review_response['attempted'] or lost_review_response['serverStatus'] != 200:
+            raise AssertionError('The fault injector did not observe a committed review response to drop.')
         pending_receipts = founder_page.evaluate("""() => {
           const matches = [];
           for (let index = 0; index < localStorage.length; index += 1) {
