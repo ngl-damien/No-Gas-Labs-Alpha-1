@@ -692,14 +692,19 @@ function projectTownSquareReviewControlSlots(objects, camera, zoom, width, heigh
     anchor.x, anchor.y, width, height, camera, zoom,
     panelWidth, panelHeight, 4, avoidRects
   );
-  if (!panel) return null;
+  const panelAvailable = panel !== null;
+  let panelLeft = null;
+  let panelTop = null;
+  if (panelAvailable) {
+    const panelScreenCenterX = width / 2 + (panel.x - cameraX) * zoom;
+    const panelScreenBottomY = height / 2 + (panel.y - cameraY) * zoom;
+    panelLeft = panelScreenCenterX - panelWidth / 2;
+    panelTop = panelScreenBottomY - panelHeight;
+    if (![panelScreenCenterX, panelScreenBottomY, panelLeft, panelTop].every(Number.isFinite)) return null;
+  }
 
-  const panelScreenCenterX = width / 2 + (panel.x - cameraX) * zoom;
-  const panelScreenBottomY = height / 2 + (panel.y - cameraY) * zoom;
-  const panelLeft = panelScreenCenterX - panelWidth / 2;
-  const panelTop = panelScreenBottomY - panelHeight;
-  if (![panelScreenCenterX, panelScreenBottomY, panelLeft, panelTop].every(Number.isFinite)) return null;
-
+  // Keep exact event-bound controls in the DOM while a modal or HUD leaves no
+  // safe panel placement. They stay hidden until a valid layout is available.
   return Object.freeze(safeObjects.map((object, index) => {
     const column = index % columns;
     const row = Math.floor(index / columns);
@@ -710,10 +715,15 @@ function projectTownSquareReviewControlSlots(objects, camera, zoom, width, heigh
       status: object.status,
       worldX: object.x,
       worldY: object.y,
-      screenX: panelLeft + column * TOWNSQUARE_REVIEW_CONTROL_CELL_SIZE +
-        TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2,
-      screenY: panelTop + row * TOWNSQUARE_REVIEW_CONTROL_CELL_SIZE +
-        TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2
+      layoutAvailable: panelAvailable,
+      screenX: panelAvailable
+        ? panelLeft + column * TOWNSQUARE_REVIEW_CONTROL_CELL_SIZE +
+          TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2
+        : (object.x - cameraX) * zoom + width / 2,
+      screenY: panelAvailable
+        ? panelTop + row * TOWNSQUARE_REVIEW_CONTROL_CELL_SIZE +
+          TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2
+        : (object.y - cameraY) * zoom + height / 2
     });
   }));
 }
@@ -1805,11 +1815,14 @@ export class PixelWorldView extends WorldView {
         const left = rect.left + screenX;
         const top = rect.top + screenY;
         const half = TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2;
-        const intersectsOverlay = overlays.some(overlay =>
-          screenX - half < overlay.right && screenX + half > overlay.left &&
-          screenY - half < overlay.bottom && screenY + half > overlay.top
-        );
-        const visible = available && [screenX, screenY, left, top, viewportWidth, viewportHeight].every(Number.isFinite) &&
+        const intersectsOverlay = slot.layoutAvailable === true && Array.isArray(overlays)
+          ? overlays.some(overlay =>
+            screenX - half < overlay.right && screenX + half > overlay.left &&
+            screenY - half < overlay.bottom && screenY + half > overlay.top
+          )
+          : true;
+        const visible = available && slot.layoutAvailable === true &&
+          [screenX, screenY, left, top, viewportWidth, viewportHeight].every(Number.isFinite) &&
           left - half >= 0 && top - half >= 0 &&
           left + half <= viewportWidth && top + half <= viewportHeight &&
           screenX - half >= 0 && screenY - half >= 0 &&
