@@ -3766,7 +3766,10 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   assert.deepEqual(summary, {
     available: true,
     pendingCount: 1,
-    processRecordCount: 1
+    processRecordCount: 1,
+    mappedCount: 2,
+    omittedCount: 0,
+    totalCount: 2
   });
 
   const labels = [];
@@ -3829,7 +3832,10 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   assert.deepEqual(projectQueueSummary(emptyProjection), {
     available: true,
     pendingCount: 0,
-    processRecordCount: 0
+    processRecordCount: 0,
+    mappedCount: 0,
+    omittedCount: 0,
+    totalCount: 0
   }, 'a complete empty history is a real zero, unlike an incomplete history');
   labels.length = 0;
   worldView.townSquareReviewProjection = emptyProjection;
@@ -3854,7 +3860,10 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   assert.deepEqual(unavailableSummary, {
     available: false,
     pendingCount: null,
-    processRecordCount: null
+    processRecordCount: null,
+    mappedCount: null,
+    omittedCount: null,
+    totalCount: null
   });
 
   labels.length = 0;
@@ -3879,6 +3888,123 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   assert.match(accessibilityView.researchAccessibilityLabel, /queue counts are unavailable, not zero/);
   assert.deepEqual(reviewed.world, before, 'queue summaries and map rendering are read-only');
   assert.equal(reviewed.world.xp, 0, 'report/review queue inspection awards no XP');
+});
+
+
+test('TownSquare queue summary validates the bounded map lane and reports omitted coverage', () => {
+  const summarize = worldViewModule.projectTownSquareReviewQueueSummary;
+  const objects = Array.from({ length: 16 }, (_, index) => ({
+    id: 'town-review-coverage-' + index,
+    eventId: 'town-review-coverage-' + index,
+    type: 'town-square-review',
+    mapVisible: true,
+    status: index < 12 ? 'awaiting-founder-review' : 'process-record-not-adjudication',
+    x: 1260 + index,
+    y: 520 + index
+  }));
+  const projection = {
+    historyStatus: 'actor-visible-links-validated',
+    totalCount: 20,
+    omittedCount: 4,
+    pendingCount: 12,
+    processRecordCount: 8,
+    objects
+  };
+
+  assert.deepEqual(summarize(projection), {
+    available: true,
+    pendingCount: 12,
+    processRecordCount: 8,
+    mappedCount: 16,
+    omittedCount: 4,
+    totalCount: 20
+  });
+
+  const oversizedProjection = {
+    ...projection,
+    omittedCount: 3,
+    objects: [...objects, { ...objects[15], id: 'town-review-coverage-overflow', eventId: 'town-review-coverage-overflow' }]
+  };
+  assert.deepEqual(summarize(oversizedProjection), {
+    available: false,
+    pendingCount: null,
+    processRecordCount: null,
+    mappedCount: null,
+    omittedCount: null,
+    totalCount: null
+  }, 'a projection that exceeds the 16-object map lane must fail closed');
+});
+
+test('TownSquare landmarks disclose unmapped review records and retain the full Chronicle boundary', () => {
+  const objects = Array.from({ length: 16 }, (_, index) => ({
+    id: 'town-review-map-coverage-' + index,
+    eventId: 'town-review-map-coverage-' + index,
+    type: 'town-square-review',
+    mapVisible: true,
+    status: index < 12 ? 'awaiting-founder-review' : 'process-record-not-adjudication',
+    x: 1260 + index,
+    y: 520 + index
+  }));
+  const projection = {
+    historyStatus: 'actor-visible-links-validated',
+    totalCount: 20,
+    omittedCount: 4,
+    pendingCount: 12,
+    processRecordCount: 8,
+    objects
+  };
+  const expectedCoverage = 'MAP 16/20 · +4 UNMAPPED';
+
+  const worldLabels = [];
+  const worldView = Object.create(WorldView.prototype);
+  Object.assign(worldView, {
+    ctx: {
+      save() {}, restore() {}, translate() {}, fillRect() {}, strokeRect() {}
+    },
+    ellipse() {},
+    text(value) { worldLabels.push(value); },
+    institutionCounts: { 'town-square': 20 },
+    townSquareReviewProjection: projection
+  });
+  worldView.drawTownSquare();
+  assert.ok(worldLabels.includes(expectedCoverage),
+    'the base world landmark discloses the bounded map projection');
+
+  const pixelLabels = [];
+  const pixelView = Object.create(PixelWorldView.prototype);
+  Object.assign(pixelView, {
+    ctx: { fillRect() {}, strokeRect() {} },
+    institutionCounts: { 'town-square': 20 },
+    townSquareReviewProjection: projection,
+    drawMapLabel(value) { pixelLabels.push(value); },
+    drawResearchCounterPanel() {}
+  });
+  pixelView.drawTownSquare();
+  assert.ok(pixelLabels.includes(expectedCoverage),
+    'the playable pixel-world landmark discloses records without individual map markers');
+
+  const canvas = { dataset: {}, setAttribute() {} };
+  const accessibilityView = Object.create(PixelWorldView.prototype);
+  Object.assign(accessibilityView, {
+    canvas,
+    sourceObservationMapCounts: { available: false },
+    guildNpcReadiness: [],
+    townSquareReviewProjection: projection,
+    townSquareReviewObjects: objects,
+    researchObjects: [],
+    researchActivityObjects: [],
+    questAction: null,
+    updateQuestAccessibility() {}
+  });
+  accessibilityView.updateResearchAccessibility();
+  assert.equal(canvas.dataset.townSquareReviewMapObjectCount, '16');
+  assert.equal(canvas.dataset.townSquareReviewOmittedCount, '4');
+  assert.match(accessibilityView.researchAccessibilityLabel,
+    /4 additional record\(s\) have no individual map marker/);
+  assert.match(accessibilityView.researchAccessibilityLabel,
+    /inspect the retained Chronicle history/);
+  assert.doesNotMatch(accessibilityView.researchAccessibilityLabel,
+    /because the marker lane is bounded/);
 });
 
 test('TownSquare review control rejects stale clicks while modal is open or play UI hidden', () => {
