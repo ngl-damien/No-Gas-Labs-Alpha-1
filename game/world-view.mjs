@@ -431,15 +431,23 @@ export function projectTownSquareReviewObjects(world, viewer) {
         !(actor?.id === postActor?.id && actor?.role === postActor?.role)
       : actor?.id === viewerId && actor?.role === viewerRole;
   });
+  // The map marker lane is bounded. Reserve it for actionable pending work
+  // before older completed process records; preserve append order within each
+  // class. This changes display selection only, never retained event chronology.
   const visibleRecords = [
-    ...visibleReviews.map(record => ({
-      record, event: record.event, status: 'process-record-not-adjudication'
-    })),
     ...visiblePendingReports.map(record => ({
       record, event: record.reportEvent, status: 'awaiting-founder-review'
+    })),
+    ...visibleReviews.map(record => ({
+      record, event: record.event, status: 'process-record-not-adjudication'
     }))
-  ].sort((left, right) => left.record.index - right.record.index ||
-    String(left.event?.id ?? '').localeCompare(String(right.event?.id ?? '')));
+  ].sort((left, right) => {
+    const leftPriority = left.status === 'awaiting-founder-review' ? 0 : 1;
+    const rightPriority = right.status === 'awaiting-founder-review' ? 0 : 1;
+    return leftPriority - rightPriority ||
+      left.record.index - right.record.index ||
+      String(left.event?.id ?? '').localeCompare(String(right.event?.id ?? ''));
+  });
   const totalCount = visibleRecords.length;
   const objects = visibleRecords.slice(0, MAX_TOWNSQUARE_REVIEW_MAP_OBJECTS).map(({ record, event, status }) => {
     const eventId = event.id;
