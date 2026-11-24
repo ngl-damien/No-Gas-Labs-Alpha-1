@@ -4239,7 +4239,7 @@ test('TownSquare overflow shortcut opens the first unmapped exact Chronicle even
 
   const base = Date.parse('2026-11-24T12:00:00.000Z');
   const at = offset => new Date(base + offset).toISOString();
-  const founder = { id: 'town-overflow-founder', name: 'Damien Featherstone', role: 'founder' };
+  const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
   const author = { id: 'town-overflow-ui-author', name: 'Message Author', role: 'witness' };
   const reporter = { id: 'town-overflow-ui-reporter', name: 'Reporting Witness', role: 'witness' };
   const unrelated = { id: 'town-overflow-ui-unrelated', name: 'Unrelated Witness', role: 'witness' };
