@@ -2345,11 +2345,14 @@ export class PixelWorldView extends WorldView {
         y: object.y,
         ...(object.status === 'awaiting-founder-review' ? { status: object.status } : {})
       }));
-    const omittedReviewCount = ownDataValue(reviewProjection, 'omittedCount');
-    const markerLimitNote = Number.isSafeInteger(omittedReviewCount) && omittedReviewCount > 0
-      ? ` ${omittedReviewCount} additional record(s) are included in the counts but do not have individual map markers because the marker lane is bounded.`
+    const markerLimitNote = reviewQueue.available && reviewQueue.omittedCount > 0
+      ? ` ${reviewQueue.omittedCount} additional record(s) have no individual map marker; inspect the retained Chronicle history for them.`
       : '';
     this.canvas.dataset.townSquareReviewCount = reviewQueue.available ? String(reviewCount) : 'unavailable';
+    this.canvas.dataset.townSquareReviewMapObjectCount = reviewQueue.available
+      ? String(reviewQueue.mappedCount) : 'unavailable';
+    this.canvas.dataset.townSquareReviewOmittedCount = reviewQueue.available
+      ? String(reviewQueue.omittedCount) : 'unavailable';
     this.canvas.dataset.townSquareReviewVisibleCount = reviewQueue.available
       ? String(safeReviewMapObjects.length) : 'unavailable';
     this.canvas.dataset.townSquareReviewPendingCount = reviewQueue.available
@@ -2536,7 +2539,15 @@ export class PixelWorldView extends WorldView {
     this.drawMapLabel(reviewQueue.available
       ? `P${reviewQueue.pendingCount} · R${reviewQueue.processRecordCount}`
       : 'QUEUE UNAVAILABLE', 1040, 523, 9);
-    this.drawResearchCounterPanel(1040, 538);
+    if (reviewQueue.available && reviewQueue.omittedCount > 0) {
+      this.drawMapLabel(
+        `MAP ${reviewQueue.mappedCount}/${reviewQueue.totalCount} · +${reviewQueue.omittedCount} UNMAPPED`,
+        1040, 538, 8
+      );
+      this.drawResearchCounterPanel(1040, 553);
+    } else {
+      this.drawResearchCounterPanel(1040, 538);
+    }
   }
 
   drawInstitution(place) {
