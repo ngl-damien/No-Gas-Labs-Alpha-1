@@ -3809,7 +3809,25 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   assert.equal(canvas.dataset.townSquareReviewPendingCount, '1');
   assert.equal(canvas.dataset.townSquareReviewRecordCount, '1');
   assert.match(accessibilityView.researchAccessibilityLabel, /1 pending report/);
-  assert.match(accessibilityView.researchAccessibilityLabel, /1 process review record/);
+  assert.match(accessibilityView.researchAccessibilityLabel, /1 retained process review record/);
+
+  const emptyWorld = createWorld({ id: 'town-square-empty-review-queue', now: at(0) });
+  const emptyProjection = projectReviewObjects(publicWorld(emptyWorld, founder), founder);
+  assert.deepEqual(projectQueueSummary(emptyProjection), {
+    available: true,
+    pendingCount: 0,
+    processRecordCount: 0
+  }, 'a complete empty history is a real zero, unlike an incomplete history');
+  labels.length = 0;
+  worldView.townSquareReviewProjection = emptyProjection;
+  worldView.townSquareReviewObjects = emptyProjection.objects;
+  worldView.drawTownSquare();
+  assert.ok(labels.includes('P0 · R0'));
+  accessibilityView.townSquareReviewProjection = emptyProjection;
+  accessibilityView.townSquareReviewObjects = emptyProjection.objects;
+  accessibilityView.updateResearchAccessibility();
+  assert.equal(canvas.dataset.townSquareReviewPendingCount, '0');
+  assert.equal(canvas.dataset.townSquareReviewRecordCount, '0');
 
   const incompleteSnapshot = structuredClone(snapshot);
   incompleteSnapshot.revision += 1;
