@@ -1314,31 +1314,82 @@ def run_town_square_report_review(browser, url, out, width):
               const height = Number(canvas.dataset.viewportHeight);
               if (!object || ![cameraX, cameraY, zoom, width, height].every(Number.isFinite) ||
                   zoom <= 0 || width <= 0 || height <= 0) return null;
-              const x = (object.x - cameraX) * zoom + width / 2;
-              const y = (object.y - cameraY) * zoom + height / 2;
-              return {
-                x: rect.left + x,
-                y: rect.top + y,
-                inside: x >= 0 && y >= 0 && x <= width && y <= height
-              };
+              const centerX = (object.x - cameraX) * zoom + width / 2;
+              const centerY = (object.y - cameraY) * zoom + height / 2;
+              const offsets = [[0, 0], [12, 0], [-12, 0], [0, 12], [0, -12],
+                [10, 10], [-10, 10], [10, -10], [-10, -10], [18, 0], [-18, 0], [0, 18], [0, -18]];
+              const candidates = offsets.map(([dx, dy]) => {
+                const x = centerX + dx;
+                const y = centerY + dy;
+                const element = x >= 0 && y >= 0 && x <= width && y <= height
+                  ? document.elementFromPoint(rect.left + x, rect.top + y) : null;
+                return {
+                  x: rect.left + x, y: rect.top + y, localX: x, localY: y,
+                  inside: x >= 0 && y >= 0 && x <= width && y <= height,
+                  exposed: element === canvas,
+                  element: element ? {
+                    tag: element.tagName, id: element.id || null,
+                    className: typeof element.className === 'string' ? element.className : null
+                  } : null
+                };
+              });
+              const selected = candidates.find(candidate => candidate.inside && candidate.exposed);
+              return selected
+                ? { ...selected, eventId: object.eventId, objectX: object.x, objectY: object.y }
+                : { inside: centerX >= 0 && centerY >= 0 && centerX <= width && centerY <= height,
+                    blocked: true, eventId: object.eventId, objectX: object.x, objectY: object.y,
+                    centerElement: candidates[0]?.element, candidates };
             }""", review_event['id'])
-            if not point or not point['inside']:
-                raise AssertionError(label + ' TownSquare review map object must be inside the mobile world viewport.')
+            if not point or not point['inside'] or point.get('blocked'):
+                raise AssertionError(label + ' TownSquare review map object has no unobstructed mobile tap point: ' +
+                                     json.dumps(point, sort_keys=True))
             page.mouse.click(point['x'], point['y'])
-            page.wait_for_function(
-                """expected => {
+            try:
+                page.wait_for_function(
+                    """expected => {
+                      const sheet = document.querySelector('#sheet');
+                      const world = document.querySelector('#world');
+                      const chronicleOpen = sheet?.hidden === false &&
+                        document.querySelector('#sheet-title')?.textContent === 'World Chronicle';
+                      const routedToReview = sheet?.hidden === true &&
+                        world?.dataset.navigationTargetId === expected &&
+                        ['walking', 'arrived', 'awaiting-range'].includes(world.dataset.navigationState);
+                      return chronicleOpen || routedToReview;
+                    }""",
+                    arg=review_event['id'],
+                    timeout=20000
+                )
+            except Exception as error:
+                diagnostics = page.locator('#world').evaluate("""(canvas, eventId) => {
                   const sheet = document.querySelector('#sheet');
-                  const world = document.querySelector('#world');
-                  const chronicleOpen = sheet?.hidden === false &&
-                    document.querySelector('#sheet-title')?.textContent === 'World Chronicle';
-                  const routedToReview = sheet?.hidden === true &&
-                    world?.dataset.navigationTargetId === expected &&
-                    ['walking', 'arrived', 'awaiting-range'].includes(world.dataset.navigationState);
-                  return chronicleOpen || routedToReview;
-                }""",
-                arg=review_event['id'],
-                timeout=20000
-            )
+                  const button = document.querySelector('#interact-button');
+                  const rect = canvas.getBoundingClientRect();
+                  const element = document.elementFromPoint(rect.left + 160, rect.top + 422);
+                  return {
+                    navigationTargetId: canvas.dataset.navigationTargetId || null,
+                    navigationState: canvas.dataset.navigationState || null,
+                    nearbyPlayerName: canvas.dataset.nearbyPlayerName || null,
+                    nearbyNpcRole: canvas.dataset.nearbyNpcRole || null,
+                    nearbyInstitutionId: canvas.dataset.nearbyInstitutionId || null,
+                    sheetHidden: sheet?.hidden ?? null,
+                    sheetTitle: document.querySelector('#sheet-title')?.textContent ?? null,
+                    interactButtonHidden: button?.hidden ?? null,
+                    interactButtonLabel: button?.getAttribute('aria-label') ?? null,
+                    centerElement: element ? {
+                      tag: element.tagName, id: element.id || null,
+                      className: typeof element.className === 'string' ? element.className : null
+                    } : null,
+                    markerCount: canvas.dataset.townSquareReviewVisibleCount || null,
+                    markerObjects: canvas.dataset.townSquareReviewObjects || null,
+                    eventId
+                  };
+                }""", review_event['id'])
+                screenshot = Path(out) / f'town-square-{label.lower()}-{width}px-map-tap-failure.png'
+                page.screenshot(path=str(screenshot), full_page=True)
+                raise AssertionError(
+                    label + ' map tap did not route to or open the exact Chronicle event: ' +
+                    json.dumps(diagnostics, sort_keys=True)
+                ) from error
             if page.locator('#sheet').is_hidden():
                 page.wait_for_function(
                     """expected => {
