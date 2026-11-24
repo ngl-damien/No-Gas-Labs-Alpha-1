@@ -3766,7 +3766,10 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   assert.deepEqual(summary, {
     available: true,
     pendingCount: 1,
-    processRecordCount: 1
+    processRecordCount: 1,
+    mappedCount: 2,
+    omittedCount: 0,
+    totalCount: 2
   });
 
   const labels = [];
@@ -3829,7 +3832,10 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   assert.deepEqual(projectQueueSummary(emptyProjection), {
     available: true,
     pendingCount: 0,
-    processRecordCount: 0
+    processRecordCount: 0,
+    mappedCount: 0,
+    omittedCount: 0,
+    totalCount: 0
   }, 'a complete empty history is a real zero, unlike an incomplete history');
   labels.length = 0;
   worldView.townSquareReviewProjection = emptyProjection;
@@ -3854,7 +3860,10 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   assert.deepEqual(unavailableSummary, {
     available: false,
     pendingCount: null,
-    processRecordCount: null
+    processRecordCount: null,
+    mappedCount: null,
+    omittedCount: null,
+    totalCount: null
   });
 
   labels.length = 0;
@@ -3879,6 +3888,123 @@ test('TownSquare landmark and accessibility expose actor-visible queue counts wi
   assert.match(accessibilityView.researchAccessibilityLabel, /queue counts are unavailable, not zero/);
   assert.deepEqual(reviewed.world, before, 'queue summaries and map rendering are read-only');
   assert.equal(reviewed.world.xp, 0, 'report/review queue inspection awards no XP');
+});
+
+
+test('TownSquare queue summary validates the bounded map lane and reports omitted coverage', () => {
+  const summarize = worldViewModule.projectTownSquareReviewQueueSummary;
+  const objects = Array.from({ length: 16 }, (_, index) => ({
+    id: 'town-review-coverage-' + index,
+    eventId: 'town-review-coverage-' + index,
+    type: 'town-square-review',
+    mapVisible: true,
+    status: index < 12 ? 'awaiting-founder-review' : 'process-record-not-adjudication',
+    x: 1260 + index,
+    y: 520 + index
+  }));
+  const projection = {
+    historyStatus: 'actor-visible-links-validated',
+    totalCount: 20,
+    omittedCount: 4,
+    pendingCount: 12,
+    processRecordCount: 8,
+    objects
+  };
+
+  assert.deepEqual(summarize(projection), {
+    available: true,
+    pendingCount: 12,
+    processRecordCount: 8,
+    mappedCount: 16,
+    omittedCount: 4,
+    totalCount: 20
+  });
+
+  const oversizedProjection = {
+    ...projection,
+    omittedCount: 3,
+    objects: [...objects, { ...objects[15], id: 'town-review-coverage-overflow', eventId: 'town-review-coverage-overflow' }]
+  };
+  assert.deepEqual(summarize(oversizedProjection), {
+    available: false,
+    pendingCount: null,
+    processRecordCount: null,
+    mappedCount: null,
+    omittedCount: null,
+    totalCount: null
+  }, 'a projection that exceeds the 16-object map lane must fail closed');
+});
+
+test('TownSquare landmarks disclose unmapped review records and retain the full Chronicle boundary', () => {
+  const objects = Array.from({ length: 16 }, (_, index) => ({
+    id: 'town-review-map-coverage-' + index,
+    eventId: 'town-review-map-coverage-' + index,
+    type: 'town-square-review',
+    mapVisible: true,
+    status: index < 12 ? 'awaiting-founder-review' : 'process-record-not-adjudication',
+    x: 1260 + index,
+    y: 520 + index
+  }));
+  const projection = {
+    historyStatus: 'actor-visible-links-validated',
+    totalCount: 20,
+    omittedCount: 4,
+    pendingCount: 12,
+    processRecordCount: 8,
+    objects
+  };
+  const expectedCoverage = 'MAP 16/20 · +4 UNMAPPED';
+
+  const worldLabels = [];
+  const worldView = Object.create(WorldView.prototype);
+  Object.assign(worldView, {
+    ctx: {
+      save() {}, restore() {}, translate() {}, fillRect() {}, strokeRect() {}
+    },
+    ellipse() {},
+    text(value) { worldLabels.push(value); },
+    institutionCounts: { 'town-square': 20 },
+    townSquareReviewProjection: projection
+  });
+  worldView.drawTownSquare();
+  assert.ok(worldLabels.includes(expectedCoverage),
+    'the base world landmark discloses the bounded map projection');
+
+  const pixelLabels = [];
+  const pixelView = Object.create(PixelWorldView.prototype);
+  Object.assign(pixelView, {
+    ctx: { fillRect() {}, strokeRect() {} },
+    institutionCounts: { 'town-square': 20 },
+    townSquareReviewProjection: projection,
+    drawMapLabel(value) { pixelLabels.push(value); },
+    drawResearchCounterPanel() {}
+  });
+  pixelView.drawTownSquare();
+  assert.ok(pixelLabels.includes(expectedCoverage),
+    'the playable pixel-world landmark discloses records without individual map markers');
+
+  const canvas = { dataset: {}, setAttribute() {} };
+  const accessibilityView = Object.create(PixelWorldView.prototype);
+  Object.assign(accessibilityView, {
+    canvas,
+    sourceObservationMapCounts: { available: false },
+    guildNpcReadiness: [],
+    townSquareReviewProjection: projection,
+    townSquareReviewObjects: objects,
+    researchObjects: [],
+    researchActivityObjects: [],
+    questAction: null,
+    updateQuestAccessibility() {}
+  });
+  accessibilityView.updateResearchAccessibility();
+  assert.equal(canvas.dataset.townSquareReviewMapObjectCount, '16');
+  assert.equal(canvas.dataset.townSquareReviewOmittedCount, '4');
+  assert.match(accessibilityView.researchAccessibilityLabel,
+    /4 additional record\(s\) have no individual map marker/);
+  assert.match(accessibilityView.researchAccessibilityLabel,
+    /inspect the retained Chronicle history/);
+  assert.doesNotMatch(accessibilityView.researchAccessibilityLabel,
+    /because the marker lane is bounded/);
 });
 
 test('TownSquare review control rejects stale clicks while modal is open or play UI hidden', () => {
@@ -3940,6 +4066,359 @@ test('TownSquare review control rejects stale clicks while modal is open or play
   } finally {
     if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
     else delete globalThis.document;
+  }
+});
+
+test('TownSquare review controls separate 44px touch targets when map objects share a mobile cluster', () => {
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const previousInnerWidth = Object.getOwnPropertyDescriptor(globalThis, 'innerWidth');
+  const previousInnerHeight = Object.getOwnPropertyDescriptor(globalThis, 'innerHeight');
+  const makeElement = () => {
+    const attributes = new Map();
+    return {
+      dataset: {},
+      style: {},
+      hidden: false,
+      textContent: '',
+      title: '',
+      addEventListener() {},
+      setAttribute(name, value) { attributes.set(name, String(value)); },
+      getAttribute(name) { return attributes.has(name) ? attributes.get(name) : null; },
+      remove() { this.removed = true; }
+    };
+  };
+  const group = makeElement();
+  group.children = [];
+  group.appendChild = child => group.children.push(child);
+  const canvas = {
+    dataset: {},
+    getBoundingClientRect: () => ({
+      left: 0, top: 0, width: 320, height: 844, right: 320, bottom: 844
+    })
+  };
+  const objects = Array.from({ length: 16 }, (_, index) => ({
+    id: 'town-review-touch-' + String(index).padStart(2, '0'),
+    eventId: 'town-review-touch-' + String(index).padStart(2, '0'),
+    reportId: 'town-report-touch-' + String(index).padStart(2, '0'),
+    type: 'town-square-review',
+    status: index === 0 ? 'awaiting-founder-review' : 'process-record-not-adjudication',
+    mapVisible: true,
+    x: 1260 + (index % 4) * 10,
+    y: 520 + Math.floor(index / 4) * 10
+  }));
+  const world = { revision: 1, events: [{ id: 'retained-world-event', type: 'fixture' }] };
+  const worldBefore = structuredClone(world);
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { x: 1000, y: 400 },
+    world,
+    townSquareReviewObjects: objects,
+    townSquareReviewControlGroup: group,
+    townSquareReviewControlButtons: new Map(),
+    mapOverlayRects: [{ left: 0, top: 0, right: 80, bottom: 80 }],
+    width: 320,
+    height: 844,
+    camera: { x: 1140, y: 390 },
+    zoom: 0.78,
+    canvas,
+    playUiVisible: () => true
+  });
+  globalThis.document = { createElement: () => makeElement() };
+  Object.defineProperty(globalThis, 'innerWidth', {
+    configurable: true, enumerable: true, writable: true, value: 320
+  });
+  Object.defineProperty(globalThis, 'innerHeight', {
+    configurable: true, enumerable: true, writable: true, value: 844
+  });
+
+  try {
+    view.updateTownSquareReviewControls(false);
+    const controls = [...view.townSquareReviewControlButtons.entries()];
+    assert.equal(controls.length, 16);
+    assert.equal(group.hidden, false);
+    assert.equal(canvas.dataset.townSquareReviewControlVisibleCount, '16');
+
+    const centers = controls.map(([id, button]) => {
+      const object = objects.find(candidate => candidate.id === id);
+      assert.ok(object, 'every control remains bound to an exact projected event');
+      assert.equal(button.hidden, false);
+      assert.equal(button.dataset.eventId, id);
+      assert.equal(button.dataset.worldX, String(object.x));
+      assert.equal(button.dataset.worldY, String(object.y));
+      assert.equal(button.style.width, '44px');
+      assert.equal(button.style.height, '44px');
+      const left = Number.parseFloat(button.style.left);
+      const top = Number.parseFloat(button.style.top);
+      assert.ok(Number.isFinite(left) && Number.isFinite(top));
+      assert.ok(left - 22 >= 0 && left + 22 <= 320, '44px control stays inside the mobile viewport width');
+      assert.ok(top - 22 >= 0 && top + 22 <= 844, '44px control stays inside the mobile viewport height');
+      return { id, left, top };
+    });
+
+    for (let leftIndex = 0; leftIndex < centers.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < centers.length; rightIndex += 1) {
+        const left = centers[leftIndex];
+        const right = centers[rightIndex];
+        assert.ok(
+          Math.abs(left.left - right.left) >= 44 || Math.abs(left.top - right.top) >= 44,
+          '44px touch targets must not overlap: ' + left.id + ' / ' + right.id
+        );
+      }
+    }
+
+    const overlay = { left: 0, top: 0, right: 80, bottom: 80 };
+    for (const center of centers) {
+      assert.ok(
+        !(center.left - 22 < overlay.right && center.left + 22 > overlay.left &&
+          center.top - 22 < overlay.bottom && center.top + 22 > overlay.top),
+        'review controls must not cover reserved HUD overlays'
+      );
+    }
+    view.mapOverlayRects = [{ left: 0, top: 0, right: 320, bottom: 844 }];
+    view.updateTownSquareReviewControls(false);
+    assert.equal(view.townSquareReviewControlButtons.size, 16,
+      'exact event-bound controls remain in the DOM while every panel placement is blocked');
+    assert.equal(group.hidden, true,
+      'controls remain hidden rather than covering a full-screen reserved overlay');
+    assert.equal(canvas.dataset.townSquareReviewControlVisibleCount, '0');
+    assert.ok(
+      [...view.townSquareReviewControlButtons.values()].every(button => button.hidden),
+      'no control is exposed when there is no safe panel position'
+    );
+    assert.deepEqual(world, worldBefore, 'laying out map controls does not mutate canonical world state');
+  } finally {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+    if (previousInnerWidth) Object.defineProperty(globalThis, 'innerWidth', previousInnerWidth);
+    else delete globalThis.innerWidth;
+    if (previousInnerHeight) Object.defineProperty(globalThis, 'innerHeight', previousInnerHeight);
+    else delete globalThis.innerHeight;
+  }
+});
+
+test('TownSquare overflow shortcut opens the first unmapped exact Chronicle event without mutating the world', async () => {
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const previousInnerWidth = Object.getOwnPropertyDescriptor(globalThis, 'innerWidth');
+  const previousInnerHeight = Object.getOwnPropertyDescriptor(globalThis, 'innerHeight');
+  let modalOpen = false;
+  let playUiVisible = true;
+  const interactions = [];
+  const makeElement = () => {
+    const attributes = new Map();
+    const listeners = new Map();
+    return {
+      dataset: {},
+      style: {},
+      hidden: false,
+      textContent: '',
+      title: '',
+      children: [],
+      addEventListener(type, handler) {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(handler);
+      },
+      setAttribute(name, value) { attributes.set(name, String(value)); },
+      getAttribute(name) { return attributes.has(name) ? attributes.get(name) : null; },
+      appendChild(child) { this.children.push(child); return child; },
+      remove() { this.removed = true; },
+      dispatch(type, event = {}) {
+        for (const handler of listeners.get(type) || []) handler({
+          preventDefault() {}, stopPropagation() {}, ...event, target: this
+        });
+      }
+    };
+  };
+  const group = makeElement();
+  const canvas = {
+    dataset: {},
+    getBoundingClientRect: () => ({
+      left: 0, top: 0, width: 320, height: 844, right: 320, bottom: 844
+    }),
+    focus() { interactions.push('focus'); }
+  };
+
+  const base = Date.parse('2026-11-24T12:00:00.000Z');
+  const at = offset => new Date(base + offset).toISOString();
+  const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const author = { id: 'town-overflow-ui-author', name: 'Message Author', role: 'witness' };
+  const reporter = { id: 'town-overflow-ui-reporter', name: 'Reporting Witness', role: 'witness' };
+  const unrelated = { id: 'town-overflow-ui-unrelated', name: 'Unrelated Witness', role: 'witness' };
+  let current = createWorld({ id: 'town-square-overflow-ui-dispatch', now: at(0) });
+  const reviewedEventIds = [];
+  for (let index = 0; index < 17; index += 1) {
+    const offset = index * 61000;
+    const posted = await applyAction(current, {
+      type: 'post-message', text: 'Public process message ' + index
+    }, author, { now: at(offset + 1000) });
+    const reported = await applyAction(posted.world, {
+      type: 'report-message',
+      messageId: posted.result.messageId,
+      reason: 'other',
+      details: 'Private report detail ' + index
+    }, reporter, { now: at(offset + 2000) });
+    const reviewed = await applyAction(reported.world, {
+      type: 'review-message-report',
+      reportId: reported.result.reportId,
+      note: 'Private process review note ' + index
+    }, founder, { now: at(offset + 3000) });
+    current = reviewed.world;
+    reviewedEventIds.push(current.events.at(-1).id);
+  }
+
+  const world = publicWorld(current, founder);
+  const projection = worldViewModule.projectTownSquareReviewObjects(world, founder);
+  const overflowId = reviewedEventIds[16];
+  assert.equal(projection.historyStatus, 'actor-visible-links-validated');
+  assert.equal(projection.totalCount, 17);
+  assert.equal(projection.pendingCount, 0);
+  assert.equal(projection.processRecordCount, 17);
+  assert.equal(projection.objects.length, 16);
+  assert.equal(projection.overflowObject?.eventId, overflowId);
+  assert.equal(projection.overflowObject?.status, 'process-record-not-adjudication');
+  const mapped = projection.objects[0];
+  const worldBefore = structuredClone(world);
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    world,
+    viewer: founder,
+    townSquareReviewProjection: projection,
+    // Keep the layout fixture to one visible marker while the canonical projection
+    // retains its full 16-object bounded lane and exact first-unmapped identity.
+    townSquareReviewObjects: [mapped],
+    townSquareReviewControlGroup: group,
+    townSquareReviewControlButtons: new Map(),
+    townSquareReviewOverflowButton: null,
+    mapOverlayRects: [{ left: 0, top: 0, right: 80, bottom: 80 }],
+    width: 320,
+    height: 844,
+    camera: { x: 1140, y: 390 },
+    zoom: 0.78,
+    canvas,
+    callbacks: { onInteract: value => interactions.push(value) },
+    playUiVisible: () => playUiVisible,
+    cancelRoute() {}
+  });
+  globalThis.document = {
+    body: { classList: { contains: () => modalOpen } },
+    createElement: () => makeElement()
+  };
+  Object.defineProperty(globalThis, 'innerWidth', {
+    configurable: true, enumerable: true, writable: true, value: 320
+  });
+  Object.defineProperty(globalThis, 'innerHeight', {
+    configurable: true, enumerable: true, writable: true, value: 844
+  });
+
+  try {
+    view.updateTownSquareReviewControls(false);
+    const button = view.townSquareReviewOverflowButton;
+    assert.ok(button, 'an actor-visible unmapped record receives a Chronicle shortcut');
+    assert.equal(button.hidden, false);
+    assert.equal(button.textContent, 'C');
+    assert.equal(button.dataset.townSquareReviewOverflowControl, overflowId);
+    assert.equal(button.dataset.eventId, overflowId);
+    assert.equal(button.style.width, '44px');
+    assert.equal(button.style.height, '44px');
+    assert.equal(canvas.dataset.townSquareReviewOverflowEventId, overflowId);
+    assert.equal(canvas.dataset.townSquareReviewOverflowControlVisible, 'true');
+
+    const left = Number.parseFloat(button.style.left);
+    const top = Number.parseFloat(button.style.top);
+    assert.ok(Number.isFinite(left) && Number.isFinite(top));
+    assert.ok(left - 22 >= 0 && left + 22 <= 320,
+      'the Chronicle shortcut remains a 44px target inside the mobile viewport width');
+    assert.ok(top - 22 >= 0 && top + 22 <= 844,
+      'the Chronicle shortcut remains a 44px target inside the mobile viewport height');
+
+    const mapButton = [...view.townSquareReviewControlButtons.values()][0];
+    const mapLeft = Number.parseFloat(mapButton.style.left);
+    const mapTop = Number.parseFloat(mapButton.style.top);
+    assert.ok(Math.abs(left - mapLeft) >= 44 || Math.abs(top - mapTop) >= 44,
+      'the overflow shortcut must not overlap an individual review control');
+    const overlay = { left: 0, top: 0, right: 80, bottom: 80 };
+    assert.ok(!(left - 22 < overlay.right && left + 22 > overlay.left &&
+      top - 22 < overlay.bottom && top + 22 > overlay.top),
+    'the overflow shortcut must not cover a reserved HUD overlay');
+
+    button.dispatch('pointerdown', { pointerType: 'touch' });
+    assert.equal(button.dataset.pointerType, 'touch');
+    assert.equal(canvas.dataset.townSquareReviewOverflowControlPointerType, 'touch');
+    button.dispatch('click');
+    assert.deepEqual(interactions, [
+      { type: 'town-square-review', eventId: overflowId },
+      'focus'
+    ], 'the shortcut opens only the exact retained event through the existing read-only Chronicle route');
+    assert.deepEqual(world, worldBefore, 'overflow navigation does not mutate canonical world state');
+
+    // The active viewer can change while the previously rendered button is still queued.
+    // Dispatch must not trust the stale Founder projection for the next actor.
+    view.viewer = unrelated;
+    assert.equal(view.handleTownSquareReviewOverflowAction(overflowId), false,
+      'a stale overflow target must not cross the Founder-to-Witness actor boundary');
+    assert.deepEqual(interactions, [
+      { type: 'town-square-review', eventId: overflowId },
+      'focus'
+    ]);
+    view.viewer = founder;
+
+    // Incomplete current history must also invalidate the old shortcut.
+    const incompleteWorld = { ...world, revision: world.revision + 1 };
+    view.world = incompleteWorld;
+    assert.equal(view.handleTownSquareReviewOverflowAction(overflowId), false,
+      'a stale target cannot open Chronicle from an incomplete current history');
+    view.world = world;
+
+    modalOpen = true;
+    assert.equal(view.handleTownSquareReviewOverflowAction(overflowId), false,
+      'a stale Chronicle shortcut cannot activate behind an open modal');
+    modalOpen = false;
+    playUiVisible = false;
+    assert.equal(view.handleTownSquareReviewOverflowAction(overflowId), false,
+      'a hidden playable surface cannot dispatch the overflow Chronicle action');
+    playUiVisible = true;
+
+    view.mapOverlayRects = [{ left: 0, top: 0, right: 320, bottom: 844 }];
+    view.updateTownSquareReviewControls(false);
+    assert.equal(button.hidden, true,
+      'the overflow shortcut stays hidden when no safe map placement exists');
+    assert.equal(group.hidden, true,
+      'the review control group remains hidden rather than covering a full-screen overlay');
+    assert.equal(canvas.dataset.townSquareReviewOverflowControlVisible, 'false');
+    assert.deepEqual(world, worldBefore);
+
+    // If the preferred corner/edge slots are occupied, a safe central slot
+    // should still make the Chronicle record reachable instead of hiding it.
+    view.townSquareReviewObjects = [];
+    view.mapOverlayRects = [
+      { left: 264, top: 4, right: 316, bottom: 56 },
+      { left: 264, top: 788, right: 316, bottom: 840 },
+      { left: 4, top: 4, right: 56, bottom: 56 },
+      { left: 4, top: 788, right: 56, bottom: 840 },
+      { left: 264, top: 269, right: 316, bottom: 321 },
+      { left: 264, top: 523, right: 316, bottom: 575 },
+      { left: 134, top: 4, right: 186, bottom: 56 },
+      { left: 134, top: 788, right: 186, bottom: 840 }
+    ];
+    view.updateTownSquareReviewControls(false);
+    assert.equal(button.hidden, false,
+      'the Chronicle shortcut finds a safe fallback when preferred edge slots are occupied');
+    const fallbackLeft = Number.parseFloat(button.style.left);
+    const fallbackTop = Number.parseFloat(button.style.top);
+    assert.ok(fallbackLeft - 22 >= 0 && fallbackLeft + 22 <= 320 &&
+      fallbackTop - 22 >= 0 && fallbackTop + 22 <= 844,
+      'the fallback remains a viewport-contained 44px touch target');
+    assert.ok(!view.mapOverlayRects.some(rectangle =>
+      fallbackLeft - 22 < rectangle.right + 4 && fallbackLeft + 22 > rectangle.left - 4 &&
+      fallbackTop - 22 < rectangle.bottom + 4 && fallbackTop + 22 > rectangle.top - 4
+    ), 'the fallback does not overlap any reserved overlay');
+    assert.equal(button.dataset.eventId, overflowId,
+      'fallback placement retains the exact unmapped event identity');
+    assert.deepEqual(world, worldBefore, 'fallback layout remains read-only');
+  } finally {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+    if (previousInnerWidth) Object.defineProperty(globalThis, 'innerWidth', previousInnerWidth);
+    else delete globalThis.innerWidth;
   }
 });
 
@@ -4010,7 +4489,10 @@ test('TownSquare map prioritizes pending reports over the bounded retained-revie
   assert.deepEqual(projectQueue(projection), {
     available: true,
     pendingCount: 1,
-    processRecordCount: 17
+    processRecordCount: 17,
+    mappedCount: 16,
+    omittedCount: 2,
+    totalCount: 18
   });
 
   const pendingObject = projection.objects[0];
@@ -4020,10 +4502,100 @@ test('TownSquare map prioritizes pending reports over the bounded retained-revie
     1, 320, 240, projection.objects
   ), { id: pendingEventId, eventId: pendingEventId },
   'the pending map object remains a resolvable exact touch target');
+  assert.equal(projection.overflowObject?.eventId, reviewedEventIds[15],
+    'the first record beyond the 16-marker lane must retain an exact Chronicle navigation identity');
+  assert.equal(projection.overflowObject?.type, 'town-square-review-overflow');
+  assert.deepEqual(Object.keys(projection.overflowObject).sort(),
+    ['eventId', 'id', 'status', 'type', 'x', 'y'],
+    'the overflow target carries only exact navigation identity, status and coordinates');
+  assert.equal(projection.overflowObject?.status, 'process-record-not-adjudication');
+  assert.equal(JSON.stringify(projection.overflowObject).includes('Private report details'), false);
+  assert.equal(JSON.stringify(projection.overflowObject).includes('Private process review note'), false);
   const mapJson = JSON.stringify(projection.objects);
   assert.equal(mapJson.includes('PRIVATE NEW PENDING REPORT DETAILS'), false);
   assert.equal(mapJson.includes('Private report details'), false);
   assert.equal(mapJson.includes('Private process review note'), false);
   assert.deepEqual(current, beforeProjection,
     'overflow prioritization is a read-only projection and does not alter retained world history');
+});
+
+test('TownSquare overflow dispatch rechecks actor visibility after a session change', async () => {
+  const base = Date.parse('2026-11-24T12:00:00.000Z');
+  const at = offset => new Date(base + offset).toISOString();
+  const author = { id: 'town-overflow-session-author', name: 'Message Author', role: 'witness' };
+  const reporter = { id: 'town-overflow-session-reporter', name: 'Reporting Witness', role: 'witness' };
+  const unrelated = { id: 'town-overflow-session-unrelated', name: 'Unrelated Witness', role: 'witness' };
+  let current = createWorld({ id: 'town-square-overflow-session-boundary', now: at(0) });
+  let overflowEventId = null;
+
+  for (let index = 0; index < 17; index += 1) {
+    const offset = index * 61000;
+    const posted = await applyAction(current, {
+      type: 'post-message', text: 'Public overflow session message ' + index
+    }, author, { now: at(offset + 1000) });
+    const reported = await applyAction(posted.world, {
+      type: 'report-message',
+      messageId: posted.result.messageId,
+      reason: 'other',
+      details: 'Private report detail ' + index
+    }, reporter, { now: at(offset + 2000) });
+    current = reported.world;
+    overflowEventId = current.events.at(-1).id;
+  }
+
+  const reporterWorld = publicWorld(current, reporter);
+  const reporterProjection = worldViewModule.projectTownSquareReviewObjects(reporterWorld, reporter);
+  assert.equal(reporterProjection.historyStatus, 'actor-visible-links-validated');
+  assert.equal(reporterProjection.totalCount, 17);
+  assert.equal(reporterProjection.pendingCount, 17);
+  assert.equal(reporterProjection.processRecordCount, 0);
+  assert.equal(reporterProjection.objects.length, 16);
+  assert.equal(reporterProjection.overflowObject?.eventId, overflowEventId);
+  assert.equal(reporterProjection.overflowObject?.status, 'awaiting-founder-review');
+  assert.equal(reporterWorld.events.some(event => event.id === overflowEventId), true);
+  assert.equal(
+    worldViewModule.projectTownSquareReviewObjects(reporterWorld, unrelated).overflowObject,
+    null,
+    'the same retained event is not part of the unrelated Witness projection'
+  );
+
+  const interactions = [];
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    world: reporterWorld,
+    viewer: reporter,
+    townSquareReviewProjection: reporterProjection,
+    townSquareReviewObjects: reporterProjection.objects,
+    callbacks: { onInteract: value => interactions.push(value) },
+    canvas: { focus() {} },
+    cancelRoute() {},
+    playUiVisible: () => true
+  });
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  globalThis.document = { body: { classList: { contains: () => false } } };
+
+  try {
+    assert.equal(view.handleTownSquareReviewOverflowAction(overflowEventId), true,
+      'the reporting Witness can inspect the first unmapped report in their own actor-visible history');
+    assert.deepEqual(interactions, [
+      { type: 'town-square-review', eventId: overflowEventId }
+    ]);
+    const before = structuredClone(reporterWorld);
+
+    // Simulate a session transition before a queued C-button click is delivered:
+    // the old actor-scoped snapshot/projection remains, but the active actor changed.
+    // Dispatch must recompute visibility for the current actor rather than trust the
+    // previously rendered projection.
+    view.viewer = unrelated;
+    assert.equal(view.handleTownSquareReviewOverflowAction(overflowEventId), false,
+      'a stale overflow target from the previous Witness must not cross the actor boundary');
+    assert.deepEqual(interactions, [
+      { type: 'town-square-review', eventId: overflowEventId }
+    ], 'the stale click must not open the prior actor’s private Chronicle event');
+    assert.deepEqual(reporterWorld, before, 'dispatch-time visibility checks are read-only');
+    assert.equal(reporterWorld.xp, 0, 'report and inspection activity remains XP-neutral');
+  } finally {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+  }
 });
