@@ -808,6 +808,7 @@ def run_town_square_report_review(browser, url, out, width):
         # Enter through the map's TownSquare route and its explicit nearby Interact action.
         open_town_square(reporter_page)
         open_town_square(founder_page)
+        xp_before_actions = read_shared_state(founder_page)['world']['xp']
 
         message_one_text = 'TownSquare review fixture: author message for a separate Witness report.'
         message_two_text = 'TownSquare review fixture: reporter message for the Founder self-review boundary.'
@@ -831,6 +832,11 @@ def run_town_square_report_review(browser, url, out, width):
                 raise AssertionError('Commons message fixture omitted its exact message ID.')
             message_ids.append(message_id)
         message_one_id, message_two_id = message_ids
+        for page in (reporter_page, founder_page):
+            for message_id, message_text in zip(message_ids, (message_one_text, message_two_text)):
+                card = page.locator('[data-commons-message-id="' + message_id + '"]')
+                expect(card).to_be_visible()
+                expect(card).to_contain_text(message_text)
 
         report_actions = [
             (reporter_page, {
@@ -872,8 +878,7 @@ def run_town_square_report_review(browser, url, out, width):
         expect(pending_before).to_contain_text('does not change message visibility')
 
         founder_before_review = read_shared_state(founder_page)
-        reporter_before_review = read_shared_state(reporter_page)
-        if founder_before_review['world']['xp'] != reporter_before_review['world']['xp']:
+        if founder_before_review['world']['xp'] != xp_before_actions:
             raise AssertionError('Posting and reporting Commons messages must not create XP.')
         revision_before = founder_before_review['world']['revision']
         xp_before = founder_before_review['world']['xp']
@@ -904,6 +909,9 @@ def run_town_square_report_review(browser, url, out, width):
 
         founder_pending = founder_page.locator('#commons-pending-reports')
         expect(founder_pending).to_contain_text('PENDING FOUNDER REVIEW · 1')
+        expect(founder_pending).to_contain_text(
+            'does not change message visibility or establish factual truth'
+        )
         expect(founder_page.locator(
             '[data-commons-pending-report="' + report_one_id + '"]'
         )).to_have_count(0)
@@ -932,7 +940,8 @@ def run_town_square_report_review(browser, url, out, width):
             raise AssertionError('Founder review must append exactly one linked retained event.')
         review_event = review_events[0]
         if review_event.get('messageId') != message_one_id or review_event.get('note') != review_note or \
-                review_event.get('actor', {}).get('role') != 'founder':
+                review_event.get('actor', {}).get('role') != 'founder' or \
+                review_event.get('actor', {}).get('id') != founder['id']:
             raise AssertionError('The exact review event must retain report, message, note and Founder identity.')
         if founder_after_review['world']['revision'] != revision_before + 1 or \
                 founder_after_review['world']['xp'] != xp_before:
@@ -953,7 +962,18 @@ def run_town_square_report_review(browser, url, out, width):
             raise AssertionError('The reporter must see only its own report and linked review.')
         if {event.get('reportId') for event in private_events(founder_after_review)} != {report_one_id, report_two_id}:
             raise AssertionError('The Founder must see both reports and the one permitted review.')
-        if any(event.get('type') == 'message-moderated' for event in founder_events):
+        report_events = {
+            event.get('reportId'): event for event in founder_events
+            if event.get('type') == 'message-reported'
+        }
+        if report_events.get(report_one_id, {}).get('actor', {}).get('id') != reporter['id'] or \
+                report_events.get(report_two_id, {}).get('actor', {}).get('id') != founder['id']:
+            raise AssertionError('Each private report must retain its exact reporting actor.')
+        if any(
+            event.get('type') == 'message-moderated'
+            for state in (author_state, reporter_after_review, unrelated_state, founder_after_review)
+            for event in state['world']['events']
+        ):
             raise AssertionError('A process review must not create a moderation event.')
 
         for state in (author_state, reporter_after_review, unrelated_state, founder_after_review):
