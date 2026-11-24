@@ -3485,6 +3485,11 @@ test('stored-history validator independently binds experiment challenge response
   });
   assert.doesNotThrow(() => validateStoredWorldHistory(responded.world));
 
+  const whitespaceResponseId = structuredClone(responded.world);
+  whitespaceResponseId.events.at(-1).responseId = ' ';
+  whitespaceResponseId.events.at(-1).actionResult.responseId = ' ';
+  assert.throws(() => validateStoredWorldHistory(whitespaceResponseId), /experiment challenge response|response/i);
+
   const wrongAuthor = structuredClone(responded.world);
   wrongAuthor.events.at(-1).actor = { ...witness };
   assert.throws(() => validateStoredWorldHistory(wrongAuthor), /experiment challenge response|response/i);

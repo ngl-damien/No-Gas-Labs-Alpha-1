@@ -1046,6 +1046,11 @@ test('an experiment report author can preserve one response to a retained challe
   assert.equal(responded.world.xp,beforeXp);
   assert.equal(responded.world.revision,challenged.world.revision+1);
   await validateWorld(responded.world);
+  const whitespaceResponseId = structuredClone(responded.world);
+  whitespaceResponseId.events.at(-1).responseId = ' ';
+  whitespaceResponseId.events.at(-1).actionResult.responseId = ' ';
+  await assert.rejects(validateWorld(whitespaceResponseId), error => error.code === 'INVALID_WORLD',
+    'canonical history must reject response IDs that the research projector treats as empty');
   const tamperedReceipt=structuredClone(responded.world);
   tamperedReceipt.events.at(-1).actionResult.responseId='different-response-id';
   await assert.rejects(validateWorld(tamperedReceipt),error=>error.code==='INVALID_WORLD');

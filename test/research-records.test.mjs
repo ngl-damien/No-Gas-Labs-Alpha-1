@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sourceObservationRequestMaterial, projectResearchRecords, projectSourceObservationRecords, hasSourcePredicatePublicRetentionAcknowledgement, isValidSourceObservationBinding, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER } from '../game/research-records.mjs';
+import { sourceObservationRequestMaterial, projectResearchRecords, projectSourceObservationRecords, isLinkedExperimentChallengeResponse, hasSourcePredicatePublicRetentionAcknowledgement, isValidSourceObservationBinding, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER } from '../game/research-records.mjs';
 
 test('Source Observation binding mode requires a revision-bound digest only for server receipts', () => {
   const digest = 'a'.repeat(64);
@@ -251,6 +251,31 @@ test('a challenge response cannot point forward to a later challenge despite a l
     'report-event-1',
     'proposal-event-1'
   ]);
+});
+
+test('only a complete projected original-author response is eligible for the Moonshot Field reply card', () => {
+  const valid = project([proposal(), report(), challenge(), challengeResponseEvent()])
+    .find(event => event.type === 'experiment-challenge-responded');
+  assert.equal(isLinkedExperimentChallengeResponse(valid), true);
+
+  const cases = [
+    ['blank response identity', [proposal(), report(), challenge(), challengeResponseEvent({ responseId: ' ' })]],
+    ['wrong author', [proposal(), report(), challenge(), challengeResponseEvent({
+      actor: { id: 'founder-1', role: 'founder', name: 'Founder' }
+    })]],
+    ['duplicate response identity', [
+      proposal(), report(), challenge(), challengeResponseEvent(),
+      challengeResponseEvent({ id: 'response-event-2', responseId: 'response-1', challengeId: 'another-challenge' })
+    ]],
+    ['response before challenge', [proposal(), report(), challengeResponseEvent(), challenge()]],
+    ['invalid response text', [proposal(), report(), challenge(), challengeResponseEvent({ responseText: 'x'.repeat(1001) })]]
+  ];
+
+  for (const [label, events] of cases) {
+    const response = project(events).find(event => event.type === 'experiment-challenge-responded');
+    assert.ok(response, label + ': retained response remains inspectable');
+    assert.equal(isLinkedExperimentChallengeResponse(response), false, label);
+  }
 });
 
 test('invalid experiment challenges cannot anchor an author response', () => {
