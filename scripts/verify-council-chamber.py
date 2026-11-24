@@ -741,18 +741,90 @@ def api_action(page, action):
     }""", action)
 
 
-def open_town_square(page):
+def town_square_navigation_diagnostics(page):
+    return page.evaluate("""() => {
+      const world = document.querySelector('#world');
+      const sheet = document.querySelector('#sheet');
+      const route = [...document.querySelectorAll('button')].find(button =>
+        button.textContent.trim() === 'Walk to The Commons at TownSquare'
+      );
+      return {
+        renderer: world?.dataset.worldRenderer ?? null,
+        playerX: world?.dataset.playerX ?? null,
+        playerY: world?.dataset.playerY ?? null,
+        navigationTargetId: world?.dataset.navigationTargetId ?? null,
+        navigationState: world?.dataset.navigationState ?? null,
+        nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+        sheetHidden: sheet?.hidden ?? null,
+        placesButtonHidden: document.querySelector('#places-button')?.hidden ?? null,
+        routeButtonVisible: Boolean(route && (
+          route.offsetWidth || route.offsetHeight || route.getClientRects().length
+        )),
+        visibilityState: document.visibilityState
+      };
+    }""")
+
+
+def fail_town_square_route(page, out, width, actor, phase, error):
+    diagnostics = town_square_navigation_diagnostics(page)
+    screenshot = Path(out) / f'town-square-{actor}-{width}px-{phase}-failure.png'
+    screenshot.parent.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(screenshot), full_page=True)
+    raise AssertionError(
+        f'TownSquare route {phase} failed for {actor} at {width}px: ' +
+        json.dumps(diagnostics, sort_keys=True)
+    ) from error
+
+
+def open_town_square(page, out, width, actor):
+    # The Council journey keeps several isolated actor contexts open. Bring the
+    # actor being moved to the foreground and wait for its accepted render
+    # position before asking the pixel world to compute a route.
+    page.bring_to_front()
     if not page.locator('#sheet').is_hidden():
         page.locator('#sheet-close').tap()
+    try:
+        page.wait_for_function(
+            """() => {
+              const world = document.querySelector('#world');
+              return world?.dataset.worldRenderer === 'pixel-v1' &&
+                Number.isFinite(Number(world.dataset.playerX)) &&
+                Number.isFinite(Number(world.dataset.playerY));
+            }""",
+            timeout=15000
+        )
+    except Exception as error:
+        fail_town_square_route(page, out, width, actor, 'position-ready', error)
+
     page.locator('#places-button').tap()
     route = page.get_by_role('button', name='Walk to The Commons at TownSquare', exact=True)
     expect(route).to_be_visible()
     route.tap()
-    page.wait_for_function(
-        """() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'town-square' &&
-          document.querySelector('#sheet')?.hidden === true""",
-        timeout=90000
-    )
+    try:
+        page.wait_for_function(
+            """() => {
+              const world = document.querySelector('#world');
+              return world?.dataset.navigationTargetId === 'town-square' &&
+                ['walking', 'arrived', 'awaiting-range'].includes(world.dataset.navigationState);
+            }""",
+            timeout=15000
+        )
+    except Exception as error:
+        fail_town_square_route(page, out, width, actor, 'start', error)
+    try:
+        page.wait_for_function(
+            """() => {
+              const world = document.querySelector('#world');
+              return world?.dataset.navigationTargetId === 'town-square' &&
+                world?.dataset.navigationState === 'arrived' &&
+                world?.dataset.nearbyInstitutionId === 'town-square' &&
+                document.querySelector('#sheet')?.hidden === true;
+            }""",
+            timeout=90000
+        )
+    except Exception as error:
+        fail_town_square_route(page, out, width, actor, 'arrival', error)
+
     enter = page.locator('#enter-institution-button')
     if enter.is_visible():
         enter.tap()
@@ -827,8 +899,8 @@ def run_town_square_report_review(browser, url, out, width):
             )
 
         # Enter through the map's TownSquare route and its explicit nearby Interact action.
-        open_town_square(reporter_page)
-        open_town_square(founder_page)
+        open_town_square(reporter_page, out, width, 'reporter')
+        open_town_square(founder_page, out, width, 'founder')
         xp_before_actions = read_shared_state(founder_page)['world']['xp']
 
         message_one_text = 'TownSquare review fixture: author message for a separate Witness report.'
