@@ -45,6 +45,23 @@ function packetsForTest(challengeCount = 1, firstChallengeEventId = null) {
   return Object.fromEntries(projectCollaboratorPackets(world).map(packet => [packet.id, packet]));
 }
 
+function worldWithAuthorResponse() {
+  const world = worldForTest();
+  world.events.push({
+    id: 'response-event-1',
+    type: 'experiment-challenge-responded',
+    responseId: 'response-1',
+    challengeId: 'challenge-1',
+    reportId: 'report-1',
+    moonshotId: 'moonshot-1',
+    actor: witness,
+    at: at4,
+    responseText: 'The attempt remains self-reported; I have not supplied the missing control.'
+  });
+  world.revision = world.events.length;
+  return world;
+}
+
 const validResponses = {
   archivist: {
     eventChainFindings: ['The proposal precedes the report in the supplied chain.'],
@@ -72,6 +89,7 @@ const validResponses = {
     recordedSupport: [{ sourceEventIds: ['report-event-1'], statement: 'The attempt was retained as failed.' }],
     contradictions: [],
     dissentPreserved: ['challenge-event-1'],
+    authorResponsesPreserved: [],
     unknowns: ['The report is self-reported.'],
     nextDiscriminatingExperiment: { procedure: 'Repeat with a defined control.', outcome: 'Compare observations.' }
   },
@@ -187,6 +205,80 @@ test('synthesis dissent references must name included challenge events only', ()
   const duplicate = structuredClone(validResponses.synthesizer);
   duplicate.dissentPreserved = ['challenge-event-1', 'challenge-event-1'];
   assert.equal(validateCollaboratorResponse(packet, JSON.stringify(duplicate)).valid, false);
+});
+
+test('Synthesis v2 requires exact original-author response event IDs separately from challenge dissent', () => {
+  const world = worldWithAuthorResponse();
+  const packet = projectCollaboratorPackets(world).find(candidate => candidate.id === 'synthesizer');
+  const payload = JSON.parse(packet.packetJson);
+  assert.equal(payload.synthesisResponseScopeVersion, 2);
+  assert.match(packet.prompt, /BOUNDED COLLABORATOR HANDOFF v2/);
+
+  const response = structuredClone(validResponses.synthesizer);
+  response.scope = {
+    moonshotId: payload.targetMoonshotId,
+    includedEventIds: [...payload.inputRefs],
+    omittedEventIds: [...payload.omittedEventIds]
+  };
+  response.dissentPreserved = payload.inputRecords
+    .filter(record => record.type === 'experiment-challenged')
+    .map(record => record.eventId);
+  response.authorResponsesPreserved = payload.inputRecords
+    .filter(record => record.type === 'experiment-challenge-responded')
+    .map(record => record.eventId);
+  assert.deepEqual(response.dissentPreserved, ['challenge-event-1']);
+  assert.deepEqual(response.authorResponsesPreserved, ['response-event-1']);
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(response)).valid, true);
+
+  const missing = structuredClone(response);
+  delete missing.authorResponsesPreserved;
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(missing)).valid, false);
+
+  const invented = structuredClone(response);
+  invented.authorResponsesPreserved = ['response-from-another-world'];
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(invented)).valid, false);
+
+  const wrongRecordType = structuredClone(response);
+  wrongRecordType.authorResponsesPreserved = ['challenge-event-1'];
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(wrongRecordType)).valid, false);
+
+  const responseCollapsedIntoDissent = structuredClone(response);
+  responseCollapsedIntoDissent.dissentPreserved = ['challenge-event-1', 'response-event-1'];
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(responseCollapsedIntoDissent)).valid, false);
+
+  const duplicate = structuredClone(response);
+  duplicate.authorResponsesPreserved = ['response-event-1', 'response-event-1'];
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(duplicate)).valid, false);
+});
+
+test('retained v1 Synthesis packets remain revalidatable after response-reference v2 change', () => {
+  const sourceWorld = worldWithAuthorResponse();
+  const packet = projectCollaboratorPackets(sourceWorld, { legacySynthesizer: true })
+    .find(candidate => candidate.id === 'synthesizer');
+  const payload = JSON.parse(packet.packetJson);
+  assert.equal(payload.synthesisResponseScopeVersion, undefined);
+
+  const response = structuredClone(validResponses.synthesizer);
+  delete response.authorResponsesPreserved;
+  response.scope = {
+    moonshotId: payload.targetMoonshotId,
+    includedEventIds: [...payload.inputRefs],
+    omittedEventIds: [...payload.omittedEventIds]
+  };
+  response.dissentPreserved = payload.inputRecords
+    .filter(record => record.type === 'experiment-challenged')
+    .map(record => record.eventId);
+  const responseText = JSON.stringify(response);
+  assert.equal(validateCollaboratorResponse(packet, responseText).valid, true);
+
+  const event = retainedResponseEvent(packet, 'synthesizer', responseText);
+  const world = {
+    ...sourceWorld,
+    revision: sourceWorld.revision + 1,
+    events: [...sourceWorld.events, event]
+  };
+  const review = validateRetainedCollaboratorResponse(world, event.id, founder);
+  assert.equal(review.status, 'valid-for-human-review', review.reason);
 });
 
 test('synthesis scope must account for every supplied event and disclosed omission', () => {
