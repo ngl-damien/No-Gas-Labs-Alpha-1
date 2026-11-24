@@ -1349,7 +1349,11 @@ def run_town_square_report_review(browser, url, out, width):
                 canvas.dataset.townSquareReviewPointerType = event.pointerType;
               }, { capture: true, once: true });
             }""")
-            page.mouse.click(point['x'], point['y'])
+            # Use Playwright's touch-backed tap; mouse.click emits pointerType=mouse
+            # even when the mobile browser context has has_touch=True.
+            page.locator('#world').tap(position={
+                'x': point['localX'], 'y': point['localY']
+            })
             pointer_type = page.locator('#world').get_attribute(
                 'data-town-square-review-pointer-type'
             )
