@@ -371,7 +371,7 @@ function hasCompleteFounderHistorySnapshot(world, events) {
 }
 
 function projectFounderCommonsReportReviewMilestone(world, viewer, events) {
-  const interpretation = 'This Founder-only objective records a Founder-session process review of a private Commons report from another actor. The retained review event is a process record, not a factual verdict. It is complete only when the exact retained original message, report and Founder review events are uniquely linked and append-ordered. It does not establish factual truth, moderation, independent review, evidence certification, approval, distinct-human identity or NGL authority. It grants no XP; NPCs, collaborators, models and UI cannot create or complete it.';
+  const interpretation = 'This Founder-only objective records a Founder-session process review of a private Commons report from another actor. Its Quest Board evidence exposes the exact original message → private report → Founder review event chain in append order. The retained review is a process record, not a factual verdict. It does not establish factual truth, moderation, independent review, evidence certification, approval, distinct-human identity or NGL authority. It grants no XP; NPCs, collaborators, models and UI cannot create or complete it.';
   // publicWorld() attaches historyCoverage to complete shared snapshots too.
   // Accept only a dense, revision-matched Founder receipt with zero omissions;
   // Witness-filtered, partial, malformed and accessor-backed receipts fail closed.
@@ -387,7 +387,10 @@ function projectFounderCommonsReportReviewMilestone(world, viewer, events) {
   }
 
   const reviewHistory = projectCommonsReportReviewHistory(world, viewer?.id);
-  const firstValidReview = reviewHistory.validReviews[0]?.event ?? null;
+  const firstValidReview = reviewHistory.validReviews[0] ?? null;
+  const firstValidReviewEvents = firstValidReview
+    ? [firstValidReview.postEvent, firstValidReview.reportEvent, firstValidReview.event]
+    : [];
   const invalidReviewHistory = reviewHistory.invalidReviewHistory;
   let action = null;
   let blockedReason = null;
@@ -417,8 +420,8 @@ function projectFounderCommonsReportReviewMilestone(world, viewer, events) {
     'founder-commons-report-review',
     'Record a process review for another actor’s Commons report',
     1,
-    firstValidReview ? [firstValidReview.id] : [],
-    firstValidReview ? [firstValidReview] : [],
+    firstValidReviewEvents.map(event => event.id),
+    firstValidReviewEvents,
     action,
     blockedReason,
     interpretation
@@ -438,7 +441,7 @@ function projectWitnessCommonsReportReviewMilestone(world, viewer, events) {
   ));
   if (!ownReportIds.size) return null;
 
-  const interpretation = 'This Witness-only objective records receipt of one exact Founder-session process review of this Witness session’s private Commons report. The retained review event is a process record, not a factual verdict, moderation action, independent review, evidence certification, approval, or NGL authority. The Quest Board projection is read-only and grants no XP; actor IDs are pseudonymous sessions and do not prove distinct humans.';
+  const interpretation = 'This Witness-only objective records receipt of one exact Founder-session process review of this Witness session’s private Commons report. Its Quest Board evidence exposes the exact original message → private report → Founder review event chain in append order. The retained review is a process record, not a factual verdict, moderation action, independent review, evidence certification, approval, or NGL authority. The Quest Board projection is read-only and grants no XP; actor IDs are pseudonymous sessions and do not prove distinct humans.';
   let reviewHistory;
   try {
     reviewHistory = projectCommonsReportReviewHistory(world, COMMONS_FOUNDER_ACTOR_ID);
@@ -457,11 +460,16 @@ function projectWitnessCommonsReportReviewMilestone(world, viewer, events) {
     record?.reportEvent?.actor?.id === actorId &&
     record.reportEvent.actor.role === actorRole
   );
-  if (validReview?.event && isSafeCommonsReviewReferenceId(validReview.event.id)) {
+  const evidenceEvents = validReview
+    ? [validReview.postEvent, validReview.reportEvent, validReview.event]
+    : [];
+  if (validReview?.event && evidenceEvents.every(event =>
+    isSafeCommonsReviewReferenceId(event?.id)
+  )) {
     return trailMilestone(
       'witness-commons-report-review-received',
       'Inspect the Founder-session process review of your Commons report',
-      1, [validReview.event.id], [validReview.event], null, null, interpretation
+      1, evidenceEvents.map(event => event.id), evidenceEvents, null, null, interpretation
     );
   }
 
