@@ -551,6 +551,13 @@ function validateHistory(world) {
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), experimentChallenges = new Map(), experimentResponseIds = new Set(), respondedExperimentChallengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
   const eventPositions = new Map(), eventById = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
+  // Keep collaborator snapshot counts identical to the role-redacted public-world projection.
+  const commonsReportsById = buildCommonsReportIndex(world.events);
+  const visibleEventCountFor = (actor, endIndex) => world.events.slice(0, endIndex).filter(source =>
+    actor?.role === 'founder' ||
+    (!['draft', 'repair'].includes(source.type) &&
+      !isPrivateCommonsHistoryEvent(source, actor, commonsReportsById))
+  ).length;
   const sourceObservationIds = new Set(), sourceObservationById = new Map(), sourceObservationChallengeIds = new Set(), sourceObservationChallengeById = new Map(), sourceObservationResponseIds = new Set(), respondedSourceObservationChallengeIds = new Set(), sourceArchivePredicateIds = new Set();
   const sourceArchiveAttemptIds = new Set(), sourceArchiveFailureBindings = new Map(), sourceArchiveFailureOutcomes = new Set();
   const historyKey = (...parts) => JSON.stringify(parts);
@@ -978,7 +985,7 @@ function validateHistory(world) {
       if (packet?.protocol !== 'ngl.bounded-collaborator-packet.v1' || packet.role !== event.role || packet.targetMoonshotId !== event.moonshotId ||
           packet.authority !== 'advisory-only' || packet.mayWriteCanonicalState !== false || packet.mayGrantAuthority !== false ||
           packet.mayAwardProgress !== false || packet.mayCertifyTruthOrExecution !== false ||
-          snapshot?.status !== 'identified' || snapshot.worldId !== world.id || snapshot.revision !== index || snapshot.suppliedEventCount !== world.events.slice(0, index).filter(source => event.actor.role === 'founder' || (!['draft', 'repair'].includes(source.type) && (source.type !== 'message-reported' || (source.actor?.id === event.actor.id && source.actor?.role === event.actor.role)))).length ||
+          snapshot?.status !== 'identified' || snapshot.worldId !== world.id || snapshot.revision !== index || snapshot.suppliedEventCount !== visibleEventCountFor(event.actor, index) ||
           !Array.isArray(packet.inputRefs) || JSON.stringify(packet.inputRefs) !== JSON.stringify(event.sourceEventIds) ||
           !Array.isArray(packet.inputRecords) || packet.inputRecords.length !== event.sourceEventIds.length ||
           !Array.isArray(packet.omittedEventIds) || packet.omittedEventIds.length > 64 || packet.omittedEventIds.some(id => typeof id !== 'string' || !id || Array.from(id).length > 128 || event.sourceEventIds.includes(id)) || new Set(packet.omittedEventIds).size !== packet.omittedEventIds.length ||
