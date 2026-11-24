@@ -4385,6 +4385,35 @@ test('TownSquare overflow shortcut opens the first unmapped exact Chronicle even
       'the review control group remains hidden rather than covering a full-screen overlay');
     assert.equal(canvas.dataset.townSquareReviewOverflowControlVisible, 'false');
     assert.deepEqual(world, worldBefore);
+
+    // If the preferred corner/edge slots are occupied, a safe central slot
+    // should still make the Chronicle record reachable instead of hiding it.
+    view.townSquareReviewObjects = [];
+    view.mapOverlayRects = [
+      { left: 264, top: 4, right: 316, bottom: 56 },
+      { left: 264, top: 788, right: 316, bottom: 840 },
+      { left: 4, top: 4, right: 56, bottom: 56 },
+      { left: 4, top: 788, right: 56, bottom: 840 },
+      { left: 264, top: 269, right: 316, bottom: 321 },
+      { left: 264, top: 523, right: 316, bottom: 575 },
+      { left: 134, top: 4, right: 186, bottom: 56 },
+      { left: 134, top: 788, right: 186, bottom: 840 }
+    ];
+    view.updateTownSquareReviewControls(false);
+    assert.equal(button.hidden, false,
+      'the Chronicle shortcut finds a safe fallback when preferred edge slots are occupied');
+    const fallbackLeft = Number.parseFloat(button.style.left);
+    const fallbackTop = Number.parseFloat(button.style.top);
+    assert.ok(fallbackLeft - 22 >= 0 && fallbackLeft + 22 <= 320 &&
+      fallbackTop - 22 >= 0 && fallbackTop + 22 <= 844,
+      'the fallback remains a viewport-contained 44px touch target');
+    assert.ok(!view.mapOverlayRects.some(rectangle =>
+      fallbackLeft - 22 < rectangle.right + 4 && fallbackLeft + 22 > rectangle.left - 4 &&
+      fallbackTop - 22 < rectangle.bottom + 4 && fallbackTop + 22 > rectangle.top - 4
+    ), 'the fallback does not overlap any reserved overlay');
+    assert.equal(button.dataset.eventId, overflowId,
+      'fallback placement retains the exact unmapped event identity');
+    assert.deepEqual(world, worldBefore, 'fallback layout remains read-only');
   } finally {
     if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
     else delete globalThis.document;
