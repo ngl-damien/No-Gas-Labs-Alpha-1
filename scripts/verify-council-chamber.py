@@ -1392,38 +1392,79 @@ def run_town_square_report_review(browser, url, out, width):
                 eventId: button.dataset.eventId || null,
                 worldX: Number(button.dataset.worldX),
                 worldY: Number(button.dataset.worldY),
-                centerX: rect.left + rect.width / 2,
-                centerY: rect.top + rect.height / 2
+                left: rect.left,
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                width: rect.width,
+                height: rect.height,
+                viewportWidth: window.innerWidth,
+                viewportHeight: window.innerHeight
               };
             }""")
             marker = page.locator('#world').evaluate("""(canvas, eventId) => {
               const objects = JSON.parse(canvas.dataset.townSquareReviewObjects || '[]');
               const object = objects.find(item => item.eventId === eventId);
-              const rect = canvas.getBoundingClientRect();
-              const cameraX = Number(canvas.dataset.cameraX);
-              const cameraY = Number(canvas.dataset.cameraY);
-              const zoom = Number(canvas.dataset.zoom);
-              const width = Number(canvas.dataset.viewportWidth);
-              const height = Number(canvas.dataset.viewportHeight);
-              if (!object || ![cameraX, cameraY, zoom, width, height].every(Number.isFinite) ||
-                  zoom <= 0 || width <= 0 || height <= 0) return null;
+              if (!object) return null;
               return {
                 eventId: object.eventId,
                 worldX: object.x,
-                worldY: object.y,
-                screenX: rect.left + (object.x - cameraX) * zoom + width / 2,
-                screenY: rect.top + (object.y - cameraY) * zoom + height / 2
+                worldY: object.y
               };
             }""", review_event['id'])
+            controls_geometry = page.locator('[data-town-square-review-control]').evaluate_all("""buttons => {
+              return buttons.filter(button => !button.hidden).map(button => {
+                const rect = button.getBoundingClientRect();
+                return {
+                  eventId: button.dataset.eventId || null,
+                  left: rect.left,
+                  top: rect.top,
+                  right: rect.right,
+                  bottom: rect.bottom
+                };
+              });
+            }""")
+            overlay_geometry = page.locator(
+                '.masthead, #quest-card, .quest-card, .world-stats, .map-label, .movement-pad, ' +
+                '.world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet, #portal, #toast'
+            ).evaluate_all("""elements => elements.map(element => {
+              const rect = element.getBoundingClientRect();
+              return {left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom};
+            }).filter(rect => rect.right > rect.left && rect.bottom > rect.top)""")
             if not marker or control_state['eventId'] != review_event['id'] or \
                     control_state['worldX'] != marker['worldX'] or \
-                    control_state['worldY'] != marker['worldY'] or \
-                    abs(control_state['centerX'] - marker['screenX']) > 3 or \
-                    abs(control_state['centerY'] - marker['screenY']) > 3:
+                    control_state['worldY'] != marker['worldY']:
                 raise AssertionError(
-                    label + ' touch control must be anchored to the exact actor-visible map event: ' +
+                    label + ' touch control must retain the exact actor-visible event and original world coordinates: ' +
                     json.dumps({'control': control_state, 'marker': marker}, sort_keys=True)
                 )
+            if abs(control_state['width'] - 44) > 1 or abs(control_state['height'] - 44) > 1 or \
+                    control_state['left'] < -1 or control_state['top'] < -1 or \
+                    control_state['right'] > control_state['viewportWidth'] + 1 or \
+                    control_state['bottom'] > control_state['viewportHeight'] + 1:
+                raise AssertionError(
+                    label + ' touch control must be a visible 44px target inside the mobile viewport: ' +
+                    json.dumps(control_state, sort_keys=True)
+                )
+            for left_index, left_control in enumerate(controls_geometry):
+                for right_control in controls_geometry[left_index + 1:]:
+                    if left_control['left'] < right_control['right'] and \
+                            left_control['right'] > right_control['left'] and \
+                            left_control['top'] < right_control['bottom'] and \
+                            left_control['bottom'] > right_control['top']:
+                        raise AssertionError(
+                            label + ' TownSquare review touch targets must not overlap: ' +
+                            json.dumps({'left': left_control, 'right': right_control}, sort_keys=True)
+                        )
+            for overlay in overlay_geometry:
+                if control_state['left'] < overlay['right'] and \
+                        control_state['right'] > overlay['left'] and \
+                        control_state['top'] < overlay['bottom'] and \
+                        control_state['bottom'] > overlay['top']:
+                    raise AssertionError(
+                        label + ' TownSquare review touch panel must not cover a reserved HUD overlay: ' +
+                        json.dumps({'control': control_state, 'overlay': overlay}, sort_keys=True)
+                    )
             control.tap()
             pointer_type = control.get_attribute('data-test-pointer-type')
             if pointer_type != 'touch':
