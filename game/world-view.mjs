@@ -368,7 +368,8 @@ export function projectTownSquareReviewObjects(world, viewer) {
     pendingCount: null,
     processRecordCount: null,
     historyStatus,
-    objects: Object.freeze([])
+    objects: Object.freeze([]),
+    overflowObject: null
   });
   if (!safeCommonsReviewMapId(viewerId) || !['founder', 'witness'].includes(viewerRole)) {
     return empty('viewer-unavailable');
@@ -449,7 +450,7 @@ export function projectTownSquareReviewObjects(world, viewer) {
       String(left.event?.id ?? '').localeCompare(String(right.event?.id ?? ''));
   });
   const totalCount = visibleRecords.length;
-  const objects = visibleRecords.slice(0, MAX_TOWNSQUARE_REVIEW_MAP_OBJECTS).map(({ record, event, status }) => {
+  const projectedRecords = visibleRecords.map(({ record, event, status }) => {
     const eventId = event.id;
     const reportId = record.reportId;
     if (!safeCommonsReviewMapId(eventId) || !safeCommonsReviewMapId(reportId) ||
@@ -471,6 +472,18 @@ export function projectTownSquareReviewObjects(world, viewer) {
       y: coordinates.y
     });
   }).filter(Boolean);
+  const objects = projectedRecords.slice(0, MAX_TOWNSQUARE_REVIEW_MAP_OBJECTS);
+  const firstUnmapped = projectedRecords[MAX_TOWNSQUARE_REVIEW_MAP_OBJECTS] ?? null;
+  // The overflow target is a read-only Chronicle entry point, not another map
+  // marker. Do not copy report text, notes, actor details, or source payloads.
+  const overflowObject = firstUnmapped ? Object.freeze({
+    id: firstUnmapped.id,
+    eventId: firstUnmapped.eventId,
+    status: firstUnmapped.status,
+    type: 'town-square-review-overflow',
+    x: firstUnmapped.x,
+    y: firstUnmapped.y
+  }) : null;
 
   return Object.freeze({
     totalCount,
@@ -478,7 +491,8 @@ export function projectTownSquareReviewObjects(world, viewer) {
     pendingCount: visiblePendingReports.length,
     processRecordCount: visibleReviews.length,
     historyStatus,
-    objects: Object.freeze(objects)
+    objects: Object.freeze(objects),
+    overflowObject
   });
 }
 
