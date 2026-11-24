@@ -971,7 +971,7 @@ This is a narrow reuse of Alpha-1's existing `handleNpcAction` UI guard and acto
 
 Root `AGENTS.md`, the shared hourly protocol, and Institutional Charter were read sequentially; nested `game/AGENTS.md`, `test/AGENTS.md`, `scripts/AGENTS.md`, and `docs/AGENTS.md` are absent. The first repository metadata lookup preceded the governing-document read, so strict bootstrap compliance remains **PARTIAL**. The authorized Desktop Commander devices are Offline and no local checkout is mounted; local preflight/tests were unavailable. Hosted exact-head preflight passed with zero warnings/failures.
 
-PR #722's documentation branch is stale relative to the runtime branch: its recorded base SHA is `aa7979e`, while the runtime is now `8f6b3dc`. Its current changed-file listing includes nine paths rather than the six documentation-only paths previously claimed. It remains open/draft and is not merged or treated as synchronized.
+PR #722's base was refreshed to exact runtime head `8f6b3dc`; GitHub now reports six changed paths, all under `docs/`. Its head `1473cf` remains two commits behind the runtime base and GitHub reports `mergeable=false`; it remains open/draft/unmerged and must be reconciled before integration.
 
 G0–G8 remain **IN_PROGRESS**; G9 **NOT_STARTED**; Founder trust **NOT_ENROLLED**. No merge, release, deployment, Founder approval, external publication, truth verdict, or authority transition occurred.
 
