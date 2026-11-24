@@ -354,10 +354,10 @@ function townSquareReviewCoordinates(eventId) {
 }
 
 /**
- * Project only an exact retained message → private report → Founder review chain
- * onto TownSquare. The marker contains no private text and is visible only to
- * the Founder or the original reporting actor. It is a process record, not
- * moderation, adjudication, evidence certification, approval, truth, or XP.
+ * Project exact retained message → private report chains onto TownSquare,
+ * both before and after a Founder review. Markers contain no private text and
+ * are visible only to the Founder or original reporting actor. They are process
+ * records, not moderation, adjudication, evidence certification, approval, truth, or XP.
  */
 export function projectTownSquareReviewObjects(world, viewer) {
   const viewerId = ownDataValue(viewer, 'id');
@@ -399,17 +399,21 @@ export function projectTownSquareReviewObjects(world, viewer) {
     safeCommonsReviewMapId(ownDataValue(event, 'reportId'))
       ? [ownDataValue(event, 'reportId')] : []
   ) : []);
+  const viewerActorKey = JSON.stringify([viewerId, viewerRole]);
+  const invalidReportActorKeys = Array.isArray(history.invalidReportActorKeys)
+    ? history.invalidReportActorKeys : [];
   const relevantInvalidHistory = viewerRole === 'founder'
     ? history.invalidReviewHistory
-    : ownReportIds.size > 0 && history.invalidReviewHistory &&
-      history.invalidReportIds.some(reportId => ownReportIds.has(reportId));
+    : history.invalidReportIds.some(reportId => ownReportIds.has(reportId)) ||
+      invalidReportActorKeys.includes(viewerActorKey) ||
+      invalidReportActorKeys.includes('*');
   const snapshotHistoryIncomplete =
     !hasCompleteTownSquareReviewHistory(world, safeEvents, viewerRole);
   const historyStatus = relevantInvalidHistory || snapshotHistoryIncomplete
     ? 'actor-visible-links-incomplete'
     : 'actor-visible-links-validated';
   // A locally valid chain inside a partial snapshot cannot establish the complete
-  // actor-visible review set. Keep the events in Chronicle, but do not render
+  // actor-visible report/review set. Keep the events in Chronicle, but do not render
   // map markers until the response coverage receipt is complete and consistent.
   if (historyStatus !== 'actor-visible-links-validated') return empty(historyStatus);
 
@@ -417,21 +421,40 @@ export function projectTownSquareReviewObjects(world, viewer) {
     viewerRole === 'founder' ||
     (record.reportEvent?.actor?.id === viewerId && record.reportEvent?.actor?.role === viewerRole)
   );
-  const totalCount = visibleReviews.length;
-  const objects = visibleReviews.slice(0, MAX_TOWNSQUARE_REVIEW_MAP_OBJECTS).map(record => {
-    const eventId = record.event.id;
+  const visiblePendingReports = history.validPendingReports.filter(record => {
+    const actor = record.reportEvent?.actor;
+    const postActor = record.postEvent?.actor;
+    return viewerRole === 'founder'
+      ? !(actor?.id === viewerId && actor?.role === viewerRole) &&
+        !(actor?.id === postActor?.id && actor?.role === postActor?.role)
+      : actor?.id === viewerId && actor?.role === viewerRole;
+  });
+  const visibleRecords = [
+    ...visibleReviews.map(record => ({
+      record, event: record.event, status: 'process-record-not-adjudication'
+    })),
+    ...visiblePendingReports.map(record => ({
+      record, event: record.reportEvent, status: 'awaiting-founder-review'
+    }))
+  ].sort((left, right) => left.record.index - right.record.index ||
+    String(left.event?.id ?? '').localeCompare(String(right.event?.id ?? '')));
+  const totalCount = visibleRecords.length;
+  const objects = visibleRecords.slice(0, MAX_TOWNSQUARE_REVIEW_MAP_OBJECTS).map(({ record, event, status }) => {
+    const eventId = event.id;
     const reportId = record.reportId;
-    if (!safeCommonsReviewMapId(eventId) || !safeCommonsReviewMapId(reportId)) return null;
+    if (!safeCommonsReviewMapId(eventId) || !safeCommonsReviewMapId(reportId) ||
+        !safeCommonsReviewMapId(record.postEvent?.id) ||
+        !safeCommonsReviewMapId(record.reportEvent?.id)) return null;
     const coordinates = townSquareReviewCoordinates(eventId);
-    const sourceEventIds = Object.freeze([
-      record.postEvent.id, record.reportEvent.id, eventId
-    ]);
+    const sourceEventIds = Object.freeze(status === 'awaiting-founder-review'
+      ? [record.postEvent.id, record.reportEvent.id]
+      : [record.postEvent.id, record.reportEvent.id, eventId]);
     return Object.freeze({
       id: eventId,
       eventId,
       reportId,
       sourceEventIds,
-      status: 'process-record-not-adjudication',
+      status,
       mapVisible: true,
       type: 'town-square-review',
       x: coordinates.x,
@@ -1513,7 +1536,14 @@ export class WorldView {
     this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;this.targetType=typeof id==='string'?(targetType??null):null;this.syncCanvasState();this.scheduleFrame?.();
   }
   nearest(targetId,targetType){
-    const options=[...PLACES,...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title})),...safeTownSquareReviewObjects(this).map(object=>({id:object.id,eventId:object.eventId,reportId:object.reportId,x:object.x,y:object.y+10,type:'town-square-review',name:'TownSquare process review'}))];
+    const options=[...PLACES,...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title})),...safeTownSquareReviewObjects(this).filter(object =>
+      object.mapVisible === true &&
+      ['awaiting-founder-review', 'process-record-not-adjudication'].includes(object.status)
+    ).map(object=>({
+      id:object.id,eventId:object.eventId,reportId:object.reportId,
+      status:object.status,x:object.x,y:object.y+10,
+      type:'town-square-review',name:'TownSquare report/review record'
+    }))];
     const candidates=targetId===undefined?(targetType===undefined?options:[]):typeof targetId==='string'?options.filter(option=>option.id===targetId&&(targetType===undefined||option.type===targetType)):[];
     return candidates.map(p=>({...p,distance:Math.hypot(p.x-this.player.x,p.y-this.player.y)})).sort((a,b)=>a.distance-b.distance)[0]||null;
   }
@@ -1534,7 +1564,7 @@ export class WorldView {
       this.player={...this.player,...stepPlayer(this.player,direction,Math.min(PLAYER_MOVE_SPEED*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};
     }
     this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
-    if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const townSquareReviewObject=safeTownSquareReviewObjects(this).find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='town-square-review'){if(townSquareReviewObject?.mapVisible)this.callbacks.onInteract({type:'town-square-review',eventId:townSquareReviewObject.eventId,reportId:townSquareReviewObject.reportId})}else if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
+    if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const townSquareReviewObject=safeTownSquareReviewObjects(this).find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='town-square-review'){if(townSquareReviewObject?.mapVisible&&['awaiting-founder-review','process-record-not-adjudication'].includes(townSquareReviewObject.status))this.callbacks.onInteract({type:'town-square-review',eventId:townSquareReviewObject.eventId,reportId:townSquareReviewObject.reportId})}else if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
     for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90&&!this.discovered.has(place.id)){this.discovered.add(place.id);this.callbacks.onDiscover(place.id)}
     const desired=this.cameraTarget();const easing=this.reduced?1:1-Math.exp(-dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
     if(now-this.lastPosition>1500&&this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}else if(wasMoving&&!this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}
@@ -1563,7 +1593,7 @@ export class WorldView {
   drawPlayer(player,other=false){const c=this.ctx;c.save();c.translate(player.x,player.y);this.ellipse(0,9,13,5,'#354a3a33');const bob=!this.reduced&&this.moving&&!other?Math.sin(this.time*16)*1.5:0;c.translate(0,bob);this.line([[-4,0],[-5,8]],'#3c4b43',4);this.line([[5,0],[7,8]],'#3c4b43',4);c.fillStyle=other?'#6e8c76':'#385e58';c.beginPath();c.roundRect(-9,-20,18,23,5);c.fill();this.ellipse(0,-26,9,10,'#e2b68b','#675d42');this.ellipse(0,-33,11,8,other?'#819a75':palette.orange,'#7d6541');c.fillStyle=other?'#819a75':'#e38942';c.fillRect(-11,-33,22,5);this.ellipse(0,-42,4,4,other?'#819a75':palette.orange);this.line([[-9,-17],[-14,-8]],'#c7a17b',4);this.line([[9,-17],[13,-8]],'#c7a17b',4);if(!other){this.ellipse(0,-52,3,3,'#fff4ce');this.text('YOU',0,27,9,'#35574d','system-ui')}else if(player.name)this.text(String(player.name).slice(0,24),0,27,10,'#546c53');c.restore()}
   render(){const c=this.ctx;c.setTransform(this.dpr,0,0,this.dpr,0,0);c.clearRect(0,0,this.width,this.height);c.save();c.translate(this.width/2-this.camera.x*this.zoom,this.height/2-this.camera.y*this.zoom);c.scale(this.zoom,this.zoom);this.drawLandscape();if(this.route.length){this.line([[this.player.x,this.player.y],...this.route.map(p=>[p.x,p.y])],'#b56a3e99',2,[4,7]);const p=this.route.at(-1);this.ellipse(p.x,p.y,8,4,undefined,'#b56a3e')}
     this.drawPlaces();this.drawWorkbench();const objects=[...(this.world.creations||[]).map(creation=>({y:creation.position.y,draw:()=>this.drawBuilding(creation)})),...this.researchObjects.map(object=>({y:object.y,draw:()=>this.drawMoonshotObject(object)})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({y:object.y,draw:()=>this.drawResearchActivityObject(object)})),...this.presence.filter(p=>p.id!==this.player.id&&Number.isFinite(p.x)&&Number.isFinite(p.y)).map(p=>({y:p.y,draw:()=>this.drawPlayer(p,true)})),{y:this.player.y,draw:()=>this.drawPlayer(this.player)}];objects.sort((a,b)=>a.y-b.y).forEach(o=>o.draw());
-    const near=this.nearest();if(near?.distance<145&&!document.body.classList.contains('modal-open')){const label=near.type==='workbench'?'E · Make something':near.type==='creation'?'E · Enter creation':near.type==='research-activity'?'E · Inspect research record':near.type==='research-object'?'E · Inspect moonshot':near.type==='institution'?(this.width<600?'TAP · ENTER · ':'E · ENTER · ')+(near.id==='council_chamber'?'COUNCIL':'INSTITUTION'):'E · Discover';const x=this.player.x,y=this.player.y-76;c.font='11px system-ui';const w=c.measureText(label).width+22;c.fillStyle='#fff8e8ed';c.strokeStyle='#9f9e78';c.lineWidth=1;c.beginPath();c.roundRect(x-w/2,y-12,w,24,12);c.fill();c.stroke();this.text(label,x,y+4,11,'#3d5c4c','system-ui')}c.restore();
+    const near=this.nearest();if(near?.distance<145&&!document.body.classList.contains('modal-open')){const label=near.type==='workbench'?'E · Make something':near.type==='creation'?'E · Enter creation':near.type==='research-activity'?'E · Inspect research record':near.type==='research-object'?'E · Inspect moonshot':near.type==='town-square-review'?(this.width<600?'TAP · ':'E · ')+(near.status==='awaiting-founder-review'?'INSPECT PENDING REPORT':'INSPECT REVIEW RECORD'):near.type==='institution'?(this.width<600?'TAP · ENTER · ':'E · ENTER · ')+(near.id==='council_chamber'?'COUNCIL':'INSTITUTION'):'E · Discover';const x=this.player.x,y=this.player.y-76;c.font='11px system-ui';const w=c.measureText(label).width+22;c.fillStyle='#fff8e8ed';c.strokeStyle='#9f9e78';c.lineWidth=1;c.beginPath();c.roundRect(x-w/2,y-12,w,24,12);c.fill();c.stroke();this.text(label,x,y+4,11,'#3d5c4c','system-ui')}c.restore();
     const vignette=c.createRadialGradient(this.width/2,this.height/2,this.width*.2,this.width/2,this.height/2,Math.max(this.width,this.height)*.7);vignette.addColorStop(0,'#786f3600');vignette.addColorStop(1,'#786f3618');c.fillStyle=vignette;c.fillRect(0,0,this.width,this.height);
   }
   destroy(){if(this.destroyed)return;this.destroyed=true;this.paused=true;this.animationEpoch+=1;if(this.animation!==null){cancelAnimationFrame(this.animation);this.animation=null;}this.resizeObserver.disconnect();this.lifecycleObserver?.disconnect?.();globalThis.document?.removeEventListener?.('visibilitychange',this.onVisibilityChange);removeEventListener('keydown',this.onKeyDown);removeEventListener('keyup',this.onKeyUp);removeEventListener('blur',this.onBlur);removeEventListener('focus',this.onFocus);this.canvas.removeEventListener('pointerdown',this.onPointer);}
