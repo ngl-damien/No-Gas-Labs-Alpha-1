@@ -940,3 +940,44 @@ The prior Run 320 checkpoint is preserved byte-for-byte at [`checkpoint-history/
 
 - Quest Board [45418760182](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45418760182): **PASS** at 320px and 390px; artifact [14932959597](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45418760182/artifacts/14932959597). The journeys cover Publication House→exact Chronicle event, edition pinning/stale-write protection, Source Analyst predicate/contrast objectives, AGP satire publication/follow-up, Contradiction Clerk read-only inspection, Dissent Circuit challenge/Founder response, Evidence Archive append-order pagination, Recovery Ledger decline/re-offer/transfer, and offline Chronicle navigation with stale-snapshot reconciliation. Source Archive and upstream outage are mock fixtures, not live GitHub retrievals. Source truth remains NOT_ASSESSED, independent verification NOT_PERFORMED, model assertions LEADS_ONLY, observation XP unchanged. The recovery receipt retains a sandboxed artifact-frame service-worker SecurityError; overall acceptance passes.
 - Android Alpha-1 [45418760125](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45418760125) remains **IN_PROGRESS** after debug APK assembly and entry into the offline-world emulator journey. No terminal JUnit/instrumentation or physical-device acceptance is claimed.
+
+
+## Run 363 — TownSquare review controls reject stale overlay clicks — 2026-11-24
+
+**Runtime PR:** [#727](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/727), branch `test/townsquare-review-touch-pointer-20261124-run357`, exact head [`8f6b3dc`](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/8f6b3dc7aaec31b691e8e5f1938b3c049a696cce). Parent #726 head `0b274390b0bc239a65dcaa4debae15f844e5a4af`; #726 is based on #718 head `b48858033910381281ccd3db158486b4c56bb522`; main remains `21677d88cb027f3d16adacf92dbdd0ec08e96dbd`. PR #727 is open/draft/unmerged, 28 commits ahead / 0 behind #726, 589 ahead / 9 behind main, five changed paths relative to #726. Do not merge the accumulated stack wholesale.
+
+### Defect and implementation
+
+The new TownSquare review marker buttons are hidden when a modal is open or the playable surface is hidden. Their click handler previously trusted that presentation state and did not re-check it at dispatch time. A queued or programmatically dispatched click could therefore call `onInteract` behind a modal, unlike the existing NPC control, which revalidates the play surface and `modal-open` state.
+
+- Test-first [`7f037bf`](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/7f037bf381c2957ad3ab96ed3e9f837ae5899df3) adds a regression for modal-open and hidden-play-UI clicks, plus the unobstructed positive path. Full Verify [45424372644](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45424372644) reproduced the defect: **1,562/1,563 tests passed; the new test failed** because the handler returned true and invoked the interaction behind an active modal. Hosted preflight warnings/failures were empty.
+- Runtime [`8f6b3dc`](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/8f6b3dc7aaec31b691e8e5f1938b3c049a696cce) now requires a browser document, a visible play surface, and no `modal-open` class before handling a TownSquare review control. The valid unobstructed control still opens the exact retained event and focuses the canvas.
+- Changed runtime path: `game/pixel-world-view.mjs`. Regression path: `test/pixel-world-view.test.mjs`.
+- No canonical event, reducer, quest progress, XP, inventory, moderation, adjudication, evidence certification, approval, truth verdict, or authority transition changed. No model call or NPC authority was added.
+
+### Exact-head verification on 8f6b3dc
+
+- Full Verify [45424613055](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45424613055): **PASS**; hosted preflight `warnings=[]`, `failures=[]`; Node suite exit 0, Python inspector exit 0, PWA package build exit 0, bounded institutional exercise exit 0, report `passed=true`.
+- Genesis Evidence Invariant [45424613119](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45424613119): **PASS**.
+- Phone PWA build [45424613290](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45424613290): **PASS**; deployment job skipped.
+- Academy [45424613037](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45424613037), Combat Yard [45424613114](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45424613114), and Council/TownSquare [45424613004](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45424613004): **PASS**. Council exercised the actual touch control at 320px and 390px.
+- Quest Board [45424613012](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45424613012), Synthesis Clerk [45424613131](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45424613131), and Android Alpha-1 [45424612978](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45424612978) remain **IN_PROGRESS** at this checkpoint capture. Android assembled the debug APK and entered the offline-world emulator journey; no terminal JUnit/instrumentation or physical-device result is claimed. The prior exact-head Android run [45418760125](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45418760125) was cancelled by the branch advance before terminal instrumentation; it is not counted as a pass or failure.
+- Browser [45424613372](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45424613372): **FAIL** in Worker A-owned `scripts/verify-browser.py` at the unchanged Guild Hall selector mismatch: visible `Enter Guild Hall`, hidden legacy `Enter Forge`, movement enabled, modal closed, legitimate first-discovery +100 XP. Handoff: [#456 comment 7135967180](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/456#issuecomment-7135967180). Worker B did not edit Browser-owned files.
+- Live Source Archive [45424613081](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45424613081): **FAIL**; retrying the failed job reproduced the same shared-service response. The live mismatch fixture expected HTTP 409 `SOURCE_CAPTURE_MISMATCH`, but the shared server returned HTTP 502 `GITHUB_SOURCE_UNAVAILABLE` while attempting the pinned GitHub retrieval. The pinned source itself is directly retrievable through the GitHub connector at commit `6f1a4aefb87334ddad359af12f754505965e29a5`, with the expected Git blob SHA `25502c0e4941a4fc394059aaaeb39b002325a128` and 1,489-byte content. No Source Archive/server code changed. The acceptance stopped at the unexpected 502, so the subsequent retained-failure state assertions were not independently observed; do not claim the failure event was verified by this run.
+
+### Donor, authority, and process boundaries
+
+This is a narrow reuse of Alpha-1's existing `handleNpcAction` UI guard and actor-scoped TownSquare projection, not a new donor system. RAE-style provenance, Mesh lineage/authority separation, Relay same-request-ID recovery, Guild bounded NPC roles, Decision Chamber human authorization, and AGP publication boundaries remain unchanged. The guard blocks only presentation/input actions; it does not create canonical state.
+
+Root `AGENTS.md`, the shared hourly protocol, and Institutional Charter were read sequentially; nested `game/AGENTS.md`, `test/AGENTS.md`, `scripts/AGENTS.md`, and `docs/AGENTS.md` are absent. The first repository metadata lookup preceded the governing-document read, so strict bootstrap compliance remains **PARTIAL**. The authorized Desktop Commander devices are Offline and no local checkout is mounted; local preflight/tests were unavailable. Hosted exact-head preflight passed with zero warnings/failures.
+
+PR #722's documentation branch is stale relative to the runtime branch: its recorded base SHA is `aa7979e`, while the runtime is now `8f6b3dc`. Its current changed-file listing includes nine paths rather than the six documentation-only paths previously claimed. It remains open/draft and is not merged or treated as synchronized.
+
+G0–G8 remain **IN_PROGRESS**; G9 **NOT_STARTED**; Founder trust **NOT_ENROLLED**. No merge, release, deployment, Founder approval, external publication, truth verdict, or authority transition occurred.
+
+### Next
+
+1. Read terminal Quest Board, Synthesis Clerk, and Android results on 8f6b3dc; do not infer emulator or physical-device acceptance.
+2. Keep the Guild Hall Browser selector and Android instrumentation ownership with Worker A.
+3. Diagnose the shared Source Archive 502 separately; do not weaken the 409 mismatch assertion to turn an upstream retrieval outage into a pass.
+4. Reconcile PR #472's overlapping Commons paths and the 589-ahead/9-behind stack against main path-by-path before any integration decision.
