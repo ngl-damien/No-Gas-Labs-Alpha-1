@@ -372,6 +372,53 @@ export function projectGuildNpcPointerTarget(point, camera, zoom, width, height)
   });
 }
 
+
+const TOWNSQUARE_REVIEW_POINTER_HIT_RADIUS = 28;
+const TOWNSQUARE_REVIEW_POINTER_FORBIDDEN_IDS = new Set(['constructor', 'prototype', '__proto__']);
+
+/** Resolve a canvas tap to one exact actor-visible TownSquare review marker. */
+export function projectTownSquareReviewPointerTarget(point, camera, zoom, width, height, objects) {
+  const x = ownFiniteCoordinate(point, 'x');
+  const y = ownFiniteCoordinate(point, 'y');
+  const cameraX = ownFiniteCoordinate(camera, 'x');
+  const cameraY = ownFiniteCoordinate(camera, 'y');
+  const count = ownDataValue(objects, 'length');
+  if (!isArraySafely(objects) || !Number.isSafeInteger(count) || count < 0 || count > 32 ||
+      x === null || y === null || cameraX === null || cameraY === null ||
+      !Number.isFinite(zoom) || zoom <= 0 ||
+      !Number.isFinite(width) || width <= 0 ||
+      !Number.isFinite(height) || height <= 0 ||
+      x < 0 || y < 0 || x > width || y > height) return null;
+
+  const worldX = (x - width / 2) / zoom + cameraX;
+  const worldY = (y - height / 2) / zoom + cameraY;
+  if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
+  let selected = null;
+  const seenIds = new Set();
+  for (let index = 0; index < count; index += 1) {
+    const object = ownDataValue(objects, String(index));
+    if (!object || typeof object !== 'object' || isArraySafely(object)) return null;
+    const id = ownDataValue(object, 'id');
+    const eventId = ownDataValue(object, 'eventId');
+    const objectX = ownFiniteCoordinate(object, 'x');
+    const objectY = ownFiniteCoordinate(object, 'y');
+    if (typeof id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id) ||
+        typeof eventId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(eventId) ||
+        TOWNSQUARE_REVIEW_POINTER_FORBIDDEN_IDS.has(id) ||
+        TOWNSQUARE_REVIEW_POINTER_FORBIDDEN_IDS.has(eventId) ||
+        id !== eventId || ownDataValue(object, 'type') !== 'town-square-review' ||
+        ownDataValue(object, 'mapVisible') !== true || seenIds.has(id) ||
+        objectX === null || objectY === null) return null;
+    seenIds.add(id);
+    const distance = Math.hypot(objectX - worldX, objectY - worldY);
+    if (distance > TOWNSQUARE_REVIEW_POINTER_HIT_RADIUS) continue;
+    if (selected && Math.abs(distance - selected.distance) < 0.001 &&
+        (selected.id !== id || selected.eventId !== eventId)) return null;
+    if (!selected || distance < selected.distance) selected = { id, eventId, distance };
+  }
+  return selected ? Object.freeze({ id: selected.id, eventId: selected.eventId }) : null;
+}
+
 const INSTITUTION_POINTER_HIT_RADIUS = 60;
 
 /**
@@ -1688,6 +1735,23 @@ export class PixelWorldView extends WorldView {
       }
     }
 
+    const reviewTarget = projectTownSquareReviewPointerTarget(
+      point, this.camera, this.zoom, this.width, this.height, this.townSquareReviewObjects
+    );
+    if (reviewTarget) {
+      const nearest = this.nearest(reviewTarget.id, 'town-square-review');
+      if (nearest?.type === 'town-square-review') {
+        event.preventDefault?.();
+        if (nearest.distance < interactionPromptRange(nearest)) {
+          this.interact(reviewTarget.id, 'town-square-review');
+        } else {
+          this.goTo(reviewTarget.id, 'town-square-review');
+        }
+        this.canvas.focus({ preventScroll: true });
+        return;
+      }
+    }
+
     const institutionId = projectInstitutionPointerTarget(
       point, this.camera, this.zoom, this.width, this.height
     );
@@ -1745,6 +1809,27 @@ export class PixelWorldView extends WorldView {
       this.target = null;
       this.targetType = null;
       this.navigationTarget = { id: institution.id, type: 'institution' };
+      this.scheduleFrame?.();
+      return;
+    }
+    const reviewObject = typeof id === 'string'
+      ? this.townSquareReviewObjects.find(object => object.id === id)
+      : null;
+    if (reviewObject) {
+      if (targetType !== undefined && targetType !== 'town-square-review') {
+        this.cancelRoute();
+        return;
+      }
+      const route = findRoute(this.player, { x: reviewObject.x, y: reviewObject.y + 20 }, this.world.creations);
+      if (!route.length) {
+        this.cancelRoute();
+        return;
+      }
+      this.route = route;
+      this.route.shift();
+      this.target = null;
+      this.targetType = null;
+      this.navigationTarget = { id: reviewObject.id, type: 'town-square-review' };
       this.scheduleFrame?.();
       return;
     }
@@ -1903,12 +1988,15 @@ export class PixelWorldView extends WorldView {
 
   setWorld(world, institutionSummary = this.institutionSummary, viewer = null) {
     const previousWorld = this.world;
+    const previousViewerId = this.viewer?.id;
+    const previousViewerRole = this.viewer?.role;
     const previousRouteObstacleSignature = this.routeObstacleSignature;
     const groundRouteDestination = Array.isArray(this.route) && this.route.length > 0 &&
       !this.navigationTarget && !this.playerApproach && !this.target
       ? this.route[this.route.length - 1] : null;
     super.setWorld(world, institutionSummary, viewer);
-    if (this.world !== previousWorld) {
+    if (this.world !== previousWorld || this.viewer?.id !== previousViewerId ||
+        this.viewer?.role !== previousViewerRole) {
       this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
       this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
       this.updateResearchAccessibility();
@@ -1940,18 +2028,34 @@ export class PixelWorldView extends WorldView {
       `${npc.roleId}=${npc.npcKind}`
     ).join(';');
     const npcAccessibility = guildNpcAccessibilityText(npcReadiness);
+    const reviewProjection = this.townSquareReviewProjection;
+    const reviewCount = Number.isSafeInteger(reviewProjection?.totalCount)
+      ? reviewProjection.totalCount : 0;
+    const reviewStatus = typeof reviewProjection?.historyStatus === 'string'
+      ? reviewProjection.historyStatus : 'history-unavailable';
+    const safeReviewMapObjects = (Array.isArray(this.townSquareReviewObjects)
+      ? this.townSquareReviewObjects : []).map(object => ({
+        id: object.id, eventId: object.eventId, x: object.x, y: object.y
+      }));
+    this.canvas.dataset.townSquareReviewCount = String(reviewCount);
+    this.canvas.dataset.townSquareReviewVisibleCount = String(safeReviewMapObjects.length);
+    this.canvas.dataset.townSquareReviewHistoryStatus = reviewStatus;
+    this.canvas.dataset.townSquareReviewObjects = JSON.stringify(safeReviewMapObjects);
+    const reviewAccessibility = reviewStatus === 'actor-visible-links-validated'
+      ? `TownSquare has ${reviewCount} actor-visible process review map object(s). Inspection opens an exact retained Chronicle event and is not moderation, adjudication, evidence certification, approval, truth, or XP.`
+      : `TownSquare review history is ${reviewStatus}; no missing review or map object is inferred.`;
     if (!counts?.available) {
       this.canvas.dataset.sourceObservationCounts = 'unavailable';
       this.researchAccessibilityLabel =
         'No Gas Labs top-down pixel-art world. Source Observatory research counts are unavailable; the map does not claim zero activity. ' +
-        npcAccessibility;
+        npcAccessibility + ' ' + reviewAccessibility;
     } else {
       this.canvas.dataset.sourceObservationCounts =
         `notes=${counts.notes};dissent=${counts.dissent};responses=${counts.responses};pending=${counts.pending};review=${counts.review}`;
       const phrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
       this.researchAccessibilityLabel =
         `No Gas Labs top-down pixel-art world. Source Observatory: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.` + ' ' +
-        npcAccessibility;
+        npcAccessibility + ' ' + reviewAccessibility;
     }
     this.questTarget = projectQuestMapTarget(
       this.questAction, this.world, this.researchObjects, this.researchActivityObjects
@@ -2266,6 +2370,21 @@ export class PixelWorldView extends WorldView {
     this.drawMapLabel(String(object.title || 'RESEARCH').slice(0, 14), object.x, object.y + 30, 10);
   }
 
+  drawTownSquareReviewObject(object) {
+    const context = this.ctx;
+    context.fillStyle = '#26382e66';
+    context.fillRect(object.x - 10, object.y + 7, 20, 5);
+    context.fillStyle = '#e8e6dc';
+    context.fillRect(object.x - 9, object.y - 10, 18, 18);
+    context.strokeStyle = '#a85f42';
+    context.lineWidth = 2;
+    context.strokeRect(object.x - 9, object.y - 10, 18, 18);
+    context.fillStyle = '#a85f42';
+    context.fillRect(object.x - 5, object.y - 5, 10, 2);
+    context.fillRect(object.x - 5, object.y, 7, 2);
+    this.drawMapLabel('PROCESS REVIEW', object.x, object.y + 25, 8);
+  }
+
   drawPlayer(player, other = false) {
     const bob = !this.reduced && this.moving && !other ? Math.round(Math.sin(this.time * 16)) : 0;
     const sprite = other ? PIXEL_SPRITES.visitor : PIXEL_SPRITES.founder;
@@ -2396,6 +2515,9 @@ export class PixelWorldView extends WorldView {
       ...this.researchActivityObjects.filter(object => object.mapVisible).map(object => ({
         y: object.y, draw: () => this.drawResearchActivityObject(object)
       })),
+      ...this.townSquareReviewObjects.map(object => ({
+        y: object.y, draw: () => this.drawTownSquareReviewObject(object)
+      })),
       ...WORLD_NPCS.map(npc => ({
         y: npc.y, draw: () => this.drawGuildNpc(npc)
       })),
@@ -2461,14 +2583,22 @@ export class PixelWorldView extends WorldView {
     if (navigationWaiting && navigationTarget) {
       const destination = navigationTarget.type === 'npc'
         ? WORLD_NPCS.find(npc => npc.id === navigationTarget.id)
-        : PLACES.find(place => place.id === navigationTarget.id);
-      const destinationName = destination?.name || 'the selected destination';
+        : navigationTarget.type === 'town-square-review'
+          ? this.townSquareReviewObjects.find(object => object.id === navigationTarget.id)
+          : PLACES.find(place => place.id === navigationTarget.id);
+      const destinationName = destination?.name ||
+        (navigationTarget.type === 'town-square-review' ? 'TownSquare process review' : 'the selected destination');
       const navigationBoundary = navigationTarget.type === 'npc'
         ? 'navigation alone does not open the interaction.'
-        : 'navigation alone does not enter the institution.';
+        : navigationTarget.type === 'town-square-review'
+          ? 'arrival still requires explicit read-only inspection; no progress or XP is created.'
+          : 'navigation alone does not enter the institution.';
       this.canvas.setAttribute('aria-description', navigationPending
         ? `Walking to ${destinationName}. Nearby interaction prompts are paused until arrival; ${navigationBoundary}`
         : `The selected destination ${destinationName} is not within interaction range. Move closer or choose another destination.`);
+    } else if (near?.type === 'town-square-review') {
+      this.canvas.setAttribute('aria-description',
+        'Nearby TownSquare process review. Inspection opens the exact retained Founder review event in World Chronicle. This is a process record, not moderation, adjudication, evidence certification, approval, truth, or XP.');
     } else if (nearbyNpc) {
       const npcDescription = nearbyNpc.protocol === 'fixed-local'
         ? 'This is a fixed local adversary protocol, advisory only; no model/provider call occurs, and only a separate explicit player submission records a challenge report.'
@@ -2500,11 +2630,15 @@ export class PixelWorldView extends WorldView {
     if (interactButton) {
       interactButton.hidden = navigationWaiting;
       const buttonLabel = nearbyPlayer ? 'Inspect ' + String(nearbyPlayer.name).slice(0, 24)
-        : nearbyNpc ? 'Talk to ' + nearbyNpc.shortName : primaryInstitutionCopy?.name || 'Interact';
+        : nearbyNpc ? 'Talk to ' + nearbyNpc.shortName
+          : near?.type === 'town-square-review' ? 'Inspect TownSquare review'
+            : primaryInstitutionCopy?.name || 'Interact';
       interactButton.setAttribute?.('aria-label', nearbyPlayer
         ? 'Inspect nearby player ' + String(nearbyPlayer.name).slice(0, 80)
         : nearbyNpc ? 'Talk to nearby ' + (nearbyNpc.protocol === 'fixed-local' ? 'adversary ' : 'collaborator ') + nearbyNpc.name
-        : primaryInstitutionCopy?.ariaLabel || 'Interact with the nearest place');
+          : near?.type === 'town-square-review'
+            ? 'Inspect retained TownSquare process review in World Chronicle'
+            : primaryInstitutionCopy?.ariaLabel || 'Interact with the nearest place');
       const buttonText = interactButton.querySelector?.('span');
       if (buttonText && buttonText.textContent !== buttonLabel) buttonText.textContent = buttonLabel;
     }
@@ -2517,6 +2651,7 @@ export class PixelWorldView extends WorldView {
         : near.type === 'creation' ? 'E · Enter creation'
         : near.type === 'research-activity' ? 'E · Inspect research record'
         : near.type === 'research-object' ? 'E · Inspect moonshot'
+        : near.type === 'town-square-review' ? 'E · Inspect review record'
         : near.type === 'institution'
           ? institutionInteractionCopy(near, this.width).prompt
         : 'E · Discover';
