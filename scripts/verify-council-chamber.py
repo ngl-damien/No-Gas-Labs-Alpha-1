@@ -1343,7 +1343,21 @@ def run_town_square_report_review(browser, url, out, width):
             if not point or not point['inside'] or point.get('blocked'):
                 raise AssertionError(label + ' TownSquare review map object has no unobstructed mobile tap point: ' +
                                      json.dumps(point, sort_keys=True))
+            page.locator('#world').evaluate("""canvas => {
+              canvas.dataset.townSquareReviewPointerType = 'not-observed';
+              canvas.addEventListener('pointerdown', event => {
+                canvas.dataset.townSquareReviewPointerType = event.pointerType;
+              }, { capture: true, once: true });
+            }""")
             page.mouse.click(point['x'], point['y'])
+            pointer_type = page.locator('#world').get_attribute(
+                'data-town-square-review-pointer-type'
+            )
+            if pointer_type != 'touch':
+                raise AssertionError(
+                    label + ' TownSquare map inspection must be exercised through a real touch pointer; '
+                    'observed ' + str(pointer_type)
+                )
             try:
                 page.wait_for_function(
                     """expected => {
@@ -1620,6 +1634,7 @@ def run_town_square_report_review(browser, url, out, width):
             'reporterQuestReviewEventId': review_event['id'],
             'reporterQuestChronicleNavigation': True,
             'reporterChronicleReadOnly': True,
+            'mapInputPointerType': pointer_type,
             'pageErrors': errors,
             'screenshots': [
                 reporter_screenshot.name,
