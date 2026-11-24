@@ -1236,7 +1236,7 @@ def run_town_square_report_review(browser, url, out, width):
         reporter_quest_screenshot = out / ('town-square-reporter-quest-board-' + str(width) + '.png')
         reporter_page.screenshot(path=str(reporter_quest_screenshot), full_page=True)
 
-        before_reporter_chronicle = read_shared_state(reporter_page)['world']
+        before_reporter_chronicle = authoritative_snapshot(reporter_page)
         reporter_event_link.tap()
         expect(reporter_page.locator('#sheet-title')).to_have_text('World Chronicle')
         exact_reporter_review_event = reporter_page.locator(
@@ -1248,8 +1248,8 @@ def run_town_square_report_review(browser, url, out, width):
         expect(reporter_page.locator('#sheet-content')).to_have_attribute(
             'data-chronicle-snapshot-revision', reporter_board_revision
         )
-        after_reporter_chronicle = read_shared_state(reporter_page)['world']
-        if shared_world_snapshot(after_reporter_chronicle) != shared_world_snapshot(before_reporter_chronicle):
+        after_reporter_chronicle = authoritative_snapshot(reporter_page)
+        if after_reporter_chronicle != before_reporter_chronicle:
             raise AssertionError('Witness review-event Chronicle inspection must not mutate the accepted world.')
         reporter_chronicle_layout = reporter_page.evaluate("""() => ({
           viewportWidth: window.innerWidth,
