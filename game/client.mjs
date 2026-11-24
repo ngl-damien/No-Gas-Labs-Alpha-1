@@ -13,7 +13,7 @@ import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderCharterCodex,renderEvidenceArchive,renderInstitution,renderWorldChronicle} from './institution-view.mjs';
 import {resolveWorldChronicleSnapshotState} from './chronicle.mjs';
 import {prepareContradictionReview,formatContradictionReport,resolveRetainedCreationTarget} from './contradiction-clerk.mjs';
-import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,retainedWorldEventHistoryPositions} from './research-records.mjs';
+import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor,isLinkedExperimentChallengeResponse,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,retainedWorldEventHistoryPositions} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {renderGitHubDecisionGate,renderGitHubSourceReader,shouldRenderGitHubDecisionGate,parseGitHubSourceCitation} from './github-decision-gate.mjs';
 import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
@@ -5525,7 +5525,10 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
           .filter(event=>event?.type==='experiment-challenge-responded'&&event.challengeId===challenge.challengeId);
         if(responses.length===1&&challengeStatus==='linked'){
           const response=responses[0];
-          if(response.reportId===report.reportId&&response.moonshotId===report.moonshotId&&sameResearchActor(response.actor,report.actor)){
+          const projectedResponse=projectedResearchByEventId.get(response.id);
+          if(isLinkedExperimentChallengeResponse(projectedResponse)&&
+             response.reportId===report.reportId&&response.moonshotId===report.moonshotId&&
+             sameResearchActor(response.actor,report.actor)){
             const responseCard=node('div',{class:'field-card','data-research-activity-id':response.responseId,'data-research-event-id':response.id,tabindex:'-1'},[
               node('h4',{text:'Original author response'}),
               node('span',{class:'pill',text:'AUTHOR RESPONSE · NOT ADJUDICATION'}),
@@ -5535,7 +5538,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
             if(!focusRecordTarget&&response.responseId===focusActivityId)focusedActivity=responseCard;
             challengeCard.append(responseCard);
           }else{
-            challengeCard.append(paragraph('The response does not bind unambiguously to this report and author; no reply is selected.','evidence-warning'));
+            challengeCard.append(paragraph('A response exists, but its exact response identity, report, challenge, append position, or original-author linkage is invalid or incomplete; no reply is selected.','evidence-warning'));
           }
         }else if(responses.length===1){
           challengeCard.append(paragraph('A response exists in history, but this challenge is not validly linked; no reply is selected.','evidence-warning'));

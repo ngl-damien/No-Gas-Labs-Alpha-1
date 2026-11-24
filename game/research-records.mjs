@@ -23,6 +23,30 @@ export function sameResearchActor(left, right) {
     ['founder', 'witness'].includes(left.role) && left.role === right.role && left.id === right.id;
 }
 
+/**
+ * Presentation gate for a projected experiment-author response. A response is
+ * displayable as linked only after the exact report, challenge, actor, event
+ * identity, and append-order checks have all passed. This is not adjudication,
+ * proof of distinct human participation, or an authority decision.
+ */
+export function isLinkedExperimentChallengeResponse(record) {
+  const projection = record?._projection;
+  const challenge = projection?.targetChallenge;
+  const report = projection?.targetReport;
+  return record?.type === 'experiment-challenge-responded' &&
+    projection?.recordSafe === true &&
+    projection?.eventIdUnique === true &&
+    projection?.targetChallengeStatus === 'linked' &&
+    challenge?.type === 'experiment-challenged' &&
+    challenge.challengeId === record.challengeId &&
+    challenge.reportId === record.reportId &&
+    challenge.moonshotId === record.moonshotId &&
+    report?.type === 'experiment-reported' &&
+    report.reportId === record.reportId &&
+    report.moonshotId === record.moonshotId &&
+    sameResearchActor(report.actor, record.actor);
+}
+
 export function isValidSourceFailureEventId(value) {
   return typeof value === 'string' &&
     /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) &&

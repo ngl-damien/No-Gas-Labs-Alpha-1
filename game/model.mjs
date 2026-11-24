@@ -1167,7 +1167,7 @@ export async function validateWorld(raw) {
     const report=experimentReports.get(e.reportId);
     const challengeIndex=challenge?eventPositions.get(challenge):-1;
     const reportIndex=report?eventPositions.get(report):-1;
-    if(typeof e.responseId!=='string'||!e.responseId||experimentResponseIds.has(e.responseId)||
+    if(typeof e.responseId!=='string'||!e.responseId.trim()||e.responseId.trim()!==e.responseId||experimentResponseIds.has(e.responseId)||
        typeof e.challengeId!=='string'||!challenge||respondedExperimentChallengeIds.has(e.challengeId)||
        typeof e.reportId!=='string'||!report||challenge.reportId!==e.reportId||
        typeof e.moonshotId!=='string'||challenge.moonshotId!==e.moonshotId||report.moonshotId!==e.moonshotId||

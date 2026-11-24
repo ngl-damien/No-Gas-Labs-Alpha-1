@@ -780,7 +780,7 @@ function validateHistory(world) {
       const responseIndex = eventPositions.get(event);
       const challengeIndex = challenge ? eventPositions.get(challenge) : -1;
       const reportIndex = report ? eventPositions.get(report) : -1;
-      if (typeof event.responseId !== 'string' || !event.responseId || experimentResponseIds.has(event.responseId) ||
+      if (typeof event.responseId !== 'string' || !event.responseId.trim() || event.responseId.trim() !== event.responseId || experimentResponseIds.has(event.responseId) ||
           typeof event.challengeId !== 'string' || !challenge || respondedExperimentChallengeIds.has(event.challengeId) ||
           typeof event.reportId !== 'string' || !report || challenge.reportId !== event.reportId ||
           typeof event.moonshotId !== 'string' || challenge.moonshotId !== event.moonshotId || report.moonshotId !== event.moonshotId ||
