@@ -484,6 +484,33 @@ test('linked original-author response is included in bounded collaborator packet
   assert.equal(compactResponse.reportId, 'report-1');
   assert.equal(compactResponse.responseText, responseEvent.responseText);
   assert.equal(isExactCollaboratorSourceRecord(compactResponse, responseProjection), true);
+  assert.equal(isExactCollaboratorSourceRecord({ ...compactResponse, responseText: 'altered speech' }, responseProjection), false);
+  const adversaryPacket = packets.adversary;
+  assert.ok(adversaryPacket.inputRefs.includes('response-event-1'));
+  const adversaryResponse = JSON.parse(adversaryPacket.packetJson).inputRecords
+    .find(record => record.eventId === 'response-event-1');
+  assert.equal(adversaryResponse.responseSemantics, 'attributed-speech-not-adjudication');
+  const responseTarget = getCollaboratorRecordTargets(packets.archivist)
+    .find(target => target.eventId === 'response-event-1');
+  assert.deepEqual(responseTarget, {
+    eventId: 'response-event-1', moonshotId: 'moonshot-1',
+    recordType: 'experiment-challenge-responded', activityId: 'response-1'
+  });
+  assert.equal(matchesCollaboratorRecordTarget(responseEvent, responseTarget), true);
+  const wrongAuthorWorld = structuredClone(world);
+  wrongAuthorWorld.events[3].actor = founder;
+  const wrongAuthorPackets = projectCollaboratorPackets(wrongAuthorWorld);
+  assert.ok(wrongAuthorPackets.every(packet => !packet.inputRefs.includes('response-event-1')),
+    'a response not authored by the original report actor must not enter any collaborator packet');
+  const duplicateResponseWorld = structuredClone(world);
+  duplicateResponseWorld.events.push({
+    ...duplicateResponseWorld.events[3], id: 'response-event-duplicate', at: '2026-10-29T04:04:00.000Z'
+  });
+  duplicateResponseWorld.revision += 1;
+  const duplicateResponsePackets = projectCollaboratorPackets(duplicateResponseWorld);
+  assert.ok(duplicateResponsePackets.every(packet =>
+    !packet.inputRefs.includes('response-event-1') && !packet.inputRefs.includes('response-event-duplicate')),
+  'ambiguous response identity/challenge linkage must fail closed');
   assert.equal(payload.authority, 'advisory-only');
   assert.equal(payload.mayWriteCanonicalState, false);
   assert.equal(payload.mayGrantAuthority, false);
