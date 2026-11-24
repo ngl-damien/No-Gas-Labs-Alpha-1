@@ -486,7 +486,7 @@ test('linked original-author response is included in bounded collaborator packet
   assert.equal(isExactCollaboratorSourceRecord(compactResponse, responseProjection), true);
   assert.equal(isExactCollaboratorSourceRecord({ ...compactResponse, responseText: 'altered speech' }, responseProjection), false);
   const adversaryPacket = packets.adversary;
-  assert.ok(adversaryPacket.inputRefs.includes('response-event-1'));
+  assert.deepEqual(adversaryPacket.inputRefs, expectedRefs);
   const adversaryResponse = JSON.parse(adversaryPacket.packetJson).inputRecords
     .find(record => record.eventId === 'response-event-1');
   assert.equal(adversaryResponse.responseSemantics, 'attributed-speech-not-adjudication');

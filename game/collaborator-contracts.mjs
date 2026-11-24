@@ -455,7 +455,12 @@ export function projectCollaboratorPackets(world, options = {}) {
         ].sort((left, right) => right._projection.index - left._projection.index);
         omittedEventIds = omittedRecords.map(record => record.id).slice(0, MAX_PACKET_OMITTED_IDS);
         omittedCount = omittedRecords.length;
-        inputs = [proposal, selectedReport, ...includedChallenges, ...includedResponses].sort(byAppendOrder);
+        const responseByChallenge = new Map(includedResponses.map(record => [record.challengeId, record]));
+        const challengeInputs = includedChallenges.flatMap(challenge => {
+          const response = responseByChallenge.get(challenge.challengeId);
+          return response ? [challenge, response] : [challenge];
+        });
+        inputs = [proposal, selectedReport, ...challengeInputs];
       }
     } else if (spec.id === 'synthesizer' && latestSynthesisProposal) {
       target = latestSynthesisProposal.moonshotId;
