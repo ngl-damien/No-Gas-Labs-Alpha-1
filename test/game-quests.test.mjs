@@ -4746,6 +4746,15 @@ test('Founder Commons report-review quest requires an exact linked Founder-sessi
   assert.equal(reviewEvent.actor.role, 'founder');
   assert.equal(reviewEvent.reportId, reported.result.reportId);
   assert.equal(reviewEvent.messageId, posted.result.messageId);
+  const sourceChain = [
+    reviewed.world.events.find(event => event.type === 'message-posted' && event.messageId === posted.result.messageId),
+    reviewed.world.events.find(event => event.type === 'message-reported' && event.reportId === reported.result.reportId),
+    reviewEvent
+  ];
+  assert.ok(sourceChain.every(event => event && typeof event.id === 'string'));
+  const expectedEvidenceIds = sourceChain.map(event => event.id);
+  const sourcePositions = sourceChain.map(event => reviewed.world.events.indexOf(event));
+  assert.ok(sourcePositions[0] < sourcePositions[1] && sourcePositions[1] < sourcePositions[2]);
 
   const beforeProjection = structuredClone(reviewed.world);
   const complete = getQuestTrail(reviewed.world, founder).find(item =>
@@ -4754,7 +4763,8 @@ test('Founder Commons report-review quest requires an exact linked Founder-sessi
   assert.equal(complete.progress, 1);
   assert.equal(complete.target, 1);
   assert.equal(complete.complete, true);
-  assert.deepEqual(complete.evidenceIds, [reviewEvent.id]);
+  assert.deepEqual(complete.evidenceIds, expectedEvidenceIds);
+  assert.equal(complete.evidenceDetailCount, 3, 'the quest exposes the original message, private report, and Founder review');
   assert.equal(complete.action, null);
   assert.equal(complete.blockedReason, null);
   assert.equal(reviewed.world.xp, xpBeforeReview,
@@ -4782,7 +4792,8 @@ test('Founder Commons report-review quest requires an exact linked Founder-sessi
   );
   assert.equal(completeFromPublicSnapshot.progress, 1,
     'a complete Founder public-world coverage receipt must preserve exact review progress');
-  assert.deepEqual(completeFromPublicSnapshot.evidenceIds, [reviewEvent.id]);
+  assert.deepEqual(completeFromPublicSnapshot.evidenceIds, expectedEvidenceIds);
+  assert.equal(completeFromPublicSnapshot.evidenceDetailCount, 3);
 
   // A Witness-filtered snapshot is not a complete Founder view, even when
   // the caller pairs it with a Founder viewer object.
@@ -5011,6 +5022,14 @@ test('Witness Quest Board exposes only the exact Founder review of that Witness 
     reason: 'other',
     details: 'This report belongs to a different Witness session.'
   }, otherReporter, { now: '2026-11-24T01:05:00.000Z' });
+  const sourceChain = [
+    otherReport.world.events.find(event => event.type === 'message-posted' && event.messageId === posted.result.messageId),
+    otherReport.world.events.find(event => event.type === 'message-reported' && event.reportId === reported.result.reportId),
+    reviewEvent
+  ];
+  assert.ok(sourceChain.every(event => event && typeof event.id === 'string'));
+  const expectedEvidenceIds = sourceChain.map(event => event.id);
+  assert.ok(sourceChain.every(event => otherReport.world.events.some(retained => retained.id === event.id)));
 
   const reporterSnapshot = publicWorld(otherReport.world, reporter);
   assert.ok(reporterSnapshot.historyCoverage.omittedEventCount > 0,
@@ -5028,7 +5047,9 @@ test('Witness Quest Board exposes only the exact Founder review of that Witness 
   assert.equal(received.progress, 1);
   assert.equal(received.target, 1);
   assert.equal(received.complete, true);
-  assert.deepEqual(received.evidenceIds, [reviewEvent.id]);
+  assert.deepEqual(received.evidenceIds, expectedEvidenceIds);
+  assert.equal(received.evidenceDetailCount, 3, 'the reporter can inspect the exact message → report → review chain');
+  assert.ok(expectedEvidenceIds.every(id => reporterSnapshot.events.some(event => event.id === id)));
   assert.equal(received.action, null);
   assert.equal(received.blockedReason, null);
   assert.match(received.interpretation, /process record/i);
