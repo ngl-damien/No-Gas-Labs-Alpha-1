@@ -1,3 +1,24 @@
+## Run 356 — TownSquare review chain and offline recovery
+
+| Gate | Status | Exact Run 356 evidence / limit |
+|---|---|---|
+| G0 — Product/institutional definition | IN_PROGRESS | Founder direction remains unapproved; no Founder trust enrollment. |
+| G1 — Playable world loop | IN_PROGRESS | TownSquare report-review is a one-action quest with exact message→report→review lineage; not a complete MMORPG loop. |
+| G2 — Append-only world history | IN_PROGRESS | Review event is retained once; same-request replay returns the same review ID; production-host durability is not established. |
+| G3 — Multiplayer/actor boundaries | IN_PROGRESS | Founder, reporter, message author and unrelated Witness use separate fixture sessions; not proof of four distinct humans or production multiplayer. |
+| G4 — RPG progression | IN_PROGRESS | Review, retry, Chronicle inspection and Armor Bearer handoff are XP-neutral; existing explicit publication/combat rewards remain separate. |
+| G5 — Social/institutional mechanics | IN_PROGRESS | Report review is a process record, not moderation or adjudication; private report/review visibility is actor-scoped. |
+| G6 — Content/research/publication | IN_PROGRESS | Quest exposes exact three-event TownSquare chain; Synthesis retains original-author response accounting; no new publication truth claim. |
+| G7 — Evidence/provenance | IN_PROGRESS | Exact event identities, append order and role-visible snapshots are checked; no truth verdict, evidence certification, or approval. |
+| G8 — Mobile/offline operation | IN_PROGRESS | #726 Full Verify, Council, Quest and Synthesis pass; Browser Guild Hall helper fails; #726 Android run pending at checkpoint. Separate Worker A #392 Android emulator passes 7/7 but is not integrated into #726. |
+| G9 — Founder acceptance/release | NOT_STARTED | No Founder approval, trust enrollment, merge, release or deployment. |
+
+Run 356 runtime/test head `b62af9e9dc0cdea894e5becd2f6cfc88d11fafd4` on child PR #726 (base #718 head `b48858033910381281ccd3db158486b4c56bb522`). Full Verify [45359251472], Genesis [45359251383], PWA build [45359251566], Council [45359251533], Quest Board [45359251337], and Synthesis [45359251299] PASS. Browser [45359251301] FAILS the known Worker A Guild Hall visible/hidden control mismatch; handoff #456 comment 7126901064. Android [45359251909] remains in progress at checkpoint capture. Exact artifact links and limitations are recorded in `LATEST_CHECKPOINT.md` and `FORENSIC_AUDIT_STEERING.md`.
+
+Procedure: root/protocol/Charter read sequentially; universal agent contract, completion contract, checkpoint/ledger, World Projection Contract, steering, registry, do-not-delete and trust anchor inspected. Nested AGENTS absent in touched paths. Hosted exact-head preflight passed after edits; local pre-edit receipt/tests unavailable because authorized devices were Offline and container GitHub DNS failed. Compliance PARTIAL. No merge/release/deployment/Founder approval/truth/authority transition.
+
+---
+
 ## Run 353 terminal mobile acceptance update — Synthesis, Council and Combat PASS
 
 - **Synthesis Clerk** [45329826143](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45329826143) **PASS** at 320px and 390px; artifact [14891606603](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45329826143/artifacts/14891606603). The journey displays the exact report/challenge context, exposes no Witness response control, rejects a direct Witness response with 403 without mutation, retains the original-author response after the challenge, labels it `AUTHOR RESPONSE · NOT ADJUDICATION`, credits only the Founder response quest, and awards zero XP for the response. The Synthesis packet separately accounts for exact `authorResponsesPreserved` response IDs and `dissentPreserved` challenge IDs. Both widths had document width equal to viewport width (320/390), no page errors. Fixture world XP is 100 because the explicit Source Observatory publication action awards 100; the author response itself awards zero. Synthetic offline re-entry/private-import recovery passed; this is not a physical network or Android-device test.
