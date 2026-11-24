@@ -1104,6 +1104,234 @@ def return_to_founder(page, founder_id):
     return authoritative_snapshot(page)
 
 
+
+def open_moonshot_field(page, stage):
+    before_route = authoritative_snapshot(page)
+    sheet = page.locator("#sheet")
+    if sheet.is_visible():
+        page.locator("#sheet-close").tap()
+    expect(sheet).to_be_hidden()
+    page.bring_to_front()
+    page.locator("#places-button").tap()
+    route = page.get_by_role("button", name="Walk to Moonshot Field", exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    enter_nearby_institution(page, "moonshot_field", "Moonshot Field", "Moonshot Field")
+    arrival = authoritative_snapshot(page)
+    route_discoveries = assert_route_travel_records_only_discoveries(
+        before_route, arrival, stage
+    )
+    return arrival, route_discoveries
+
+
+def assert_witness_cannot_respond(page, fixture, witness, width, out):
+    arrival, route_discoveries = open_moonshot_field(
+        page, "Walking to Moonshot Field as the challenging Witness"
+    )
+    report_card = page.locator(
+        '#sheet-content [data-research-activity-id="' + fixture["reportId"] + '"]' +
+        '[data-research-event-id="' + fixture["reportEventId"] + '"]'
+    )
+    expect(report_card).to_have_count(1)
+    challenge_card = report_card.locator(
+        '[data-research-activity-id="' + witness["challengeId"] + '"]' +
+        '[data-research-event-id="' + witness["challengeEventId"] + '"]'
+    )
+    expect(challenge_card).to_have_count(1)
+    expect(challenge_card).to_have_attribute("data-experiment-challenge-status", "linked")
+    expect(challenge_card.locator(
+        '[data-experiment-challenge-response-status="unanswered"]'
+    )).to_have_count(1)
+    expect(challenge_card.get_by_role(
+        "button", name="Respond to this challenge →", exact=True
+    )).to_have_count(0)
+
+    denied = page.evaluate("""async action => {
+      const response = await fetch('/api/action', {
+        method: 'POST', cache: 'no-store', credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(action)
+      });
+      return { status: response.status, payload: await response.json() };
+    }""", {
+        "type": "respond-experiment-challenge",
+        "challengeId": witness["challengeId"],
+        "responseText": "A Witness session must not answer as the original Founder author.",
+        "requestId": "synthesis-" + str(width) + "-witness-forbidden-response"
+    })
+    assert denied["status"] == 403, "A non-author response must be rejected by the shared server."
+    assert denied["payload"].get("error", {}).get("code") == "FORBIDDEN"
+    after_denial = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        arrival, after_denial,
+        "Rejecting a Witness attempt to answer the Founder-authored experiment challenge"
+    )
+    page.screenshot(
+        path=str(out / ("synthesis-witness-cannot-respond-" + str(width) + ".png")),
+        full_page=True
+    )
+    return {
+        "responseControlVisible": False,
+        "serverStatus": denied["status"],
+        "serverErrorCode": denied["payload"]["error"]["code"],
+        "canonicalStateUnchanged": True,
+        "worldRevision": after_denial["revision"],
+        "xp": after_denial["xp"],
+        "routeDiscoveries": route_discoveries
+    }
+
+
+def respond_to_experiment_challenge(page, fixture, witness, founder_id, width, out):
+    arrival, route_discoveries = open_moonshot_field(
+        page, "Walking to Moonshot Field as the original Founder report author"
+    )
+    report_card = page.locator(
+        '#sheet-content [data-research-activity-id="' + fixture["reportId"] + '"]' +
+        '[data-research-event-id="' + fixture["reportEventId"] + '"]'
+    )
+    expect(report_card).to_have_count(1)
+    challenge_card = report_card.locator(
+        '[data-research-activity-id="' + witness["challengeId"] + '"]' +
+        '[data-research-event-id="' + witness["challengeEventId"] + '"]'
+    )
+    expect(challenge_card).to_have_count(1)
+    expect(challenge_card).to_have_attribute("data-experiment-challenge-status", "linked")
+    response_button = challenge_card.get_by_role(
+        "button", name="Respond to this challenge →", exact=True
+    )
+    expect(response_button).to_be_visible()
+    before_open = authoritative_snapshot(page)
+    response_button.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Respond to experiment challenge' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    context = page.locator(
+        '#sheet-content [data-experiment-challenge-response-context="true"]'
+    )
+    expect(context).to_have_count(1)
+    for attribute, expected in [
+        ("data-report-event-id", fixture["reportEventId"]),
+        ("data-report-id", fixture["reportId"]),
+        ("data-moonshot-id", fixture["moonshotId"]),
+        ("data-challenge-event-id", witness["challengeEventId"]),
+        ("data-challenge-id", witness["challengeId"]),
+        ("data-report-author-id", founder_id),
+        ("data-report-author-role", "founder")
+    ]:
+        expect(context).to_have_attribute(attribute, expected)
+    expect(context).to_contain_text(
+        "Procedure: Run the disposable acceptance fixture once and retain the result."
+    )
+    expect(context).to_contain_text(
+        "Observation: The fixture records a self-reported failed attempt; no external measurement was made."
+    )
+    expect(context).to_contain_text("Reported outcome (self-reported): failed")
+    expect(context).to_contain_text("Challenge category: methodology")
+    expect(context).to_contain_text(
+        "The fixture contains no independent measurement or control; its self-reported failure cannot establish the proposal's hypothesis."
+    )
+    expect(context).to_contain_text(
+        "Repeat the procedure with a recorded control and retain the exact observation and timestamp."
+    )
+    after_open = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        before_open, after_open, "Opening the exact original-author response context"
+    )
+
+    response_text = (
+        "The original fixture records only a self-reported failed attempt. I have not repeated "
+        "the procedure or supplied a control, so the methodological challenge remains unresolved."
+    )
+    page.locator("#experiment-challenge-response-text").fill(response_text)
+    before_submit = authoritative_snapshot(page)
+    page.locator("#respond-experiment-challenge").tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    after_submit = authoritative_snapshot(page)
+    event = find_event(
+        after_submit, "experiment-challenge-responded",
+        challengeId=witness["challengeId"]
+    )
+    assert event is not None, "The original author response must be retained in canonical world history."
+    assert isinstance(event.get("responseId"), str) and event["responseId"]
+    assert event["reportId"] == fixture["reportId"]
+    assert event["moonshotId"] == fixture["moonshotId"]
+    assert event["actorId"] == founder_id and event["actorRole"] == "founder"
+    assert event["responseText"] == response_text
+    assert "outcome" not in event and "status" not in event, (
+        "An original-author response must not adjudicate the challenge."
+    )
+    assert after_submit["revision"] == before_submit["revision"] + 1
+    assert after_submit["eventIds"][:-1] == before_submit["eventIds"]
+    assert after_submit["eventIds"][-1] == event["id"]
+    assert after_submit["xp"] == before_submit["xp"], (
+        "An original-author response must award zero XP."
+    )
+    assert after_submit["creationIds"] == before_submit["creationIds"]
+
+    report_card = page.locator(
+        '#sheet-content [data-research-activity-id="' + fixture["reportId"] + '"]' +
+        '[data-research-event-id="' + fixture["reportEventId"] + '"]'
+    )
+    challenge_card = report_card.locator(
+        '[data-research-activity-id="' + witness["challengeId"] + '"]' +
+        '[data-research-event-id="' + witness["challengeEventId"] + '"]'
+    )
+    response_card = challenge_card.locator(
+        '[data-research-activity-id="' + event["responseId"] + '"]' +
+        '[data-research-event-id="' + event["id"] + '"]'
+    )
+    expect(response_card).to_have_count(1)
+    expect(response_card).to_contain_text("AUTHOR RESPONSE · NOT ADJUDICATION")
+    expect(response_card).to_contain_text(response_text)
+    expect(response_card).to_contain_text("Submitted by Damien")
+    expect(challenge_card.locator(
+        '[data-experiment-challenge-response-status="unanswered"]'
+    )).to_have_count(0)
+    expect(challenge_card.get_by_role(
+        "button", name="Respond to this challenge →", exact=True
+    )).to_have_count(0)
+    after_display = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        after_submit, after_display,
+        "Displaying the retained original-author response in Moonshot Field"
+    )
+
+    packet = project_synthesis_packet(page)
+    assert packet["available"] is True, packet["reason"]
+    assert set(packet["inputRefs"]) == {
+        fixture["proposalEventId"], fixture["reportEventId"],
+        witness["challengeEventId"], event["id"]
+    }, "The refreshed Synthesis packet must include the exact original-author response event."
+    payload = json.loads(packet["packetJson"])
+    assert payload["authority"] == "advisory-only"
+    assert payload["mayWriteCanonicalState"] is False
+    assert payload["mayGrantAuthority"] is False
+    assert payload["mayAwardProgress"] is False
+    assert payload["mayCertifyTruthOrExecution"] is False
+    page.screenshot(
+        path=str(out / ("synthesis-founder-author-response-" + str(width) + ".png")),
+        full_page=True
+    )
+    return {
+        "responseId": event["responseId"],
+        "responseEventId": event["id"],
+        "responseText": response_text,
+        "challengeId": witness["challengeId"],
+        "reportId": fixture["reportId"],
+        "moonshotId": fixture["moonshotId"],
+        "packet": packet,
+        "packetPayload": payload,
+        "worldRevision": after_submit["revision"],
+        "xp": after_submit["xp"],
+        "routeDiscoveries": route_discoveries
+    }
+
 def assert_world_visible_behind_sheet(page, label):
     wait_for_shared_connection(page, label + " world-canvas readiness")
     metrics = page.evaluate("""() => {
@@ -2066,7 +2294,7 @@ def open_quest_board(page):
     return wait_for_stable_world_snapshot(page)
 
 
-def inspect_founder_progress(page, after_archive, source_observation_event_id, failure_origin_observation_event_id, width, out):
+def inspect_founder_progress(page, after_archive, source_observation_event_id, failure_origin_observation_event_id, experiment_response_event_id, width, out):
     after_arrival = open_quest_board(page)
     travel_discoveries = assert_route_travel_records_only_discoveries(
         after_archive, after_arrival, "Walking to the Founder Quest Board"
@@ -2086,6 +2314,14 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, f
     expect(failure_row).to_contain_text("Link a Source Archive failure to a Source Observation")
     expect(failure_row).to_contain_text("provenance link only")
     expect(failure_row).to_contain_text("NOT_PERFORMED")
+    response_row = page.locator('#sheet-content [data-objective-id="founder-experiment-challenge-response"]')
+    expect(response_row).to_have_count(1)
+    expect(response_row.locator(".quest-step-state")).to_have_text("RECORDED")
+    expect(response_row).to_contain_text("1/1")
+    response_evidence = response_row.locator("details.quest-evidence")
+    expect(response_evidence).to_have_count(1)
+    response_evidence.locator("summary").tap()
+    expect(response_evidence.locator("code")).to_have_text(experiment_response_event_id)
     after_board = authoritative_snapshot(page)
     assert source_observation_event_id in after_board["eventIds"], (
         "The Founder quest must be backed by the retained source-observation event."
@@ -2118,6 +2354,10 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, f
         "failureOriginObjectiveStatus": "RECORDED",
         "failureOriginObjectiveProgress": "1/1",
         "failureOriginObservationEventId": failure_origin_observation_event_id,
+        "experimentResponseObjective": "founder-experiment-challenge-response",
+        "experimentResponseObjectiveStatus": "RECORDED",
+        "experimentResponseObjectiveProgress": "1/1",
+        "experimentResponseEventId": experiment_response_event_id,
         "synthesisSkillCount": 2,
         "routeDiscoveries": travel_discoveries
     }
@@ -3125,9 +3365,17 @@ def run_viewport(browser, width, out):
 
                 fixture = seed_proposal_and_report(page, width)
                 witness = add_witness_challenge(page, width, fixture)
+                witness_response_gate = assert_witness_cannot_respond(
+                    page, fixture, witness, width, out
+                )
                 founder_state = return_to_founder(page, founder["id"])
                 assert founder_state["viewer"]["role"] == "founder"
                 assert founder_state["xp"] == fixture["baselineXp"]
+                experiment_author_response = respond_to_experiment_challenge(
+                    page, fixture, witness, founder["id"], width, out
+                )
+                witness["packet"] = experiment_author_response["packet"]
+                witness["packetPayload"] = experiment_author_response["packetPayload"]
 
                 card, before_open = open_synthesis_clerk(page, witness["packet"])
                 offline_preview = assert_offline_preview_keeps_local_route(page, "Synthesis Clerk")
@@ -3211,7 +3459,8 @@ def run_viewport(browser, width, out):
                 )
                 founder_progress = inspect_founder_progress(
                     page, after_archive, source_observation["eventId"],
-                    failure_ledger["sourceObservationEventId"], width, out
+                    failure_ledger["sourceObservationEventId"],
+                    experiment_author_response["responseEventId"], width, out
                 )
                 witness_progress = inspect_witness_scope(
                     page,
@@ -3240,6 +3489,18 @@ def run_viewport(browser, width, out):
                     "proposalEventId": fixture["proposalEventId"],
                     "reportEventId": fixture["reportEventId"],
                     "challengeEventId": witness["challengeEventId"],
+                    "witnessResponseGate": witness_response_gate,
+                    "experimentAuthorResponse": {
+                        "responseId": experiment_author_response["responseId"],
+                        "responseEventId": experiment_author_response["responseEventId"],
+                        "responseText": experiment_author_response["responseText"],
+                        "challengeId": experiment_author_response["challengeId"],
+                        "reportId": experiment_author_response["reportId"],
+                        "moonshotId": experiment_author_response["moonshotId"],
+                        "worldRevision": experiment_author_response["worldRevision"],
+                        "xp": experiment_author_response["xp"],
+                        "routeDiscoveries": experiment_author_response["routeDiscoveries"]
+                    },
                     "packetInputRefs": witness["packet"]["inputRefs"],
                     "packetAuthority": witness["packetPayload"]["authority"],
                     "packetSourceSnapshotStatus": witness["packetPayload"]["sourceSnapshot"]["status"],
@@ -3299,7 +3560,7 @@ def main():
     summary = {
         "journeys": results,
         "passed": len(results) == 2 and all(result["passed"] for result in results),
-        "evidenceBoundary": "The disposable shared-server fixture injects 13 initial 503 GitHub responses and a 14th while the Founder is viewing the older failure page. The service appends 14 Founder-attributed source-archive-attempt-failed events, each bound to a distinct request ID; no client-authored failure, draft, publication, XP, truth verdict, or authority is created. The Evidence Archive renders bounded pages of 12, and its local cursor resets to the newest page when the shared world revision changes. The acceptance compares page revision against the post-arrival snapshot so legitimate location discovery remains retained. Pagination and cursor rebinding create no canonical event or XP. The Witness can see the latest failure in shared history. These are simulated upstream outages, not live GitHub outages. The fixture also explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. The offline shared-snapshot re-entry journey reloads a redacted public projection under synthetic browser offline conditions, blocks shared writes and resumes only after fresh server state is accepted. A separate private-import journey imports a same-world save whose local revision is higher while the client is in cache-only mode, verifies private provenance/controls reset, then injects a synthetic HTTP 503 while no public cache is available. The client must restore private movement and the offline indicator, permit real local keyboard travel without changing the private world revision/XP/event history or issuing shared writes, then re-enter the live server at its lower accepted revision without leaking the private event or changing shared history. Both connectivity transitions and the 503 are synthetic browser fixtures, not physical network or Android-device tests; no truth, execution, approval, mastery, or authority is established."
+        "evidenceBoundary": "The disposable shared-server fixture injects 13 initial 503 GitHub responses and a 14th while the Founder is viewing the older failure page. The service appends 14 Founder-attributed source-archive-attempt-failed events, each bound to a distinct request ID; no client-authored failure, draft, publication, XP, truth verdict, or authority is created. The Evidence Archive renders bounded pages of 12, and its local cursor resets to the newest page when the shared world revision changes. The acceptance compares page revision against the post-arrival snapshot so legitimate location discovery remains retained. Pagination and cursor rebinding create no canonical event or XP. The Witness can see the latest failure in shared history. These are simulated upstream outages, not live GitHub outages. The fixture also explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The original Founder report author responds once to the exact Witness challenge through the Moonshot Field form; the form displays the exact report and challenge context, the Witness UI exposes no response control, and a direct Witness response action is rejected with 403 FORBIDDEN without mutation. The retained author response follows the exact report and challenge, remains labeled AUTHOR RESPONSE · NOT ADJUDICATION, completes only the Founder response quest, and awards zero XP. The refreshed Synthesis packet includes the exact response event but remains advisory-only. The separate collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. The offline shared-snapshot re-entry journey reloads a redacted public projection under synthetic browser offline conditions, blocks shared writes and resumes only after fresh server state is accepted. A separate private-import journey imports a same-world save whose local revision is higher while the client is in cache-only mode, verifies private provenance/controls reset, then injects a synthetic HTTP 503 while no public cache is available. The client must restore private movement and the offline indicator, permit real local keyboard travel without changing the private world revision/XP/event history or issuing shared writes, then re-enter the live server at its lower accepted revision without leaking the private event or changing shared history. Both connectivity transitions and the 503 are synthetic browser fixtures, not physical network or Android-device tests; no truth, execution, approval, mastery, or authority is established."
     }
     (args.out / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",
