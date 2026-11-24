@@ -4196,7 +4196,7 @@ test('TownSquare review controls separate 44px touch targets when map objects sh
   }
 });
 
-test('TownSquare overflow shortcut opens the first unmapped exact Chronicle event without mutating the world', () => {
+test('TownSquare overflow shortcut opens the first unmapped exact Chronicle event without mutating the world', async () => {
   const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
   const previousInnerWidth = Object.getOwnPropertyDescriptor(globalThis, 'innerWidth');
   const previousInnerHeight = Object.getOwnPropertyDescriptor(globalThis, 'innerHeight');
@@ -4236,47 +4236,55 @@ test('TownSquare overflow shortcut opens the first unmapped exact Chronicle even
     }),
     focus() { interactions.push('focus'); }
   };
-  const mapped = {
-    id: 'town-review-overflow-mapped',
-    eventId: 'town-review-overflow-mapped',
-    reportId: 'town-report-overflow-mapped',
-    type: 'town-square-review',
-    status: 'process-record-not-adjudication',
-    mapVisible: true,
-    x: 1260,
-    y: 520
-  };
-  const overflowId = 'town-review-overflow-extra';
-  const overflowObject = {
-    id: overflowId,
-    eventId: overflowId,
-    type: 'town-square-review-overflow',
-    status: 'process-record-not-adjudication',
-    x: 1300,
-    y: 620
-  };
-  const projection = {
-    historyStatus: 'actor-visible-links-validated',
-    totalCount: 2,
-    omittedCount: 1,
-    pendingCount: 0,
-    processRecordCount: 2,
-    objects: [mapped],
-    overflowObject
-  };
-  const world = {
-    revision: 2,
-    events: [
-      { id: mapped.eventId, type: 'message-report-reviewed' },
-      { id: overflowId, type: 'message-report-reviewed' }
-    ]
-  };
+
+  const base = Date.parse('2026-11-24T12:00:00.000Z');
+  const at = offset => new Date(base + offset).toISOString();
+  const founder = { id: 'town-overflow-founder', name: 'Damien Featherstone', role: 'founder' };
+  const author = { id: 'town-overflow-ui-author', name: 'Message Author', role: 'witness' };
+  const reporter = { id: 'town-overflow-ui-reporter', name: 'Reporting Witness', role: 'witness' };
+  const unrelated = { id: 'town-overflow-ui-unrelated', name: 'Unrelated Witness', role: 'witness' };
+  let current = createWorld({ id: 'town-square-overflow-ui-dispatch', now: at(0) });
+  const reviewedEventIds = [];
+  for (let index = 0; index < 17; index += 1) {
+    const offset = index * 61000;
+    const posted = await applyAction(current, {
+      type: 'post-message', text: 'Public process message ' + index
+    }, author, { now: at(offset + 1000) });
+    const reported = await applyAction(posted.world, {
+      type: 'report-message',
+      messageId: posted.result.messageId,
+      reason: 'other',
+      details: 'Private report detail ' + index
+    }, reporter, { now: at(offset + 2000) });
+    const reviewed = await applyAction(reported.world, {
+      type: 'review-message-report',
+      reportId: reported.result.reportId,
+      note: 'Private process review note ' + index
+    }, founder, { now: at(offset + 3000) });
+    current = reviewed.world;
+    reviewedEventIds.push(current.events.at(-1).id);
+  }
+
+  const world = publicWorld(current, founder);
+  const projection = worldViewModule.projectTownSquareReviewObjects(world, founder);
+  const overflowId = reviewedEventIds[16];
+  assert.equal(projection.historyStatus, 'actor-visible-links-validated');
+  assert.equal(projection.totalCount, 17);
+  assert.equal(projection.pendingCount, 0);
+  assert.equal(projection.processRecordCount, 17);
+  assert.equal(projection.objects.length, 16);
+  assert.equal(projection.overflowObject?.eventId, overflowId);
+  assert.equal(projection.overflowObject?.status, 'process-record-not-adjudication');
+  const mapped = projection.objects[0];
   const worldBefore = structuredClone(world);
   const view = Object.create(PixelWorldView.prototype);
   Object.assign(view, {
     world,
+    viewer: founder,
     townSquareReviewProjection: projection,
-    townSquareReviewObjects: projection.objects,
+    // Keep the layout fixture to one visible marker while the canonical projection
+    // retains its full 16-object bounded lane and exact first-unmapped identity.
+    townSquareReviewObjects: [mapped],
     townSquareReviewControlGroup: group,
     townSquareReviewControlButtons: new Map(),
     townSquareReviewOverflowButton: null,
@@ -4287,7 +4295,8 @@ test('TownSquare overflow shortcut opens the first unmapped exact Chronicle even
     zoom: 0.78,
     canvas,
     callbacks: { onInteract: value => interactions.push(value) },
-    playUiVisible: () => playUiVisible
+    playUiVisible: () => playUiVisible,
+    cancelRoute() {}
   });
   globalThis.document = {
     body: { classList: { contains: () => modalOpen } },
@@ -4341,13 +4350,24 @@ test('TownSquare overflow shortcut opens the first unmapped exact Chronicle even
     ], 'the shortcut opens only the exact retained event through the existing read-only Chronicle route');
     assert.deepEqual(world, worldBefore, 'overflow navigation does not mutate canonical world state');
 
-    view.townSquareReviewProjection = {
-      ...projection,
-      overflowObject: { ...overflowObject, id: 'town-review-overflow-replaced', eventId: 'town-review-overflow-replaced' }
-    };
+    // The active viewer can change while the previously rendered button is still queued.
+    // Dispatch must not trust the stale Founder projection for the next actor.
+    view.viewer = unrelated;
     assert.equal(view.handleTownSquareReviewOverflowAction(overflowId), false,
-      'a queued click is rejected after the first-unmapped event identity changes');
-    view.townSquareReviewProjection = projection;
+      'a stale overflow target must not cross the Founder-to-Witness actor boundary');
+    assert.deepEqual(interactions, [
+      { type: 'town-square-review', eventId: overflowId },
+      'focus'
+    ]);
+    view.viewer = founder;
+
+    // Incomplete current history must also invalidate the old shortcut.
+    const incompleteWorld = { ...world, revision: world.revision + 1 };
+    view.world = incompleteWorld;
+    assert.equal(view.handleTownSquareReviewOverflowAction(overflowId), false,
+      'a stale target cannot open Chronicle from an incomplete current history');
+    view.world = world;
+
     modalOpen = true;
     assert.equal(view.handleTownSquareReviewOverflowAction(overflowId), false,
       'a stale Chronicle shortcut cannot activate behind an open modal');
