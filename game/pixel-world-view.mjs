@@ -39,6 +39,11 @@ function ownDataValue(object, key) {
 function isArraySafely(value) {
   try { return Array.isArray(value); } catch { return false; }
 }
+function safeTownSquareReviewObjects(view) {
+  const objects = ownDataValue(view, 'townSquareReviewObjects');
+  return isArraySafely(objects) ? objects : [];
+}
+
 
 function readSafeRectangles(value) {
   if (!isArraySafely(value)) return null;
@@ -1736,7 +1741,7 @@ export class PixelWorldView extends WorldView {
     }
 
     const reviewTarget = projectTownSquareReviewPointerTarget(
-      point, this.camera, this.zoom, this.width, this.height, this.townSquareReviewObjects
+      point, this.camera, this.zoom, this.width, this.height, safeTownSquareReviewObjects(this)
     );
     if (reviewTarget) {
       const nearest = this.nearest(reviewTarget.id, 'town-square-review');
@@ -1813,7 +1818,7 @@ export class PixelWorldView extends WorldView {
       return;
     }
     const reviewObject = typeof id === 'string'
-      ? this.townSquareReviewObjects.find(object => object.id === id)
+      ? safeTownSquareReviewObjects(this).find(object => object.id === id)
       : null;
     if (reviewObject) {
       if (targetType !== undefined && targetType !== 'town-square-review') {
@@ -2515,7 +2520,7 @@ export class PixelWorldView extends WorldView {
       ...this.researchActivityObjects.filter(object => object.mapVisible).map(object => ({
         y: object.y, draw: () => this.drawResearchActivityObject(object)
       })),
-      ...this.townSquareReviewObjects.map(object => ({
+      ...safeTownSquareReviewObjects(this).map(object => ({
         y: object.y, draw: () => this.drawTownSquareReviewObject(object)
       })),
       ...WORLD_NPCS.map(npc => ({
@@ -2584,7 +2589,7 @@ export class PixelWorldView extends WorldView {
       const destination = navigationTarget.type === 'npc'
         ? WORLD_NPCS.find(npc => npc.id === navigationTarget.id)
         : navigationTarget.type === 'town-square-review'
-          ? this.townSquareReviewObjects.find(object => object.id === navigationTarget.id)
+          ? safeTownSquareReviewObjects(this).find(object => object.id === navigationTarget.id)
           : PLACES.find(place => place.id === navigationTarget.id);
       const destinationName = destination?.name ||
         (navigationTarget.type === 'town-square-review' ? 'TownSquare process review' : 'the selected destination');
