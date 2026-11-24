@@ -765,35 +765,56 @@ function projectTownSquareReviewOverflowControlSlot(object, camera, zoom, width,
   const status = ownDataValue(object, 'status');
   const x = ownDataValue(object, 'x');
   const y = ownDataValue(object, 'y');
-  const cameraX = ownDataValue(camera, 'x');
-  const cameraY = ownDataValue(camera, 'y');
   if (ownDataValue(object, 'type') !== 'town-square-review-overflow' ||
       typeof id !== 'string' || id !== eventId ||
       !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id) ||
       TOWNSQUARE_REVIEW_POINTER_FORBIDDEN_IDS.has(id) ||
       !['awaiting-founder-review', 'process-record-not-adjudication'].includes(status) ||
-      ![x, y, cameraX, cameraY, zoom, width, height].every(Number.isFinite) || zoom <= 0) {
-    return null;
+      ![x, y, zoom, width, height].every(Number.isFinite) || zoom <= 0 ||
+      width < TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE + 16 ||
+      height < TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE + 16) return null;
+
+  // This is a Chronicle navigation affordance, not a map marker. Do not anchor
+  // it to an off-screen world object: doing so made valid overflow records
+  // unreachable whenever their deterministic map coordinate left the viewport.
+  // Choose a fixed viewport slot that avoids the current HUD and map controls.
+  const obstacles = readSafeRectangles(avoidRects);
+  if (!obstacles) return null;
+  const half = TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2;
+  const margin = 8 + half;
+  const right = width - margin;
+  const bottom = height - margin;
+  const centerX = width / 2;
+  const candidates = [
+    [right, margin],
+    [right, bottom],
+    [margin, margin],
+    [margin, bottom],
+    [right, Math.max(margin, Math.min(bottom, height * 0.35))],
+    [right, Math.max(margin, Math.min(bottom, height * 0.65))],
+    [centerX, margin],
+    [centerX, bottom]
+  ];
+  for (const [screenX, screenY] of candidates) {
+    const target = {
+      left: screenX - half, top: screenY - half,
+      right: screenX + half, bottom: screenY + half
+    };
+    const blocked = obstacles.some(obstacle =>
+      target.left < obstacle.right + 4 && target.right > obstacle.left - 4 &&
+      target.top < obstacle.bottom + 4 && target.bottom > obstacle.top - 4
+    );
+    if (blocked) continue;
+    return Object.freeze({
+      id, eventId, status,
+      worldX: x,
+      worldY: y,
+      layoutAvailable: true,
+      screenX,
+      screenY
+    });
   }
-  const panel = projectMapLabelPosition(
-    x, y, width, height, camera, zoom,
-    TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE,
-    TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE,
-    4, avoidRects
-  );
-  if (!panel) return null;
-  const screenX = width / 2 + (panel.x - cameraX) * zoom;
-  const panelScreenBottomY = height / 2 + (panel.y - cameraY) * zoom;
-  const screenY = panelScreenBottomY - TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2;
-  if (![screenX, screenY].every(Number.isFinite)) return null;
-  return Object.freeze({
-    id, eventId, status,
-    worldX: x,
-    worldY: y,
-    layoutAvailable: true,
-    screenX,
-    screenY
-  });
+  return null;
 }
 
 /**
