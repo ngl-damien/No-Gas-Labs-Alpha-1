@@ -1303,32 +1303,26 @@ def run_town_square_report_review(browser, url, out, width):
                 page.locator('#sheet-close').tap()
             expect(page.locator('#sheet')).to_be_hidden()
             before = read_shared_state(page)['world']
-            page.locator('#world').evaluate("""canvas => {
-              canvas.dataset.townSquareReviewPointerType = 'not-observed';
-              canvas.addEventListener('pointerdown', event => {
-                canvas.dataset.townSquareReviewPointerType = event.pointerType;
-              }, { capture: true, once: true });
+            control_selector = '[data-town-square-review-control="' + review_event['id'] + '"]'
+            control = page.locator(control_selector)
+            expect(control).to_have_count(1)
+            expect(control).to_be_visible()
+            expect(control).to_have_attribute('data-event-id', review_event['id'])
+            control_state = control.evaluate("""button => {
+              button.dataset.testPointerType = 'not-observed';
+              button.addEventListener('pointerdown', event => {
+                button.dataset.testPointerType = event.pointerType;
+              }, { once: true });
+              const rect = button.getBoundingClientRect();
+              return {
+                eventId: button.dataset.eventId || null,
+                worldX: Number(button.dataset.worldX),
+                worldY: Number(button.dataset.worldY),
+                centerX: rect.left + rect.width / 2,
+                centerY: rect.top + rect.height / 2
+              };
             }""")
-            page.evaluate("""async () => {
-              const canvas = document.querySelector('#world');
-              const read = () => [
-                Number(canvas.dataset.cameraX),
-                Number(canvas.dataset.cameraY),
-                Number(canvas.dataset.zoom)
-              ];
-              let previous = read();
-              let stableFrames = 0;
-              for (let frame = 0; frame < 120 && stableFrames < 3; frame += 1) {
-                await new Promise(requestAnimationFrame);
-                const current = read();
-                if (current.every((value, index) => Number.isFinite(value) &&
-                    Math.abs(value - previous[index]) < 0.05)) stableFrames += 1;
-                else stableFrames = 0;
-                previous = current;
-              }
-              if (stableFrames < 3) throw new Error('TownSquare map camera did not settle before touch hit-testing.');
-            }""")
-            point = page.locator('#world').evaluate("""(canvas, eventId) => {
+            marker = page.locator('#world').evaluate("""(canvas, eventId) => {
               const objects = JSON.parse(canvas.dataset.townSquareReviewObjects || '[]');
               const object = objects.find(item => item.eventId === eventId);
               const rect = canvas.getBoundingClientRect();
@@ -1339,45 +1333,29 @@ def run_town_square_report_review(browser, url, out, width):
               const height = Number(canvas.dataset.viewportHeight);
               if (!object || ![cameraX, cameraY, zoom, width, height].every(Number.isFinite) ||
                   zoom <= 0 || width <= 0 || height <= 0) return null;
-              const centerX = (object.x - cameraX) * zoom + width / 2;
-              const centerY = (object.y - cameraY) * zoom + height / 2;
-              const offsets = [[0, 0], [12, 0], [-12, 0], [0, 12], [0, -12],
-                [10, 10], [-10, 10], [10, -10], [-10, -10], [18, 0], [-18, 0], [0, 18], [0, -18]];
-              const candidates = offsets.map(([dx, dy]) => {
-                const x = centerX + dx;
-                const y = centerY + dy;
-                const element = x >= 0 && y >= 0 && x <= width && y <= height
-                  ? document.elementFromPoint(rect.left + x, rect.top + y) : null;
-                return {
-                  x: rect.left + x, y: rect.top + y, localX: x, localY: y,
-                  inside: x >= 0 && y >= 0 && x <= width && y <= height,
-                  exposed: element === canvas,
-                  element: element ? {
-                    tag: element.tagName, id: element.id || null,
-                    className: typeof element.className === 'string' ? element.className : null
-                  } : null
-                };
-              });
-              const selected = candidates.find(candidate => candidate.inside && candidate.exposed);
-              return selected
-                ? { ...selected, eventId: object.eventId, objectX: object.x, objectY: object.y }
-                : { inside: centerX >= 0 && centerY >= 0 && centerX <= width && centerY <= height,
-                    blocked: true, eventId: object.eventId, objectX: object.x, objectY: object.y,
-                    centerElement: candidates[0]?.element, candidates };
+              return {
+                eventId: object.eventId,
+                worldX: object.x,
+                worldY: object.y,
+                screenX: rect.left + (object.x - cameraX) * zoom + width / 2,
+                screenY: rect.top + (object.y - cameraY) * zoom + height / 2
+              };
             }""", review_event['id'])
-            if not point or not point['inside'] or point.get('blocked'):
-                raise AssertionError(label + ' TownSquare review map object has no unobstructed mobile tap point: ' +
-                                     json.dumps(point, sort_keys=True))
-            # Use the viewport-coordinate touch API so the point we hit-tested
-            # is the point the browser receives; locator.tap may auto-scroll first.
-            page.touchscreen.tap(point['x'], point['y'])
-            pointer_type = page.locator('#world').get_attribute(
-                'data-town-square-review-pointer-type'
-            )
+            if not marker or control_state['eventId'] != review_event['id'] or \
+                    control_state['worldX'] != marker['worldX'] or \
+                    control_state['worldY'] != marker['worldY'] or \
+                    abs(control_state['centerX'] - marker['screenX']) > 3 or \
+                    abs(control_state['centerY'] - marker['screenY']) > 3:
+                raise AssertionError(
+                    label + ' touch control must be anchored to the exact actor-visible map event: ' +
+                    json.dumps({'control': control_state, 'marker': marker}, sort_keys=True)
+                )
+            control.tap()
+            pointer_type = control.get_attribute('data-test-pointer-type')
             if pointer_type != 'touch':
                 raise AssertionError(
-                    label + ' TownSquare map inspection must be exercised through a real touch pointer; '
-                    'observed ' + str(pointer_type)
+                    label + ' TownSquare review control must receive a real touch pointer; observed ' +
+                    str(pointer_type)
                 )
             try:
                 page.wait_for_function(
@@ -1398,11 +1376,13 @@ def run_town_square_report_review(browser, url, out, width):
                 diagnostics = page.locator('#world').evaluate("""(canvas, eventId) => {
                   const sheet = document.querySelector('#sheet');
                   const button = document.querySelector('#interact-button');
-                  const rect = canvas.getBoundingClientRect();
-                  const element = document.elementFromPoint(rect.left + 160, rect.top + 422);
+                  const control = document.querySelector(
+                    '[data-town-square-review-control="' + eventId + '"]'
+                  );
                   return {
                     navigationTargetId: canvas.dataset.navigationTargetId || null,
                     navigationState: canvas.dataset.navigationState || null,
+                    movementEnabled: canvas.dataset.movementEnabled || null,
                     nearbyPlayerName: canvas.dataset.nearbyPlayerName || null,
                     nearbyNpcRole: canvas.dataset.nearbyNpcRole || null,
                     nearbyInstitutionId: canvas.dataset.nearbyInstitutionId || null,
@@ -1410,27 +1390,17 @@ def run_town_square_report_review(browser, url, out, width):
                     sheetTitle: document.querySelector('#sheet-title')?.textContent ?? null,
                     interactButtonHidden: button?.hidden ?? null,
                     interactButtonLabel: button?.getAttribute('aria-label') ?? null,
-                    centerElement: element ? {
-                      tag: element.tagName, id: element.id || null,
-                      className: typeof element.className === 'string' ? element.className : null
-                    } : null,
+                    controlHidden: control?.hidden ?? null,
+                    controlPointerType: control?.dataset.testPointerType ?? null,
                     markerCount: canvas.dataset.townSquareReviewVisibleCount || null,
                     markerObjects: canvas.dataset.townSquareReviewObjects || null,
-                    pointerType: canvas.dataset.townSquareReviewPointerType || null,
-                    camera: {
-                      x: canvas.dataset.cameraX || null, y: canvas.dataset.cameraY || null,
-                      zoom: canvas.dataset.zoom || null
-                    },
                     eventId
                   };
                 }""", review_event['id'])
-                diagnostics['tapPoint'] = {
-                    key: point[key] for key in ('x', 'y', 'localX', 'localY', 'objectX', 'objectY')
-                }
-                screenshot = Path(out) / f'town-square-{label.lower()}-{width}px-map-tap-failure.png'
+                screenshot = Path(out) / f'town-square-{label.lower()}-{width}px-control-tap-failure.png'
                 page.screenshot(path=str(screenshot), full_page=True)
                 raise AssertionError(
-                    label + ' map tap did not route to or open the exact Chronicle event: ' +
+                    label + ' map-object touch control did not route to or open the exact Chronicle event: ' +
                     json.dumps(diagnostics, sort_keys=True)
                 ) from error
             if page.locator('#sheet').is_hidden():
