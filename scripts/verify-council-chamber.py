@@ -1017,6 +1017,96 @@ def run_town_square_report_review(browser, url, out, width):
                 raise AssertionError(label + ' TownSquare caused horizontal overflow: ' + json.dumps(layout))
             assert_world_context_visible(page, 'The Commons at TownSquare')
 
+        def open_quest_board(page):
+            if page.locator('#sheet').is_visible():
+                page.locator('#sheet-close').tap()
+            page.locator('#places-button').tap()
+            route = page.get_by_role('button', name='Walk to Quest Board', exact=True)
+            expect(route).to_be_visible()
+            route.tap()
+            enter_nearby_institution(page, 'quest_board', 'Quest Board', 'Quest Board')
+
+        # The review is a real Founder-only institutional objective. Its evidence
+        # must be the exact retained event, and Chronicle inspection must be read-only.
+        open_quest_board(founder_page)
+        founder_quest_content = founder_page.locator('#sheet-content')
+        expect(founder_quest_content).to_have_attribute('data-quest-board', 'true')
+        expect(founder_quest_content).to_have_attribute('data-actor-role', 'founder')
+        review_objective = founder_quest_content.locator(
+            '[data-objective-id="founder-commons-report-review"]'
+        )
+        expect(review_objective).to_have_count(1)
+        expect(review_objective).to_contain_text(
+            'Record a process review for another actor’s Commons report'
+        )
+        expect(review_objective).to_contain_text('1/1')
+        expect(review_objective.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(review_objective.get_by_role(
+            'button', name='Walk to The Commons at TownSquare →', exact=True
+        )).to_have_count(0)
+
+        evidence_details = review_objective.locator('details.quest-evidence')
+        expect(evidence_details).to_have_count(1)
+        evidence_details.locator('summary').tap()
+        event_link = evidence_details.locator(
+            '[data-quest-evidence-event-link="' + review_event['id'] + '"]'
+        )
+        expect(event_link).to_have_count(1)
+        expect(event_link).to_have_attribute('data-chronicle-event-id', review_event['id'])
+        expect(event_link).to_have_attribute('data-chronicle-source', 'world')
+        expect(event_link).to_have_attribute(
+            'aria-label', 'Inspect retained message-report-reviewed event in World Chronicle'
+        )
+        board_revision = founder_quest_content.get_attribute(
+            'data-quest-board-snapshot-revision'
+        )
+        if not isinstance(board_revision, str) or not board_revision.isdigit():
+            raise AssertionError('The Founder Quest Board must expose its accepted snapshot revision.')
+
+        before_chronicle = read_shared_state(founder_page)['world']
+        event_link.tap()
+        expect(founder_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        exact_review_event = founder_page.locator(
+            '#sheet-content [data-event-id="world:' + review_event['id'] + '"]'
+        )
+        expect(exact_review_event).to_have_count(1)
+        expect(exact_review_event).to_have_attribute('data-event-source', 'world')
+        expect(exact_review_event).to_contain_text(review_note)
+        expect(founder_page.locator('#sheet-content')).to_have_attribute(
+            'data-chronicle-snapshot-revision', board_revision
+        )
+        after_chronicle = read_shared_state(founder_page)['world']
+        if after_chronicle['revision'] != before_chronicle['revision'] or \
+                after_chronicle['xp'] != before_chronicle['xp'] or \
+                [event['id'] for event in after_chronicle['events']] != [
+                    event['id'] for event in before_chronicle['events']
+                ] or after_chronicle['creations'] != before_chronicle['creations']:
+            raise AssertionError('Quest evidence and Chronicle inspection must not mutate the world.')
+        founder_quest_screenshot = out / ('town-square-founder-review-quest-' + str(width) + '.png')
+        founder_chronicle_screenshot = out / ('town-square-founder-review-chronicle-' + str(width) + '.png')
+        founder_page.screenshot(path=str(founder_quest_screenshot), full_page=True)
+        founder_page.screenshot(path=str(founder_chronicle_screenshot), full_page=True)
+
+        open_quest_board(reporter_page)
+        reporter_quest_content = reporter_page.locator('#sheet-content')
+        expect(reporter_quest_content).to_have_attribute('data-quest-board', 'true')
+        expect(reporter_quest_content).to_have_attribute('data-actor-role', 'witness')
+        expect(reporter_quest_content.locator(
+            '[data-objective-id="founder-commons-report-review"]'
+        )).to_have_count(0, 'Witness Quest Boards must not expose the Founder-only review objective')
+        reporter_quest_layout = reporter_page.evaluate("""() => ({
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth
+        })""")
+        if reporter_quest_layout['documentWidth'] > reporter_quest_layout['viewportWidth'] + 1:
+            raise AssertionError('Witness Quest Board caused horizontal overflow: ' + json.dumps(reporter_quest_layout))
+        founder_quest_layout = founder_page.evaluate("""() => ({
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth
+        })""")
+        if founder_quest_layout['documentWidth'] > founder_quest_layout['viewportWidth'] + 1:
+            raise AssertionError('Founder Quest Board/Chronicle caused horizontal overflow: ' + json.dumps(founder_quest_layout))
+
         if errors:
             raise AssertionError('Browser page errors: ' + json.dumps(errors))
 
@@ -1040,8 +1130,18 @@ def run_town_square_report_review(browser, url, out, width):
             'messageVisibilityUnchanged': True,
             'moderationEvents': 0,
             'rejectedActionsMutated': False,
+            'founderQuestReviewProgress': '1/1',
+            'founderQuestReviewEventId': review_event['id'],
+            'founderQuestChronicleNavigation': True,
+            'questAndChronicleInspectionReadOnly': True,
+            'reporterFounderObjectiveHidden': True,
             'pageErrors': errors,
-            'screenshots': [reporter_screenshot.name, founder_screenshot.name]
+            'screenshots': [
+                reporter_screenshot.name,
+                founder_screenshot.name,
+                founder_quest_screenshot.name,
+                founder_chronicle_screenshot.name
+            ]
         }
     finally:
         for context in reversed(contexts):
