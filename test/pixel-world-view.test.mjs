@@ -3363,6 +3363,10 @@ test('TownSquare pending reports become actor-scoped map objects until a retaine
       { x: 195, y: 422 }, { x: object.x, y: object.y }, 1, 390, 844, projection.objects
     );
     assert.deepEqual(pointerTarget, { id: reportEvent.id, eventId: reportEvent.id });
+    assert.equal(projectPointer(
+      { x: 195, y: 422 }, { x: object.x, y: object.y }, 1, 390, 844,
+      [{ ...object, status: 'unknown-status' }]
+    ), null, 'an unrecognized report/review status cannot become a touch target');
   }
   assert.deepEqual(reporterProjection.objects, founderProjection.objects,
     'Founder and reporting Witness must receive the same deterministic pending-report marker');
@@ -3382,6 +3386,8 @@ test('TownSquare pending reports become actor-scoped map objects until a retaine
   view.townSquareReviewObjects = founderProjection.objects;
   view.callbacks = { onInteract: value => { interaction = value; }, onDiscover: () => {} };
   view.cancelRoute = () => {};
+  assert.equal(view.nearest(reportEvent.id, 'town-square-review')?.status, 'awaiting-founder-review',
+    'the nearby world prompt receives the same deterministic pending status as the map marker');
   view.interact(reportEvent.id, 'town-square-review');
   assert.deepEqual(interaction, {
     type: 'town-square-review',
