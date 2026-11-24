@@ -978,11 +978,141 @@ def run_town_square_report_review(browser, url, out, width):
         event_ids_before = [event['id'] for event in founder_before_review['world']['events']]
 
         review_note = 'Reviewed as a process step; this note is not a factual verdict or moderation action.'
+        lost_review_response = {
+            'attempted': False,
+            'serverStatus': None,
+            'requestId': None,
+            'reviewId': None,
+            'reviewEventId': None
+        }
+
+        def drop_first_committed_review_response(route):
+            payload = route.request.post_data_json
+            if (
+                not lost_review_response['attempted'] and
+                isinstance(payload, dict) and
+                payload.get('type') == 'review-message-report' and
+                payload.get('reportId') == report_one_id
+            ):
+                lost_review_response['attempted'] = True
+                server_response = route.fetch()
+                server_body = server_response.json()
+                if server_response.status != 200:
+                    raise AssertionError(
+                        'The server must commit the first review before the response is dropped: ' +
+                        json.dumps({'status': server_response.status, 'body': server_body})
+                    )
+                committed = [
+                    event for event in server_body.get('world', {}).get('events', [])
+                    if event.get('type') == 'message-report-reviewed' and
+                    event.get('reportId') == report_one_id
+                ]
+                if len(committed) != 1:
+                    raise AssertionError(
+                        'The server-side first attempt must append exactly one review before response loss.'
+                    )
+                request_id = payload.get('requestId')
+                if not isinstance(request_id, str) or not request_id:
+                    raise AssertionError('The review request must carry its saved Relay request ID.')
+                lost_review_response.update({
+                    'serverStatus': server_response.status,
+                    'requestId': request_id,
+                    'reviewId': server_body.get('result', {}).get('reviewId'),
+                    'reviewEventId': committed[0].get('id')
+                })
+                founder_context.set_offline(True)
+                route.abort('internetdisconnected')
+                return
+            route.continue_()
+
         report_item = founder_page.locator('[data-commons-pending-report="' + report_one_id + '"]')
         expect(report_item).to_be_visible()
         report_item.locator('summary').tap()
         founder_page.locator('[id="commons-review-note-' + report_one_id + '"]').fill(review_note)
+        founder_page.route('**/api/action', drop_first_committed_review_response)
         founder_page.locator('[data-commons-review="' + report_one_id + '"]').tap()
+        if not lost_review_response['attempted'] or lost_review_response['serverStatus'] != 200:
+            raise AssertionError('The fault injector did not observe a committed review response to drop.')
+
+        founder_page.wait_for_function(
+            """() => document.querySelector('#connection-dot')?.dataset.connectionState === 'offline'""",
+            timeout=15000
+        )
+        pending_receipts = founder_page.evaluate("""() => {
+          const matches = [];
+          for (let index = 0; index < localStorage.length; index += 1) {
+            const key = localStorage.key(index);
+            let value = null;
+            try { value = JSON.parse(localStorage.getItem(key)); } catch {}
+            if (value && value.action?.type === 'review-message-report') matches.push({key, value});
+          }
+          return matches;
+        }""")
+        if len(pending_receipts) != 1:
+            raise AssertionError(
+                'After response loss, exactly one local Relay receipt must remain: ' +
+                json.dumps(pending_receipts)
+            )
+        pending_receipt = pending_receipts[0]['value']
+        if pending_receipt.get('requestId') != lost_review_response['requestId'] or \
+                pending_receipt.get('actorId') != founder.get('id') or \
+                pending_receipt.get('actorRole') != 'founder' or \
+                pending_receipt.get('action', {}).get('reportId') != report_one_id or \
+                pending_receipt.get('action', {}).get('note') != review_note:
+            raise AssertionError('The saved Relay receipt must retain the exact actor, request ID and review action.')
+
+        # The server committed, so the separate reporter session can observe the
+        # review while the Founder still has an uncertain local response.
+        reporter_page.wait_for_function(
+            """messageId => document.querySelector('[data-commons-own-report="' + messageId + '"]')?.dataset.commonsOwnReportStatus === 'founder-review-recorded'""",
+            arg=message_one_id,
+            timeout=15000
+        )
+        replay_responses = []
+
+        def capture_review_replay(response):
+            try:
+                payload = response.request.post_data_json
+                if (
+                    isinstance(payload, dict) and
+                    payload.get('type') == 'review-message-report' and
+                    payload.get('requestId') == lost_review_response['requestId']
+                ):
+                    replay_responses.append({'status': response.status, 'body': response.json()})
+            except Exception as error:
+                replay_responses.append({'captureError': str(error)})
+
+        founder_page.on('response', capture_review_replay)
+        founder_page.unroute('**/api/action', drop_first_committed_review_response)
+        founder_context.set_offline(False)
+        founder_page.wait_for_function(
+            """() => {
+              const toast = document.querySelector('#toast');
+              return Boolean(toast && !toast.hidden &&
+                toast.textContent.includes('Relay recovered the exact pending action after reconnection.'));
+            }""",
+            timeout=20000
+        )
+        founder_page.wait_for_function("""() => {
+          for (let index = 0; index < localStorage.length; index += 1) {
+            const key = localStorage.key(index);
+            let value = null;
+            try { value = JSON.parse(localStorage.getItem(key)); } catch {}
+            if (value && value.action?.type === 'review-message-report') return false;
+          }
+          return true;
+        }""", timeout=15000)
+        if len(replay_responses) != 1 or 'body' not in replay_responses[0]:
+            raise AssertionError('The Relay must produce one observable exact-request replay response: ' + json.dumps(replay_responses))
+        replay = replay_responses[0]
+        replay_body = replay['body']
+        if replay.get('status') != 200 or replay_body.get('idempotentReplay') is not True or \
+                replay_body.get('requestId') != lost_review_response['requestId'] or \
+                replay_body.get('result', {}).get('reviewId') != lost_review_response['reviewId']:
+            raise AssertionError(
+                'The recovered review must reuse the same request/result as an idempotent replay: ' +
+                json.dumps({'first': lost_review_response, 'replay': replay})
+            )
         founder_page.wait_for_function(
             """reportId => !document.querySelector('[data-commons-pending-report="' + reportId + '"]')""",
             arg=report_one_id,
@@ -1036,6 +1166,28 @@ def run_town_square_report_review(browser, url, out, width):
                 review_event.get('actor', {}).get('role') != 'founder' or \
                 review_event.get('actor', {}).get('id') != founder['id']:
             raise AssertionError('The exact review event must retain report, message, note and Founder identity.')
+        if review_event.get('id') != lost_review_response['reviewEventId'] or \\
+                review_event.get('reviewId') != lost_review_response['reviewId']:
+            raise AssertionError('The recovered Relay result must identify the exact first committed review event.')
+        source_message_events = [
+            event for event in founder_events
+            if event.get('type') == 'message-posted' and event.get('messageId') == message_one_id
+        ]
+        source_report_events = [
+            event for event in founder_events
+            if event.get('type') == 'message-reported' and event.get('reportId') == report_one_id
+        ]
+        if len(source_message_events) != 1 or len(source_report_events) != 1:
+            raise AssertionError('The review objective requires one exact original message and report event.')
+        message_event = source_message_events[0]
+        report_event = source_report_events[0]
+        source_chain = [message_event, report_event, review_event]
+        source_chain_ids = [event['id'] for event in source_chain]
+        source_chain_positions = [founder_events.index(event) for event in source_chain]
+        if not source_chain_positions[0] < source_chain_positions[1] < source_chain_positions[2]:
+            raise AssertionError('The original message, private report and Founder review must remain append-ordered.')
+        if not all(any(event.get('id') == event_id for event in reporter_events) for event_id in source_chain_ids):
+            raise AssertionError('The reporting Witness must receive its exact message → report → review source chain.')
         if founder_after_review['world']['revision'] != revision_before + 1 or \
                 founder_after_review['world']['xp'] != xp_before:
             raise AssertionError('A review must append one revision and award zero XP.')
@@ -1138,6 +1290,7 @@ def run_town_square_report_review(browser, url, out, width):
             'Record a process review for another actor’s Commons report'
         )
         expect(review_objective).to_contain_text('1/1')
+        expect(review_objective).to_contain_text('3 retained events')
         expect(review_objective.locator('.quest-step-state')).to_have_text('RECORDED')
         expect(review_objective.get_by_role(
             'button', name='Walk to The Commons at TownSquare →', exact=True
@@ -1146,14 +1299,20 @@ def run_town_square_report_review(browser, url, out, width):
         evidence_details = review_objective.locator('details.quest-evidence')
         expect(evidence_details).to_have_count(1)
         evidence_details.locator('summary').tap()
+        expect(evidence_details.locator('[data-quest-evidence-event-link]')).to_have_count(3)
+        for source_event in source_chain:
+            source_link = evidence_details.locator(
+                '[data-quest-evidence-event-link="' + source_event['id'] + '"]'
+            )
+            expect(source_link).to_have_count(1)
+            expect(source_link).to_have_attribute('data-chronicle-event-id', source_event['id'])
+            expect(source_link).to_have_attribute('data-chronicle-source', 'world')
+            expect(source_link).to_have_attribute(
+                'aria-label',
+                'Inspect retained ' + source_event['type'] + ' event in World Chronicle'
+            )
         event_link = evidence_details.locator(
             '[data-quest-evidence-event-link="' + review_event['id'] + '"]'
-        )
-        expect(event_link).to_have_count(1)
-        expect(event_link).to_have_attribute('data-chronicle-event-id', review_event['id'])
-        expect(event_link).to_have_attribute('data-chronicle-source', 'world')
-        expect(event_link).to_have_attribute(
-            'aria-label', 'Inspect retained message-report-reviewed event in World Chronicle'
         )
         board_revision = founder_quest_content.get_attribute(
             'data-quest-board-snapshot-revision'
@@ -1209,18 +1368,25 @@ def run_town_square_report_review(browser, url, out, width):
         )
         expect(reporter_review_objective).to_have_count(1)
         expect(reporter_review_objective).to_contain_text('1/1')
+        expect(reporter_review_objective).to_contain_text('3 retained events')
         expect(reporter_review_objective.locator('.quest-step-state')).to_have_text('RECORDED')
         reporter_evidence_details = reporter_review_objective.locator('details.quest-evidence')
         expect(reporter_evidence_details).to_have_count(1)
         reporter_evidence_details.locator('summary').tap()
+        expect(reporter_evidence_details.locator('[data-quest-evidence-event-link]')).to_have_count(3)
+        for source_event in source_chain:
+            source_link = reporter_evidence_details.locator(
+                '[data-quest-evidence-event-link="' + source_event['id'] + '"]'
+            )
+            expect(source_link).to_have_count(1)
+            expect(source_link).to_have_attribute('data-chronicle-event-id', source_event['id'])
+            expect(source_link).to_have_attribute('data-chronicle-source', 'world')
+            expect(source_link).to_have_attribute(
+                'aria-label',
+                'Inspect retained ' + source_event['type'] + ' event in World Chronicle'
+            )
         reporter_event_link = reporter_evidence_details.locator(
             '[data-quest-evidence-event-link="' + review_event['id'] + '"]'
-        )
-        expect(reporter_event_link).to_have_count(1)
-        expect(reporter_event_link).to_have_attribute('data-chronicle-event-id', review_event['id'])
-        expect(reporter_event_link).to_have_attribute('data-chronicle-source', 'world')
-        expect(reporter_event_link).to_have_attribute(
-            'aria-label', 'Inspect retained message-report-reviewed event in World Chronicle'
         )
         reporter_board_revision = reporter_quest_content.get_attribute(
             'data-quest-board-snapshot-revision'
@@ -1270,6 +1436,9 @@ def run_town_square_report_review(browser, url, out, width):
             'messageIds': [message_one_id, message_two_id],
             'reportIds': [report_one_id, report_two_id],
             'reviewId': review_event.get('reviewId'),
+            'sourceChainEventIds': source_chain_ids,
+            'lostResponseRequestId': lost_review_response['requestId'],
+            'relayRecoveredIdempotently': True,
             'reviewRevisionDelta': 1,
             'reviewXpDelta': 0,
             'reporterSawExactReview': True,
