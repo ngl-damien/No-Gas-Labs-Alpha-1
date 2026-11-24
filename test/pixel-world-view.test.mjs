@@ -3960,7 +3960,7 @@ test('TownSquare map prioritizes pending reports over the bounded retained-revie
   const reviewedEventIds = [];
 
   for (let index = 0; index < 17; index += 1) {
-    const offset = index * 3000;
+    const offset = index * 61000;
     const posted = await applyAction(current, {
       type: 'post-message', text: 'Public process message ' + index
     }, author, { now: at(offset + 1000) });
@@ -3976,7 +3976,7 @@ test('TownSquare map prioritizes pending reports over the bounded retained-revie
     reviewedEventIds.push(current.events.at(-1).id);
   }
 
-  const pendingOffset = 17 * 3000;
+  const pendingOffset = 17 * 61000;
   const pendingPost = await applyAction(current, {
     type: 'post-message', text: 'A new public message with an actionable pending report.'
   }, author, { now: at(pendingOffset + 1000) });
