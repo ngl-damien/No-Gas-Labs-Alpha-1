@@ -53,7 +53,7 @@ test('Commons posts become actor-scoped quest and Speaker projections without XP
   await validateWorld(posted.world);
 });
 
-test('Commons reports are private and human moderation hides text without erasing history', async () => {
+test('Commons reports are private and Founder moderation hides text without erasing history', async () => {
   let world = createWorld({ id: 'commons-moderation', now: at(0) });
   const posted = await post(world, witnessA, 1000, 'Retain the original, even when a human hides the public copy.');
   world = posted.world;

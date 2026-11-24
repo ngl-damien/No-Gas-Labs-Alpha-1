@@ -43,7 +43,7 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  // Decision Chamber: decision-service records and the recovered authorization/revocation vocabulary.
  decision_chamber:event=>['decision','revocation','policy-set','proposal-created','decision-attempted','expiry-observed'].includes(event?.type)||event?.event_type==='REVOCATION'||(event?.authority==='AUTHORIZED'&&event?.execution!=='EXECUTED'),
  // TownSquare: public contributions, reports, disputes, and scoped decision activity.
- 'town-square':event=>['contribute','report','experiment-challenged','experiment-challenge-responded','decision-attempted','revocation','message-posted','message-reported','message-moderated'].includes(event?.type)||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
+ 'town-square':event=>['contribute','report','experiment-challenged','experiment-challenge-responded','decision-attempted','revocation','message-posted','message-reported','message-moderated','message-report-reviewed'].includes(event?.type)||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
  academy:event=>['study','study-reviewed','learning','skill-evidence'].includes(event?.type)||event?.event_type==='LEARNING'||event?.event_type==='SKILL_EVIDENCE',
  moonshot_field:event=>['experiment','moonshot','moonshot-proposed','experiment-reported','experiment-challenged','experiment-challenge-responded','source-archive-predicate-evaluated'].includes(event?.type)||event?.event_type==='MOONSHOT',
  publication_house:event=>event?.type==='publish'||event?.event_type==='PUBLICATION'||event?.event_type==='SATIRE',
@@ -272,7 +272,7 @@ function hasTrustedRoleFilteredHistoryCoverage(world,revision,eventCount){
   };
   const omittedTypes=read('omittedEventTypes');
   if(!isPlainProjectionRecord(omittedTypes))return false;
-  const allowedTypes=new Set(['draft','repair','message-reported']);
+  const allowedTypes=new Set(['draft','repair','message-reported','message-report-reviewed']);
   const omittedKeys=Reflect.ownKeys(omittedTypes);
   let omittedCount=0;
   for(const key of omittedKeys){

@@ -2449,12 +2449,12 @@ test('Guild Hall NPC readiness marks role-redacted event views as partial instea
   const founderReadiness = projectGuildNpcReadiness(world);
   assert.ok(founderReadiness.every(entry =>
     entry.status === 'ready' && entry.sourceSnapshotCoverage === 'count-matched' &&
-    entry.revision === 7 && entry.suppliedEventCount === 7
+    entry.revision === 8 && entry.suppliedEventCount === 8
   ));
 
   const witnessWorld = publicWorld(world, { id: 'witness-1', role: 'witness' });
-  assert.equal(witnessWorld.revision, 7);
-  assert.equal(witnessWorld.events.length, 4,
+  assert.equal(witnessWorld.revision, 8);
+  assert.equal(witnessWorld.events.length, 5,
     'the Witness projection omits the private Founder draft while retaining the canonical revision');
   assert.deepEqual(witnessWorld.historyCoverage.omittedEventTypes, {
     draft: 1, 'message-reported': 1, 'message-report-reviewed': 1
@@ -2466,7 +2466,7 @@ test('Guild Hall NPC readiness marks role-redacted event views as partial instea
     entry.status === 'partial' && entry.label === 'READY · PARTIAL' &&
     entry.sourceSnapshotStatus === 'identified' &&
     entry.sourceSnapshotCoverage === 'below-revision' &&
-    entry.revision === 7 && entry.suppliedEventCount === 4 &&
+    entry.revision === 8 && entry.suppliedEventCount === 5 &&
     /role-redacted or otherwise incomplete/.test(entry.reason)
   ));
 

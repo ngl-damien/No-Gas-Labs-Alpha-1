@@ -1773,7 +1773,7 @@ test('Commons posts become actor-owned field satchel objects with a TownSquare r
   assert.equal(other.fieldSatchel.length, 0, 'another actor cannot inherit this character’s satchel item');
 });
 
-test('a human-hidden Commons post remains in the author satchel with the public redaction', async () => {
+test('a Founder-hidden Commons post remains in the author satchel with the public redaction', async () => {
   const author = { id: 'satchel-author', name: 'Satchel Author', role: 'witness' };
   const reporter = { id: 'satchel-reporter', name: 'Satchel Reporter', role: 'witness' };
   const founderActor = { id: 'satchel-founder', name: 'Founder', role: 'founder' };

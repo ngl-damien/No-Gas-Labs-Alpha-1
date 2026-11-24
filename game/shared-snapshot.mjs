@@ -43,7 +43,7 @@ function validHistoryCoverage(world) {
       coverage.omittedEventCount !== world.revision - world.events.length ||
       coverage.viewerRole !== 'witness' ||
       !isRecord(coverage.omittedEventTypes)) return false;
-  const allowedTypes = new Set(['draft', 'repair', 'message-reported']);
+  const allowedTypes = new Set(['draft', 'repair', 'message-reported', 'message-report-reviewed']);
   let omittedCount = 0;
   for (const key of Reflect.ownKeys(coverage.omittedEventTypes)) {
     if (typeof key !== 'string' || !allowedTypes.has(key)) return false;
@@ -67,7 +67,7 @@ function validWorldProjection(world) {
       !validHistoryCoverage(world)) return false;
   let previousPosition = 0;
   for (const event of world.events) {
-    if (!isRecord(event) || ['draft', 'repair', 'message-reported'].includes(event.type) ||
+    if (!isRecord(event) || ['draft', 'repair', 'message-reported', 'message-report-reviewed'].includes(event.type) ||
         !Number.isSafeInteger(event.historyPosition) ||
         event.historyPosition <= previousPosition || event.historyPosition > world.revision) return false;
     previousPosition = event.historyPosition;
@@ -104,7 +104,7 @@ export function createSharedSnapshotEnvelope(dto, { now = Date.now() } = {}) {
       !Array.isArray(sourceWorld.events) || sourceWorld.events.length > sourceWorld.revision) return null;
   let projection;
   try {
-    // Founder DTOs contain founder-only draft/report detail. Redact them with the
+    // Founder DTOs contain founder-only draft/report/review detail. Redact them with the
     // same public-world projection used for Witness reads. Witness DTOs are
     // already redacted by the server; clone them without renumbering history gaps.
     projection = dto.viewer.role === 'founder'
@@ -114,7 +114,7 @@ export function createSharedSnapshotEnvelope(dto, { now = Date.now() } = {}) {
     const cacheOmissions = {};
     projection.events = projection.events.filter(event => {
       const type = event?.type;
-      if (['draft', 'repair', 'message-reported'].includes(type)) {
+      if (['draft', 'repair', 'message-reported', 'message-report-reviewed'].includes(type)) {
         cacheOmissions[type] = (cacheOmissions[type] || 0) + 1;
         return false;
       }

@@ -89,7 +89,7 @@ const SOURCE_ARCHIVE_FAILURE_RETRYABILITY = Object.freeze({
 
 export async function applyAction(original,action,actor,{now,requestId,actionFingerprint,allowTransfers=false,allowGuildLeadershipTransfers=false,allowSourceArchivePredicate=false,sourceSnapshotReceiptDigest:validatedSourceSnapshotReceiptDigest=null}={}) {
   const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
-  if(['draft','publish','repair','moderate-message'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair, publish or moderate Commons messages.',403);
+  if(['draft','publish','repair','moderate-message','review-message-report'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair, publish, moderate Commons messages or record report reviews.',403);
   if(requestId!==undefined&&(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)||typeof actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(actionFingerprint)))fail('INVALID_REQUEST_RECEIPT','A bounded request ID and SHA-256 action fingerprint are required.');if(requestId===undefined&&actionFingerprint!==undefined)fail('INVALID_REQUEST_RECEIPT','An action fingerprint requires a request ID.');
   const world=clone(original),at=date(now);const previousAt=Date.parse(original?.updatedAt);const appendOrderedAction=isAppendOrderedWorldActionType(action.type);if(!isStrictTimestamp(original?.updatedAt)||!Number.isFinite(previousAt)||!isStrictTimestamp(at)||(!appendOrderedAction&&Date.parse(at)<previousAt))fail('INVALID_CHRONOLOGY','Action time cannot precede the current world update time.',409);let result={};const requestMeta=requestId===undefined?null:{requestId,actionFingerprint};const recordEvent=(type,detail)=>event(world,type,who,at,detail,requestMeta?{...requestMeta,actionResult:result}:undefined);
   const creation=()=>{const c=world.creations.find(c=>c.id===action.creationId);if(!c)fail('NOT_FOUND','Creation not found.',404);if(action.version!==undefined&&action.version!==c.version&&!c.versions.some(v=>v.version===action.version))fail('STALE_VERSION','That published version does not exist.',409);return c;};
@@ -608,6 +608,19 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       recordEvent('message-moderated',{moderationId,messageId,disposition:action.disposition,reason:action.reason});
       break;
     }
+    case 'review-message-report':{
+      const reportId=text(action.reportId,128,'Report ID');
+      const matches=world.events.filter(e=>e.type==='message-reported'&&e.reportId===reportId);
+      if(matches.length!==1)fail('NOT_FOUND','A retained Commons report is required.',404);
+      const source=matches[0];
+      if(source.actor?.id===who.id&&source.actor?.role===who.role)fail('SELF_REVIEW','A Founder session cannot review its own report.',409);
+      if(world.events.some(e=>e.type==='message-report-reviewed'&&e.reportId===reportId))fail('REPORT_ALREADY_REVIEWED','This report already has a Founder review record.',409);
+      const note=text(action.note,500,'Review note');
+      const reviewId=uid('message-report-review');
+      result={reviewId};
+      recordEvent('message-report-reviewed',{reviewId,reportId,messageId:source.messageId,note});
+      break;
+    }
     case 'create-guild':{
       const name=normalizePlayerGuildName(text(action.name,PLAYER_GUILD_NAME_LIMIT,'Guild name'));
       if(!name||Array.from(name).length>PLAYER_GUILD_NAME_LIMIT)fail('INVALID_GUILD_NAME','Guild name is empty or too long.');
@@ -759,6 +772,22 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
   world.updatedAt=Date.parse(at)>previousAt?at:original.updatedAt;
   return {world,result};
 }
+function buildCommonsReportIndex(events){
+  const reportsById=new Map();
+  for(const event of Array.isArray(events)?events:[]){
+    if(event?.type==='message-reported'&&typeof event.reportId==='string')reportsById.set(event.reportId,event);
+  }
+  return reportsById;
+}
+function isPrivateCommonsHistoryEvent(event,actor,reportsById){
+  if(actor?.role==='founder')return false;
+  if(event?.type==='message-reported')return !(event.actor?.id===actor?.id&&event.actor?.role===actor?.role);
+  if(event?.type==='message-report-reviewed'){
+    const report=reportsById.get(event.reportId);
+    return !(report?.actor?.id===actor?.id&&report?.actor?.role===actor?.role);
+  }
+  return false;
+}
 export function publicWorld(world,actor){
   const copy=clone(world);
   delete copy.historyCoverage;
@@ -779,18 +808,18 @@ export function publicWorld(world,actor){
   if(actor?.role!=='founder'){
     copy.drafts=[];
     const hidden=hiddenCommonsMessageIds(copy);
+    const reportsById=buildCommonsReportIndex(copy.events);
     copy.events=copy.events
       .filter(event=>{
         const type=event?.type;
-        const omitted=['draft','repair'].includes(type)||
-          (type==='message-reported'&&!(event?.actor?.id===actor?.id&&event?.actor?.role===actor?.role));
+        const omitted=['draft','repair'].includes(type)||isPrivateCommonsHistoryEvent(event,actor,reportsById);
         if(omitted)omittedEventTypes[type]=(omittedEventTypes[type]||0)+1;
         return !omitted;
       })
       .map(event=>{
         if(!event||typeof event!=='object'||Array.isArray(event)||
            event.type!=='message-posted'||!hidden.has(event.messageId))return event;
-        const safe={...event,text:'[Message hidden by human moderation.]'};
+        const safe={...event,text:'[Message hidden by a Founder moderation action.]'};
         delete safe.actionFingerprint;
         return safe;
       });
@@ -845,7 +874,7 @@ export async function validateWorld(raw) {
     if(e.type==='moonshot-proposed')addHistory(proposalsByMoonshot,e.moonshotId,{event:e,index});
     if(e.type==='study')addHistory(studiesById,e.studyId,e);
   }
-  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);const appendOrderedEvent=isAppendOrderedWorldEventType(e.type);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||(!appendOrderedEvent&&eventAt<previousEventAt)||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=Math.max(previousEventAt,eventAt);if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','experiment-challenge-responded':'responseId','source-archive-predicate-evaluated':'predicateId','collaborator-response-recorded':'responseId,validationStatus','combat-encounter-started':'encounterId','combat-move-resolved':'encounterId,move','field-item-forged':'itemId,slotId,sourceEventId','field-item-equipped':'slotId,sourceEventId','field-item-unequipped':'slotId','field-item-transfer-offered':'offerId','field-item-transfer-cancelled':'offerId','field-item-transfer-declined':'offerId','field-item-transferred':'itemId,offerId','source-observation-recorded':'duplicate,observationId','source-observation-challenged':'challengeId','source-observation-challenge-responded':'responseId','message-posted':'messageId','message-reported':'reportId','message-moderated':'disposition,moderationId','guild-created':'guildId','guild-joined':'guildId','guild-left':'guildId','guild-disbanded':'guildId','guild-leadership-transfer-offered':'guildId,offerId','guild-leadership-transfer-cancelled':'guildId,offerId','guild-leadership-transfer-declined':'guildId,offerId','guild-leadership-transferred':'guildId,leaderId,offerId,previousLeaderId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='experiment-challenge-responded'&&r.responseId!==e.responseId)invalid('Idempotency experiment challenge response result mismatch.');if(e.type==='source-archive-predicate-evaluated'&&r.predicateId!==e.predicateId)invalid('Idempotency Source Archive predicate result mismatch.');if(e.type==='source-observation-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency source-observation challenge result mismatch.');if(e.type==='source-observation-challenge-responded'&&r.responseId!==e.responseId)invalid('Idempotency source-observation response result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if(e.type==='combat-encounter-started'&&r.encounterId!==e.encounterId)invalid('Idempotency combat start result mismatch.');if(e.type==='combat-move-resolved'&&(r.encounterId!==e.encounterId||r.move!==e.move))invalid('Idempotency combat move result mismatch.');if(e.type==='field-item-forged'&&(r.itemId!==e.itemId||r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-item forge result mismatch.');if(e.type==='field-item-equipped'&&(r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-equipment result mismatch.');if(e.type==='field-item-unequipped'&&r.slotId!==e.slotId)invalid('Idempotency field-unequip result mismatch.');if(e.type==='field-item-transfer-offered'&&r.offerId!==e.offerId)invalid('Idempotency transfer-offer result mismatch.');if(e.type==='field-item-transfer-cancelled'&&r.offerId!==e.offerId)invalid('Idempotency transfer-cancel result mismatch.');if(e.type==='field-item-transfer-declined'&&r.offerId!==e.offerId)invalid('Idempotency transfer-decline result mismatch.');if(e.type==='field-item-transferred'&&(r.itemId!==e.itemId||r.offerId!==e.offerId))invalid('Idempotency field-item transfer result mismatch.');if(e.type==='message-posted'&&r.messageId!==e.messageId)invalid('Idempotency Commons post result mismatch.');if(e.type==='message-reported'&&r.reportId!==e.reportId)invalid('Idempotency Commons report result mismatch.');if(e.type==='message-moderated'&&(r.moderationId!==e.moderationId||r.disposition!==e.disposition))invalid('Idempotency Commons moderation result mismatch.');if(e.type.startsWith('guild-')&&r.guildId!==e.guildId)invalid('Idempotency player-guild result mismatch.');if(['guild-leadership-transfer-offered','guild-leadership-transfer-cancelled','guild-leadership-transfer-declined'].includes(e.type)&&r.offerId!==e.offerId)invalid('Idempotency guild leadership offer result mismatch.');if(e.type==='guild-leadership-transferred'&&(r.offerId!==e.offerId||r.leaderId!==e.actor.id||r.previousLeaderId!==e.fromLeaderId))invalid('Idempotency guild leadership acceptance result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&sameResearchActor(d.actor,e.actor)&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
+  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);const appendOrderedEvent=isAppendOrderedWorldEventType(e.type);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||(!appendOrderedEvent&&eventAt<previousEventAt)||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=Math.max(previousEventAt,eventAt);if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','experiment-challenge-responded':'responseId','source-archive-predicate-evaluated':'predicateId','collaborator-response-recorded':'responseId,validationStatus','combat-encounter-started':'encounterId','combat-move-resolved':'encounterId,move','field-item-forged':'itemId,slotId,sourceEventId','field-item-equipped':'slotId,sourceEventId','field-item-unequipped':'slotId','field-item-transfer-offered':'offerId','field-item-transfer-cancelled':'offerId','field-item-transfer-declined':'offerId','field-item-transferred':'itemId,offerId','source-observation-recorded':'duplicate,observationId','source-observation-challenged':'challengeId','source-observation-challenge-responded':'responseId','message-posted':'messageId','message-reported':'reportId','message-moderated':'disposition,moderationId','message-report-reviewed':'reviewId','guild-created':'guildId','guild-joined':'guildId','guild-left':'guildId','guild-disbanded':'guildId','guild-leadership-transfer-offered':'guildId,offerId','guild-leadership-transfer-cancelled':'guildId,offerId','guild-leadership-transfer-declined':'guildId,offerId','guild-leadership-transferred':'guildId,leaderId,offerId,previousLeaderId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='experiment-challenge-responded'&&r.responseId!==e.responseId)invalid('Idempotency experiment challenge response result mismatch.');if(e.type==='source-archive-predicate-evaluated'&&r.predicateId!==e.predicateId)invalid('Idempotency Source Archive predicate result mismatch.');if(e.type==='source-observation-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency source-observation challenge result mismatch.');if(e.type==='source-observation-challenge-responded'&&r.responseId!==e.responseId)invalid('Idempotency source-observation response result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if(e.type==='combat-encounter-started'&&r.encounterId!==e.encounterId)invalid('Idempotency combat start result mismatch.');if(e.type==='combat-move-resolved'&&(r.encounterId!==e.encounterId||r.move!==e.move))invalid('Idempotency combat move result mismatch.');if(e.type==='field-item-forged'&&(r.itemId!==e.itemId||r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-item forge result mismatch.');if(e.type==='field-item-equipped'&&(r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-equipment result mismatch.');if(e.type==='field-item-unequipped'&&r.slotId!==e.slotId)invalid('Idempotency field-unequip result mismatch.');if(e.type==='field-item-transfer-offered'&&r.offerId!==e.offerId)invalid('Idempotency transfer-offer result mismatch.');if(e.type==='field-item-transfer-cancelled'&&r.offerId!==e.offerId)invalid('Idempotency transfer-cancel result mismatch.');if(e.type==='field-item-transfer-declined'&&r.offerId!==e.offerId)invalid('Idempotency transfer-decline result mismatch.');if(e.type==='field-item-transferred'&&(r.itemId!==e.itemId||r.offerId!==e.offerId))invalid('Idempotency field-item transfer result mismatch.');if(e.type==='message-posted'&&r.messageId!==e.messageId)invalid('Idempotency Commons post result mismatch.');if(e.type==='message-reported'&&r.reportId!==e.reportId)invalid('Idempotency Commons report result mismatch.');if(e.type==='message-moderated'&&(r.moderationId!==e.moderationId||r.disposition!==e.disposition))invalid('Idempotency Commons moderation result mismatch.');if(e.type==='message-report-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency Commons report review result mismatch.');if(e.type.startsWith('guild-')&&r.guildId!==e.guildId)invalid('Idempotency player-guild result mismatch.');if(['guild-leadership-transfer-offered','guild-leadership-transfer-cancelled','guild-leadership-transfer-declined'].includes(e.type)&&r.offerId!==e.offerId)invalid('Idempotency guild leadership offer result mismatch.');if(e.type==='guild-leadership-transferred'&&(r.offerId!==e.offerId||r.leaderId!==e.actor.id||r.previousLeaderId!==e.fromLeaderId))invalid('Idempotency guild leadership acceptance result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&sameResearchActor(d.actor,e.actor)&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
   const allowedCombatStartKeys=new Set(['id','type','actor','at','semantics','encounterId','opponentId','requestId','actionFingerprint','actionResult']);
   const allowedCombatMoveKeys=new Set(['id','type','actor','at','semantics','encounterId','move','requestId','actionFingerprint','actionResult']);
   for(const e of raw.events){
@@ -901,7 +930,8 @@ export async function validateWorld(raw) {
   const allowedCommonsPostKeys=new Set(['id','type','actor','at','semantics','messageId','channel','text','requestId','actionFingerprint','actionResult']);
   const allowedCommonsReportKeys=new Set(['id','type','actor','at','semantics','reportId','messageId','reason','details','requestId','actionFingerprint','actionResult']);
   const allowedCommonsModerationKeys=new Set(['id','type','actor','at','semantics','moderationId','messageId','disposition','reason','requestId','actionFingerprint','actionResult']);
-  const commonsPosts=new Map(),commonsReportsByMessage=new Map(),commonsReportKeys=new Set(),commonsLatestModeration=new Map(),commonsTimesByActor=new Map();
+  const allowedCommonsReviewKeys=new Set(['id','type','actor','at','semantics','reviewId','reportId','messageId','note','requestId','actionFingerprint','actionResult']);
+  const commonsPosts=new Map(),commonsReportsByMessage=new Map(),commonsReportsById=new Map(),commonsReviewedReportIds=new Set(),commonsReportKeys=new Set(),commonsLatestModeration=new Map(),commonsTimesByActor=new Map();
   const validCommonsId=value=>typeof value==='string'&&/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
   for(let index=0;index<raw.events.length;index++){
     const e=raw.events[index];
@@ -925,7 +955,7 @@ export async function validateWorld(raw) {
       if(commonsReportKeys.has(reportKey))invalid('Duplicate actor report for one Commons message.');
       commonsReportKeys.add(reportKey);
       const list=commonsReportsByMessage.get(e.messageId)||[];
-      list.push({event:e,index});commonsReportsByMessage.set(e.messageId,list);
+      list.push({event:e,index});commonsReportsByMessage.set(e.messageId,list);commonsReportsById.set(e.reportId,{event:e,index});
     }else if(e.type==='message-moderated'){
       if(Object.keys(e).some(key=>!allowedCommonsModerationKeys.has(key)))invalid('Commons moderation contains unsupported fields.');
       unique(e.moderationId);
@@ -937,6 +967,19 @@ export async function validateWorld(raw) {
       if(e.disposition==='hide'&&(latest?.event.disposition==='hide'||!hasPendingReport))invalid('Commons hide requires a pending report and a visible message.');
       if(e.disposition==='restore'&&latest?.event.disposition!=='hide')invalid('Commons restore requires a prior hide.');
       commonsLatestModeration.set(e.messageId,{event:e,index});
+    }else if(e.type==='message-report-reviewed'){
+      if(Object.keys(e).some(key=>!allowedCommonsReviewKeys.has(key)))invalid('Commons report review contains unsupported fields.');
+      unique(e.reviewId);
+      const report=commonsReportsById.get(e.reportId);
+      if(!validCommonsId(e.reviewId)||!validCommonsId(e.reportId)||!validCommonsId(e.messageId)||
+         !report||report.index>=index||report.event.messageId!==e.messageId||
+         e.actor.role!=='founder'||
+         (report.event.actor.id===e.actor.id&&report.event.actor.role===e.actor.role)||
+         typeof e.note!=='string'||!e.note.trim()||e.note!==e.note.trim()||Array.from(e.note).length>500||
+         commonsReviewedReportIds.has(e.reportId))invalid('Malformed Commons report review.');
+      commonsReviewedReportIds.add(e.reportId);
+      if(e.actionResult!==undefined&&(!e.actionResult||Object.keys(e.actionResult).sort().join(',')!=='reviewId'||e.actionResult.reviewId!==e.reviewId))invalid('Commons report review result mismatch.');
+    }
     }
   }
 
@@ -1253,10 +1296,13 @@ export async function validateWorld(raw) {
        e.responseReceipt.algorithm!=='sha256'||e.responseReceipt.digest!==responseReceipt.digest||e.responseReceipt.size!==responseReceipt.size)invalid('Collaborator archive byte receipt mismatch.');
     let payload;try{payload=JSON.parse(e.packetJson)}catch{invalid('Collaborator packet JSON is malformed.');}
     const packetIndex=index,sourceSnapshot=payload?.sourceSnapshot;
+    const packetPrefix=raw.events.slice(0,packetIndex);
+    const packetPrefixReports=buildCommonsReportIndex(packetPrefix);
+    const expectedPacketSuppliedEventCount=packetPrefix.filter(source=>e.actor.role==='founder'||(!['draft','repair'].includes(source.type)&&!isPrivateCommonsHistoryEvent(source,e.actor,packetPrefixReports))).length;
     if(payload?.protocol!=='ngl.bounded-collaborator-packet.v1'||payload.role!==e.role||payload.targetMoonshotId!==e.moonshotId||
        payload.authority!=='advisory-only'||payload.mayWriteCanonicalState!==false||payload.mayGrantAuthority!==false||
        payload.mayAwardProgress!==false||payload.mayCertifyTruthOrExecution!==false||
-       sourceSnapshot?.status!=='identified'||sourceSnapshot.worldId!==raw.id||sourceSnapshot.revision!==packetIndex||sourceSnapshot.suppliedEventCount!==raw.events.slice(0,packetIndex).filter(source=>e.actor.role==='founder'||(!['draft','repair'].includes(source.type)&&(source.type!=='message-reported'||(source.actor?.id===e.actor.id&&source.actor?.role===e.actor.role)))).length||
+       sourceSnapshot?.status!=='identified'||sourceSnapshot.worldId!==raw.id||sourceSnapshot.revision!==packetIndex||sourceSnapshot.suppliedEventCount!==expectedPacketSuppliedEventCount||
        !Array.isArray(payload.inputRefs)||JSON.stringify(payload.inputRefs)!==JSON.stringify(e.sourceEventIds)||
        !Array.isArray(payload.inputRecords)||payload.inputRecords.length!==e.sourceEventIds.length||
        !Array.isArray(payload.omittedEventIds)||payload.omittedEventIds.length>64||payload.omittedEventIds.some(id=>typeof id!=='string'||!id||Array.from(id).length>128||e.sourceEventIds.includes(id))||new Set(payload.omittedEventIds).size!==payload.omittedEventIds.length||!Number.isSafeInteger(payload.omittedCount)||payload.omittedCount<0||payload.omittedCount<payload.omittedEventIds.length||

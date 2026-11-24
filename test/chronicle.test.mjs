@@ -1982,7 +1982,7 @@ test("institution activity counters include retained Commons, guild, and field-i
   const world = { revision: events.length, events };
 
   assert.equal(institutionActivityCount("town-square", world), 4,
-    "all three retained Commons message lifecycle events belong to TownSquare");
+    "all four retained Commons message lifecycle events belong to TownSquare");
   assert.equal(institutionActivityCount("guild_hall", world), 8,
     "guild founding, membership, closure and leadership handoffs belong to Guild Hall");
   assert.equal(institutionActivityCount("forge", world), 4,
