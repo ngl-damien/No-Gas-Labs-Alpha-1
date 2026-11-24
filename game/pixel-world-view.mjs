@@ -44,6 +44,29 @@ function safeTownSquareReviewObjects(view) {
   return isArraySafely(objects) ? objects : [];
 }
 
+function safeTownSquareReviewOverflowObject(view) {
+  const projection = ownDataValue(view, 'townSquareReviewProjection');
+  const summary = projectTownSquareReviewQueueSummary(projection);
+  if (!summary.available || summary.omittedCount <= 0) return null;
+  const object = ownDataValue(projection, 'overflowObject');
+  if (!object || typeof object !== 'object' || isArraySafely(object)) return null;
+  const id = ownDataValue(object, 'id');
+  const eventId = ownDataValue(object, 'eventId');
+  const status = ownDataValue(object, 'status');
+  const x = ownDataValue(object, 'x');
+  const y = ownDataValue(object, 'y');
+  if (ownDataValue(object, 'type') !== 'town-square-review-overflow' ||
+      typeof id !== 'string' || id !== eventId ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id) ||
+      TOWNSQUARE_REVIEW_POINTER_FORBIDDEN_IDS.has(id) ||
+      !['awaiting-founder-review', 'process-record-not-adjudication'].includes(status) ||
+      !Number.isFinite(x) || !Number.isFinite(y) ||
+      safeTownSquareReviewObjects(view).some(candidate =>
+        ownDataValue(candidate, 'eventId') === eventId
+      )) return null;
+  return object;
+}
+
 
 function readSafeRectangles(value) {
   if (!isArraySafely(value)) return null;
@@ -726,6 +749,44 @@ function projectTownSquareReviewControlSlots(objects, camera, zoom, width, heigh
         : (object.y - cameraY) * zoom + height / 2
     });
   }));
+}
+
+function projectTownSquareReviewOverflowControlSlot(object, camera, zoom, width, height, avoidRects = []) {
+  if (!object || typeof object !== 'object' || isArraySafely(object)) return null;
+  const id = ownDataValue(object, 'id');
+  const eventId = ownDataValue(object, 'eventId');
+  const status = ownDataValue(object, 'status');
+  const x = ownDataValue(object, 'x');
+  const y = ownDataValue(object, 'y');
+  const cameraX = ownDataValue(camera, 'x');
+  const cameraY = ownDataValue(camera, 'y');
+  if (ownDataValue(object, 'type') !== 'town-square-review-overflow' ||
+      typeof id !== 'string' || id !== eventId ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id) ||
+      TOWNSQUARE_REVIEW_POINTER_FORBIDDEN_IDS.has(id) ||
+      !['awaiting-founder-review', 'process-record-not-adjudication'].includes(status) ||
+      ![x, y, cameraX, cameraY, zoom, width, height].every(Number.isFinite) || zoom <= 0) {
+    return null;
+  }
+  const panel = projectMapLabelPosition(
+    x, y, width, height, camera, zoom,
+    TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE,
+    TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE,
+    4, avoidRects
+  );
+  if (!panel) return null;
+  const screenX = width / 2 + (panel.x - cameraX) * zoom;
+  const panelScreenBottomY = height / 2 + (panel.y - cameraY) * zoom;
+  const screenY = panelScreenBottomY - TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2;
+  if (![screenX, screenY].every(Number.isFinite)) return null;
+  return Object.freeze({
+    id, eventId, status,
+    worldX: x,
+    worldY: y,
+    layoutAvailable: true,
+    screenX,
+    screenY
+  });
 }
 
 /**
@@ -1691,19 +1752,21 @@ export class PixelWorldView extends WorldView {
       group.className = 'ngl-town-square-review-controls';
       group.dataset.townSquareReviewControls = 'true';
       group.setAttribute('role', 'group');
-      group.setAttribute('aria-label', 'TownSquare report and process review controls arranged in a touch-accessible panel; each button opens its exact retained event.');
+      group.setAttribute('aria-label', 'TownSquare report and process review controls arranged in a touch-accessible panel. Each P/R button opens its exact mapped event; the separate C shortcut opens the first unmapped event in World Chronicle, where search and pagination reach the remaining records.');
       Object.assign(group.style, {
         position: 'fixed', left: '0', top: '0', width: '100vw', height: '100vh',
         margin: '0', padding: '0', pointerEvents: 'none', zIndex: '1000'
       });
       group.hidden = true;
       this.townSquareReviewControlButtons = new Map();
+      this.townSquareReviewOverflowButton = null;
       document.body.appendChild(group);
       this.townSquareReviewControlGroup = group;
     } catch {
       try { this.townSquareReviewControlGroup?.remove?.(); } catch {}
       this.townSquareReviewControlGroup = null;
       this.townSquareReviewControlButtons = new Map();
+      this.townSquareReviewOverflowButton = null;
     }
   }
 
@@ -1713,6 +1776,7 @@ export class PixelWorldView extends WorldView {
     if (!group || !(buttons instanceof Map)) return;
     const available = modalOpen !== true && this.playUiVisible();
     const objects = safeTownSquareReviewObjects(this);
+    const overflowObject = safeTownSquareReviewOverflowObject(this);
     let rect = null;
     try { rect = this.canvas?.getBoundingClientRect?.(); } catch {}
     const geometryAvailable = rect && [
@@ -1848,7 +1912,121 @@ export class PixelWorldView extends WorldView {
       try { button.remove(); } catch {}
       buttons.delete(id);
     }
-    const hidden = !available || visibleCount === 0;
+
+    let overflowVisible = false;
+    let overflowButton = this.townSquareReviewOverflowButton;
+    const overflowEventId = overflowObject
+      ? ownDataValue(overflowObject, 'eventId') : '';
+    if (overflowObject && typeof document !== 'undefined' &&
+        typeof document.createElement === 'function') {
+      if (!overflowButton) {
+        try {
+          overflowButton = document.createElement('button');
+          overflowButton.type = 'button';
+          overflowButton.textContent = 'C';
+          Object.assign(overflowButton.style, {
+            position: 'fixed', left: '0', top: '0',
+            transform: 'translate(-50%, -50%)',
+            display: 'grid', placeItems: 'center',
+            width: '44px', height: '44px', minWidth: '44px', minHeight: '44px',
+            margin: '0', padding: '0',
+            border: '2px solid #9aa39a', borderRadius: '8px',
+            background: '#0c0d0b', color: '#e8e6dc',
+            font: 'bold 13px ui-monospace, monospace',
+            boxShadow: '0 2px 8px rgba(0,0,0,.45)',
+            pointerEvents: 'auto', touchAction: 'manipulation', cursor: 'pointer'
+          });
+          overflowButton.addEventListener('pointerdown', event => {
+            const pointerType = typeof event?.pointerType === 'string' ? event.pointerType : 'unknown';
+            overflowButton.dataset.pointerType = pointerType;
+            if (this.canvas?.dataset) {
+              this.canvas.dataset.townSquareReviewOverflowControlPointerType = pointerType;
+            }
+          });
+          overflowButton.addEventListener('click', event => {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            this.handleTownSquareReviewOverflowAction(overflowButton.dataset.eventId);
+          });
+          group.appendChild(overflowButton);
+          this.townSquareReviewOverflowButton = overflowButton;
+        } catch {
+          try { overflowButton?.remove?.(); } catch {}
+          overflowButton = null;
+          this.townSquareReviewOverflowButton = null;
+        }
+      }
+      if (overflowButton) {
+        const status = ownDataValue(overflowObject, 'status');
+        const label = 'Inspect the first unmapped TownSquare record in World Chronicle. Exact event ' +
+          overflowEventId + '. Search or paginate Chronicle for the remaining unmapped records. ' +
+          'Read-only process history; not moderation, adjudication, approval, truth, or XP.';
+        if (overflowButton.dataset.townSquareReviewOverflowControl !== overflowEventId) {
+          overflowButton.dataset.townSquareReviewOverflowControl = overflowEventId;
+        }
+        if (overflowButton.dataset.eventId !== overflowEventId) overflowButton.dataset.eventId = overflowEventId;
+        if (overflowButton.dataset.townSquareReviewStatus !== status) {
+          overflowButton.dataset.townSquareReviewStatus = status;
+        }
+        if (overflowButton.dataset.worldX !== String(ownDataValue(overflowObject, 'x'))) {
+          overflowButton.dataset.worldX = String(ownDataValue(overflowObject, 'x'));
+        }
+        if (overflowButton.dataset.worldY !== String(ownDataValue(overflowObject, 'y'))) {
+          overflowButton.dataset.worldY = String(ownDataValue(overflowObject, 'y'));
+        }
+        if (overflowButton.getAttribute('aria-label') !== label) overflowButton.setAttribute('aria-label', label);
+        if (overflowButton.title !== label) overflowButton.title = label;
+
+        const controlRects = [];
+        for (const button of buttons.values()) {
+          if (button.hidden === true) continue;
+          const centerX = Number.parseFloat(button.style?.left) - rect.left;
+          const centerY = Number.parseFloat(button.style?.top) - rect.top;
+          if (![centerX, centerY].every(Number.isFinite)) continue;
+          const half = TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2;
+          controlRects.push({
+            left: centerX - half, top: centerY - half,
+            right: centerX + half, bottom: centerY + half
+          });
+        }
+        const avoidRects = Array.isArray(overlays) ? [...overlays, ...controlRects] : controlRects;
+        const slot = geometryAvailable && available
+          ? projectTownSquareReviewOverflowControlSlot(
+            overflowObject, this.camera, this.zoom, this.width, this.height, avoidRects
+          )
+          : null;
+        const screenX = slot?.screenX;
+        const screenY = slot?.screenY;
+        const left = Number.isFinite(screenX) ? rect.left + screenX : NaN;
+        const top = Number.isFinite(screenY) ? rect.top + screenY : NaN;
+        const half = TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2;
+        const intersectsAvoidRect = slot?.layoutAvailable === true && avoidRects.some(rectangle =>
+          screenX - half < rectangle.right && screenX + half > rectangle.left &&
+          screenY - half < rectangle.bottom && screenY + half > rectangle.top
+        );
+        const visible = available && slot?.layoutAvailable === true &&
+          [screenX, screenY, left, top, viewportWidth, viewportHeight].every(Number.isFinite) &&
+          left - half >= 0 && top - half >= 0 &&
+          left + half <= viewportWidth && top + half <= viewportHeight &&
+          screenX - half >= 0 && screenY - half >= 0 &&
+          screenX + half <= this.width && screenY + half <= this.height &&
+          !intersectsAvoidRect;
+        if (overflowButton.hidden !== !visible) overflowButton.hidden = !visible;
+        if (visible) {
+          const leftText = left + 'px';
+          const topText = top + 'px';
+          if (overflowButton.style.left !== leftText) overflowButton.style.left = leftText;
+          if (overflowButton.style.top !== topText) overflowButton.style.top = topText;
+          overflowVisible = true;
+        }
+      }
+    } else if (overflowButton) {
+      overflowButton.hidden = true;
+      overflowButton.dataset.townSquareReviewOverflowControl = '';
+      overflowButton.dataset.eventId = '';
+    }
+
+    const hidden = !available || (visibleCount === 0 && !overflowVisible);
     if (group.hidden !== hidden) group.hidden = hidden;
     if (group.getAttribute('aria-hidden') !== String(hidden)) {
       group.setAttribute('aria-hidden', String(hidden));
@@ -1857,6 +2035,14 @@ export class PixelWorldView extends WorldView {
       const count = String(visibleCount);
       if (this.canvas.dataset.townSquareReviewControlVisibleCount !== count) {
         this.canvas.dataset.townSquareReviewControlVisibleCount = count;
+      }
+      const overflowVisibleText = String(overflowVisible);
+      if (this.canvas.dataset.townSquareReviewOverflowControlVisible !== overflowVisibleText) {
+        this.canvas.dataset.townSquareReviewOverflowControlVisible = overflowVisibleText;
+      }
+      const overflowIdText = overflowEventId || '';
+      if (this.canvas.dataset.townSquareReviewOverflowEventId !== overflowIdText) {
+        this.canvas.dataset.townSquareReviewOverflowEventId = overflowIdText;
       }
     }
   }
@@ -1884,6 +2070,35 @@ export class PixelWorldView extends WorldView {
     } else {
       this.goTo(object.id, 'town-square-review');
     }
+    this.canvas.focus?.({ preventScroll: true });
+    return true;
+  }
+
+  handleTownSquareReviewOverflowAction(eventId) {
+    // The Chronicle shortcut is a read-only route. Revalidate the exact
+    // actor-visible target and retained event at dispatch time; a stale DOM
+    // button cannot open a different record or bypass a modal boundary.
+    if (typeof document === 'undefined' || !this.playUiVisible() ||
+        document.body?.classList?.contains?.('modal-open') === true) return false;
+    const object = safeTownSquareReviewOverflowObject(this);
+    if (!object || ownDataValue(object, 'eventId') !== eventId) return false;
+    const events = ownDataValue(this.world, 'events');
+    const count = ownDataValue(events, 'length');
+    if (!isArraySafely(events) || !Number.isSafeInteger(count) || count < 0 || count > 100_000) return false;
+    let matches = 0;
+    let eventType = null;
+    for (let index = 0; index < count; index += 1) {
+      const event = ownDataValue(events, String(index));
+      if (ownDataValue(event, 'id') !== eventId) continue;
+      matches += 1;
+      eventType = ownDataValue(event, 'type');
+    }
+    const expectedType = ownDataValue(object, 'status') === 'awaiting-founder-review'
+      ? 'message-reported' : 'message-report-reviewed';
+    if (matches !== 1 || eventType !== expectedType ||
+        typeof this.callbacks?.onInteract !== 'function') return false;
+    this.cancelRoute?.();
+    this.callbacks.onInteract({ type: 'town-square-review', eventId });
     this.canvas.focus?.({ preventScroll: true });
     return true;
   }
@@ -2330,6 +2545,7 @@ export class PixelWorldView extends WorldView {
     const npcAccessibility = guildNpcAccessibilityText(npcReadiness);
     const reviewProjection = this.townSquareReviewProjection;
     const reviewQueue = projectTownSquareReviewQueueSummary(reviewProjection);
+    const overflowObject = reviewQueue.available ? safeTownSquareReviewOverflowObject(this) : null;
     const reviewCount = reviewQueue.available
       ? reviewQueue.pendingCount + reviewQueue.processRecordCount : 0;
     const reviewStatus = typeof reviewProjection?.historyStatus === 'string'
@@ -2346,13 +2562,17 @@ export class PixelWorldView extends WorldView {
         ...(object.status === 'awaiting-founder-review' ? { status: object.status } : {})
       }));
     const markerLimitNote = reviewQueue.available && reviewQueue.omittedCount > 0
-      ? ` ${reviewQueue.omittedCount} additional record(s) have no individual map marker; inspect the retained Chronicle history for them.`
+      ? overflowObject
+        ? ` ${reviewQueue.omittedCount} additional record(s) have no individual map marker; use the C Chronicle shortcut for the first unmapped record and search or paginate Chronicle for the rest.`
+        : ` ${reviewQueue.omittedCount} additional record(s) have no individual map marker; inspect the retained Chronicle history for them.`
       : '';
     this.canvas.dataset.townSquareReviewCount = reviewQueue.available ? String(reviewCount) : 'unavailable';
     this.canvas.dataset.townSquareReviewMapObjectCount = reviewQueue.available
       ? String(reviewQueue.mappedCount) : 'unavailable';
     this.canvas.dataset.townSquareReviewOmittedCount = reviewQueue.available
       ? String(reviewQueue.omittedCount) : 'unavailable';
+    this.canvas.dataset.townSquareReviewOverflowEventId = overflowObject
+      ? String(ownDataValue(overflowObject, 'eventId') || '') : '';
     this.canvas.dataset.townSquareReviewVisibleCount = reviewQueue.available
       ? String(safeReviewMapObjects.length) : 'unavailable';
     this.canvas.dataset.townSquareReviewPendingCount = reviewQueue.available
