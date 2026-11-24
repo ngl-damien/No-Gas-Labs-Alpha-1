@@ -641,6 +641,83 @@ export function projectMapLabelPosition(anchorX, anchorY, viewportWidth, viewpor
   return null;
 }
 
+const TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE = 44;
+const TOWNSQUARE_REVIEW_CONTROL_CELL_SIZE = 48;
+const MAX_TOWNSQUARE_REVIEW_CONTROL_COUNT = 16;
+
+/**
+ * Arrange clustered TownSquare review objects into individually tappable
+ * controls. The panel is a read-only navigation aid; each slot keeps the
+ * original event ID and world coordinate used by the route handler.
+ */
+function projectTownSquareReviewControlSlots(objects, camera, zoom, width, height, avoidRects = []) {
+  const count = ownDataValue(objects, 'length');
+  if (!isArraySafely(objects) || !Number.isSafeInteger(count) || count < 0 ||
+      count > MAX_TOWNSQUARE_REVIEW_CONTROL_COUNT) return null;
+  if (count === 0) return Object.freeze([]);
+
+  const cameraX = ownDataValue(camera, 'x');
+  const cameraY = ownDataValue(camera, 'y');
+  if (!Number.isFinite(cameraX) || !Number.isFinite(cameraY) ||
+      !Number.isFinite(zoom) || zoom <= 0 ||
+      !Number.isFinite(width) || !Number.isFinite(height)) return null;
+
+  const safeObjects = [];
+  const seenIds = new Set();
+  for (let index = 0; index < count; index += 1) {
+    const object = ownDataValue(objects, String(index));
+    if (!object || typeof object !== 'object' || isArraySafely(object)) return null;
+    const id = ownDataValue(object, 'id');
+    const eventId = ownDataValue(object, 'eventId');
+    const status = ownDataValue(object, 'status');
+    const x = ownDataValue(object, 'x');
+    const y = ownDataValue(object, 'y');
+    if (typeof id !== 'string' || id !== eventId ||
+        !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id) ||
+        TOWNSQUARE_REVIEW_POINTER_FORBIDDEN_IDS.has(id) || seenIds.has(id) ||
+        ownDataValue(object, 'type') !== 'town-square-review' ||
+        ownDataValue(object, 'mapVisible') !== true ||
+        !['awaiting-founder-review', 'process-record-not-adjudication'].includes(status) ||
+        !Number.isFinite(x) || !Number.isFinite(y)) return null;
+    seenIds.add(id);
+    safeObjects.push(Object.freeze({ id, eventId, status, x, y }));
+  }
+
+  const columns = Math.min(4, Math.ceil(Math.sqrt(count)));
+  const rows = Math.ceil(count / columns);
+  const panelWidth = columns * TOWNSQUARE_REVIEW_CONTROL_CELL_SIZE - 4;
+  const panelHeight = rows * TOWNSQUARE_REVIEW_CONTROL_CELL_SIZE - 4;
+  const anchor = safeObjects[0];
+  const panel = projectMapLabelPosition(
+    anchor.x, anchor.y, width, height, camera, zoom,
+    panelWidth, panelHeight, 4, avoidRects
+  );
+  if (!panel) return null;
+
+  const panelScreenCenterX = width / 2 + (panel.x - cameraX) * zoom;
+  const panelScreenBottomY = height / 2 + (panel.y - cameraY) * zoom;
+  const panelLeft = panelScreenCenterX - panelWidth / 2;
+  const panelTop = panelScreenBottomY - panelHeight;
+  if (![panelScreenCenterX, panelScreenBottomY, panelLeft, panelTop].every(Number.isFinite)) return null;
+
+  return Object.freeze(safeObjects.map((object, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    return Object.freeze({
+      index,
+      id: object.id,
+      eventId: object.eventId,
+      status: object.status,
+      worldX: object.x,
+      worldY: object.y,
+      screenX: panelLeft + column * TOWNSQUARE_REVIEW_CONTROL_CELL_SIZE +
+        TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2,
+      screenY: panelTop + row * TOWNSQUARE_REVIEW_CONTROL_CELL_SIZE +
+        TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2
+    });
+  }));
+}
+
 /**
  * Resolve a quest action to one exact, already-projected world object.
  * This is a read-only navigation hint: it never advances the objective.
@@ -1604,7 +1681,7 @@ export class PixelWorldView extends WorldView {
       group.className = 'ngl-town-square-review-controls';
       group.dataset.townSquareReviewControls = 'true';
       group.setAttribute('role', 'group');
-      group.setAttribute('aria-label', 'TownSquare report and process review map objects');
+      group.setAttribute('aria-label', 'TownSquare report and process review controls arranged in a touch-accessible panel; each button opens its exact retained event.');
       Object.assign(group.style, {
         position: 'fixed', left: '0', top: '0', width: '100vw', height: '100vh',
         margin: '0', padding: '0', pointerEvents: 'none', zIndex: '1000'
@@ -1635,19 +1712,29 @@ export class PixelWorldView extends WorldView {
       this.width > 0 && this.height > 0 && this.zoom > 0;
     const viewportWidth = Number.isFinite(globalThis.innerWidth) ? globalThis.innerWidth : rect?.right;
     const viewportHeight = Number.isFinite(globalThis.innerHeight) ? globalThis.innerHeight : rect?.bottom;
-    const overlays = Array.isArray(this.mapOverlayRects) ? this.mapOverlayRects : [];
+    const overlays = this.mapOverlayRects ?? [];
+    const slots = geometryAvailable
+      ? projectTownSquareReviewControlSlots(
+        objects.slice(0, MAX_TOWNSQUARE_REVIEW_CONTROL_COUNT),
+        this.camera, this.zoom, this.width, this.height, overlays
+      )
+      : null;
     const retainedIds = new Set();
     let visibleCount = 0;
 
-    if (geometryAvailable) {
-      for (const object of objects.slice(0, 16)) {
-        const id = object?.id;
-        const eventId = object?.eventId;
-        if (typeof id !== 'string' || id !== eventId ||
-            !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id) ||
-            object?.type !== 'town-square-review' || object?.mapVisible !== true ||
-            !['awaiting-founder-review', 'process-record-not-adjudication'].includes(object?.status) ||
-            !Number.isFinite(object?.x) || !Number.isFinite(object?.y)) continue;
+    if (geometryAvailable && Array.isArray(slots)) {
+      for (const slot of slots) {
+        const object = ownDataValue(objects, String(slot.index));
+        const id = slot.id;
+        const eventId = slot.eventId;
+        if (!object || typeof object !== 'object' || isArraySafely(object) ||
+            ownDataValue(object, 'id') !== id ||
+            ownDataValue(object, 'eventId') !== eventId ||
+            ownDataValue(object, 'type') !== 'town-square-review' ||
+            ownDataValue(object, 'mapVisible') !== true ||
+            ownDataValue(object, 'status') !== slot.status ||
+            ownDataValue(object, 'x') !== slot.worldX ||
+            ownDataValue(object, 'y') !== slot.worldY) continue;
         retainedIds.add(id);
         let button = buttons.get(id);
         if (!button) {
@@ -1690,14 +1777,14 @@ export class PixelWorldView extends WorldView {
           }
         }
 
-        const pending = object.status === 'awaiting-founder-review';
+        const pending = slot.status === 'awaiting-founder-review';
         const markerText = pending ? 'P' : 'R';
         if (button.textContent !== markerText) button.textContent = markerText;
-        if (button.dataset.townSquareReviewStatus !== object.status) {
-          button.dataset.townSquareReviewStatus = object.status;
+        if (button.dataset.townSquareReviewStatus !== slot.status) {
+          button.dataset.townSquareReviewStatus = slot.status;
         }
         const distance = Number.isFinite(this.player?.x) && Number.isFinite(this.player?.y)
-          ? Math.hypot(object.x - this.player.x, object.y + 10 - this.player.y)
+          ? Math.hypot(slot.worldX - this.player.x, slot.worldY + 10 - this.player.y)
           : Infinity;
         const canInspect = distance < interactionPromptRange({ type: 'town-square-review' });
         const label = pending
@@ -1713,11 +1800,11 @@ export class PixelWorldView extends WorldView {
         if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
         if (button.title !== label) button.title = label;
 
-        const screenX = (object.x - this.camera.x) * this.zoom + this.width / 2;
-        const screenY = (object.y - this.camera.y) * this.zoom + this.height / 2;
+        const screenX = slot.screenX;
+        const screenY = slot.screenY;
         const left = rect.left + screenX;
         const top = rect.top + screenY;
-        const half = 22;
+        const half = TOWNSQUARE_REVIEW_CONTROL_BUTTON_SIZE / 2;
         const intersectsOverlay = overlays.some(overlay =>
           screenX - half < overlay.right && screenX + half > overlay.left &&
           screenY - half < overlay.bottom && screenY + half > overlay.top
@@ -1735,8 +1822,8 @@ export class PixelWorldView extends WorldView {
         const topText = top + 'px';
         if (button.style.left !== leftText) button.style.left = leftText;
         if (button.style.top !== topText) button.style.top = topText;
-        const worldX = String(object.x);
-        const worldY = String(object.y);
+        const worldX = String(slot.worldX);
+        const worldY = String(slot.worldY);
         if (button.dataset.worldX !== worldX) button.dataset.worldX = worldX;
         if (button.dataset.worldY !== worldY) button.dataset.worldY = worldY;
         visibleCount += 1;
