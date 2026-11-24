@@ -4976,3 +4976,89 @@ test('Founder Commons report-review quest fails closed on self-review, invalid l
   assert.match(partial.blockedReason, /incomplete|revision/i);
   assert.equal(reportEvent.type, 'message-reported');
 });
+
+
+test('Witness Quest Board exposes only the exact Founder review of that Witness session’s Commons report', async () => {
+  const author = { id: 'commons-review-author', name: 'Commons Review Author', role: 'witness' };
+  const reporter = { id: 'commons-review-reporter', name: 'Commons Review Reporter', role: 'witness' };
+  const otherReporter = { id: 'commons-review-other-reporter', name: 'Other Commons Reporter', role: 'witness' };
+  const created = createWorld({ id: 'witness-commons-review-received', now: '2026-11-24T01:00:00.000Z' });
+  const posted = await applyAction(created, {
+    type: 'post-message',
+    text: 'A retained Commons message for the original reporter.'
+  }, author, { now: '2026-11-24T01:01:00.000Z' });
+  const reported = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'privacy',
+    details: 'Please preserve the exact process review for this report.'
+  }, reporter, { now: '2026-11-24T01:02:00.000Z' });
+  const reviewed = await applyAction(reported.world, {
+    type: 'review-message-report',
+    reportId: reported.result.reportId,
+    note: 'Founder process review only; not a factual verdict.'
+  }, founder, { now: '2026-11-24T01:03:00.000Z' });
+  const reviewEvent = reviewed.world.events.at(-1);
+
+  const otherPost = await applyAction(reviewed.world, {
+    type: 'post-message',
+    text: 'A separate message with a separate private report.'
+  }, author, { now: '2026-11-24T01:04:00.000Z' });
+  const otherReport = await applyAction(otherPost.world, {
+    type: 'report-message',
+    messageId: otherPost.result.messageId,
+    reason: 'other',
+    details: 'This report belongs to a different Witness session.'
+  }, otherReporter, { now: '2026-11-24T01:05:00.000Z' });
+
+  const reporterSnapshot = publicWorld(otherReport.world, reporter);
+  assert.ok(reporterSnapshot.historyCoverage.omittedEventCount > 0,
+    'the Witness receives a role-filtered snapshot that omits another actor’s private report');
+  assert.equal(reporterSnapshot.events.some(event => event.id === reviewEvent.id), true,
+    'the original reporter receives their exact linked Founder review event');
+  assert.equal(reporterSnapshot.events.some(event => event.reportId === otherReport.result.reportId), false,
+    'the original reporter does not receive another Witness’s private report');
+
+  const beforeProjection = structuredClone(reporterSnapshot);
+  const received = getQuestTrail(reporterSnapshot, reporter).find(item =>
+    item.id === 'witness-commons-report-review-received'
+  );
+  assert.ok(received, 'the reporter receives a read-only objective for their own retained review');
+  assert.equal(received.progress, 1);
+  assert.equal(received.target, 1);
+  assert.equal(received.complete, true);
+  assert.deepEqual(received.evidenceIds, [reviewEvent.id]);
+  assert.equal(received.action, null);
+  assert.equal(received.blockedReason, null);
+  assert.match(received.interpretation, /process record/i);
+  assert.match(received.interpretation, /not a factual verdict/i);
+  assert.match(received.interpretation, /no XP/i);
+  assert.deepEqual(reporterSnapshot, beforeProjection,
+    'the Witness Quest Board projection must not mutate its partial public snapshot');
+  assert.equal(otherReport.world.xp, 0, 'reporting, review, and quest inspection award no XP');
+
+  assert.equal(getQuestTrail(publicWorld(otherReport.world, otherReporter), otherReporter).some(item =>
+    item.id === 'witness-commons-report-review-received'
+  ), false, 'another reporter does not inherit this Witness’s review objective');
+  assert.equal(getQuestTrail(publicWorld(otherReport.world, author), author).some(item =>
+    item.id === 'witness-commons-report-review-received'
+  ), false, 'the message author does not receive another actor’s private report objective');
+  assert.equal(getQuestTrail(publicWorld(otherReport.world, founder), founder).some(item =>
+    item.id === 'witness-commons-report-review-received'
+  ), false, 'the Founder retains the separate Founder-only review objective');
+  assert.equal(getQuestTrail(reporterSnapshot, reporter).some(item =>
+    item.id === 'founder-commons-report-review'
+  ), false, 'the Witness never receives the Founder-only objective');
+
+  const tampered = structuredClone(otherReport.world);
+  const reviewIndex = tampered.events.findIndex(event => event.id === reviewEvent.id);
+  tampered.events[reviewIndex].actor = { ...founder, id: 'forged-founder' };
+  const blocked = getQuestTrail(tampered, reporter).find(item =>
+    item.id === 'witness-commons-report-review-received'
+  );
+  assert.ok(blocked, 'invalid linkage remains visible as a blocked objective rather than disappearing as success');
+  assert.equal(blocked.progress, 0);
+  assert.equal(blocked.complete, false);
+  assert.deepEqual(blocked.evidenceIds, []);
+  assert.match(blocked.blockedReason, /invalid|ambiguous/i);
+});
