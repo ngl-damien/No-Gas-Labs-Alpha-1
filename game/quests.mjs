@@ -425,6 +425,62 @@ function projectFounderCommonsReportReviewMilestone(world, viewer, events) {
   );
 }
 
+
+function projectWitnessCommonsReportReviewMilestone(world, viewer, events) {
+  const actorId = viewer?.id;
+  const actorRole = viewer?.role;
+  const ownReportIds = new Set(trailRows(events).flatMap(event =>
+    event?.type === 'message-reported' &&
+    event?.actor?.id === actorId &&
+    event?.actor?.role === actorRole &&
+    isSafeCommonsReviewReferenceId(event?.reportId)
+      ? [event.reportId] : []
+  ));
+  if (!ownReportIds.size) return null;
+
+  const interpretation = 'This Witness-only objective records receipt of one exact Founder-session process review of this Witness session’s private Commons report. The retained review event is a process record, not a factual verdict, moderation action, independent review, evidence certification, approval, or NGL authority. The Quest Board projection is read-only and grants no XP; actor IDs are pseudonymous sessions and do not prove distinct humans.';
+  let reviewHistory;
+  try {
+    reviewHistory = projectCommonsReportReviewHistory(world, COMMONS_FOUNDER_ACTOR_ID);
+  } catch {
+    return trailMilestone(
+      'witness-commons-report-review-received',
+      'Inspect the Founder-session process review of your Commons report',
+      1, [], [], null,
+      'The retained Commons report/review projection is unavailable; no review event is selected.',
+      interpretation
+    );
+  }
+
+  const validReview = trailRows(reviewHistory?.validReviews).find(record =>
+    ownReportIds.has(record?.reportId) &&
+    record?.reportEvent?.actor?.id === actorId &&
+    record.reportEvent.actor.role === actorRole
+  );
+  if (validReview?.event && isSafeCommonsReviewReferenceId(validReview.event.id)) {
+    return trailMilestone(
+      'witness-commons-report-review-received',
+      'Inspect the Founder-session process review of your Commons report',
+      1, [validReview.event.id], [validReview.event], null, null, interpretation
+    );
+  }
+
+  const invalidOwnReport = trailRows(reviewHistory?.invalidReportIds)
+    .some(reportId => ownReportIds.has(reportId));
+  if (invalidOwnReport) {
+    return trailMilestone(
+      'witness-commons-report-review-received',
+      'Inspect the Founder-session process review of your Commons report',
+      1, [], [], null,
+      'The retained review linked to your private report is invalid or ambiguous; no review event is selected or counted.',
+      interpretation
+    );
+  }
+  // A report without a visible, uniquely linked review is not a negative claim:
+  // partial Witness snapshots may omit other actors’ private report/review events.
+  return null;
+}
+
 function matchingTrailRecords(type, records, events, fields, actorId, actorRole) {
   const validIds = uniqueEventIds(events);
   const owned = trailRows(records).filter(record => record?.actor?.id === actorId && record.actor.role === actorRole);
@@ -1348,6 +1404,9 @@ export function getQuestTrail(world, viewer, options = {}) {
   const firstCommonsMessage = commonsMessages[0] || null;
   const founderCommonsReportReviewMilestone = actorRole === 'founder'
     ? projectFounderCommonsReportReviewMilestone(world, viewer, events)
+    : null;
+  const witnessCommonsReportReviewMilestone = actorRole === 'witness'
+    ? projectWitnessCommonsReportReviewMilestone(world, viewer, events)
     : null;
   const guildMembership = currentPlayerGuildMembership(world, viewer, events);
   const guildLeadershipHandoffs = guildLeadershipHandoffEvents(
@@ -2572,6 +2631,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       null,
       'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
     ),
+    ...(witnessCommonsReportReviewMilestone ? [witnessCommonsReportReviewMilestone] : []),
     ...combatMilestones,
   ]);
 }

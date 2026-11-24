@@ -1204,6 +1204,29 @@ def run_town_square_report_review(browser, url, out, width):
         expect(reporter_quest_content.locator(
             '[data-objective-id="founder-commons-report-review"]'
         )).to_have_count(0)
+        reporter_review_objective = reporter_quest_content.locator(
+            '[data-objective-id="witness-commons-report-review-received"]'
+        )
+        expect(reporter_review_objective).to_have_count(1)
+        expect(reporter_review_objective).to_contain_text('1/1')
+        expect(reporter_review_objective.locator('.quest-step-state')).to_have_text('RECORDED')
+        reporter_evidence_details = reporter_review_objective.locator('details.quest-evidence')
+        expect(reporter_evidence_details).to_have_count(1)
+        reporter_evidence_details.locator('summary').tap()
+        reporter_event_link = reporter_evidence_details.locator(
+            '[data-quest-evidence-event-link="' + review_event['id'] + '"]'
+        )
+        expect(reporter_event_link).to_have_count(1)
+        expect(reporter_event_link).to_have_attribute('data-chronicle-event-id', review_event['id'])
+        expect(reporter_event_link).to_have_attribute('data-chronicle-source', 'world')
+        expect(reporter_event_link).to_have_attribute(
+            'aria-label', 'Inspect retained message-report-reviewed event in World Chronicle'
+        )
+        reporter_board_revision = reporter_quest_content.get_attribute(
+            'data-quest-board-snapshot-revision'
+        )
+        if not isinstance(reporter_board_revision, str) or not reporter_board_revision.isdigit():
+            raise AssertionError('The Witness Quest Board must expose its accepted snapshot revision.')
         reporter_quest_layout = reporter_page.evaluate("""() => ({
           viewportWidth: window.innerWidth,
           documentWidth: document.documentElement.scrollWidth
@@ -1212,6 +1235,30 @@ def run_town_square_report_review(browser, url, out, width):
             raise AssertionError('Witness Quest Board caused horizontal overflow: ' + json.dumps(reporter_quest_layout))
         reporter_quest_screenshot = out / ('town-square-reporter-quest-board-' + str(width) + '.png')
         reporter_page.screenshot(path=str(reporter_quest_screenshot), full_page=True)
+
+        before_reporter_chronicle = read_shared_state(reporter_page)['world']
+        reporter_event_link.tap()
+        expect(reporter_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        exact_reporter_review_event = reporter_page.locator(
+            '#sheet-content [data-event-id="world:' + review_event['id'] + '"]'
+        )
+        expect(exact_reporter_review_event).to_have_count(1)
+        expect(exact_reporter_review_event).to_have_attribute('data-event-source', 'world')
+        expect(exact_reporter_review_event).to_contain_text(review_note)
+        expect(reporter_page.locator('#sheet-content')).to_have_attribute(
+            'data-chronicle-snapshot-revision', reporter_board_revision
+        )
+        after_reporter_chronicle = read_shared_state(reporter_page)['world']
+        if shared_world_snapshot(after_reporter_chronicle) != shared_world_snapshot(before_reporter_chronicle):
+            raise AssertionError('Witness review-event Chronicle inspection must not mutate the accepted world.')
+        reporter_chronicle_layout = reporter_page.evaluate("""() => ({
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth
+        })""")
+        if reporter_chronicle_layout['documentWidth'] > reporter_chronicle_layout['viewportWidth'] + 1:
+            raise AssertionError('Witness World Chronicle caused horizontal overflow: ' + json.dumps(reporter_chronicle_layout))
+        reporter_chronicle_screenshot = out / ('town-square-reporter-review-chronicle-' + str(width) + '.png')
+        reporter_page.screenshot(path=str(reporter_chronicle_screenshot), full_page=True)
 
         if errors:
             raise AssertionError('Browser page errors: ' + json.dumps(errors))
@@ -1236,13 +1283,18 @@ def run_town_square_report_review(browser, url, out, width):
             'founderQuestChronicleNavigation': True,
             'questAndChronicleInspectionReadOnly': True,
             'reporterFounderObjectiveHidden': True,
+            'reporterReviewProgress': '1/1',
+            'reporterQuestReviewEventId': review_event['id'],
+            'reporterQuestChronicleNavigation': True,
+            'reporterChronicleReadOnly': True,
             'pageErrors': errors,
             'screenshots': [
                 reporter_screenshot.name,
                 founder_screenshot.name,
                 founder_quest_screenshot.name,
                 founder_chronicle_screenshot.name,
-                reporter_quest_screenshot.name
+                reporter_quest_screenshot.name,
+                reporter_chronicle_screenshot.name
             ]
         }
     finally:
