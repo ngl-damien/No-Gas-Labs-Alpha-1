@@ -1,4 +1,4 @@
-import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT, findRoute, projectTownSquareReviewQueueSummary } from './world-view.mjs';
+import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT, findRoute, projectTownSquareReviewObjects, projectTownSquareReviewQueueSummary } from './world-view.mjs';
 import { COLLABORATOR_ROLES, isCollaboratorPacket, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectSourceObservationRecords } from './research-records.mjs';
 
@@ -44,8 +44,10 @@ function safeTownSquareReviewObjects(view) {
   return isArraySafely(objects) ? objects : [];
 }
 
-function safeTownSquareReviewOverflowObject(view) {
-  const projection = ownDataValue(view, 'townSquareReviewProjection');
+function safeTownSquareReviewOverflowObject(view, projectionOverride = undefined) {
+  const projection = projectionOverride === undefined
+    ? ownDataValue(view, 'townSquareReviewProjection')
+    : projectionOverride;
   const summary = projectTownSquareReviewQueueSummary(projection);
   if (!summary.available || summary.omittedCount <= 0) return null;
   const object = ownDataValue(projection, 'overflowObject');
@@ -55,15 +57,20 @@ function safeTownSquareReviewOverflowObject(view) {
   const status = ownDataValue(object, 'status');
   const x = ownDataValue(object, 'x');
   const y = ownDataValue(object, 'y');
+  const mappedObjects = ownDataValue(projection, 'objects');
+  const mappedCount = ownDataValue(mappedObjects, 'length');
   if (ownDataValue(object, 'type') !== 'town-square-review-overflow' ||
       typeof id !== 'string' || id !== eventId ||
       !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id) ||
       TOWNSQUARE_REVIEW_POINTER_FORBIDDEN_IDS.has(id) ||
       !['awaiting-founder-review', 'process-record-not-adjudication'].includes(status) ||
       !Number.isFinite(x) || !Number.isFinite(y) ||
-      safeTownSquareReviewObjects(view).some(candidate =>
-        ownDataValue(candidate, 'eventId') === eventId
-      )) return null;
+      !isArraySafely(mappedObjects) || !Number.isSafeInteger(mappedCount) ||
+      mappedCount < 0 || mappedCount > 16) return null;
+  for (let index = 0; index < mappedCount; index += 1) {
+    const candidate = ownDataValue(mappedObjects, String(index));
+    if (ownDataValue(candidate, 'eventId') === eventId) return null;
+  }
   return object;
 }
 
@@ -2075,14 +2082,17 @@ export class PixelWorldView extends WorldView {
   }
 
   handleTownSquareReviewOverflowAction(eventId) {
-    // The Chronicle shortcut is a read-only route. Revalidate the exact
-    // actor-visible target and retained event at dispatch time; a stale DOM
-    // button cannot open a different record or bypass a modal boundary.
+    // The Chronicle shortcut is a read-only route. Rebuild the actor-scoped
+    // projection from the current world and viewer at dispatch time; a queued
+    // button from a prior session cannot reuse that session's retained links.
     if (typeof document === 'undefined' || !this.playUiVisible() ||
         document.body?.classList?.contains?.('modal-open') === true) return false;
-    const object = safeTownSquareReviewOverflowObject(this);
+    const world = ownDataValue(this, 'world');
+    const viewer = ownDataValue(this, 'viewer');
+    const currentProjection = projectTownSquareReviewObjects(world, viewer);
+    const object = safeTownSquareReviewOverflowObject(this, currentProjection);
     if (!object || ownDataValue(object, 'eventId') !== eventId) return false;
-    const events = ownDataValue(this.world, 'events');
+    const events = ownDataValue(world, 'events');
     const count = ownDataValue(events, 'length');
     if (!isArraySafely(events) || !Number.isSafeInteger(count) || count < 0 || count > 100_000) return false;
     let matches = 0;
