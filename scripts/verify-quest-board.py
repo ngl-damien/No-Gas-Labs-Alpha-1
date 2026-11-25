@@ -2284,8 +2284,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert after_founder['xp'] == founder_before['xp'] == after_silent['xp'], (
             'Guild membership, observations, dissent and response award no XP.'
         )
-        assert after_founder['revision'] == founder_before['revision'] + 17, (
-            'Exactly seventeen canonical actions should be retained: the original nine, four transfer/equipment actions, the second contribution plus Forge, and one recipient offer plus decline.'
+        assert after_founder['revision'] == founder_before['revision'] + 18, (
+            'Exactly eighteen canonical actions should be retained: the original nine, four transfer/equipment actions, the second contribution plus Forge, one recipient offer plus decline, and the Witness’s Evidence Archive discovery.'
         )
         assert after_witness['xp'] == witness_before['xp'] == after_silent['xp']
         event_summary = founder_page.evaluate("""async () => {
