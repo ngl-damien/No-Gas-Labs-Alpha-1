@@ -214,6 +214,21 @@ class LedgerAndClosureTests(unittest.TestCase):
             results = [queue.get(timeout=2) for _ in workers]
             self.assertEqual(sorted(results), [("ok", 0), ("ok", 1)])
 
+    def test_missing_posix_flock_fails_ledger_operations_without_breaking_module_import(self):
+        original = ngl.fcntl
+        try:
+            ngl.fcntl = None
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaisesRegex(OSError, "requires POSIX fcntl.flock"):
+                    ngl.append_event(Path(tmp) / "mission.jsonl", "test", "EVENT", "USER_STATED", {})
+                # The independent gate evaluator remains importable and usable.
+                root = Path(tmp)
+                (root / "present.txt").write_text("available", encoding="utf-8")
+                result = gate_runner.evaluate_gate({"checks": [{"id": "present", "type": "file_exists", "path": "present.txt", "weight": 100}]}, root)
+                self.assertEqual(result["decision"], "completed")
+        finally:
+            ngl.fcntl = original
+
     def test_concurrent_process_appends_preserve_one_contiguous_hash_chain(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
