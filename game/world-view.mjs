@@ -34,7 +34,7 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  // Council Chamber: retained, uniquely identified role attempts; never votes or consensus.
  council_chamber:event=>event?.type==='collaborator-response-recorded',
  // Forge: the artifact lifecycle, including its explicit publication step.
- forge:event=>['draft','repair','publish','field-item-forged','field-item-equipped','field-item-unequipped'].includes(event?.type)||event?.execution==='EXECUTED',
+ forge:event=>['draft','repair','publish','field-item-forged','field-item-equipped','field-item-unequipped','field-item-transfer-offered','field-item-transfer-cancelled','field-item-transfer-declined','field-item-transferred'].includes(event?.type)||event?.execution==='EXECUTED',
  // Evidence Archive: Source Observatory notes, linked challenges/responses, reports, failed retrieval attempts, dissent and retained publications.
  evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged','experiment-challenge-responded','source-observation-recorded','source-observation-challenged','source-observation-challenge-responded','source-archive-attempt-failed','source-archive-predicate-evaluated','collaborator-response-recorded','field-item-transfer-declined'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
  // Source Observatory: authored observations and adversarial follow-up, never a truth ledger.
