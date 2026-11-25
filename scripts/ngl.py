@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
-import fcntl
+try:
+    import fcntl
+except ImportError:  # Keep non-ledger CLI commands importable on non-POSIX hosts.
+    fcntl = None
 import hashlib
 import json
 import os
@@ -66,6 +69,8 @@ def _verify_internal(ledger: Path) -> dict:
 @contextmanager
 def _ledger_lock(ledger: Path, *, exclusive: bool):
     """Coordinate cooperating readers/writers through one persistent lock inode."""
+    if fcntl is None:
+        raise OSError("mission-ledger locking requires POSIX fcntl.flock; this operation is unavailable on this platform")
     ledger.parent.mkdir(parents=True, exist_ok=True)
     lock_path = ledger.with_name(ledger.name + ".lock")
     lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
