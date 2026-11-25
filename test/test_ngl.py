@@ -99,7 +99,7 @@ class GateRunnerTests(unittest.TestCase):
         self.assertEqual(gate_runner.UNITTESTS["ngl-invariant-core"][1:4], ["-m", "unittest", "discover"])
 
 
-POSIX_FLOCK_AND_FORK = ngl.fcntl is not None and "fork" in multiprocessing.get_all_start_methods()
+POSIX_FLOCK_AND_FORK = ngl.fcntl is not None and hasattr(ngl.os, "O_NOFOLLOW") and "fork" in multiprocessing.get_all_start_methods()
 
 
 class LedgerAndClosureTests(unittest.TestCase):
@@ -235,6 +235,7 @@ class LedgerAndClosureTests(unittest.TestCase):
         finally:
             ngl.fcntl = original
 
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock, O_NOFOLLOW, and fork multiprocessing")
     def test_symlinked_lock_path_is_rejected_without_touching_target(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -247,6 +248,7 @@ class LedgerAndClosureTests(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), "preserve")
             self.assertFalse(ledger.exists())
 
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock, O_NOFOLLOW, and fork multiprocessing")
     def test_group_or_world_accessible_lock_file_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
