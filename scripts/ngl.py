@@ -84,6 +84,8 @@ def _ledger_lock(ledger: Path, *, exclusive: bool):
             raise OSError("mission-ledger lock path is not a regular file")
         if metadata.st_mode & 0o077:
             raise OSError("mission-ledger lock file permissions must exclude group and other access")
+        if metadata.st_nlink != 1:
+            raise OSError("mission-ledger lock file must not have hard-link aliases")
         if hasattr(os, "getuid") and metadata.st_uid != os.getuid():
             raise OSError("mission-ledger lock file is not owned by the current user")
         fcntl.flock(lock_fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
