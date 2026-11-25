@@ -235,6 +235,29 @@ class LedgerAndClosureTests(unittest.TestCase):
         finally:
             ngl.fcntl = original
 
+    def test_symlinked_lock_path_is_rejected_without_touching_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "mission.jsonl"
+            target = root / "unrelated.txt"
+            target.write_text("preserve", encoding="utf-8")
+            (root / "mission.jsonl.lock").symlink_to(target)
+            with self.assertRaises(OSError):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            self.assertEqual(target.read_text(encoding="utf-8"), "preserve")
+            self.assertFalse(ledger.exists())
+
+    def test_group_or_world_accessible_lock_file_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "mission.jsonl"
+            lock = root / "mission.jsonl.lock"
+            lock.write_text("", encoding="utf-8")
+            lock.chmod(0o666)
+            with self.assertRaisesRegex(OSError, "permissions"):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            self.assertFalse(ledger.exists())
+
     @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and fork multiprocessing")
     def test_concurrent_process_appends_preserve_one_contiguous_hash_chain(self):
         with tempfile.TemporaryDirectory() as tmp:
