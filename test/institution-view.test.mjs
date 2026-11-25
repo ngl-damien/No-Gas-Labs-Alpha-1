@@ -2095,3 +2095,49 @@ test('Evidence Archive exposes a direct continuation to the first older retained
   assert.deepEqual(inspected, ['overflow-refusal-01']);
   assert.deepEqual(world, before, 'continuation navigation must not mutate history, ownership or progression');
 })); 
+
+
+test('Evidence Archive withholds overflow continuation when the hidden refusal identity is duplicated', () => withDocument(() => {
+  const world = createWorld({
+    id: 'evidence-archive-refusal-overflow-ambiguous',
+    founderName: 'Chronicle Founder',
+    now: '2026-11-25T08:00:00.000Z'
+  });
+  const start = Date.parse('2026-11-25T08:01:00.000Z');
+  for (let index = 0; index < 21; index += 1) {
+    world.events.push({
+      id: 'overflow-ambiguous-' + String(index + 1).padStart(2, '0'),
+      type: 'field-item-transfer-declined',
+      actor: { id: 'recipient-' + index, name: 'Recipient ' + index, role: 'player' },
+      at: new Date(start + index * 1000).toISOString(),
+      offerId: 'ambiguous-offer-' + index,
+      itemId: 'ambiguous-item-' + index
+    });
+  }
+  world.events.push({
+    id: 'overflow-ambiguous-01',
+    type: 'contribute',
+    actor: { id: 'other-actor', name: 'Other Actor', role: 'player' },
+    at: new Date(start + 22_000).toISOString()
+  });
+  world.revision = world.events.length;
+  const before = structuredClone(world);
+  const root = element('main');
+
+  renderEvidenceArchive(root, {
+    world,
+    kernelUnavailable: true,
+    onInspectEvent: id => assert.fail('ambiguous older event must not navigate: ' + id)
+  });
+
+  const continuation = walk(root).find(node =>
+    node.dataset?.evidenceArchiveNextOlderRefusal
+  );
+  assert.equal(continuation, undefined,
+    'a duplicate hidden event ID must not receive an exact Chronicle continuation');
+  const withheld = walk(root).find(node =>
+    node.dataset?.evidenceArchiveNextOlderNavigation === 'withheld'
+  );
+  assert.ok(withheld, 'the interface must explain that the older shortcut was withheld');
+  assert.deepEqual(world, before, 'ambiguous-history handling must remain read-only');
+}));
