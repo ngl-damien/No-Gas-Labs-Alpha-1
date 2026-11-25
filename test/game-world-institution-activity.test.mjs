@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { PLACES, institutionActivityCount, institutionSummaryFromState, projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
+import { PLACES, institutionActivityCount, institutionDestinationsForEvent, institutionSummaryFromState, projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
 import { GUILD_NPCS } from '../game/pixel-world-view.mjs';
 import { createWorld } from '../game/model.mjs';
 import { projectCharterCodex, renderCharterCodex } from '../game/institution-view.mjs';
@@ -729,4 +729,27 @@ test('AOTA Codex routes engineering handoff to Guild Hall and external deploymen
     { type: 'location', id: 'decision_chamber' }
   ]);
   assert.deepEqual(world, before, 'Codex routing remains read-only and awards no progress');
+});
+
+
+test('an explicit field-item transfer refusal is retained at both Forge and Evidence Archive', () => {
+  const world = { xp: 0, events: [
+    { id: 'field-item-forged-1', type: 'field-item-forged' },
+    { id: 'field-item-offered-1', type: 'field-item-transfer-offered' },
+    { id: 'field-item-declined-1', type: 'field-item-transfer-declined' },
+  ] };
+  const before = structuredClone(world);
+  const refusal = world.events[2];
+
+  assert.equal(institutionActivityCount('forge', world), 3,
+    'Forge retains the artifact and transfer lifecycle');
+  assert.equal(institutionActivityCount('evidence_archive', world), 1,
+    'Evidence Archive must retain the recipient\'s explicit refusal as dissent');
+  assert.deepEqual(
+    institutionDestinationsForEvent(refusal).map(destination => destination.id),
+    ['forge', 'evidence_archive'],
+    'the same retained refusal must route to both institutions without creating another event'
+  );
+  assert.deepEqual(world, before, 'institution routing is a read-only projection');
+  assert.equal(world.xp, 0, 'a refusal is history, not a reward or penalty');
 });
