@@ -1884,6 +1884,23 @@ function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
   section.append(card);
  }
  if(refusals.length>visible.length){
+  const next=refusals[visible.length];
+  const match=/^world:([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/.exec(next?.id||'');
+  const eventId=match?.[1]||'';
+  const unique=!!eventId&&identityCounts.get(next.id)===1;
+  if(typeof onInspectEvent==='function'&&unique&&Number.isSafeInteger(next.streamPosition)&&next.streamPosition>0){
+   const older=el('button','Inspect next older retained refusal in World Chronicle →');
+   older.type='button';
+   older.className='secondary-button';
+   older.dataset.evidenceArchiveNextOlderRefusal=eventId;
+   older.dataset.eventId=eventId;
+   older.onclick=()=>onInspectEvent(eventId);
+   section.append(older);
+  }else{
+   const notice=el('p','The next older retained refusal remains in World Chronicle, but its exact navigation shortcut is withheld because identity or append position is incomplete.');
+   notice.dataset.evidenceArchiveNextOlderNavigation='withheld';
+   section.append(notice);
+  }
   section.append(el('p',(refusals.length-visible.length)+' additional retained refusal(s) remain in the full World Chronicle.'));
  }
  container.append(section);
