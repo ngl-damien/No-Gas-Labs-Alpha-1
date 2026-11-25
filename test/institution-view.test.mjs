@@ -2043,3 +2043,55 @@ test('Evidence Archive keeps the refusal register bounded and navigates to the e
   assert.match(textOf(root), /1 additional retained refusal/);
   assert.deepEqual(world, before, 'bounded browsing and continuation remain read-only');
 }));
+
+
+test('Evidence Archive exposes a direct continuation to the first older retained transfer refusal', () => withDocument(() => {
+  const world = createWorld({
+    id: 'evidence-archive-refusal-overflow',
+    founderName: 'Chronicle Founder',
+    now: '2026-11-25T08:00:00.000Z'
+  });
+  const start = Date.parse('2026-11-25T08:01:00.000Z');
+  for (let index = 0; index < 21; index += 1) {
+    world.events.push({
+      id: 'overflow-refusal-' + String(index + 1).padStart(2, '0'),
+      type: 'field-item-transfer-declined',
+      actor: { id: 'recipient-' + index, name: 'Recipient ' + index, role: 'player' },
+      at: new Date(start + index * 1000).toISOString(),
+      offerId: 'overflow-offer-' + index,
+      itemId: 'overflow-item-' + index
+    });
+  }
+  world.revision = world.events.length;
+  const before = structuredClone(world);
+  const inspected = [];
+  const root = element('main');
+
+  renderEvidenceArchive(root, {
+    world,
+    kernelUnavailable: true,
+    onInspectEvent: id => inspected.push(id)
+  });
+
+  const cards = walk(root).filter(node =>
+    typeof node.dataset?.evidenceArchiveTransferRefusal === 'string' &&
+    node.dataset.evidenceArchiveTransferRefusal !== 'unidentified'
+  );
+  assert.equal(cards.length, 20, 'the mobile register must remain bounded to 20 visible refusal cards');
+  assert.deepEqual(
+    cards.map(node => node.dataset.evidenceArchiveTransferRefusal),
+    Array.from({ length: 20 }, (_, index) => 'overflow-refusal-' + String(21 - index).padStart(2, '0')),
+    'visible refusals must remain newest first'
+  );
+  assert.equal(cards.some(node =>
+    node.dataset.evidenceArchiveTransferRefusal === 'overflow-refusal-01'
+  ), false, 'the oldest refusal must remain outside the bounded card window');
+
+  const continuation = walk(root).find(node =>
+    node.dataset?.evidenceArchiveNextOlderRefusal === 'overflow-refusal-01'
+  );
+  assert.ok(continuation, 'the first older retained refusal must have an exact Chronicle continuation');
+  continuation.onclick();
+  assert.deepEqual(inspected, ['overflow-refusal-01']);
+  assert.deepEqual(world, before, 'continuation navigation must not mutate history, ownership or progression');
+})); 
