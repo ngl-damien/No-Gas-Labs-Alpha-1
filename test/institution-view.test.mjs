@@ -1914,3 +1914,90 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   assert.deepEqual(world, beforeWorld, 'refreshing the Chronicle must not mutate the previous snapshot');
   assert.deepEqual(nextWorld, beforeNextWorld, 'refreshing the Chronicle must not mutate the newly accepted snapshot');
 }));
+
+
+test('Evidence Archive exposes a retained transfer refusal as an exact Chronicle-linked world object', () => withDocument(() => {
+  const world = createWorld({
+    id: 'evidence-archive-transfer-refusal-register',
+    founderName: 'Chronicle Founder',
+    now: '2026-11-25T08:00:00.000Z'
+  });
+  const eventId = 'refusal-register-event-1';
+  world.events.push({
+    id: eventId,
+    type: 'field-item-transfer-declined',
+    actor: { id: 'witness-refusal-1', name: 'Witness', role: 'witness' },
+    at: '2026-11-25T08:01:00.000Z',
+    offerId: 'offer-register-1',
+    itemId: 'item-register-1'
+  });
+  world.revision = world.events.length;
+  const before = structuredClone(world);
+  const inspected = [];
+  const root = element('main');
+
+  renderEvidenceArchive(root, {
+    world,
+    onInspectEvent: id => inspected.push(id)
+  });
+
+  const card = walk(root).find(node =>
+    node.dataset?.evidenceArchiveTransferRefusal === eventId
+  );
+  assert.ok(card, 'the Evidence Archive must surface the retained refusal as a first-class world object');
+  assert.equal(card.dataset.eventId, 'world:' + eventId);
+  assert.equal(card.dataset.eventSource, 'world');
+  assert.match(textOf(card), /refusal|declined/i);
+  assert.match(textOf(card), /no ownership change is inferred|did not transfer ownership/i);
+
+  const inspect = walk(card).find(node =>
+    node.dataset?.evidenceArchiveInspectRefusal === eventId
+  );
+  assert.ok(inspect, 'the refusal object must offer exact Chronicle navigation');
+  inspect.onclick();
+  assert.deepEqual(inspected, [eventId]);
+  assert.deepEqual(world, before, 'refusal discovery and Chronicle navigation remain read-only');
+}));
+
+test('Evidence Archive retains duplicate refusal identity but withholds ambiguous Chronicle navigation', () => withDocument(() => {
+  const world = createWorld({
+    id: 'evidence-archive-transfer-refusal-duplicate',
+    founderName: 'Chronicle Founder',
+    now: '2026-11-25T08:00:00.000Z'
+  });
+  const eventId = 'duplicate-refusal-event';
+  world.events.push(
+    {
+      id: eventId,
+      type: 'field-item-transfer-declined',
+      actor: { id: 'witness-refusal-2', name: 'Witness', role: 'witness' },
+      at: '2026-11-25T08:01:00.000Z',
+      offerId: 'offer-duplicate-1',
+      itemId: 'item-duplicate-1'
+    },
+    {
+      id: eventId,
+      type: 'contribute',
+      actor: { id: 'founder-duplicate', name: 'Founder', role: 'founder' },
+      at: '2026-11-25T08:02:00.000Z'
+    }
+  );
+  world.revision = world.events.length;
+  const before = structuredClone(world);
+  const root = element('main');
+
+  renderEvidenceArchive(root, {
+    world,
+    onInspectEvent: () => assert.fail('ambiguous event identity must not navigate')
+  });
+
+  const card = walk(root).find(node =>
+    node.dataset?.evidenceArchiveTransferRefusal === eventId
+  );
+  assert.ok(card, 'the retained refusal remains visible despite identity ambiguity');
+  assert.equal(card.dataset.refusalStatus, 'unvalidated');
+  assert.ok(!walk(card).some(node => node.dataset?.evidenceArchiveInspectRefusal),
+    'the exact Chronicle shortcut must be withheld for a duplicate world-event ID');
+  assert.ok(walk(card).some(node => node.dataset?.evidenceArchiveRefusalNavigation === 'withheld'));
+  assert.deepEqual(world, before, 'ambiguous refusal inspection remains read-only');
+}));
