@@ -1,4 +1,5 @@
 import json
+import multiprocessing
 import sys
 import tempfile
 import unittest
@@ -8,6 +9,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import gate_runner
 import ngl
+
+
+def _append_after_barrier(ledger_path, barrier, queue, index):
+    try:
+        barrier.wait(timeout=10)
+        entry = ngl.append_event(Path(ledger_path), f"worker-{index}", "CONCURRENT", "ARTIFACT_OBSERVED", {"worker": index})
+        queue.put(("ok", entry["seq"]))
+    except Exception as exc:
+        queue.put(("error", repr(exc)))
 
 
 class GateRunnerTests(unittest.TestCase):
@@ -118,6 +128,42 @@ class LedgerAndClosureTests(unittest.TestCase):
             scheduler.write_text(json.dumps({"ready": True, "owner": "worker-a", "blockers": []}), encoding="utf-8")
             pay.write_text(json.dumps({"artifact_sha256": "a" * 64}), encoding="utf-8")
             self.assertEqual(ngl._closure(ledger, head, None, scheduler, "S4", pay)["decision"], "blocked")
+
+    def test_concurrent_process_appends_preserve_one_contiguous_hash_chain(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "mission.jsonl"
+            context = multiprocessing.get_context("fork")
+            count = 8
+            barrier = context.Barrier(count)
+            queue = context.Queue()
+            workers = [
+                context.Process(target=_append_after_barrier, args=(str(ledger), barrier, queue, index))
+                for index in range(count)
+            ]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join(timeout=15)
+            for worker in workers:
+                if worker.is_alive():
+                    worker.terminate()
+                    worker.join()
+            self.assertTrue(all(worker.exitcode == 0 for worker in workers))
+            results = [queue.get(timeout=3) for _ in range(count)]
+            self.assertTrue(all(result[0] == "ok" for result in results), results)
+            self.assertEqual(sorted(result[1] for result in results), list(range(count)))
+            verified = ngl._verify_internal(ledger)
+            self.assertEqual(verified["status"], "CHAIN_INTACT")
+            self.assertEqual(verified["count"], count)
+
+    def test_writer_lock_is_released_when_serialization_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "mission.jsonl"
+            with self.assertRaises(TypeError):
+                ngl.append_event(ledger, "test", "BAD", "ARTIFACT_OBSERVED", {"not_json": object()})
+            entry = ngl.append_event(ledger, "test", "GOOD", "ARTIFACT_OBSERVED", {"ok": True})
+            self.assertEqual(entry["seq"], 0)
+            self.assertEqual(ngl._verify_internal(ledger)["status"], "CHAIN_INTACT")
 
 
 if __name__ == "__main__":

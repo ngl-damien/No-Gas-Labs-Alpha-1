@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -96,23 +98,34 @@ def verify_chain(ledger: Path, expected_head: str | None = None, anchor_ref: Pat
 
 def append_event(ledger: Path, actor: str, event_type: str, label: str, payload: dict) -> dict:
     ledger.parent.mkdir(parents=True, exist_ok=True)
-    internal = _verify_internal(ledger)
-    if internal["status"] != "CHAIN_INTACT":
-        raise RuntimeError("Refusing append to invalid ledger")
-    body = {
-        "seq": internal["count"],
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "actor": actor,
-        "event_type": event_type,
-        "epistemic_label": label,
-        "prev_hash": internal["head_hash"],
-        "payload": payload,
-    }
-    body["entry_hash"] = _hash(body)
-    with ledger.open("a", encoding="utf-8") as stream:
-        stream.write(json.dumps(body, sort_keys=True, ensure_ascii=False) + "\n")
-        stream.flush()
-    return body
+    # POSIX advisory locking serializes independent CLI processes sharing this
+    # ledger on a filesystem that correctly implements flock semantics.
+    lock_path = ledger.with_name(ledger.name + ".lock")
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        # The head must be read only after acquiring the process-shared lock.
+        internal = _verify_internal(ledger)
+        if internal["status"] != "CHAIN_INTACT":
+            raise RuntimeError("Refusing append to invalid ledger")
+        body = {
+            "seq": internal["count"],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "actor": actor,
+            "event_type": event_type,
+            "epistemic_label": label,
+            "prev_hash": internal["head_hash"],
+            "payload": payload,
+        }
+        body["entry_hash"] = _hash(body)
+        with ledger.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(body, sort_keys=True, ensure_ascii=False) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        return body
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
 
 
 def _anchor_args(parser: argparse.ArgumentParser) -> None:
