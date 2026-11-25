@@ -1,3 +1,12 @@
+## Run 11 — Current-main Evidence Archive refusal projection — 2026-11-25
+
+- PR #734, exact runtime head ab5f96c3a5eb0b09865f483d3f67e4aa4382f27c, starts from current main rather than the divergent #729/#732 stack.
+- Test-first Full Verify [45622056342](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622056342) reproduced the missing refusal activity (expected 9, actual 8). Genesis [45622056920](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622056920) PASS.
+- Runtime adds field-item-transfer-declined to Evidence Archive activity matching. Full Verify [45622174769](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174769), Genesis [45622174945](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174945), PWA [45622174718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174718), Council [45622174676](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174676), Academy [45622174941](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174941), Combat Yard [45622175240](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622175240) PASS. Browser [45622175518](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622175518) fails the inherited Worker A-owned Contradiction Clerk locator. Quest Board [45622174748](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174748), Synthesis [45622174689](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174689), Android [45622174854](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174854) were still in progress at last observation.
+- This supports institutional history projection only; no gate is promoted. PR #734 is draft/unmerged; no release, deployment, physical-device acceptance, Founder approval or authority transition.
+
+---
+
 ## Run 271 — Evidence Archive Source Observation challenge chronology — 2026-11-20
 
 - **Capability advanced:** the Evidence Archive author-response queue now follows the canonical retained event order instead of wall-clock timestamps. A clock regression can no longer make a later appended challenge appear older than an earlier challenge.

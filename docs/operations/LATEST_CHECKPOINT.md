@@ -1,3 +1,14 @@
+## Run 11 — Current-main Evidence Archive refusal projection — 2026-11-25
+
+- Worker B runtime PR: [#734](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/734), draft/unmerged, based on main at 21677d88cb027f3d16adacf92dbdd0ec08e96dbd. Exact runtime head ab5f96c3a5eb0b09865f483d3f67e4aa4382f27c.
+- Test-only commit b49f80cc636a749e1905daebc37ad139f1d42c14 reproduced the missing Evidence Archive activity: Full Verify [45622056342](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622056342) expected 9, observed 8. Genesis [45622056920](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622056920) PASS.
+- Runtime commit ab5f96c3a5eb0b09865f483d3f67e4aa4382f27c adds field-item-transfer-declined to the existing Evidence Archive event matcher. Test asserts read-only projection and zero XP.
+- Exact-head Full Verify [45622174769](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174769), Genesis [45622174945](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174945), PWA [45622174718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174718), Council [45622174676](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174676), Academy [45622174941](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174941), Combat Yard [45622175240](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622175240) PASS. Browser [45622175518](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622175518) FAILs the inherited Worker A-owned Contradiction Clerk locator. Quest Board [45622174748](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174748), Synthesis [45622174689](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174689), Android [45622174854](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45622174854) were still running at last observation; no terminal result claimed.
+- This is a read-only institutional projection, not a transfer, ownership, reward, quest, truth, approval or authority transition. No merge, release, deployment or Founder acceptance.
+- Root instructions, shared protocol and Institutional Charter were read; baseline was restarted after the initial bootstrap deviation. Local preflight/runtime unavailable; hosted exact-head preflight/verification used. Procedural compliance PARTIAL.
+
+---
+
 ## Run 271 — Evidence Archive challenge queue follows retained event order — 2026-11-20
 
 - **Worker:** Worker B / Build NGL MMORPG. **Runtime PR:** [#713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/713), draft/unmerged. Test-only head 8fd66867a9ea100d309aa3e1d97062330c35121a; exact runtime/test head aaa9e9c6bd8bdc411dad103800adc9c0d9189fcf.
