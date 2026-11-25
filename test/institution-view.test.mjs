@@ -2001,3 +2001,45 @@ test('Evidence Archive retains duplicate refusal identity but withholds ambiguou
   assert.ok(walk(card).some(node => node.dataset?.evidenceArchiveRefusalNavigation === 'withheld'));
   assert.deepEqual(world, before, 'ambiguous refusal inspection remains read-only');
 }));
+
+
+test('Evidence Archive keeps the refusal register bounded and navigates to the exact next older event', () => withDocument(() => {
+  const world = createWorld({
+    id: 'evidence-archive-transfer-refusal-overflow',
+    founderName: 'Chronicle Founder',
+    now: '2026-11-25T08:00:00.000Z'
+  });
+  const actor = { id: 'witness-refusal-overflow', name: 'Witness', role: 'witness' };
+  const events = Array.from({ length: 21 }, (_, index) => ({
+    id: 'refusal-overflow-' + (index + 1),
+    type: 'field-item-transfer-declined',
+    actor,
+    at: '2026-11-25T08:' + String(index + 1).padStart(2, '0') + ':00.000Z',
+    offerId: 'offer-overflow-' + (index + 1),
+    itemId: 'item-overflow-' + (index + 1)
+  }));
+  world.events.push(...events);
+  world.revision = world.events.length;
+  const before = structuredClone(world);
+  const inspected = [];
+  const root = element('main');
+
+  renderEvidenceArchive(root, {
+    world,
+    onInspectEvent: id => inspected.push(id)
+  });
+
+  const cards = walk(root).filter(node => node.dataset?.evidenceArchiveTransferRefusal);
+  assert.equal(cards.length, 20, 'the mobile register must remain bounded to twenty visible refusal cards');
+  assert.equal(cards[0].dataset.evidenceArchiveTransferRefusal, 'refusal-overflow-21');
+  assert.equal(cards[19].dataset.evidenceArchiveTransferRefusal, 'refusal-overflow-2');
+
+  const continuation = walk(root).find(node =>
+    node.dataset?.evidenceArchiveNextOlderRefusal === 'refusal-overflow-1'
+  );
+  assert.ok(continuation, 'the first hidden older refusal must remain directly reachable');
+  continuation.onclick();
+  assert.deepEqual(inspected, ['refusal-overflow-1']);
+  assert.match(textOf(root), /1 additional retained refusal/);
+  assert.deepEqual(world, before, 'bounded browsing and continuation remain read-only');
+}));
