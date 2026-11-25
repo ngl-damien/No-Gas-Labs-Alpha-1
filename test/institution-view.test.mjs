@@ -2017,6 +2017,50 @@ test('Evidence Archive exposes retained field-item refusals as exact Chronicle-l
   assert.deepEqual(world, before, 'refusal discovery and Chronicle navigation must remain read-only');
 }));
  
+test('Evidence Archive withholds refusal navigation when a world event identity is duplicated', () => withDocument(() => {
+  const world = createWorld({
+    id: 'evidence-archive-transfer-refusal-duplicate',
+    founderName: 'Chronicle Founder',
+    now: '2026-11-25T08:00:00.000Z'
+  });
+  const eventId = 'duplicate-refusal-event';
+  world.events.push(
+    {
+      id: eventId,
+      type: 'field-item-transfer-declined',
+      actor: { id: 'witness-refusal-2', name: 'Witness', role: 'witness' },
+      at: '2026-11-25T08:01:00.000Z',
+      offerId: 'offer-duplicate-1',
+      itemId: 'item-duplicate-1'
+    },
+    {
+      id: eventId,
+      type: 'contribute',
+      actor: { id: 'founder-duplicate', name: 'Founder', role: 'founder' },
+      at: '2026-11-25T08:02:00.000Z'
+    }
+  );
+  world.revision = world.events.length;
+  const before = structuredClone(world);
+  const root = element('main');
+
+  renderEvidenceArchive(root, {
+    world,
+    kernelUnavailable: true,
+    onInspectEvent: () => assert.fail('ambiguous event identity must not navigate')
+  });
+
+  const card = walk(root).find(node =>
+    node.dataset?.evidenceArchiveTransferRefusal === eventId
+  );
+  assert.ok(card, 'the retained refusal remains visible despite identity ambiguity');
+  assert.equal(card.dataset.refusalStatus, 'unvalidated');
+  assert.ok(!walk(card).some(node => node.dataset?.evidenceArchiveInspectRefusal),
+    'the shortcut must be withheld for a duplicate world-event ID');
+  assert.ok(walk(card).some(node => node.dataset?.evidenceArchiveRefusalNavigation === 'withheld'));
+  assert.deepEqual(world, before, 'ambiguous refusal inspection must remain read-only');
+}));
+
 test("Evidence Archive renders replay-validated Combat Yard history as world-stream entries", async () => {
   const actor = { id: "chronicle-ui-founder", name: "Chronicle Founder", role: "founder" };
   const base = Date.parse("2026-11-20T11:30:00.000Z");
