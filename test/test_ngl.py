@@ -1,5 +1,6 @@
 import json
 import multiprocessing
+from queue import Empty
 import sys
 import tempfile
 import unittest
@@ -18,6 +19,17 @@ def _append_after_barrier(ledger_path, barrier, queue, index):
         queue.put(("ok", entry["seq"]))
     except Exception as exc:
         queue.put(("error", repr(exc)))
+
+
+def _verify_after_lock(ledger_path, expected_head, queue):
+    queue.put(ngl.verify_chain(Path(ledger_path), expected_head=expected_head)["status"])
+
+
+def _closure_after_lock(ledger_path, expected_head, scheduler_path, pay_path, queue):
+    result = ngl._closure(
+        Path(ledger_path), expected_head, None, Path(scheduler_path), "S0", Path(pay_path)
+    )
+    queue.put(result["decision"])
 
 
 class GateRunnerTests(unittest.TestCase):
@@ -128,6 +140,42 @@ class LedgerAndClosureTests(unittest.TestCase):
             scheduler.write_text(json.dumps({"ready": True, "owner": "worker-a", "blockers": []}), encoding="utf-8")
             pay.write_text(json.dumps({"artifact_sha256": "a" * 64}), encoding="utf-8")
             self.assertEqual(ngl._closure(ledger, head, None, scheduler, "S4", pay)["decision"], "blocked")
+
+    def test_verifier_waits_for_exclusive_writer_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "mission.jsonl"
+            entry = ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            context = multiprocessing.get_context("fork")
+            queue = context.Queue()
+            with ngl._ledger_lock(ledger, exclusive=True):
+                worker = context.Process(target=_verify_after_lock, args=(str(ledger), entry["entry_hash"], queue))
+                worker.start()
+                with self.assertRaises(Empty):
+                    queue.get(timeout=0.2)
+            worker.join(timeout=5)
+            self.assertEqual(worker.exitcode, 0)
+            self.assertEqual(queue.get(timeout=2), "CHAIN_INTACT")
+
+    def test_closure_verifies_and_reads_terminal_event_under_one_shared_snapshot_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "mission.jsonl"
+            ngl.append_event(ledger, "mppt", "GATE_EVALUATION", "EXECUTION_OBSERVED", {"decision": "completed"})
+            head = ngl._verify_internal(ledger)["head_hash"]
+            scheduler = root / "scheduler.json"
+            scheduler.write_text(json.dumps({"ready": True, "owner": "worker-a", "blockers": []}), encoding="utf-8")
+            pay = root / "pay.json"
+            pay.write_text(json.dumps({"artifact_sha256": "a" * 64}), encoding="utf-8")
+            context = multiprocessing.get_context("fork")
+            queue = context.Queue()
+            with ngl._ledger_lock(ledger, exclusive=True):
+                worker = context.Process(target=_closure_after_lock, args=(str(ledger), head, str(scheduler), str(pay), queue))
+                worker.start()
+                with self.assertRaises(Empty):
+                    queue.get(timeout=0.2)
+            worker.join(timeout=5)
+            self.assertEqual(worker.exitcode, 0)
+            self.assertEqual(queue.get(timeout=2), "completed")
 
     def test_concurrent_process_appends_preserve_one_contiguous_hash_chain(self):
         with tempfile.TemporaryDirectory() as tmp:
