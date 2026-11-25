@@ -34,6 +34,15 @@ def _closure_after_lock(ledger_path, expected_head, scheduler_path, pay_path, st
     queue.put(result["decision"])
 
 
+def _shared_reader_barrier(ledger_path, barrier, queue, index):
+    try:
+        with ngl._ledger_lock(Path(ledger_path), exclusive=False):
+            barrier.wait(timeout=5)
+            queue.put(("ok", index))
+    except Exception as exc:
+        queue.put(("error", repr(exc)))
+
+
 class GateRunnerTests(unittest.TestCase):
     def test_file_regex_and_json_typed_operations(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -182,6 +191,28 @@ class LedgerAndClosureTests(unittest.TestCase):
             worker.join(timeout=5)
             self.assertEqual(worker.exitcode, 0)
             self.assertEqual(queue.get(timeout=2), "completed")
+
+    def test_shared_reader_locks_allow_concurrent_readers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "mission.jsonl"
+            context = multiprocessing.get_context("fork")
+            barrier = context.Barrier(2)
+            queue = context.Queue()
+            workers = [
+                context.Process(target=_shared_reader_barrier, args=(str(ledger), barrier, queue, index))
+                for index in range(2)
+            ]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join(timeout=8)
+            for worker in workers:
+                if worker.is_alive():
+                    worker.terminate()
+                    worker.join()
+            self.assertTrue(all(worker.exitcode == 0 for worker in workers))
+            results = [queue.get(timeout=2) for _ in workers]
+            self.assertEqual(sorted(results), [("ok", 0), ("ok", 1)])
 
     def test_concurrent_process_appends_preserve_one_contiguous_hash_chain(self):
         with tempfile.TemporaryDirectory() as tmp:
