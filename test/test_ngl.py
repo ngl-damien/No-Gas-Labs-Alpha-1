@@ -1,5 +1,6 @@
 import json
 import multiprocessing
+from queue import Empty
 import sys
 import tempfile
 import unittest
@@ -16,6 +17,28 @@ def _append_after_barrier(ledger_path, barrier, queue, index):
         barrier.wait(timeout=10)
         entry = ngl.append_event(Path(ledger_path), f"worker-{index}", "CONCURRENT", "ARTIFACT_OBSERVED", {"worker": index})
         queue.put(("ok", entry["seq"]))
+    except Exception as exc:
+        queue.put(("error", repr(exc)))
+
+
+def _verify_after_lock(ledger_path, expected_head, started, queue):
+    started.set()
+    queue.put(ngl.verify_chain(Path(ledger_path), expected_head=expected_head)["status"])
+
+
+def _closure_after_lock(ledger_path, expected_head, scheduler_path, pay_path, started, queue):
+    started.set()
+    result = ngl._closure(
+        Path(ledger_path), expected_head, None, Path(scheduler_path), "S0", Path(pay_path)
+    )
+    queue.put(result["decision"])
+
+
+def _shared_reader_barrier(ledger_path, barrier, queue, index):
+    try:
+        with ngl._ledger_lock(Path(ledger_path), exclusive=False):
+            barrier.wait(timeout=5)
+            queue.put(("ok", index))
     except Exception as exc:
         queue.put(("error", repr(exc)))
 
@@ -76,6 +99,9 @@ class GateRunnerTests(unittest.TestCase):
         self.assertEqual(gate_runner.UNITTESTS["ngl-invariant-core"][1:4], ["-m", "unittest", "discover"])
 
 
+POSIX_FLOCK_AND_FORK = ngl.fcntl is not None and "fork" in multiprocessing.get_all_start_methods()
+
+
 class LedgerAndClosureTests(unittest.TestCase):
     def test_unanchored_and_expected_head_verification(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -129,6 +155,87 @@ class LedgerAndClosureTests(unittest.TestCase):
             pay.write_text(json.dumps({"artifact_sha256": "a" * 64}), encoding="utf-8")
             self.assertEqual(ngl._closure(ledger, head, None, scheduler, "S4", pay)["decision"], "blocked")
 
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and fork multiprocessing")
+    def test_verifier_waits_for_exclusive_writer_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "mission.jsonl"
+            entry = ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            context = multiprocessing.get_context("fork")
+            queue = context.Queue()
+            started = context.Event()
+            with ngl._ledger_lock(ledger, exclusive=True):
+                worker = context.Process(target=_verify_after_lock, args=(str(ledger), entry["entry_hash"], started, queue))
+                worker.start()
+                self.assertTrue(started.wait(timeout=2))
+                with self.assertRaises(Empty):
+                    queue.get(timeout=0.2)
+            worker.join(timeout=5)
+            self.assertEqual(worker.exitcode, 0)
+            self.assertEqual(queue.get(timeout=2), "CHAIN_INTACT")
+
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and fork multiprocessing")
+    def test_closure_verifies_and_reads_terminal_event_under_one_shared_snapshot_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "mission.jsonl"
+            ngl.append_event(ledger, "mppt", "GATE_EVALUATION", "EXECUTION_OBSERVED", {"decision": "completed"})
+            head = ngl._verify_internal(ledger)["head_hash"]
+            scheduler = root / "scheduler.json"
+            scheduler.write_text(json.dumps({"ready": True, "owner": "worker-a", "blockers": []}), encoding="utf-8")
+            pay = root / "pay.json"
+            pay.write_text(json.dumps({"artifact_sha256": "a" * 64}), encoding="utf-8")
+            context = multiprocessing.get_context("fork")
+            queue = context.Queue()
+            started = context.Event()
+            with ngl._ledger_lock(ledger, exclusive=True):
+                worker = context.Process(target=_closure_after_lock, args=(str(ledger), head, str(scheduler), str(pay), started, queue))
+                worker.start()
+                self.assertTrue(started.wait(timeout=2))
+                with self.assertRaises(Empty):
+                    queue.get(timeout=0.2)
+            worker.join(timeout=5)
+            self.assertEqual(worker.exitcode, 0)
+            self.assertEqual(queue.get(timeout=2), "completed")
+
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and fork multiprocessing")
+    def test_shared_reader_locks_allow_concurrent_readers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "mission.jsonl"
+            context = multiprocessing.get_context("fork")
+            barrier = context.Barrier(2)
+            queue = context.Queue()
+            workers = [
+                context.Process(target=_shared_reader_barrier, args=(str(ledger), barrier, queue, index))
+                for index in range(2)
+            ]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join(timeout=8)
+            for worker in workers:
+                if worker.is_alive():
+                    worker.terminate()
+                    worker.join()
+            self.assertTrue(all(worker.exitcode == 0 for worker in workers))
+            results = [queue.get(timeout=2) for _ in workers]
+            self.assertEqual(sorted(results), [("ok", 0), ("ok", 1)])
+
+    def test_missing_posix_flock_fails_ledger_operations_without_breaking_module_import(self):
+        original = ngl.fcntl
+        try:
+            ngl.fcntl = None
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaisesRegex(OSError, "requires POSIX fcntl.flock"):
+                    ngl.append_event(Path(tmp) / "mission.jsonl", "test", "EVENT", "USER_STATED", {})
+                # The independent gate evaluator remains importable and usable.
+                root = Path(tmp)
+                (root / "present.txt").write_text("available", encoding="utf-8")
+                result = gate_runner.evaluate_gate({"checks": [{"id": "present", "type": "file_exists", "path": "present.txt", "weight": 100}]}, root)
+                self.assertEqual(result["decision"], "completed")
+        finally:
+            ngl.fcntl = original
+
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and fork multiprocessing")
     def test_concurrent_process_appends_preserve_one_contiguous_hash_chain(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"

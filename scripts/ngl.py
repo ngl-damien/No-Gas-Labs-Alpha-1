@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
+from contextlib import contextmanager
+try:
+    import fcntl
+except ImportError:  # Keep non-ledger CLI commands importable on non-POSIX hosts.
+    fcntl = None
 import hashlib
 import json
 import os
@@ -62,7 +66,23 @@ def _verify_internal(ledger: Path) -> dict:
     return {"status": "CHAIN_INTACT", "count": len(entries), "head_hash": previous}
 
 
-def verify_chain(ledger: Path, expected_head: str | None = None, anchor_ref: Path | None = None) -> dict:
+@contextmanager
+def _ledger_lock(ledger: Path, *, exclusive: bool):
+    """Coordinate cooperating readers/writers through one persistent lock inode."""
+    if fcntl is None:
+        raise OSError("mission-ledger locking requires POSIX fcntl.flock; this operation is unavailable on this platform")
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = ledger.with_name(ledger.name + ".lock")
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        yield
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+
+
+def _verify_chain_unlocked(ledger: Path, expected_head: str | None = None, anchor_ref: Path | None = None) -> dict:
     if expected_head is not None and anchor_ref is not None:
         raise ValueError("supply only one external anchor source")
     if expected_head is None and anchor_ref is None:
@@ -96,15 +116,16 @@ def verify_chain(ledger: Path, expected_head: str | None = None, anchor_ref: Pat
     return {**internal, "anchor_source": "expected_head" if expected_head is not None else str(anchor_ref)}
 
 
+def verify_chain(ledger: Path, expected_head: str | None = None, anchor_ref: Path | None = None) -> dict:
+    if expected_head is None and anchor_ref is None:
+        return _verify_chain_unlocked(ledger, expected_head, anchor_ref)
+    with _ledger_lock(ledger, exclusive=False):
+        return _verify_chain_unlocked(ledger, expected_head, anchor_ref)
+
+
 def append_event(ledger: Path, actor: str, event_type: str, label: str, payload: dict) -> dict:
-    ledger.parent.mkdir(parents=True, exist_ok=True)
-    # POSIX advisory locking serializes independent CLI processes sharing this
-    # ledger on a filesystem that correctly implements flock semantics.
-    lock_path = ledger.with_name(ledger.name + ".lock")
-    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
-    try:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        # The head must be read only after acquiring the process-shared lock.
+    # The same persistent lock inode coordinates exclusive writers and shared readers.
+    with _ledger_lock(ledger, exclusive=True):
         internal = _verify_internal(ledger)
         if internal["status"] != "CHAIN_INTACT":
             raise RuntimeError("Refusing append to invalid ledger")
@@ -123,9 +144,6 @@ def append_event(ledger: Path, actor: str, event_type: str, label: str, payload:
             stream.flush()
             os.fsync(stream.fileno())
         return body
-    finally:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        os.close(lock_fd)
 
 
 def _anchor_args(parser: argparse.ArgumentParser) -> None:
@@ -149,12 +167,14 @@ def _load_json(path: Path) -> dict:
 
 def _closure(ledger: Path, expected_head: str | None, anchor_ref: Path | None,
              scheduler_preconditions: Path, pay_stage: str, pay_evidence: Path) -> dict:
-    verification = verify_chain(ledger, expected_head, anchor_ref)
-    if verification["status"] != "CHAIN_INTACT":
-        return {"decision": "blocked", "reason": "ledger is not externally anchored and intact", "verification": verification}
-    entries = _ledger_entries(ledger)
-    if not entries or entries[-1].get("event_type") != "GATE_EVALUATION" or entries[-1].get("payload", {}).get("decision") != "completed":
-        return {"decision": "blocked", "reason": "latest ledger event is not a completed gate evaluation", "verification": verification}
+    # Verify the anchor and inspect the terminal event from one immutable ledger snapshot.
+    with _ledger_lock(ledger, exclusive=False):
+        verification = _verify_chain_unlocked(ledger, expected_head, anchor_ref)
+        if verification["status"] != "CHAIN_INTACT":
+            return {"decision": "blocked", "reason": "ledger is not externally anchored and intact", "verification": verification}
+        entries = _ledger_entries(ledger)
+        if not entries or entries[-1].get("event_type") != "GATE_EVALUATION" or entries[-1].get("payload", {}).get("decision") != "completed":
+            return {"decision": "blocked", "reason": "latest ledger event is not a completed gate evaluation", "verification": verification}
     scheduler = _load_json(scheduler_preconditions)
     if set(scheduler) != {"ready", "owner", "blockers"} or scheduler.get("ready") is not True or not isinstance(scheduler.get("owner"), str) or not scheduler["owner"] or scheduler.get("blockers") != []:
         return {"decision": "blocked", "reason": "scheduler preconditions must have ready=true, a named owner, and no blockers", "verification": verification}
