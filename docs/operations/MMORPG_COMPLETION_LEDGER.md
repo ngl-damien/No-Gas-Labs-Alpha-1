@@ -1,3 +1,55 @@
+## Run 370 — Bounded refusal-register continuation — 2026-11-25
+
+- **Runtime PR:** [#732](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/732), draft child of [#730](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/730); exact head `beb6cf383f6c723bc54205cca2547a159d43d17a`, parent #730 head `88a8ef92d69a7e6533e84b9e620929463a6080ad`. Proposed branch only; not integrated into main.
+- **Capability:** the Evidence Archive still renders at most 20 refusal cards, but now offers a direct exact-event continuation to the first older retained refusal beyond the visible window. The shortcut is present only if the event ID is unique and its retained append position is available; otherwise it is withheld. The full Chronicle remains the retained-history source.
+- **Regression:** `test/institution-view.test.mjs` adds a 21-refusal fixture. It asserts the 20-card bound, newest-first order, exact continuation to `refusal-overflow-1`, and unchanged world state after navigation. This regression was added after the runtime commit, not test-first; no local test execution was available.
+- **Runtime:** `game/institution-view.mjs` adds the continuation control to the existing `renderTransferRefusalRegister`; no new event stream or canonical event is introduced.
+- **Exact-head verification:** Full Verify [45593794032](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45593794032) PASS; hosted preflight receipt present, warnings empty, verification report `passed=true`. Genesis [45593793881](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45593793881) PASS. PWA package [45593793970](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45593793970) PASS; deployment skipped. Combat Yard [45593793967](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45593793967) PASS.
+- **Remaining exact-head acceptance:** Browser [45593794013](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45593794013) FAIL; the current branch still expects hidden `Enter Forge` while the visible control is `Enter Guild Hall`. Worker A's separate #456 head `5d6d629fda9b44c4dce4be5637613097599ba623` has Browser PASS [42808064156](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42808064156), but is not in this branch ancestry; handoff [#456 comment 7159578919](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/456#issuecomment-7159578919). Quest Board [45593794053](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45593794053) and Android [45593794035](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45593794035) were still in progress at checkpoint capture; no terminal result is claimed.
+- **Worker A Android handoff:** #533 exact head `d4c6cc9c434b402039175179988954e391c06cf3`, Android [43668263362](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43668263362) failed after 6/15 tests; named Source Observatory journey failure, empty JUnit failure body, instrumentation process crash, and repeated ADB exit 1. Root cause remains unknown; handoff [#533 comment 7159552408](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7159552408).
+- **Integration distance:** compare of #732 head to main `21677d88cb027f3d16adacf92dbdd0ec08e96dbd` reports 605 commits ahead / 9 behind, merge base `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. This is a large divergent proposed stack; no merge-readiness inference.
+- **Gate interpretation:** G0–G8 remain IN_PROGRESS; G9 NOT_STARTED. No physical-device verification, distinct-human proof, integrated mainline capability, Founder acceptance, release or deployment.
+- **Authority and donor boundary:** refusal register/continuation is read-only over `projectChronicle()`; it creates no event, ownership, inventory, XP, quest progress, truth, approval or authority. Existing RAE/Relay receipt-vs-authority, Guild proposal/authorization, and Decision Chamber human-gate distinctions remain unchanged. No donor code copied in this run.
+- **Process:** root AGENTS, complete scheduler protocol and Institutional Charter read sequentially. Local portable preflight and local tests unavailable; hosted exact-head preflight/Full Verify passed. Nested AGENTS checks for game/test/scripts/docs/operations returned 404. Initial inventory was inadvertently bundled with required reads before the bootstrap sequence; baseline restarted after governing documents were read. Procedural compliance PARTIAL.
+- **Authority:** no merge, release, deployment, Founder approval, trust enrollment or authority transition.
+
+---
+
+## Run 369 — Evidence Archive transfer-refusal register — 2026-11-25
+
+**Candidate:** draft implementation PR [#730](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/730), runtime/test head `88a8ef92d69a7e6533e84b9e620929463a6080ad`, based on [#729](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/729) head `2997eb760904666be8da602879b83cf870ef5f13). The capability is proposed-branch work, not integrated into main.
+
+| Gate | Status | Run 369 evidence and limit |
+|---|---|---|
+| G0 Product definition | IN_PROGRESS | Completion contract remains authoritative; supported physical-device baseline and initial player scale remain unestablished. |
+| G1 Coherent playable loop | IN_PROGRESS | Evidence Archive now surfaces retained transfer refusals as inspectable objects with exact Chronicle navigation when identity and append position are unique. This is a bounded institutional interaction, not the integrated Founder-accepted loop. |
+| G2 Persistent character/world | IN_PROGRESS | The register is a read-only projection over retained Chronicle events. No persistence contract or restart gate is newly closed by this UI change. |
+| G3 Authoritative multiplayer | IN_PROGRESS | The underlying event is already retained by the world; this renderer creates no canonical event. No new distinct-human or scale evidence. |
+| G4 Core RPG | IN_PROGRESS | Refusal remains consent history, not a transfer, reward, punishment, inventory mutation, XP, or quest progress. Existing field-item transfer mechanics are unchanged. |
+| G5 Social/economic | IN_PROGRESS | Explicit recipient refusal is now a first-class Evidence Archive object and can be inspected by exact event ID. No broader public-economy or moderation release claim. |
+| G6 Persistent world/content | IN_PROGRESS | The Evidence Archive has a bounded refusal register (20 visible objects; overflow disclosed) derived from the existing Chronicle projection. This is proposed branch content, not mainline integration or feature-complete repeatable content. |
+| G7 Android-first | IN_PROGRESS | PWA package passed with deployment skipped; Combat Yard + Evidence Archive Chronicle journey passed at 320px/390px. Browser acceptance fails on Worker A's inherited Guild Hall selector mismatch. Quest Board mobile and Android emulator were still in progress on the latest exact head. No physical-device verification. |
+| G8 Operational readiness | IN_PROGRESS | Hosted preflight and Full Verify pass on exact head; auth hardening, backup/restore, abuse controls, concurrency and declared-scale performance remain incomplete. |
+| G9 Release / Founder acceptance | NOT_STARTED | PR #730 is open and unmerged; no release candidate, Founder acceptance, deployment or distribution. |
+
+**Test-first sequence**
+- Test-only [9926577](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/9926577daff362c27d2e0a915abadc62c989ac7a) added the refusal-register regression. [Full Verify 45584138745](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45584138745) reproduced the missing object assertion after hosted preflight completed with zero warnings/failures. [Genesis 45584138759](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45584138759) PASS.
+- Runtime [4e93350](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/4e933506b50e01d4958765deb285d64fe75e3c9d) added a bounded Evidence Archive refusal register using existing `projectChronicle()`.
+- Negative test [88a8ef9](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/88a8ef92d69a7e6533e84b9e620929463a6080ad) requires duplicate world-event identities to remain visible but withhold exact Chronicle navigation.
+
+**Exact-current-head evidence on `88a8ef9`**
+- [Full Verify 45584815832](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45584815832): PASS. Hosted preflight completed; Node tests, Python inspector, game package build and bounded institutional exercise exited 0.
+- [Genesis 45584815631](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45584815631): PASS.
+- [PWA package 45584816074](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45584816074): PASS; deployment skipped.
+- [Combat Yard mobile 45584815683](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45584815683): PASS; server-gated Combat Yard and Evidence Archive Chronicle exercised at 320px/390px.
+- [Browser 45584815784](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45584815784): FAIL. Guild Hall journey times out because the helper expects hidden `Enter Forge` while runtime exposes `Enter Guild Hall`; fresh Worker A handoff [#456 comment 7158295359](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/456#issuecomment-7158295359).
+- [Quest Board mobile 45584815866](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45584815866): IN PROGRESS at checkpoint capture.
+- [Android Alpha-1 45584815649](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/45584815649): IN PROGRESS during Gradle setup at checkpoint capture; no APK/emulator result claimed.
+
+**Boundaries:** the register uses the existing Chronicle projection and creates no canonical event. Duplicate IDs or unavailable append positions withhold navigation. Invalid/unlinked refusal claims remain visibly unvalidated. No ownership, inventory, XP, quest progress, factual truth, approval or authority is created. No merge, release, deployment, physical-device acceptance, distinct-human proof or Founder approval occurred. Local portable preflight/tests were unavailable; hosted exact-head preflight and CI are the verification evidence.
+
+---
+
 ## Run 308 — gate evidence update — 2026-11-22
 
 **Candidate:** draft PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), runtime/test head `39f39a321f19db49ebc442ebcbfc4081616b389b`, main base `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. The capability is hosted-verified on a proposed branch only; it is not integrated into main.
