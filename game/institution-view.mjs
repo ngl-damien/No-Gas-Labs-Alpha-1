@@ -1820,6 +1820,75 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact, 
   container.append(more);
  }
 }
+function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
+ const entries=Array.isArray(chronicle?.entries)?chronicle.entries:[];
+ const refusals=entries.filter(entry=>
+  entry?.source==='world'&&entry.eventType==='field-item-transfer-declined'
+ );
+ const identityCounts=new Map();
+ for(const entry of entries){
+  if(typeof entry?.id==='string')identityCounts.set(entry.id,(identityCounts.get(entry.id)||0)+1);
+ }
+ const section=el('section');
+ section.dataset.evidenceArchiveTransferRefusals='true';
+ section.append(el('h3','RETAINED TRANSFER REFUSALS'));
+ section.append(el('p','Explicit recipient refusals remain inspectable consent history. A refusal is not a completed transfer, ownership change, reward, punishment, factual verdict, or authority decision.'));
+ if(!refusals.length){
+  section.append(el('p',chronicle?.malformed>0
+   ?'No classifiable transfer refusal is visible in this snapshot; malformed retained history remains. Absence is not inferred.'
+   :'No retained field-item transfer refusal is recorded in this snapshot.'));
+  container.append(section);
+  return;
+ }
+ const visible=refusals.slice(0,20);
+ for(const entry of visible){
+  const match=/^world:([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/.exec(entry.id||'');
+  const eventId=match?.[1]||'';
+  const unique=!!eventId&&identityCounts.get(entry.id)===1;
+  const card=el('article');
+  card.className='field-card';
+  card.dataset.evidenceArchiveTransferRefusal=eventId||'unidentified';
+  card.dataset.eventId=entry.id;
+  card.dataset.eventSource='world';
+  card.dataset.refusalStatus=entry.warning?'unvalidated':'retained';
+  card.append(el('h3',entry.title||'Retained transfer refusal'));
+  card.append(el('p',entry.summary||'The refusal is retained; no ownership change is inferred.'));
+  if(entry.detail)card.append(el('p',entry.detail));
+  const actor=entry.actorId&&entry.actorRole
+   ?'Recorded recipient: '+entry.actor+' · '+entry.actorId+' · '+entry.actorRole+' (pseudonymous session attribution, not proof of a distinct human).'
+   :'Recorded recipient attribution is incomplete; no identity or authority is inferred.';
+  card.append(el('small',actor));
+  card.append(el('small',Number.isSafeInteger(entry.streamPosition)&&entry.streamPosition>0
+   ?'WORLD STREAM · APPEND POSITION '+entry.streamPosition
+   :'WORLD STREAM · APPEND POSITION UNAVAILABLE'));
+  if(entry.warning){
+   const warning=el('p',entry.warning+' The retained claim remains visible, but its transfer linkage is not validated.');
+   warning.className='evidence-warning';
+   card.append(warning);
+  }
+  if(typeof onInspectEvent==='function'&&unique&&Number.isSafeInteger(entry.streamPosition)&&entry.streamPosition>0){
+   const inspect=el('button','Inspect exact refusal in World Chronicle →');
+   inspect.type='button';
+   inspect.className='secondary-button';
+   inspect.dataset.evidenceArchiveInspectRefusal=eventId;
+   inspect.dataset.eventId=eventId;
+   inspect.onclick=()=>onInspectEvent(eventId);
+   card.append(inspect);
+  }else{
+   const notice=el('small',!unique
+    ?'Exact Chronicle navigation withheld because the event identity is missing or ambiguous.'
+    :'Exact Chronicle navigation is unavailable for this snapshot; retained history remains visible.');
+   notice.dataset.evidenceArchiveRefusalNavigation='withheld';
+   card.append(notice);
+  }
+  section.append(card);
+ }
+ if(refusals.length>visible.length){
+  section.append(el('p',(refusals.length-visible.length)+' additional retained refusal(s) remain in the full World Chronicle.'));
+ }
+ container.append(section);
+}
+
 export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact,onOpenLocation,onInspectEvent}={}){
  if(shared&&kernelUnavailable){
   const warning=el('p','Canonical institutional history could not be loaded. The missing history is not being treated as empty; retry when the shared service is reachable.');
@@ -1832,6 +1901,7 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
  renderEvidenceArchiveActivityStreams(container,world,onOpenArtifact,onInspectEvent);
  renderSourceObservationResponseQueue(container,world,onOpenArtifact,onInspectEvent);
  const chronicle=projectChronicle({world,kernel});
+ renderTransferRefusalRegister(container,chronicle,onInspectEvent);
  const entries=chronicle.entries.filter(entry=>{
   if(entry.source==='kernel')return shared;
   return entry.source==='world'&&!['report','contribute'].includes(entry.eventType);
