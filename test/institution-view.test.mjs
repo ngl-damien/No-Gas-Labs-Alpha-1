@@ -2017,6 +2017,50 @@ test('Evidence Archive exposes retained field-item refusals as exact Chronicle-l
   assert.deepEqual(world, before, 'refusal discovery and Chronicle navigation must remain read-only');
 }));
  
+test('Evidence Archive keeps its refusal register bounded and offers exact continuation to the next older event', () => withDocument(() => {
+  const world = createWorld({
+    id: 'evidence-archive-transfer-refusal-overflow',
+    founderName: 'Chronicle Founder',
+    now: '2026-11-25T08:00:00.000Z'
+  });
+  const actor = { id: 'witness-refusal-overflow', name: 'Witness', role: 'witness' };
+  const events = Array.from({ length: 21 }, (_, index) => ({
+    id: 'refusal-overflow-' + (index + 1),
+    type: 'field-item-transfer-declined',
+    actor,
+    at: '2026-11-25T08:' + String(index + 1).padStart(2, '0') + ':00.000Z',
+    offerId: 'offer-overflow-' + (index + 1),
+    itemId: 'item-overflow-' + (index + 1)
+  }));
+  world.events.push(...events);
+  world.revision = world.events.length;
+  const before = structuredClone(world);
+  const inspected = [];
+  const root = element('main');
+
+  renderEvidenceArchive(root, {
+    world,
+    kernelUnavailable: true,
+    onInspectEvent: id => inspected.push(id)
+  });
+
+  const cards = walk(root).filter(node => node.dataset?.evidenceArchiveTransferRefusal);
+  assert.equal(cards.length, 20, 'the mobile register must remain bounded to twenty visible refusal cards');
+  assert.equal(cards[0].dataset.evidenceArchiveTransferRefusal, 'refusal-overflow-21',
+    'the newest retained refusal appears first');
+  assert.equal(cards[19].dataset.evidenceArchiveTransferRefusal, 'refusal-overflow-2');
+
+  const continuation = walk(root).find(node =>
+    node.dataset?.evidenceArchiveNextOlderRefusal === 'refusal-overflow-1'
+  );
+  assert.ok(continuation, 'the first hidden older refusal must remain directly reachable');
+  continuation.onclick();
+  assert.deepEqual(inspected, ['refusal-overflow-1'],
+    'continuation must navigate to the exact retained event, not a reconstructed record');
+  assert.match(textOf(root), /1 additional retained refusal/);
+  assert.deepEqual(world, before, 'bounded browsing and continuation remain read-only');
+}));
+
 test('Evidence Archive withholds refusal navigation when a world event identity is duplicated', () => withDocument(() => {
   const world = createWorld({
     id: 'evidence-archive-transfer-refusal-duplicate',
