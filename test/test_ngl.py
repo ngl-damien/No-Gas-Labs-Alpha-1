@@ -21,11 +21,13 @@ def _append_after_barrier(ledger_path, barrier, queue, index):
         queue.put(("error", repr(exc)))
 
 
-def _verify_after_lock(ledger_path, expected_head, queue):
+def _verify_after_lock(ledger_path, expected_head, started, queue):
+    started.set()
     queue.put(ngl.verify_chain(Path(ledger_path), expected_head=expected_head)["status"])
 
 
-def _closure_after_lock(ledger_path, expected_head, scheduler_path, pay_path, queue):
+def _closure_after_lock(ledger_path, expected_head, scheduler_path, pay_path, started, queue):
+    started.set()
     result = ngl._closure(
         Path(ledger_path), expected_head, None, Path(scheduler_path), "S0", Path(pay_path)
     )
@@ -147,9 +149,11 @@ class LedgerAndClosureTests(unittest.TestCase):
             entry = ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
             context = multiprocessing.get_context("fork")
             queue = context.Queue()
+            started = context.Event()
             with ngl._ledger_lock(ledger, exclusive=True):
-                worker = context.Process(target=_verify_after_lock, args=(str(ledger), entry["entry_hash"], queue))
+                worker = context.Process(target=_verify_after_lock, args=(str(ledger), entry["entry_hash"], started, queue))
                 worker.start()
+                self.assertTrue(started.wait(timeout=2))
                 with self.assertRaises(Empty):
                     queue.get(timeout=0.2)
             worker.join(timeout=5)
@@ -168,9 +172,11 @@ class LedgerAndClosureTests(unittest.TestCase):
             pay.write_text(json.dumps({"artifact_sha256": "a" * 64}), encoding="utf-8")
             context = multiprocessing.get_context("fork")
             queue = context.Queue()
+            started = context.Event()
             with ngl._ledger_lock(ledger, exclusive=True):
-                worker = context.Process(target=_closure_after_lock, args=(str(ledger), head, str(scheduler), str(pay), queue))
+                worker = context.Process(target=_closure_after_lock, args=(str(ledger), head, str(scheduler), str(pay), started, queue))
                 worker.start()
+                self.assertTrue(started.wait(timeout=2))
                 with self.assertRaises(Empty):
                     queue.get(timeout=0.2)
             worker.join(timeout=5)
