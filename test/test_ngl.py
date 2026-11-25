@@ -99,6 +99,9 @@ class GateRunnerTests(unittest.TestCase):
         self.assertEqual(gate_runner.UNITTESTS["ngl-invariant-core"][1:4], ["-m", "unittest", "discover"])
 
 
+POSIX_FLOCK_AND_FORK = ngl.fcntl is not None and "fork" in multiprocessing.get_all_start_methods()
+
+
 class LedgerAndClosureTests(unittest.TestCase):
     def test_unanchored_and_expected_head_verification(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -152,6 +155,7 @@ class LedgerAndClosureTests(unittest.TestCase):
             pay.write_text(json.dumps({"artifact_sha256": "a" * 64}), encoding="utf-8")
             self.assertEqual(ngl._closure(ledger, head, None, scheduler, "S4", pay)["decision"], "blocked")
 
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and fork multiprocessing")
     def test_verifier_waits_for_exclusive_writer_lock(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
@@ -169,6 +173,7 @@ class LedgerAndClosureTests(unittest.TestCase):
             self.assertEqual(worker.exitcode, 0)
             self.assertEqual(queue.get(timeout=2), "CHAIN_INTACT")
 
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and fork multiprocessing")
     def test_closure_verifies_and_reads_terminal_event_under_one_shared_snapshot_lock(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -192,6 +197,7 @@ class LedgerAndClosureTests(unittest.TestCase):
             self.assertEqual(worker.exitcode, 0)
             self.assertEqual(queue.get(timeout=2), "completed")
 
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and fork multiprocessing")
     def test_shared_reader_locks_allow_concurrent_readers(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
@@ -229,6 +235,7 @@ class LedgerAndClosureTests(unittest.TestCase):
         finally:
             ngl.fcntl = original
 
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and fork multiprocessing")
     def test_concurrent_process_appends_preserve_one_contiguous_hash_chain(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
