@@ -2162,6 +2162,45 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'screenshot': item_history_chronicle_screenshot.name
         }
         witness_page.locator('#sheet-close').tap()
+
+        # The same recipient refusal must also be discoverable as a first-class
+        # Evidence Archive object at 320px, not only through the item's history.
+        open_evidence_archive(witness_page)
+        evidence_archive_before = authoritative_snapshot(witness_page)
+        refusal_register_card = witness_page.locator(
+            '#sheet-content [data-evidence-archive-transfer-refusal="' + decline_event_id + '"]'
+        )
+        expect(refusal_register_card).to_have_count(1)
+        expect(refusal_register_card).to_have_attribute('data-event-source', 'world')
+        expect(refusal_register_card).to_have_attribute('data-refusal-status', 'retained')
+        refusal_inspect = refusal_register_card.locator(
+            '[data-evidence-archive-inspect-refusal="' + decline_event_id + '"]'
+        )
+        expect(refusal_inspect).to_have_count(1)
+        refusal_inspect.tap()
+        expect(witness_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        archive_refusal_card = witness_page.locator(
+            '#sheet-content [data-event-id="world:' + decline_event_id + '"]'
+        )
+        expect(archive_refusal_card).to_have_count(1)
+        expect(archive_refusal_card.locator('h3')).to_have_text('Field-item transfer declined')
+        evidence_archive_after = authoritative_snapshot(witness_page)
+        evidence_archive_read_only = (
+            shared_world_snapshot(evidence_archive_after) == shared_world_snapshot(evidence_archive_before)
+        )
+        assert evidence_archive_read_only, 'Evidence Archive refusal inspection must not mutate shared world history.'
+        assert evidence_archive_after['xp'] == evidence_archive_before['xp'], 'Inspecting retained dissent must not award XP.'
+        evidence_archive_refusal_register_320 = {
+            'viewportWidth': 320,
+            'eventId': decline_event_id,
+            'visibleAsFirstClassObject': True,
+            'exactChronicleEventOpened': True,
+            'readOnly': evidence_archive_read_only,
+            'xpDelta': evidence_archive_after['xp'] - evidence_archive_before['xp']
+        }
+        evidence_archive_screenshot_320 = out / 'evidence-archive-refusal-register-320.png'
+        witness_page.screenshot(path=str(evidence_archive_screenshot_320), full_page=True)
+        witness_page.locator('#sheet-close').tap()
         witness_page.set_viewport_size({'width': 390, 'height': 844})
 
         # Keep the Founder sheet open: the next existing step equips the
@@ -2245,8 +2284,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert after_founder['xp'] == founder_before['xp'] == after_silent['xp'], (
             'Guild membership, observations, dissent and response award no XP.'
         )
-        assert after_founder['revision'] == founder_before['revision'] + 17, (
-            'Exactly seventeen canonical actions should be retained: the original nine, four transfer/equipment actions, the second contribution plus Forge, and one recipient offer plus decline.'
+        assert after_founder['revision'] == founder_before['revision'] + 18, (
+            'Exactly eighteen canonical actions should be retained: the original nine, four transfer/equipment actions, the second contribution plus Forge, one recipient offer plus decline, and the Witness’s Evidence Archive discovery.'
         )
         assert after_witness['xp'] == witness_before['xp'] == after_silent['xp']
         event_summary = founder_page.evaluate("""async () => {
@@ -2784,6 +2823,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'declinedChronicleCard': declined_chronicle_card,
             'itemHistoryChronicleNavigation': item_history_chronicle_navigation,
             'itemHistoryChronicleNavigation320': item_history_chronicle_navigation_320,
+            'evidenceArchiveRefusalRegister320': evidence_archive_refusal_register_320,
             'eventChainNavigation': {
                 'declinedEventKinds': chain_navigation_results,
                 'declinedChainComplete': chain_navigation_results == ['source', 'forge', 'offer', 'declined'],
