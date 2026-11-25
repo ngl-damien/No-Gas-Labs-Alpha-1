@@ -119,7 +119,7 @@ def append_event(ledger: Path, actor: str, event_type: str, label: str, payload:
         }
         body["entry_hash"] = _hash(body)
         with ledger.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(body, sort_keys=True, ensure_ascii=False) + "\\n")
+            stream.write(json.dumps(body, sort_keys=True, ensure_ascii=False) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
         return body
