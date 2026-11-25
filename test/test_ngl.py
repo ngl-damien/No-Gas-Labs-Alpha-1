@@ -1,5 +1,6 @@
 import json
 import multiprocessing
+import os
 from queue import Empty
 import sys
 import tempfile
@@ -261,6 +262,20 @@ class LedgerAndClosureTests(unittest.TestCase):
             self.assertFalse(ledger.exists())
 
     @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and fork multiprocessing")
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock, O_NOFOLLOW, and fork multiprocessing")
+    def test_hard_linked_lock_file_is_rejected_without_touching_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "mission.jsonl"
+            target = root / "unrelated.txt"
+            target.write_text("preserve", encoding="utf-8")
+            target.chmod(0o600)
+            os.link(target, root / "mission.jsonl.lock")
+            with self.assertRaisesRegex(OSError, "hard-link aliases"):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            self.assertEqual(target.read_text(encoding="utf-8"), "preserve")
+            self.assertFalse(ledger.exists())
+
     def test_concurrent_process_appends_preserve_one_contiguous_hash_chain(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
