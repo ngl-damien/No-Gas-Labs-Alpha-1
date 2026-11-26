@@ -45,9 +45,28 @@ const STUDY_REVIEW_FIELDS = Object.freeze([
   'id', 'type', 'studyId', 'reviewId', 'creationId', 'version', 'at',
   'actor', 'role', 'response', 'reflection'
 ]);
+// The exported review helpers call these inherited array methods on retained
+// history. Capture their expected intrinsics before processing caller data;
+// an accessor or replacement on Array.prototype must not execute in lookup.
+const STUDY_REVIEW_ARRAY_METHODS = Object.freeze([
+  ['filter', Array.prototype.filter],
+  ['map', Array.prototype.map],
+  ['indexOf', Array.prototype.indexOf],
+  ['some', Array.prototype.some]
+]);
+const STUDY_REVIEW_ARRAY_ITERATOR = Array.prototype[Symbol.iterator];
 function hasSafeStudyReviewInputs(note, events) {
   try {
-    if (STUDY_REVIEW_FIELDS.some(field => Object.getOwnPropertyDescriptor(Object.prototype, field))) return false;
+    for (let index = 0; index < STUDY_REVIEW_FIELDS.length; index += 1) {
+      if (Object.getOwnPropertyDescriptor(Object.prototype, STUDY_REVIEW_FIELDS[index])) return false;
+    }
+    for (let index = 0; index < STUDY_REVIEW_ARRAY_METHODS.length; index += 1) {
+      const [name, expected] = STUDY_REVIEW_ARRAY_METHODS[index];
+      const descriptor = Object.getOwnPropertyDescriptor(Array.prototype, name);
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.value !== expected) return false;
+    }
+    const iterator = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator);
+    if (!iterator || !Object.hasOwn(iterator, 'value') || iterator.value !== STUDY_REVIEW_ARRAY_ITERATOR) return false;
     return hasCompleteRetainedEventIdentity({ events: [note] }) &&
       hasCompleteRetainedEventIdentity({ events });
   } catch {
