@@ -359,7 +359,7 @@ class LedgerAndClosureTests(unittest.TestCase):
                 with self.assertRaisesRegex(OSError, "injected unlock failure"):
                     with ngl._ledger_lock(ledger, exclusive=True):
                         pass
-                close_spy.assert_called_once()
+                self.assertEqual(close_spy.call_count, 2, "both the lock and directory descriptors must close")
 
     @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and O_NOFOLLOW")
     def test_lock_descriptor_is_closed_when_lock_acquisition_raises(self):
@@ -375,7 +375,7 @@ class LedgerAndClosureTests(unittest.TestCase):
                 with self.assertRaisesRegex(OSError, "injected lock acquisition failure"):
                     with ngl._ledger_lock(ledger, exclusive=True):
                         pass
-                close_spy.assert_called_once()
+                self.assertEqual(close_spy.call_count, 2, "both the lock and directory descriptors must close")
 
     def test_writer_lock_is_released_when_serialization_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -385,6 +385,74 @@ class LedgerAndClosureTests(unittest.TestCase):
             entry = ngl.append_event(ledger, "test", "GOOD", "ARTIFACT_OBSERVED", {"ok": True})
             self.assertEqual(entry["seq"], 0)
             self.assertEqual(ngl._verify_internal(ledger)["status"], "CHAIN_INTACT")
+
+
+    @unittest.skipUnless(
+        ngl.fcntl is not None
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in os.supports_dir_fd
+        and os.mkdir in os.supports_dir_fd,
+        "requires POSIX directory-descriptor and no-follow support",
+    )
+    def test_symlinked_ledger_parent_is_rejected_without_creating_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "real"
+            target.mkdir()
+            alias = root / "alias"
+            alias.symlink_to(target, target_is_directory=True)
+            ledger = alias / "mission.jsonl"
+
+            with self.assertRaises(OSError):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+
+            self.assertFalse((target / "mission.jsonl.lock").exists())
+            self.assertFalse((target / "mission.jsonl").exists())
+
+    @unittest.skipUnless(
+        ngl.fcntl is not None
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in os.supports_dir_fd
+        and os.mkdir in os.supports_dir_fd,
+        "requires POSIX directory-descriptor and no-follow support",
+    )
+    def test_group_or_world_writable_nonsticky_ledger_parent_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp) / "shared"
+            parent.mkdir()
+            parent.chmod(0o777)
+            ledger = parent / "mission.jsonl"
+
+            try:
+                with self.assertRaisesRegex(OSError, "group/world writable"):
+                    ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+                self.assertFalse((parent / "mission.jsonl.lock").exists())
+                self.assertFalse(ledger.exists())
+            finally:
+                parent.chmod(0o700)
+
+    @unittest.skipUnless(
+        ngl.fcntl is not None
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in os.supports_dir_fd
+        and os.mkdir in os.supports_dir_fd,
+        "requires POSIX directory-descriptor and no-follow support",
+    )
+    def test_parent_path_with_dotdot_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            nested = root / "nested"
+            nested.mkdir()
+            ledger = nested / ".." / "mission.jsonl"
+
+            with self.assertRaisesRegex(OSError, "must not contain '..'"):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+
+            self.assertFalse((root / "mission.jsonl.lock").exists())
+            self.assertFalse((root / "mission.jsonl").exists())
 
 
 if __name__ == "__main__":
