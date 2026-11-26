@@ -638,7 +638,7 @@ test('study review projections fail closed on inherited optional-field accessors
     assert.equal(hasStudyReviewRecord(study, history), false);
     assert.equal(inheritedReads, 0);
   } finally {
-    if (previousDescriptor) Object.defineProperty(Object.prototype, 'studyId', previousDescriptor);
+    if (previousDescriptor) Object.defineProperty(Object.prototype, 'role', previousDescriptor);
     else delete Object.prototype.role;
   }
 });
