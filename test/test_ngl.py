@@ -138,6 +138,32 @@ class LedgerAndClosureTests(unittest.TestCase):
             self.assertEqual(ngl.verify_chain(ledger, expected_head=final["entry_hash"])["status"], "TAMPER_DETECTED")
             self.assertNotEqual(first["entry_hash"], final["entry_hash"])
 
+    def test_closure_fails_closed_on_hash_intact_non_object_terminal_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "m.jsonl"
+            entry = {
+                "seq": 0,
+                "timestamp": "2026-11-26T00:00:00+00:00",
+                "actor": "test",
+                "event_type": "GATE_EVALUATION",
+                "epistemic_label": "EXECUTION_OBSERVED",
+                "prev_hash": ngl.GENESIS,
+                "payload": None,
+            }
+            entry["entry_hash"] = ngl._hash(entry)
+            ledger.write_text(json.dumps(entry, sort_keys=True) + "\\n", encoding="utf-8")
+            scheduler = root / "scheduler.json"
+            scheduler.write_text(json.dumps({"ready": True, "owner": "worker-a", "blockers": []}), encoding="utf-8")
+            pay = root / "pay.json"
+            pay.write_text(json.dumps({"artifact_sha256": "a" * 64}), encoding="utf-8")
+
+            result = ngl._closure(ledger, entry["entry_hash"], None, scheduler, "S0", pay)
+
+            self.assertEqual(result["decision"], "blocked")
+            self.assertEqual(result["reason"], "latest ledger event is not a completed gate evaluation")
+            self.assertEqual(result["verification"]["status"], "CHAIN_INTACT")
+
     def test_closure_requires_anchored_completed_gate_scheduler_and_payloop(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
