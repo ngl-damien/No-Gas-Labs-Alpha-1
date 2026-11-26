@@ -271,7 +271,8 @@ class LedgerAndClosureTests(unittest.TestCase):
             lock.write_text("", encoding="utf-8")
             lock.chmod(0o600)
             current_uid = os.getuid()
-            with patch.object(ngl.os, "getuid", return_value=current_uid + 1):
+            with patch.object(ngl, "_validate_ledger_directory"), \
+                 patch.object(ngl.os, "getuid", return_value=current_uid + 1):
                 with self.assertRaisesRegex(OSError, "not owned by the current user"):
                     ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
             self.assertFalse(ledger.exists())
@@ -349,33 +350,55 @@ class LedgerAndClosureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
             real_close = os.close
+            real_open = os.open
+            opened_fds = []
+
+            def tracked_open(*args, **kwargs):
+                fd = real_open(*args, **kwargs)
+                opened_fds.append(fd)
+                return fd
 
             def fail_unlock(fd, operation):
                 if operation == ngl.fcntl.LOCK_UN:
                     raise OSError("injected unlock failure")
 
             with patch.object(ngl.fcntl, "flock", side_effect=fail_unlock), \
+                 patch.object(ngl.os, "open", side_effect=tracked_open), \
                  patch.object(ngl.os, "close", wraps=real_close) as close_spy:
                 with self.assertRaisesRegex(OSError, "injected unlock failure"):
                     with ngl._ledger_lock(ledger, exclusive=True):
                         pass
-                self.assertEqual(close_spy.call_count, 2, "both the lock and directory descriptors must close")
+                self.assertEqual(close_spy.call_count, len(opened_fds))
+                for fd in set(opened_fds):
+                    with self.assertRaises(OSError):
+                        os.fstat(fd)
 
     @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and O_NOFOLLOW")
     def test_lock_descriptor_is_closed_when_lock_acquisition_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
             real_close = os.close
+            real_open = os.open
+            opened_fds = []
+
+            def tracked_open(*args, **kwargs):
+                fd = real_open(*args, **kwargs)
+                opened_fds.append(fd)
+                return fd
 
             def fail_acquire(fd, operation):
                 raise OSError("injected lock acquisition failure")
 
             with patch.object(ngl.fcntl, "flock", side_effect=fail_acquire), \
+                 patch.object(ngl.os, "open", side_effect=tracked_open), \
                  patch.object(ngl.os, "close", wraps=real_close) as close_spy:
                 with self.assertRaisesRegex(OSError, "injected lock acquisition failure"):
                     with ngl._ledger_lock(ledger, exclusive=True):
                         pass
-                self.assertEqual(close_spy.call_count, 2, "both the lock and directory descriptors must close")
+                self.assertEqual(close_spy.call_count, len(opened_fds))
+                for fd in set(opened_fds):
+                    with self.assertRaises(OSError):
+                        os.fstat(fd)
 
     def test_writer_lock_is_released_when_serialization_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
