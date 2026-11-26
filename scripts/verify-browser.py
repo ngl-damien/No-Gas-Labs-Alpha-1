@@ -622,6 +622,9 @@ def institutional_locations(browser,url,out):
         page.locator('#start-private').click()
         page.locator('#world').wait_for(state='visible')
         expect(page.locator('#world')).to_have_attribute('data-world-renderer', 'pixel-v1')
+        world_npc_locations=page.locator('#world').get_attribute('data-world-npc-locations')
+        assert world_npc_locations is not None, 'World renderer must expose its NPC route manifest for acceptance'
+        assert world_npc_locations.split(';').count('contradiction-clerk=evidence_archive')==1, f'Contradiction Clerk must have exactly one Evidence Archive route: {world_npc_locations}'
         cases=[
             ('The Relay','Carry the question.','Draft a portable request →'),
             ('River of Receipts','The river remembers bytes.','Build a source observatory →'),
