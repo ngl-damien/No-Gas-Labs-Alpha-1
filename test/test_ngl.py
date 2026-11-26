@@ -5,6 +5,7 @@ from queue import Empty
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -262,6 +263,19 @@ class LedgerAndClosureTests(unittest.TestCase):
             self.assertFalse(ledger.exists())
 
     @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and fork multiprocessing")
+    def test_lock_file_owned_by_another_uid_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "mission.jsonl"
+            lock = root / "mission.jsonl.lock"
+            lock.write_text("", encoding="utf-8")
+            lock.chmod(0o600)
+            current_uid = os.getuid()
+            with patch.object(ngl.os, "getuid", return_value=current_uid + 1):
+                with self.assertRaisesRegex(OSError, "not owned by the current user"):
+                    ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            self.assertFalse(ledger.exists())
+
     @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock, O_NOFOLLOW, and fork multiprocessing")
     def test_hard_linked_lock_file_is_rejected_without_touching_target(self):
         with tempfile.TemporaryDirectory() as tmp:
