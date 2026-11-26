@@ -536,7 +536,7 @@ test('quest progression fails closed when a retained event slot has no safely re
   assert.equal(trail.length, 1);
   assert.equal(trail[0].id, 'founder-history-identity-unavailable');
   assert.equal(trail[0].progress, 0);
-  assert.match(trail[0].blockedReason, /event identity.*incomplete/i);
+  assert.match(trail[0].blockedReason, /uniqueness cannot be established/i);
 });
 
 test('quest progression rejects accessor-backed event identity without invoking the accessor', () => {
