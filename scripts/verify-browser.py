@@ -1837,7 +1837,7 @@ def shared(browser,url,data,out):
         )
         expect(a.locator('#world')).to_have_attribute(
             'aria-label',
-            re.compile(re.escape(expected_map_accessibility))
+            re.compile('.*' + re.escape(expected_map_accessibility) + '.*')
         )
         expect(b.locator('#world')).to_have_attribute('data-source-observation-counts','unavailable')
         expect(a.locator('#source-observations')).to_contain_text(challenge_text)
