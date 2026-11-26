@@ -129,6 +129,18 @@ class LedgerAndClosureTests(unittest.TestCase):
             anchor.write_text(json.dumps({"head_hash": entry["entry_hash"], "count": 2}), encoding="utf-8")
             self.assertEqual(ngl.verify_chain(ledger, anchor_ref=anchor)["status"], "TAMPER_DETECTED")
 
+    def test_blank_record_is_tampering_even_when_hash_chain_head_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "ledger.jsonl"
+            entry = ngl.append_event(ledger, "test", "A", "ARTIFACT_OBSERVED", {})
+            with ledger.open("a", encoding="utf-8") as stream:
+                stream.write("\n")
+
+            verification = ngl.verify_chain(ledger, expected_head=entry["entry_hash"])
+
+            self.assertEqual(verification["status"], "TAMPER_DETECTED")
+            self.assertIn("blank ledger record at line 2", verification["detail"])
+
     def test_truncation_is_detected_by_external_anchor(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "ledger.jsonl"
