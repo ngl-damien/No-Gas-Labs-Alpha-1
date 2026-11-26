@@ -318,6 +318,22 @@ test('Witness projections do not expose an unpublished current revision through 
   assert.equal(getLocationAction('relay', world, witness).type, 'places');
 });
 
+test('duplicate creation identities do not expose an ambiguous publication to a Witness', () => {
+  const world = {
+    creations: [
+      { ...creation, kind: 'comic', version: 1, publishedAt: at1, versions: [] },
+      { ...creation, kind: 'comic', version: 2, publishedAt: at2, versions: [] }
+    ],
+    discoveries: ['relay', 'river', 'overlook', 'ruins'].map((locationId, index) =>
+      discovery('duplicate-creation-discovery-' + index, locationId)),
+    events: [
+      { id: 'publish-c1-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 }
+    ]
+  };
+  assert.equal(getQuest(world, witness).id, 'witness-await-work');
+  assert.equal(getLocationAction('relay', world, witness).type, 'places');
+});
+
 test('guide action projection preserves Founder and Witness routes for supported viewers', () => {
   const world = {
     creations: [{ id: 'c-1', kind: 'comic', version: 1, publishedAt: at1 }],
