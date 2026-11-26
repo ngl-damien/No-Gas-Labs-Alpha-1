@@ -1252,8 +1252,22 @@ function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
  for(const entry of entries){
   if(typeof entry?.id==='string')identityCounts.set(entry.id,(identityCounts.get(entry.id)||0)+1);
  }
+ // An unclassified world-event slot may contain an ID that duplicates a
+ // visible refusal. Projected-entry counts alone cannot prove uniqueness
+ // while any retained world event was rejected before its ID could be read.
+ const worldIdentityCoverageIncomplete=entries.some(entry=>
+  entry?.source==='world'&&
+  (entry.id==='world:unclassified-events'||/^world:unclassified-\d+$/.test(entry.id||''))
+ );
  const section=el('section');
  section.dataset.evidenceArchiveTransferRefusals='true';
+ if(worldIdentityCoverageIncomplete){
+  section.dataset.evidenceArchiveRefusalIdentityCoverage='incomplete';
+  const warning=el('p','An unclassified world event is present. Exact refusal navigation is withheld because this snapshot cannot establish unique world-event identity.');
+  warning.className='evidence-warning';
+  warning.dataset.evidenceArchiveRefusalIdentityCoverage='incomplete';
+  section.append(warning);
+ }
  section.append(el('h3','RETAINED TRANSFER REFUSALS'));
  section.append(el('p','Explicit recipient refusals remain inspectable consent history. A refusal is not a completed transfer, ownership change, reward, punishment, factual verdict, or authority decision.'));
  if(!refusals.length){
@@ -1267,7 +1281,7 @@ function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
  for(const entry of visible){
   const match=/^world:([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/.exec(entry.id||'');
   const eventId=match?.[1]||'';
-  const unique=!!eventId&&identityCounts.get(entry.id)===1;
+  const unique=!worldIdentityCoverageIncomplete&&!!eventId&&identityCounts.get(entry.id)===1;
   const card=el('article');
   card.className='field-card';
   card.dataset.evidenceArchiveTransferRefusal=eventId||'unidentified';
@@ -1298,9 +1312,11 @@ function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
    inspect.onclick=()=>onInspectEvent(eventId);
    card.append(inspect);
   }else{
-   const notice=el('small',!unique
-    ?'Exact Chronicle navigation withheld because the event identity is missing or ambiguous.'
-    :'Exact Chronicle navigation is unavailable for this snapshot; retained history remains visible.');
+   const notice=el('small',worldIdentityCoverageIncomplete
+    ?'Exact Chronicle navigation withheld because an unclassified world event prevents proving unique event identity.'
+    :!unique
+      ?'Exact Chronicle navigation withheld because the event identity is missing or ambiguous.'
+      :'Exact Chronicle navigation is unavailable for this snapshot; retained history remains visible.');
    notice.dataset.evidenceArchiveRefusalNavigation='withheld';
    card.append(notice);
   }
@@ -1310,7 +1326,7 @@ function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
   const next=refusals[visible.length];
   const match=/^world:([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/.exec(next?.id||'');
   const eventId=match?.[1]||'';
-  const unique=!!eventId&&identityCounts.get(next.id)===1;
+  const unique=!worldIdentityCoverageIncomplete&&!!eventId&&identityCounts.get(next.id)===1;
   if(typeof onInspectEvent==='function'&&unique&&Number.isSafeInteger(next.streamPosition)&&next.streamPosition>0){
    const older=el('button','Inspect next older retained refusal in World Chronicle →');
    older.type='button';
@@ -1320,7 +1336,9 @@ function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
    older.onclick=()=>onInspectEvent(eventId);
    section.append(older);
   }else{
-   const notice=el('p','The next older retained refusal remains in World Chronicle, but its exact navigation shortcut is withheld because identity or append position is incomplete.');
+   const notice=el('p',worldIdentityCoverageIncomplete
+    ?'The next older retained refusal remains in World Chronicle, but its exact navigation shortcut is withheld because an unclassified world event prevents proving unique event identity.'
+    :'The next older retained refusal remains in World Chronicle, but its exact navigation shortcut is withheld because identity or append position is incomplete.');
    notice.dataset.evidenceArchiveNextOlderNavigation='withheld';
    section.append(notice);
   }
