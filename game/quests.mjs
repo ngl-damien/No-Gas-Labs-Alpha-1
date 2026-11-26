@@ -35,8 +35,29 @@ function isRecognizedSourceArchiveVersion(creation, versionNumber) {
     typeof version.receipt?.digest === 'string' && /^[a-f0-9]{64}$/.test(version.receipt.digest);
 }
 
+/**
+ * These exported study-review helpers read optional event fields directly.
+ * If Object.prototype supplies any such field, an otherwise plain retained
+ * event could inherit an accessor and execute it during lookup. Refuse that
+ * ambiently polluted property scope before reading notes or history.
+ */
+const STUDY_REVIEW_FIELDS = Object.freeze([
+  'id', 'type', 'studyId', 'reviewId', 'creationId', 'version', 'at',
+  'actor', 'response', 'reflection'
+]);
+function hasSafeStudyReviewInputs(note, events) {
+  try {
+    if (STUDY_REVIEW_FIELDS.some(field => Object.getOwnPropertyDescriptor(Object.prototype, field))) return false;
+    return hasCompleteRetainedEventIdentity({ events: [note] }) &&
+      hasCompleteRetainedEventIdentity({ events });
+  } catch {
+    return false;
+  }
+}
+
 /** Find one unambiguous review that follows and remains bound to this exact study note. */
 export function findStudyReview(note, events) {
+  if (!hasSafeStudyReviewInputs(note, events)) return null;
   const identifier = value => typeof value === 'string' &&
     /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) &&
     !['constructor', 'prototype', '__proto__'].includes(value);
@@ -84,6 +105,7 @@ export function findStudyReview(note, events) {
 }
 /** Detect a retained review attempt even when it cannot safely satisfy the note. */
 export function hasStudyReviewRecord(note, events) {
+  if (!hasSafeStudyReviewInputs(note, events)) return false;
   return typeof note?.studyId === 'string' && note.studyId.length > 0 &&
     rows(events).some(event => event?.type === 'study-reviewed' && event.studyId === note.studyId);
 }
