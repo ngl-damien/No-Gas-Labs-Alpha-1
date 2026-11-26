@@ -2141,3 +2141,73 @@ test('Evidence Archive withholds overflow continuation when the hidden refusal i
   assert.ok(withheld, 'the interface must explain that the older shortcut was withheld');
   assert.deepEqual(world, before, 'ambiguous-history handling must remain read-only');
 }));
+
+
+test('Evidence Archive withholds exact refusal navigation when a malformed world event could conceal a duplicate identity', () => withDocument(() => {
+  const world = createWorld({
+    id: 'evidence-archive-refusal-malformed-history',
+    founderName: 'Chronicle Founder',
+    now: '2026-11-25T08:00:00.000Z'
+  });
+  const start = Date.parse('2026-11-25T08:01:00.000Z');
+  for (let index = 0; index < 21; index += 1) {
+    world.events.push({
+      id: 'malformed-history-refusal-' + String(index + 1).padStart(2, '0'),
+      type: 'field-item-transfer-declined',
+      actor: { id: 'recipient-' + index, name: 'Recipient ' + index, role: 'player' },
+      at: new Date(start + index * 1000).toISOString(),
+      offerId: 'malformed-history-offer-' + index,
+      itemId: 'malformed-history-item-' + index
+    });
+  }
+
+  let hiddenIdReads = 0;
+  const unreadableEvent = {};
+  Object.defineProperty(unreadableEvent, 'id', {
+    enumerable: true,
+    get() {
+      hiddenIdReads += 1;
+      throw new Error('malformed event identity must not be read');
+    }
+  });
+  world.events.push(unreadableEvent);
+  world.revision = world.events.length;
+  const retainedEvents = [...world.events];
+  const inspected = [];
+  const root = element('main');
+
+  renderEvidenceArchive(root, {
+    world,
+    kernelUnavailable: true,
+    onInspectEvent: id => inspected.push(id)
+  });
+
+  const firstRefusal = walk(root).find(node =>
+    node.dataset?.evidenceArchiveTransferRefusal === 'malformed-history-refusal-21'
+  );
+  assert.ok(firstRefusal, 'valid refusal records remain visible beside an unclassified event');
+  assert.equal(firstRefusal.dataset.refusalStatus, 'retained');
+  assert.equal(walk(firstRefusal).some(node =>
+    node.dataset?.evidenceArchiveInspectRefusal
+  ), false, 'exact navigation must be withheld when a malformed slot prevents proving ID uniqueness');
+  const visibleNotice = walk(firstRefusal).find(node =>
+    node.dataset?.evidenceArchiveRefusalNavigation === 'withheld'
+  );
+  assert.ok(visibleNotice);
+  assert.match(textOf(visibleNotice), /unclassified world event/i);
+
+  assert.equal(walk(root).some(node =>
+    node.dataset?.evidenceArchiveNextOlderRefusal
+  ), false, 'overflow continuation must also be withheld when world-event identity coverage is incomplete');
+  const continuationNotice = walk(root).find(node =>
+    node.dataset?.evidenceArchiveNextOlderNavigation === 'withheld'
+  );
+  assert.ok(continuationNotice);
+  assert.match(textOf(continuationNotice), /unclassified world event/i);
+
+  assert.deepEqual(inspected, [], 'no ambiguous exact-event navigation callback may fire');
+  assert.equal(hiddenIdReads, 0, 'the projection must reject the malformed accessor without invoking it');
+  assert.equal(world.events.length, retainedEvents.length);
+  assert.ok(world.events.every((event, index) => event === retainedEvents[index]),
+    'inspection must not mutate or replace retained source events');
+}));
