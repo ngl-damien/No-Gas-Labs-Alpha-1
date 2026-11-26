@@ -317,6 +317,39 @@ class LedgerAndClosureTests(unittest.TestCase):
             self.assertEqual(verified["status"], "CHAIN_INTACT")
             self.assertEqual(verified["count"], count)
 
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and O_NOFOLLOW")
+    def test_lock_descriptor_is_closed_when_unlock_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "mission.jsonl"
+            real_close = os.close
+
+            def fail_unlock(fd, operation):
+                if operation == ngl.fcntl.LOCK_UN:
+                    raise OSError("injected unlock failure")
+
+            with patch.object(ngl.fcntl, "flock", side_effect=fail_unlock), \
+                 patch.object(ngl.os, "close", wraps=real_close) as close_spy:
+                with self.assertRaisesRegex(OSError, "injected unlock failure"):
+                    with ngl._ledger_lock(ledger, exclusive=True):
+                        pass
+                close_spy.assert_called_once()
+
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and O_NOFOLLOW")
+    def test_lock_descriptor_is_closed_when_lock_acquisition_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "mission.jsonl"
+            real_close = os.close
+
+            def fail_acquire(fd, operation):
+                raise OSError("injected lock acquisition failure")
+
+            with patch.object(ngl.fcntl, "flock", side_effect=fail_acquire), \
+                 patch.object(ngl.os, "close", wraps=real_close) as close_spy:
+                with self.assertRaisesRegex(OSError, "injected lock acquisition failure"):
+                    with ngl._ledger_lock(ledger, exclusive=True):
+                        pass
+                close_spy.assert_called_once()
+
     def test_writer_lock_is_released_when_serialization_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
