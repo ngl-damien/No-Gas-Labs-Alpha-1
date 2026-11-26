@@ -567,7 +567,9 @@ test('quest progression rejects inherited event accessors without invoking them'
     enumerable: true,
     get() { identityReads += 1; throw new Error('inherited event history must not execute'); }
   });
-  const world = Object.assign(Object.create(prototype), trailFixture());
+  const world = trailFixture();
+  delete world.events;
+  Object.setPrototypeOf(world, prototype);
   world.creations = [{ ...publishedV1, versions: [] }];
 
   const trail = getQuestTrail(world, founder);
