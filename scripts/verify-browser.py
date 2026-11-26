@@ -3173,7 +3173,7 @@ def shared(browser,url,data,out):
         assert before_guild['world']['revision']==witness_guild_before['world']['revision']
         assert witness_id==auto_actor_id, 'the re-entered Witness identity must remain stable through the shared journey'
 
-        expect(a.locator('#player-guild-board')).to_be_visible()
+        expect(b.locator('#player-guild-board')).to_be_visible()
         a.locator('#player-guild-name').fill('Field Researchers')
         a.locator('#player-guild-charter').fill('Compare observations and preserve dissent.')
         a.locator('#player-guild-create').click()
