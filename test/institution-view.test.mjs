@@ -2211,3 +2211,64 @@ test('Evidence Archive withholds exact refusal navigation when a malformed world
   assert.ok(world.events.every((event, index) => event === retainedEvents[index]),
     'inspection must not mutate or replace retained source events');
 }));
+
+
+test('Evidence Archive keeps world refusal navigation available when only the separate institutional stream is malformed', () => withDocument(() => {
+  const world = createWorld({
+    id: 'evidence-archive-separate-stream-malformed',
+    founderName: 'Chronicle Founder',
+    now: '2026-11-26T05:00:00.000Z'
+  });
+  const eventId = 'world-refusal-with-kernel-malformed';
+  world.events.push({
+    id: eventId,
+    type: 'field-item-transfer-declined',
+    actor: { id: 'witness-separate-stream', name: 'Witness', role: 'witness' },
+    at: '2026-11-26T05:01:00.000Z',
+    offerId: 'offer-separate-stream',
+    itemId: 'item-separate-stream'
+  });
+  world.revision = world.events.length;
+
+  let hiddenKernelIdReads = 0;
+  const malformedKernelEvent = {};
+  Object.defineProperty(malformedKernelEvent, 'id', {
+    enumerable: true,
+    get() {
+      hiddenKernelIdReads += 1;
+      throw new Error('malformed institutional identity must not be read');
+    }
+  });
+  const kernel = { revision: 1, eventCount: 1, events: [malformedKernelEvent], accepted: [] };
+  const beforeWorld = structuredClone(world);
+  const inspected = [];
+  const root = element('main');
+
+  renderEvidenceArchive(root, {
+    world,
+    kernel,
+    shared: true,
+    onInspectEvent: id => inspected.push(id)
+  });
+
+  const card = walk(root).find(node =>
+    node.dataset?.evidenceArchiveTransferRefusal === eventId
+  );
+  assert.ok(card, 'the valid world refusal remains visible');
+  const inspect = walk(card).find(node =>
+    node.dataset?.evidenceArchiveInspectRefusal === eventId
+  );
+  assert.ok(inspect,
+    'a malformed kernel event cannot make a namespaced world-event ID ambiguous');
+  inspect.onclick();
+  assert.deepEqual(inspected, [eventId],
+    'the exact world event remains navigable despite incomplete institutional history');
+
+  assert.equal(hiddenKernelIdReads, 0,
+    'the malformed institutional event accessor must not be invoked');
+  assert.deepEqual(world, beforeWorld,
+    'cross-stream identity isolation and exact navigation remain read-only');
+  assert.ok(walk(root).some(node =>
+    node.dataset?.eventId === 'kernel:unclassified-0'
+  ), 'the malformed institutional event remains disclosed in Chronicle history');
+}));
