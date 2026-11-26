@@ -1970,7 +1970,7 @@ def shared(browser,url,data,out):
         assert auto_recovered['world']['xp']==auto_xp
         assert auto_recovered['viewer']['id']==auto_actor_id and auto_recovered['viewer']['role']=='witness', 'shared re-entry must preserve the original Witness identity'
         b.unroute('**/api/action',lose_report_response)
-        # Safe retry closes the Journal; reach the bounded adversary through the world Guild Hall.
+        # Safe retry closes the Journal; reach the bounded adversary at its owning Evidence Archive location.
         close_sheet(b);b.locator('#places-button').click()
         walk_to_location(b, "Evidence Archive")
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
