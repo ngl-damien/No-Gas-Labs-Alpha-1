@@ -146,7 +146,7 @@ class LedgerAndClosureTests(unittest.TestCase):
             ledger = Path(tmp) / "ledger.jsonl"
             entry = ngl.append_event(ledger, "test", "A", "ARTIFACT_OBSERVED", {})
             serialized = ledger.read_text(encoding="utf-8")
-            self.assertTrue(serialized.endswith("\\n"))
+            self.assertTrue(serialized.endswith("\n"))
             ledger.write_text(serialized[:-1], encoding="utf-8")
 
             verification = ngl.verify_chain(ledger, expected_head=entry["entry_hash"])
