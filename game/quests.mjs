@@ -479,9 +479,24 @@ function retainedPublicationEvents(world, actorId = null, actorRole = null) {
  */
 function publishedCreationsForWitness(world) {
   if (!hasCompleteRetainedEventIdentity(world)) return [];
-  const publishedIds = new Set(retainedPublicationEvents(world).map(event => event.creationId));
-  return trailRows(world?.creations).filter(creation =>
-    creation && typeof creation.id === 'string' && publishedIds.has(creation.id)
+  const creations = trailRows(world?.creations);
+  const idCounts = new Map();
+  for (const creation of creations) {
+    if (typeof creation?.id === 'string') {
+      idCounts.set(creation.id, (idCounts.get(creation.id) || 0) + 1);
+    }
+  }
+  const publishedCurrentIds = new Set(retainedPublicationEvents(world)
+    .filter(event => creations.some(creation =>
+      creation?.id === event.creationId &&
+      creation.version === event.version &&
+      creation.publishedAt === event.at &&
+      idCounts.get(event.creationId) === 1
+    ))
+    .map(event => event.creationId));
+  return creations.filter(creation =>
+    creation && typeof creation.id === 'string' && idCounts.get(creation.id) === 1 &&
+    publishedCurrentIds.has(creation.id)
   );
 }
 
