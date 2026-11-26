@@ -642,3 +642,37 @@ test('study review projections fail closed on inherited optional-field accessors
     else delete Object.prototype.role;
   }
 });
+
+
+test('study review projections fail closed on inherited Array.prototype method accessors', () => {
+  let inheritedReads = 0;
+  const studyActor = { id: founder.id, role: founder.role };
+  const study = {
+    id: 'study-event-array-inherited', type: 'study', studyId: 'study-array-inherited',
+    creationId: 'source-1', version: 2, at: '2026-10-29T12:00:00.000Z',
+    actor: studyActor
+  };
+  const review = {
+    id: 'review-event-array-inherited', type: 'study-reviewed', reviewId: 'review-array-inherited',
+    studyId: study.studyId, creationId: study.creationId, version: study.version,
+    at: '2026-10-29T12:01:00.000Z', actor: studyActor,
+    response: 'The source differs.', reflection: 'Recheck the retained bytes.'
+  };
+  const history = [study, review];
+  const previousDescriptor = Object.getOwnPropertyDescriptor(Array.prototype, 'filter');
+  assert.equal(typeof previousDescriptor?.value, 'function', 'fixture requires the native filter method');
+  Object.defineProperty(Array.prototype, 'filter', {
+    configurable: true,
+    get() {
+      inheritedReads += 1;
+      throw new Error('inherited array filter must not execute');
+    }
+  });
+  try {
+    assert.equal(findStudyReview(study, history), null);
+    assert.equal(hasStudyReviewRecord(study, history), false);
+    assert.equal(inheritedReads, 0);
+  } finally {
+    Object.defineProperty(Array.prototype, 'filter', previousDescriptor);
+  }
+});
