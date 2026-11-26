@@ -164,7 +164,7 @@ class LedgerAndClosureTests(unittest.TestCase):
                 "payload": None,
             }
             entry["entry_hash"] = ngl._hash(entry)
-            ledger.write_text(json.dumps(entry, sort_keys=True) + "\\n", encoding="utf-8")
+            ledger.write_text(json.dumps(entry, sort_keys=True) + "\n", encoding="utf-8")
             scheduler = root / "scheduler.json"
             scheduler.write_text(json.dumps({"ready": True, "owner": "worker-a", "blockers": []}), encoding="utf-8")
             pay = root / "pay.json"
