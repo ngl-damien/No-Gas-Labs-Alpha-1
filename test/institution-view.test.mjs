@@ -2045,7 +2045,7 @@ test('Evidence Archive keeps the refusal register bounded and navigates to the e
 }));
 
 
-test('Evidence Archive distinguishes valid refusal linkage from an invalid event timestamp warning', async () => withDocument(async () => {
+test('Evidence Archive distinguishes valid refusal linkage from an invalid event timestamp warning', async () => {
   const at = '2026-11-25T08:00:00.000Z';
   const sender = { id: 'timestamp-refusal-sender', name: 'Item maker', role: 'witness' };
   const recipient = { id: 'timestamp-refusal-recipient', name: 'Designated recipient', role: 'founder' };
@@ -2083,29 +2083,32 @@ test('Evidence Archive distinguishes valid refusal linkage from an invalid event
   const root = element('main');
   const inspected = [];
 
-  renderEvidenceArchive(root, {
-    world: declined.world,
-    onInspectEvent: id => inspected.push(id)
+  withDocument(() => {
+    renderEvidenceArchive(root, {
+      world: declined.world,
+      onInspectEvent: id => inspected.push(id)
+    });
+
+    const card = walk(root).find(node =>
+      node.dataset?.evidenceArchiveTransferRefusal === refusal.id
+    );
+    assert.ok(card, 'the retained refusal remains visible despite its invalid timestamp');
+    assert.equal(card.dataset.refusalStatus, 'retained',
+      'valid offer/recipient linkage must not be downgraded by an unrelated timestamp warning');
+    const warning = walk(card).find(node => node.className === 'evidence-warning');
+    assert.ok(warning);
+    assert.match(warning.textContent, /strict RFC 3339 timestamp/i);
+    assert.doesNotMatch(warning.textContent, /transfer linkage is not validated/i);
+
+    const inspect = walk(card).find(node =>
+      node.dataset?.evidenceArchiveInspectRefusal === refusal.id
+    );
+    assert.ok(inspect,
+      'a unique retained event with a valid append position remains exactly navigable');
+    inspect.onclick();
   });
 
-  const card = walk(root).find(node =>
-    node.dataset?.evidenceArchiveTransferRefusal === refusal.id
-  );
-  assert.ok(card, 'the retained refusal remains visible despite its invalid timestamp');
-  assert.equal(card.dataset.refusalStatus, 'retained',
-    'valid offer/recipient linkage must not be downgraded by an unrelated timestamp warning');
-  const warning = walk(card).find(node => node.className === 'evidence-warning');
-  assert.ok(warning);
-  assert.match(warning.textContent, /strict RFC 3339 timestamp/i);
-  assert.doesNotMatch(warning.textContent, /transfer linkage is not validated/i);
-
-  const inspect = walk(card).find(node =>
-    node.dataset?.evidenceArchiveInspectRefusal === refusal.id
-  );
-  assert.ok(inspect,
-    'a unique retained event with a valid append position remains exactly navigable');
-  inspect.onclick();
   assert.deepEqual(inspected, [refusal.id]);
   assert.deepEqual(declined.world, before,
     'rendering and inspecting the malformed-timestamp record remain read-only');
-}));
+});
