@@ -36,26 +36,51 @@ def _hash(value: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _ledger_entries(ledger: Path) -> list[dict]:
-    if not ledger.is_file():
-        return []
-    entries = []
-    for number, line in enumerate(ledger.read_text(encoding="utf-8").splitlines(), 1):
-        if not line.strip():
-            continue
-        try:
-            item = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"malformed ledger JSON at line {number}: {exc}") from exc
-        if not isinstance(item, dict):
-            raise ValueError(f"ledger entry at line {number} is not an object")
-        entries.append(item)
-    return entries
-
-
-def _verify_internal(ledger: Path) -> dict:
+def _open_ledger_fd(ledger: Path, flags: int) -> int:
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise OSError("mission-ledger access requires O_NOFOLLOW support")
+    fd = os.open(ledger, flags | os.O_NOFOLLOW, 0o600)
     try:
-        entries = _ledger_entries(ledger)
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise OSError("mission-ledger path is not a regular file")
+        if metadata.st_nlink != 1:
+            raise OSError("mission-ledger file must not have hard-link aliases")
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _ledger_entries(ledger: Path, ledger_fd: int | None = None) -> list[dict]:
+    try:
+        if ledger_fd is None:
+            try:
+                fd = _open_ledger_fd(ledger, os.O_RDONLY)
+            except FileNotFoundError:
+                return []
+        else:
+            fd = os.dup(ledger_fd)
+        with os.fdopen(fd, "r", encoding="utf-8") as stream:
+            entries = []
+            for number, line in enumerate(stream, 1):
+                if not line.strip():
+                    continue
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"malformed ledger JSON at line {number}: {exc}") from exc
+                if not isinstance(item, dict):
+                    raise ValueError(f"ledger entry at line {number} is not an object")
+                entries.append(item)
+            return entries
+    except OSError:
+        raise
+
+
+def _verify_internal(ledger: Path, ledger_fd: int | None = None) -> dict:
+    try:
+        entries = _ledger_entries(ledger, ledger_fd)
     except (OSError, ValueError) as exc:
         return {"status": "TAMPER_DETECTED", "detail": str(exc)}
     previous = GENESIS
@@ -99,12 +124,12 @@ def _ledger_lock(ledger: Path, *, exclusive: bool):
             os.close(lock_fd)
 
 
-def _verify_chain_unlocked(ledger: Path, expected_head: str | None = None, anchor_ref: Path | None = None) -> dict:
+def _verify_chain_unlocked(ledger: Path, expected_head: str | None = None, anchor_ref: Path | None = None, ledger_fd: int | None = None) -> dict:
     if expected_head is not None and anchor_ref is not None:
         raise ValueError("supply only one external anchor source")
     if expected_head is None and anchor_ref is None:
         return {"status": "UNANCHORED", "detail": "verify requires --expected-head or --anchor-ref"}
-    internal = _verify_internal(ledger)
+    internal = _verify_internal(ledger, ledger_fd)
     if internal["status"] != "CHAIN_INTACT":
         return internal
     if expected_head is not None:
@@ -137,30 +162,42 @@ def verify_chain(ledger: Path, expected_head: str | None = None, anchor_ref: Pat
     if expected_head is None and anchor_ref is None:
         return _verify_chain_unlocked(ledger, expected_head, anchor_ref)
     with _ledger_lock(ledger, exclusive=False):
-        return _verify_chain_unlocked(ledger, expected_head, anchor_ref)
+        try:
+            ledger_fd = _open_ledger_fd(ledger, os.O_RDONLY)
+        except FileNotFoundError:
+            return {"status": "TAMPER_DETECTED", "detail": "anchored ledger file is missing"}
+        try:
+            return _verify_chain_unlocked(ledger, expected_head, anchor_ref, ledger_fd)
+        finally:
+            os.close(ledger_fd)
 
 
 def append_event(ledger: Path, actor: str, event_type: str, label: str, payload: dict) -> dict:
-    # The same persistent lock inode coordinates exclusive writers and shared readers.
+    # Verify and append through one validated inode while holding the logical-path lock.
     with _ledger_lock(ledger, exclusive=True):
-        internal = _verify_internal(ledger)
-        if internal["status"] != "CHAIN_INTACT":
-            raise RuntimeError("Refusing append to invalid ledger")
-        body = {
-            "seq": internal["count"],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "actor": actor,
-            "event_type": event_type,
-            "epistemic_label": label,
-            "prev_hash": internal["head_hash"],
-            "payload": payload,
-        }
-        body["entry_hash"] = _hash(body)
-        with ledger.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(body, sort_keys=True, ensure_ascii=False) + "\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        return body
+        ledger_fd = _open_ledger_fd(ledger, os.O_RDWR | os.O_APPEND | os.O_CREAT)
+        try:
+            internal = _verify_internal(ledger, ledger_fd)
+            if internal["status"] != "CHAIN_INTACT":
+                raise RuntimeError("Refusing append to invalid ledger")
+            body = {
+                "seq": internal["count"],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "actor": actor,
+                "event_type": event_type,
+                "epistemic_label": label,
+                "prev_hash": internal["head_hash"],
+                "payload": payload,
+            }
+            body["entry_hash"] = _hash(body)
+            encoded = (json.dumps(body, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
+            written = os.write(ledger_fd, encoded)
+            if written != len(encoded):
+                raise OSError("short write while appending mission ledger event")
+            os.fsync(ledger_fd)
+            return body
+        finally:
+            os.close(ledger_fd)
 
 
 def _anchor_args(parser: argparse.ArgumentParser) -> None:
@@ -184,14 +221,21 @@ def _load_json(path: Path) -> dict:
 
 def _closure(ledger: Path, expected_head: str | None, anchor_ref: Path | None,
              scheduler_preconditions: Path, pay_stage: str, pay_evidence: Path) -> dict:
-    # Verify the anchor and inspect the terminal event from one immutable ledger snapshot.
+    # Verify and inspect the terminal event through one opened ledger inode.
     with _ledger_lock(ledger, exclusive=False):
-        verification = _verify_chain_unlocked(ledger, expected_head, anchor_ref)
-        if verification["status"] != "CHAIN_INTACT":
-            return {"decision": "blocked", "reason": "ledger is not externally anchored and intact", "verification": verification}
-        entries = _ledger_entries(ledger)
-        if not entries or entries[-1].get("event_type") != "GATE_EVALUATION" or entries[-1].get("payload", {}).get("decision") != "completed":
-            return {"decision": "blocked", "reason": "latest ledger event is not a completed gate evaluation", "verification": verification}
+        try:
+            ledger_fd = _open_ledger_fd(ledger, os.O_RDONLY)
+        except FileNotFoundError:
+            return {"decision": "blocked", "reason": "ledger file is missing"}
+        try:
+            verification = _verify_chain_unlocked(ledger, expected_head, anchor_ref, ledger_fd)
+            if verification["status"] != "CHAIN_INTACT":
+                return {"decision": "blocked", "reason": "ledger is not externally anchored and intact", "verification": verification}
+            entries = _ledger_entries(ledger, ledger_fd)
+            if not entries or entries[-1].get("event_type") != "GATE_EVALUATION" or entries[-1].get("payload", {}).get("decision") != "completed":
+                return {"decision": "blocked", "reason": "latest ledger event is not a completed gate evaluation", "verification": verification}
+        finally:
+            os.close(ledger_fd)
     scheduler = _load_json(scheduler_preconditions)
     if set(scheduler) != {"ready", "owner", "blockers"} or scheduler.get("ready") is not True or not isinstance(scheduler.get("owner"), str) or not scheduler["owner"] or scheduler.get("blockers") != []:
         return {"decision": "blocked", "reason": "scheduler preconditions must have ready=true, a named owner, and no blockers", "verification": verification}
