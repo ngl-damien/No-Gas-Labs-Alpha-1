@@ -25,7 +25,8 @@ test('Witness quests map real guide discoveries and do not invent work when the 
 });
 
 test('Witness contribution and report objectives only advance from that Witness\'s records',()=>{
-  const world=base();world.creations=[creation];
+  const world=base();world.creations=[{...creation,publishedAt:at1}];
+  world.events=[{id:'publish-c1',type:'publish',actor:founder,at:at1,creationId:'c-1',version:1}];
   world.contributions=[note('n-other',other)];
   assert.equal(getQuest(world,witness).id,'witness-discover');
   world.discoveries=[discovery('d1','river')];
@@ -274,8 +275,36 @@ test('guide action projection rejects missing and unsupported viewer identities'
   assert.equal(getLocationAction('unknown-guide', world, founder), null);
 });
 
+test('Witness quest and guide routing do not expose an unpublished private draft', () => {
+  const world = {
+    creations: [{ ...creation, kind: 'comic' }],
+    discoveries: ['relay', 'river', 'overlook', 'ruins'].map((locationId, index) =>
+      discovery('draft-discovery-' + index, locationId)),
+    events: []
+  };
+  assert.equal(getQuest(world, witness).id, 'witness-await-work');
+  assert.equal(getLocationAction('relay', world, witness).type, 'places');
+});
+
+test('malformed retained history cannot make a draft appear published to a Witness', () => {
+  const world = {
+    creations: [{ ...creation, kind: 'comic', publishedAt: at1 }],
+    discoveries: ['relay', 'river', 'overlook', 'ruins'].map((locationId, index) =>
+      discovery('malformed-discovery-' + index, locationId)),
+    events: [
+      { id: 'publish-c1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+      null
+    ]
+  };
+  assert.equal(getQuest(world, witness).id, 'witness-await-work');
+  assert.equal(getLocationAction('relay', world, witness).type, 'places');
+});
+
 test('guide action projection preserves Founder and Witness routes for supported viewers', () => {
-  const world = { creations: [{ id: 'c-1', kind: 'comic', version: 1 }] };
+  const world = {
+    creations: [{ id: 'c-1', kind: 'comic', version: 1, publishedAt: at1 }],
+    events: [{ id: 'publish-c1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 }]
+  };
   assert.equal(getLocationAction('relay', world, founder).type, 'workbench');
   assert.equal(getLocationAction('relay', world, witness).type, 'inspect');
 });
