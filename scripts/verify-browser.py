@@ -1409,8 +1409,10 @@ def shared(browser,url,data,out):
         assert f'sha256={github_reader_sha256}' in github_reader_citation
         assert len(github_reader_citation)<=500
         assert b.locator('#source-observation-kind').input_value()=='secondary-source'
-        expect(b.locator('[data-source-observation-status]')).to_contain_text('Source class remains your selection')
-        expect(b.locator('[data-source-observation-status]')).to_contain_text('NOT_PERFORMED')
+        source_observation_status=b.locator('[data-source-observation-status]')
+        expect(source_observation_status).to_contain_text('client-reported citation metadata')
+        expect(source_observation_status).to_contain_text('NOT_PERFORMED')
+        expect(source_observation_status).to_contain_text('not authorship, primary-source status, authority or truth')
         assert github_reader_requests['count']==1
         assert not b.locator('#sheet').evaluate('(element)=>element.scrollWidth>element.clientWidth'), 'The GitHub source reader must not overflow at 320px'
         after_reader=read_state(visitor)
