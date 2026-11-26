@@ -2186,7 +2186,7 @@ test('Evidence Archive withholds exact refusal navigation when a malformed world
     node.dataset?.evidenceArchiveTransferRefusal === 'malformed-history-refusal-21'
   );
   assert.ok(firstRefusal, 'valid refusal records remain visible beside an unclassified event');
-  assert.equal(firstRefusal.dataset.refusalStatus, 'retained');
+  assert.equal(firstRefusal.dataset.refusalStatus, 'unvalidated', 'the refusal claim remains visible without a validated offer chain');
   assert.equal(walk(firstRefusal).some(node =>
     node.dataset?.evidenceArchiveInspectRefusal
   ), false, 'exact navigation must be withheld when a malformed slot prevents proving ID uniqueness');
