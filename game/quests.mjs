@@ -61,7 +61,9 @@ function hasSafeStudyReviewInputs(note, events) {
       if (Object.getOwnPropertyDescriptor(Object.prototype, STUDY_REVIEW_FIELDS[index])) return false;
     }
     for (let index = 0; index < STUDY_REVIEW_ARRAY_METHODS.length; index += 1) {
-      const [name, expected] = STUDY_REVIEW_ARRAY_METHODS[index];
+      const method = STUDY_REVIEW_ARRAY_METHODS[index];
+      const name = method[0];
+      const expected = method[1];
       const descriptor = Object.getOwnPropertyDescriptor(Array.prototype, name);
       if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.value !== expected) return false;
     }
