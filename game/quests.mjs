@@ -343,6 +343,21 @@ function hasCompleteRetainedEventIdentity(world) {
         const descriptor = Object.getOwnPropertyDescriptor(event, key);
         if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) return false;
       }
+      const actor = Object.getOwnPropertyDescriptor(event, 'actor');
+      if (actor && Object.hasOwn(actor, 'value')) {
+        const actorValue = actor.value;
+        if (typeof actorValue === 'function') return false;
+        if (actorValue && typeof actorValue === 'object') {
+          const actorPrototype = Object.getPrototypeOf(actorValue);
+          if (Array.isArray(actorValue) ||
+              (actorPrototype !== Object.prototype && actorPrototype !== null)) return false;
+          for (const actorKey of Reflect.ownKeys(actorValue)) {
+            if (typeof actorKey !== 'string') return false;
+            const actorProperty = Object.getOwnPropertyDescriptor(actorValue, actorKey);
+            if (!actorProperty || !actorProperty.enumerable || !Object.hasOwn(actorProperty, 'value')) return false;
+          }
+        }
+      }
       const identity = Object.getOwnPropertyDescriptor(event, 'id');
       if (!identity || !identity.enumerable || !Object.hasOwn(identity, 'value') ||
           typeof identity.value !== 'string' || !identity.value.trim()) return false;
