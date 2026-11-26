@@ -153,6 +153,10 @@ class LedgerAndClosureTests(unittest.TestCase):
 
             self.assertEqual(verification["status"], "TAMPER_DETECTED")
             self.assertIn("not newline-terminated at line 1", verification["detail"])
+            rejected_bytes = ledger.read_bytes()
+            with self.assertRaisesRegex(RuntimeError, "Refusing append to invalid ledger"):
+                ngl.append_event(ledger, "test", "B", "ARTIFACT_OBSERVED", {})
+            self.assertEqual(ledger.read_bytes(), rejected_bytes)
 
     def test_truncation_is_detected_by_external_anchor(self):
         with tempfile.TemporaryDirectory() as tmp:
