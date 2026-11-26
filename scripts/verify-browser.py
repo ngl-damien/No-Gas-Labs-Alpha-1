@@ -1833,7 +1833,7 @@ def shared(browser,url,data,out):
             count_phrase(map_notes,'linked Source Observation note','linked Source Observation notes')+', '+
             count_phrase(map_dissent,'linked dissent challenge','linked dissent challenges')+', '+
             count_phrase(map_responses,'linked author response','linked author responses')+', '+
-            '0 pending author responses and 0 retained records requiring review'
+            '0 pending author responses, and 0 retained records requiring review'
         )
         expect(a.locator('#world')).to_have_attribute(
             'aria-label',
