@@ -1273,7 +1273,8 @@ function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
   card.dataset.evidenceArchiveTransferRefusal=eventId||'unidentified';
   card.dataset.eventId=entry.id;
   card.dataset.eventSource='world';
-  card.dataset.refusalStatus=entry.warning?'unvalidated':'retained';
+  const linkageValidated=entry.transferLinkageStatus==='validated';
+  card.dataset.refusalStatus=linkageValidated?'retained':'unvalidated';
   card.append(el('h3',entry.title||'Retained transfer refusal'));
   card.append(el('p',entry.summary||'The refusal is retained; no ownership change is inferred.'));
   if(entry.detail)card.append(el('p',entry.detail));
@@ -1285,7 +1286,8 @@ function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
    ?'WORLD STREAM · APPEND POSITION '+entry.streamPosition
    :'WORLD STREAM · APPEND POSITION UNAVAILABLE'));
   if(entry.warning){
-   const warning=el('p',entry.warning+' The retained claim remains visible, but its transfer linkage is not validated.');
+   const linkageNotice=linkageValidated?'':' The retained claim remains visible, but its transfer linkage is not validated.';
+   const warning=el('p',entry.warning+linkageNotice);
    warning.className='evidence-warning';
    card.append(warning);
   }
