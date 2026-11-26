@@ -307,7 +307,14 @@ def _closure(ledger: Path, expected_head: str | None, anchor_ref: Path | None,
             if verification["status"] != "CHAIN_INTACT":
                 return {"decision": "blocked", "reason": "ledger is not externally anchored and intact", "verification": verification}
             entries = _ledger_entries(ledger, ledger_fd)
-            if not entries or entries[-1].get("event_type") != "GATE_EVALUATION" or entries[-1].get("payload", {}).get("decision") != "completed":
+            terminal_event = entries[-1] if entries else None
+            terminal_payload = terminal_event.get("payload") if isinstance(terminal_event, dict) else None
+            if (
+                not isinstance(terminal_event, dict)
+                or terminal_event.get("event_type") != "GATE_EVALUATION"
+                or not isinstance(terminal_payload, dict)
+                or terminal_payload.get("decision") != "completed"
+            ):
                 return {"decision": "blocked", "reason": "latest ledger event is not a completed gate evaluation", "verification": verification}
         finally:
             os.close(ledger_fd)
