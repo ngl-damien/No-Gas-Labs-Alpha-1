@@ -3150,6 +3150,7 @@ def shared(browser,url,data,out):
         # the local Clerk before the shared player-guild board is available.
         witness_before_guild_entry=read_state(visitor)
         open_guild_hall(b)
+        open_guild_hall(a)
         witness_after_guild_entry=read_state(visitor)
         witness_guild_entry_events=assert_navigation_only_discovers(
             witness_before_guild_entry,witness_after_guild_entry,'Witness Guild Hall navigation and entry'
@@ -3173,7 +3174,7 @@ def shared(browser,url,data,out):
         assert before_guild['world']['revision']==witness_guild_before['world']['revision']
         assert witness_id==auto_actor_id, 'the re-entered Witness identity must remain stable through the shared journey'
 
-        expect(b.locator('#player-guild-board')).to_be_visible()
+        expect(a.locator('#player-guild-board')).to_be_visible()
         a.locator('#player-guild-name').fill('Field Researchers')
         a.locator('#player-guild-charter').fill('Compare observations and preserve dissent.')
         a.locator('#player-guild-create').click()
