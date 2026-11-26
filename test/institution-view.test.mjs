@@ -2073,7 +2073,6 @@ test('Evidence Archive keeps a uniquely identified world refusal navigable when 
   });
   const kernel = { revision: 1, eventCount: 1, events: [malformedKernelEvent], accepted: [] };
   const beforeWorld = structuredClone(world);
-  const beforeKernel = { revision: 1, eventCount: 1, events: [], accepted: [] };
   const inspected = [];
   const root = element('main');
 
@@ -2099,6 +2098,10 @@ test('Evidence Archive keeps a uniquely identified world refusal navigable when 
 
   assert.equal(hiddenKernelIdReads, 0,
     'the malformed institutional identity accessor must never execute');
+  assert.equal(kernel.events[0], malformedKernelEvent,
+    'the retained malformed institutional event object is not replaced');
+  assert.equal(kernel.revision, 1);
+  assert.equal(kernel.eventCount, 1);
   assert.deepEqual(world, beforeWorld,
     'cross-stream identity isolation remains read-only');
   assert.ok(walk(root).some(node =>
