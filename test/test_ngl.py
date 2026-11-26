@@ -350,26 +350,30 @@ class LedgerAndClosureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
             real_close = os.close
-            real_open = os.open
-            opened_fds = []
+            real_directory = ngl._open_ledger_directory
+            directory_fds = []
+            lock_fds = []
 
-            def tracked_open(*args, **kwargs):
-                fd = real_open(*args, **kwargs)
-                opened_fds.append(fd)
+            def tracked_directory(*args, **kwargs):
+                fd = real_directory(*args, **kwargs)
+                directory_fds.append(fd)
                 return fd
 
             def fail_unlock(fd, operation):
                 if operation == ngl.fcntl.LOCK_UN:
+                    lock_fds.append(fd)
                     raise OSError("injected unlock failure")
 
-            with patch.object(ngl.fcntl, "flock", side_effect=fail_unlock), \
-                 patch.object(ngl.os, "open", side_effect=tracked_open), \
+            with patch.object(ngl, "_open_ledger_directory", side_effect=tracked_directory), \
+                 patch.object(ngl.fcntl, "flock", side_effect=fail_unlock), \
                  patch.object(ngl.os, "close", wraps=real_close) as close_spy:
                 with self.assertRaisesRegex(OSError, "injected unlock failure"):
                     with ngl._ledger_lock(ledger, exclusive=True):
                         pass
-                self.assertEqual(close_spy.call_count, len(opened_fds))
-                for fd in set(opened_fds):
+                self.assertEqual(len(directory_fds), 1)
+                self.assertEqual(len(lock_fds), 1)
+                self.assertGreaterEqual(close_spy.call_count, 2)
+                for fd in directory_fds + lock_fds:
                     with self.assertRaises(OSError):
                         os.fstat(fd)
 
@@ -378,25 +382,29 @@ class LedgerAndClosureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
             real_close = os.close
-            real_open = os.open
-            opened_fds = []
+            real_directory = ngl._open_ledger_directory
+            directory_fds = []
+            lock_fds = []
 
-            def tracked_open(*args, **kwargs):
-                fd = real_open(*args, **kwargs)
-                opened_fds.append(fd)
+            def tracked_directory(*args, **kwargs):
+                fd = real_directory(*args, **kwargs)
+                directory_fds.append(fd)
                 return fd
 
             def fail_acquire(fd, operation):
+                lock_fds.append(fd)
                 raise OSError("injected lock acquisition failure")
 
-            with patch.object(ngl.fcntl, "flock", side_effect=fail_acquire), \
-                 patch.object(ngl.os, "open", side_effect=tracked_open), \
+            with patch.object(ngl, "_open_ledger_directory", side_effect=tracked_directory), \
+                 patch.object(ngl.fcntl, "flock", side_effect=fail_acquire), \
                  patch.object(ngl.os, "close", wraps=real_close) as close_spy:
                 with self.assertRaisesRegex(OSError, "injected lock acquisition failure"):
                     with ngl._ledger_lock(ledger, exclusive=True):
                         pass
-                self.assertEqual(close_spy.call_count, len(opened_fds))
-                for fd in set(opened_fds):
+                self.assertEqual(len(directory_fds), 1)
+                self.assertEqual(len(lock_fds), 1)
+                self.assertGreaterEqual(close_spy.call_count, 2)
+                for fd in directory_fds + lock_fds:
                     with self.assertRaises(OSError):
                         os.fstat(fd)
 
