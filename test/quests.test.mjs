@@ -560,6 +560,29 @@ test('quest progression rejects accessor-backed event identity without invoking 
   assert.equal(trail[0].progress, 0);
 });
 
+
+test('quest progression rejects nested actor accessors without invoking them', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  let actorReads = 0;
+  const actor = {};
+  Object.defineProperty(actor, 'id', {
+    enumerable: true,
+    get() { actorReads += 1; throw new Error('unsafe nested actor identity read'); }
+  });
+  Object.defineProperty(actor, 'role', { enumerable: true, value: 'founder' });
+  world.events = [
+    { id: 'publish-v1', type: 'publish', actor, at: at1, creationId: 'c-1', version: 1 }
+  ];
+
+  const trail = getQuestTrail(world, founder);
+  assert.equal(actorReads, 0);
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].id, 'founder-history-identity-unavailable');
+  assert.equal(trail[0].progress, 0);
+  assert.match(trail[0].blockedReason, /uniqueness cannot be established/i);
+});
+
 test('quest progression rejects inherited event accessors without invoking them', () => {
   let identityReads = 0;
   const prototype = {};
