@@ -300,6 +300,24 @@ test('malformed retained history cannot make a draft appear published to a Witne
   assert.equal(getLocationAction('relay', world, witness).type, 'places');
 });
 
+test('Witness projections do not expose an unpublished current revision through an older publication', () => {
+  const world = {
+    creations: [{
+      ...creation,
+      kind: 'comic',
+      version: 2,
+      versions: [{ ...creation, kind: 'comic', version: 1, publishedAt: at1 }]
+    }],
+    discoveries: ['relay', 'river', 'overlook', 'ruins'].map((locationId, index) =>
+      discovery('older-publication-discovery-' + index, locationId)),
+    events: [
+      { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 }
+    ]
+  };
+  assert.equal(getQuest(world, witness).id, 'witness-await-work');
+  assert.equal(getLocationAction('relay', world, witness).type, 'places');
+});
+
 test('guide action projection preserves Founder and Witness routes for supported viewers', () => {
   const world = {
     creations: [{ id: 'c-1', kind: 'comic', version: 1, publishedAt: at1 }],
