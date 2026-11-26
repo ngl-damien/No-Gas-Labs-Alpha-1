@@ -3015,16 +3015,16 @@ def shared(browser,url,data,out):
         def open_guild_hall(page):
             close_sheet(page)
             page.locator('#places-button').click()
-            walk_to_location(page, 'Guild Hall', enter=False)
+            walk_to_location(page, 'Evidence Archive', enter=False)
             page.bring_to_front()
             clerk_control = page.locator('[data-guild-npc-control="contradiction-clerk"]')
             try:
                 page.wait_for_function(
                     """() => {
                         const world = document.querySelector('#world');
-                        return world?.dataset.navigationTargetId === 'guild_hall' &&
+                        return world?.dataset.navigationTargetId === 'evidence_archive' &&
                             world?.dataset.navigationState === 'arrived' &&
-                            world?.dataset.nearbyInstitutionId === 'guild_hall' &&
+                            world?.dataset.nearbyInstitutionId === 'evidence_archive' &&
                             document.querySelector('#sheet')?.hidden === true &&
                             document.querySelector('#play-ui')?.hidden === false;
                     }""",
@@ -3053,11 +3053,11 @@ def shared(browser,url,data,out):
                 # when another entity could own the generic nearest-entity HUD.
                 clerk_control.press('Enter')
                 page.wait_for_function(
-                    "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'&&!document.querySelector('#sheet').hidden",
                     timeout=30000
                 )
             except Exception as error:
-                page.screenshot(path=str(out/'failed-guild-hall-arrival.png'))
+                page.screenshot(path=str(out/'failed-evidence-archive-arrival.png'))
                 diagnostics = page.evaluate("""() => {
                     const button = document.querySelector('[data-guild-npc-control="contradiction-clerk"]');
                     const world = document.querySelector('#world');
@@ -3080,7 +3080,7 @@ def shared(browser,url,data,out):
                     };
                 }""")
                 raise AssertionError(
-                    'The explicit Contradiction Clerk approach/talk path did not open Guild Hall: ' +
+                    'The explicit Contradiction Clerk approach/talk path did not open Evidence Archive: ' +
                     json.dumps(diagnostics)
                 ) from error
             expect(page.locator('#player-guild-board')).to_be_visible()
