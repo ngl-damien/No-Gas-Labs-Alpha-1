@@ -167,6 +167,8 @@ def verify_chain(ledger: Path, expected_head: str | None = None, anchor_ref: Pat
             ledger_fd = _open_ledger_fd(ledger, os.O_RDONLY)
         except FileNotFoundError:
             return {"status": "TAMPER_DETECTED", "detail": "anchored ledger file is missing"}
+        except OSError as exc:
+            return {"status": "TAMPER_DETECTED", "detail": f"ledger descriptor rejected: {exc}"}
         try:
             return _verify_chain_unlocked(ledger, expected_head, anchor_ref, ledger_fd)
         finally:
