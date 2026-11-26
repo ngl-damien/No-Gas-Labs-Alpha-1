@@ -290,6 +290,33 @@ class LedgerAndClosureTests(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), "preserve")
             self.assertFalse(ledger.exists())
 
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and O_NOFOLLOW")
+    def test_symlinked_ledger_is_rejected_for_append_and_verify(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "unrelated.jsonl"
+            target.write_text("preserve\\n", encoding="utf-8")
+            ledger = root / "mission.jsonl"
+            ledger.symlink_to(target)
+            with self.assertRaises(OSError):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            self.assertEqual(ngl.verify_chain(ledger, expected_head="0" * 64)["status"], "TAMPER_DETECTED")
+            self.assertEqual(target.read_text(encoding="utf-8"), "preserve\\n")
+
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and O_NOFOLLOW")
+    def test_hard_linked_ledger_is_rejected_without_touching_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "unrelated.jsonl"
+            target.write_text("", encoding="utf-8")
+            ledger = root / "mission.jsonl"
+            os.link(target, ledger)
+            with self.assertRaises(RuntimeError):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            self.assertEqual(target.read_text(encoding="utf-8"), "")
+            self.assertEqual(ngl._verify_internal(ledger)["status"], "TAMPER_DETECTED")
+
+
     def test_concurrent_process_appends_preserve_one_contiguous_hash_chain(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
