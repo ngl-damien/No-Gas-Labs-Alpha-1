@@ -138,7 +138,9 @@ export function getQuest(world, viewer) {
     copy: 'Quest progress is unavailable until a valid Founder or Witness character is selected.',
     button: 'Explore the world →', action: 'places'
   };
-  const creations = rows(world?.creations);
+  const creations = viewer.role === 'witness'
+    ? publishedCreationsForWitness(world)
+    : rows(world?.creations);
   const discoveries = mine(world?.discoveries, viewer);
   const notes = mine(world?.contributions, viewer);
   const reports = mine(world?.reports, viewer);
@@ -268,7 +270,10 @@ const hasEarlierVersion = creation => Boolean(creation && Number.isInteger(creat
 export function getLocationAction(locationId, world, viewer) {
   if (!GUIDE_LOCATIONS.has(locationId)) return null;
   if (typeof viewer?.id !== 'string' || !viewer.id || !['founder', 'witness'].includes(viewer.role)) return null;
-  const creations = rows(world?.creations).filter(creation =>
+  const creationSource = viewer.role === 'witness'
+    ? publishedCreationsForWitness(world)
+    : rows(world?.creations);
+  const creations = creationSource.filter(creation =>
     creation && typeof creation.id === 'string' && creation.id.length > 0
   );
   const oldest = creations[0] || null;
@@ -465,6 +470,19 @@ function retainedPublicationEvents(world, actorId = null, actorRole = null) {
         ((actorId !== null && event.actor.id !== actorId) || (actorRole !== null && event.actor.role !== actorRole))) return false;
     return versionCounts.get(versionKey(event.creationId, event.version, event.at)) === 1;
   });
+}
+
+/**
+ * Witness-facing world content must be backed by a uniquely retained publication.
+ * A draft in the shared aggregate is not public work, and malformed event identity
+ * coverage cannot be treated as proof that a publication ID is unique.
+ */
+function publishedCreationsForWitness(world) {
+  if (!hasCompleteRetainedEventIdentity(world)) return [];
+  const publishedIds = new Set(retainedPublicationEvents(world).map(event => event.creationId));
+  return trailRows(world?.creations).filter(creation =>
+    creation && typeof creation.id === 'string' && publishedIds.has(creation.id)
+  );
 }
 
 function referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference) {
