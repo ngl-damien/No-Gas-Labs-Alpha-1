@@ -194,9 +194,12 @@ def append_event(ledger: Path, actor: str, event_type: str, label: str, payload:
             }
             body["entry_hash"] = _hash(body)
             encoded = (json.dumps(body, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
-            written = os.write(ledger_fd, encoded)
-            if written != len(encoded):
-                raise OSError("short write while appending mission ledger event")
+            remaining = memoryview(encoded)
+            while remaining:
+                written = os.write(ledger_fd, remaining)
+                if written <= 0:
+                    raise OSError("short write while appending mission ledger event")
+                remaining = remaining[written:]
             os.fsync(ledger_fd)
             return body
         finally:
