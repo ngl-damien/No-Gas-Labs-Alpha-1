@@ -554,7 +554,7 @@ class LedgerAndClosureTests(unittest.TestCase):
                 ledger.write_text(
                     '{"seq":0,"prev_hash":"' + ngl.GENESIS +
                     '","event_type":"EVENT","payload":{"measurement":' + constant +
-                    '},"entry_hash":"' + "0" * 64 + '"}\\n',
+                    '},"entry_hash":"' + "0" * 64 + '"}\n',
                     encoding="utf-8",
                 )
                 result = ngl.verify_chain(ledger, expected_head=ngl.GENESIS)
