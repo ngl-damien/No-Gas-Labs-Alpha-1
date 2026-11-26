@@ -3056,6 +3056,13 @@ def shared(browser,url,data,out):
                     "()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'&&!document.querySelector('#sheet').hidden",
                     timeout=30000
                 )
+                # Clerk conversation belongs to Evidence Archive; the shared
+                # guild board is a separate Guild Hall capability. Visit both
+                # institutions rather than treating one NPC as the other.
+                close_sheet(page)
+                page.locator('#places-button').click()
+                walk_to_location(page, 'Guild Hall')
+                expect(page.locator('#player-guild-board')).to_be_visible()
             except Exception as error:
                 page.screenshot(path=str(out/'failed-evidence-archive-arrival.png'))
                 diagnostics = page.evaluate("""() => {
