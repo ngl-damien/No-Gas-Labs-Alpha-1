@@ -43,7 +43,7 @@ function isRecognizedSourceArchiveVersion(creation, versionNumber) {
  */
 const STUDY_REVIEW_FIELDS = Object.freeze([
   'id', 'type', 'studyId', 'reviewId', 'creationId', 'version', 'at',
-  'actor', 'response', 'reflection'
+  'actor', 'role', 'response', 'reflection'
 ]);
 function hasSafeStudyReviewInputs(note, events) {
   try {
