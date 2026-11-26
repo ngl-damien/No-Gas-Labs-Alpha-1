@@ -3120,7 +3120,7 @@ def shared(browser,url,data,out):
         assert clerk_after_approach_witness['world']['xp']==clerk_before_witness['world']['xp']
         clerk_control.evaluate("(button)=>button.click()")
         a.wait_for_function(
-            "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+            "()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'&&!document.querySelector('#sheet').hidden",
             timeout=30000
         )
         clerk_card=a.locator('[data-local-npc-role="contradiction-clerk"]')
