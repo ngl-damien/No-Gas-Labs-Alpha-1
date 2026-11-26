@@ -314,7 +314,16 @@ function hasCompleteRetainedEventIdentity(world) {
     const collection = world && typeof world === 'object'
       ? Object.getOwnPropertyDescriptor(world, 'events')
       : undefined;
-    if (!collection) return true;
+    if (!collection) {
+      // A missing own collection is an empty history only when no prototype
+      // supplies an inherited events property that a later read could execute.
+      let prototype = Object.getPrototypeOf(world);
+      while (prototype !== null) {
+        if (Object.getOwnPropertyDescriptor(prototype, 'events')) return false;
+        prototype = Object.getPrototypeOf(prototype);
+      }
+      return true;
+    }
     if (!Object.hasOwn(collection, 'value') || !Array.isArray(collection.value)) return false;
     const events = collection.value;
     if (Object.getPrototypeOf(events) !== Array.prototype) return false;
