@@ -127,6 +127,8 @@ def _ledger_entries(ledger: Path, ledger_fd: int | None = None) -> list[dict]:
         with os.fdopen(fd, "r", encoding="utf-8") as stream:
             entries = []
             for number, line in enumerate(stream, 1):
+                if not line.endswith("\n"):
+                    raise ValueError(f"ledger record is not newline-terminated at line {number}")
                 if not line.strip():
                     raise ValueError(f"blank ledger record at line {number}")
                 try:
