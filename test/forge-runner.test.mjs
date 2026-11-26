@@ -398,7 +398,7 @@ test('Repository Forge executes explicit copied tests and retains actual TAP cou
   assert.equal(report.schema, 'ngl.forge-repository-report.v1');
   assert.equal(report.outcome, 'passing');
   assert.equal(report.correct, true);
-  assert.equal(report.limits.timeoutMs, 45000, 'the default repository verification budget must leave room for the full growing suite');
+  assert.equal(report.limits.timeoutMs, 90000, 'the default repository verification budget must accommodate the full growing suite while remaining below the 120-second hard cap');
   assert.deepEqual(report.tests.paths, ['genesis.test.mjs', 'reconstitution/check.test.mjs', 'test/math.test.mjs']);
   assert.equal(report.tests.counts.tests, 4);
   assert.equal(report.tests.counts.passed, 4);
