@@ -1257,7 +1257,7 @@ function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
  // while any retained world event was rejected before its ID could be read.
  const worldIdentityCoverageIncomplete=entries.some(entry=>
   entry?.source==='world'&&
-  (entry.id==='world:unclassified-events'||/^world:unclassified-\\d+$/.test(entry.id||''))
+  (entry.id==='world:unclassified-events'||/^world:unclassified-\d+$/.test(entry.id||''))
  );
  const section=el('section');
  section.dataset.evidenceArchiveTransferRefusals='true';
