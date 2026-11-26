@@ -1,3 +1,12 @@
+## Run 11 continuation — Array iterator inspection order — 2026-11-26
+
+- **Additional challenge:** the first Array.prototype guard destructured each [name, expected] tuple before checking Array.prototype[Symbol.iterator]. A hostile inherited iterator accessor could therefore execute during the guard itself.
+- **Regression:** [d24619f](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/d24619f503a7e6fd249f76c6bac068cc9f84734d) adds a throwing Array.prototype[Symbol.iterator] getter and requires both exported study-review helpers to withhold their result without invoking it.
+- **Correction:** [ce45f08](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/ce45f08fc24c3fb3c3cf49aa55e813a51fbcc119) replaces tuple destructuring with indexed reads of the guard's own frozen entries, then inspects the iterator descriptor. This closes the check-before-use ordering gap.
+- **Verification boundary:** this is a fresh test/runtime pair; no local test run is available. CI must be judged on the final docs-augmented head only. Earlier runs are not transferred.
+
+---
+
 ## Run 11 continuation — Study-review Array.prototype integrity boundary — 2026-11-26
 
 - **Worker:** Worker B / MMORPG. **PR:** [#750](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/750), existing draft branch `fix/quest-history-incomplete-identity-fail-closed-20261126-run11`; no competing PR created.
