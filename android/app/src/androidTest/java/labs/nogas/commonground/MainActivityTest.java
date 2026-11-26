@@ -274,6 +274,15 @@ public final class MainActivityTest {
 
         evaluate(activity,
                 "document.querySelector('[data-project-state-record-lead=\"pullRequests\"]').click(); 'prepare lead'");
+        // Navigation can legitimately append a landmark-discovery record (for
+        // example, Overlook) while the player approaches Source Observatory.
+        // Wait until arrival is complete before taking the baseline: the assertion
+        // below is specifically about the explicit workbench-entry action, not travel.
+        awaitJavaScript(activity,
+                "document.querySelector('#world')?.dataset.navigationTargetId === 'source_observatory' && " +
+                "document.querySelector('#world')?.dataset.navigationState === 'arrived' && " +
+                "document.querySelector('#world')?.dataset.nearbyInstitutionId === 'source_observatory' && " +
+                "document.querySelector('#sheet')?.hidden === true");
         // Reaching Source Observatory is navigation only. Enter through the
         // same visibility-checked control helper used by the backup/restore journey.
         String beforeEnter = evaluate(activity,
