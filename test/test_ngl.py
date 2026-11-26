@@ -141,6 +141,19 @@ class LedgerAndClosureTests(unittest.TestCase):
             self.assertEqual(verification["status"], "TAMPER_DETECTED")
             self.assertIn("blank ledger record at line 2", verification["detail"])
 
+    def test_missing_final_newline_is_tampering_even_when_hash_chain_head_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "ledger.jsonl"
+            entry = ngl.append_event(ledger, "test", "A", "ARTIFACT_OBSERVED", {})
+            serialized = ledger.read_text(encoding="utf-8")
+            self.assertTrue(serialized.endswith("\\n"))
+            ledger.write_text(serialized[:-1], encoding="utf-8")
+
+            verification = ngl.verify_chain(ledger, expected_head=entry["entry_hash"])
+
+            self.assertEqual(verification["status"], "TAMPER_DETECTED")
+            self.assertIn("not newline-terminated at line 1", verification["detail"])
+
     def test_truncation_is_detected_by_external_anchor(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "ledger.jsonl"
