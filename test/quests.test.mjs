@@ -559,3 +559,21 @@ test('quest progression rejects accessor-backed event identity without invoking 
   assert.equal(trail[0].id, 'founder-history-identity-unavailable');
   assert.equal(trail[0].progress, 0);
 });
+
+test('quest progression rejects inherited event accessors without invoking them', () => {
+  let identityReads = 0;
+  const prototype = {};
+  Object.defineProperty(prototype, 'events', {
+    enumerable: true,
+    get() { identityReads += 1; throw new Error('inherited event history must not execute'); }
+  });
+  const world = Object.assign(Object.create(prototype), trailFixture());
+  world.creations = [{ ...publishedV1, versions: [] }];
+
+  const trail = getQuestTrail(world, founder);
+  assert.equal(identityReads, 0);
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].id, 'founder-history-identity-unavailable');
+  assert.equal(trail[0].progress, 0);
+  assert.match(trail[0].blockedReason, /uniqueness cannot be established/i);
+});
