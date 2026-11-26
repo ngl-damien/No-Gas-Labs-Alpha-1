@@ -602,3 +602,39 @@ test('quest progression rejects inherited event accessors without invoking them'
   assert.equal(trail[0].progress, 0);
   assert.match(trail[0].blockedReason, /uniqueness cannot be established/i);
 });
+
+
+test('study review projections fail closed on inherited optional-field accessors', () => {
+  let inheritedReads = 0;
+  const study = {
+    id: 'study-event-inherited', type: 'study', studyId: 'study-inherited',
+    creationId: 'source-1', version: 2, at: '2026-10-29T12:00:00.000Z',
+    actor: founder
+  };
+  const review = {
+    id: 'review-event-inherited', type: 'study-reviewed', reviewId: 'review-inherited',
+    studyId: study.studyId, creationId: study.creationId, version: study.version,
+    at: '2026-10-29T12:01:00.000Z', actor: founder,
+    response: 'The source differs.', reflection: 'Recheck the retained bytes.'
+  };
+  const unrelated = {
+    id: 'unrelated-event', type: 'discover', actor: founder,
+    at: '2026-10-29T12:02:00.000Z'
+  };
+
+  Object.defineProperty(Object.prototype, 'studyId', {
+    configurable: true,
+    get() {
+      inheritedReads += 1;
+      throw new Error('inherited study identity must not execute');
+    }
+  });
+  try {
+    const history = [study, review, unrelated];
+    assert.equal(findStudyReview(study, history), null);
+    assert.equal(hasStudyReviewRecord(study, history), false);
+    assert.equal(inheritedReads, 0);
+  } finally {
+    delete Object.prototype.studyId;
+  }
+});
