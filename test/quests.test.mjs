@@ -622,6 +622,8 @@ test('study review projections fail closed on inherited optional-field accessors
     at: '2026-10-29T12:02:00.000Z'
   };
 
+  const previousDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, 'studyId');
+  assert.equal(previousDescriptor, undefined, 'fixture requires an initially unpolluted prototype');
   Object.defineProperty(Object.prototype, 'studyId', {
     configurable: true,
     get() {
@@ -635,6 +637,7 @@ test('study review projections fail closed on inherited optional-field accessors
     assert.equal(hasStudyReviewRecord(study, history), false);
     assert.equal(inheritedReads, 0);
   } finally {
-    delete Object.prototype.studyId;
+    if (previousDescriptor) Object.defineProperty(Object.prototype, 'studyId', previousDescriptor);
+    else delete Object.prototype.studyId;
   }
 });
