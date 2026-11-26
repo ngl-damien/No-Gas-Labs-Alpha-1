@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { projectCombatHistory } from '../game/combat.mjs';
 import http from 'node:http';
 import assert from 'node:assert/strict';
@@ -2039,6 +2039,76 @@ test('decision HTTP route fails closed before persistence while signed Founder a
   assert.equal(state.body.world.xp, 0);
 });
 
+
+test('live Founder decision route rejects TEST_ONLY trust without consuming persistence', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-test-only-route-'));
+  const trustPath = join(dataDir, 'founder.pub.json');
+  const { publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const jwk = publicKey.export({ format: 'jwk' });
+  const fingerprint = createHash('sha256')
+    .update(JSON.stringify({ kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y }))
+    .digest('hex');
+  await writeFile(trustPath, JSON.stringify({
+    schema: 'ngl.founder-trust-anchor.v1',
+    status: 'ENROLLED',
+    enrolled: true,
+    mode: 'TEST_ONLY',
+    public_key_jwk: jwk,
+    fingerprint
+  }), { mode: 0o600 });
+
+  let syncCalls = 0;
+  const decisionSyncDirectory = async directory => {
+    syncCalls += 1;
+    const handle = await open(directory, 'r');
+    try { await handle.sync(); } finally { await handle.close(); }
+  };
+  const f = await fixture(t, dataDir, { founderTrustAnchorPath: trustPath, decisionSyncDirectory });
+  const founder = f.client();
+  await founder.login();
+
+  const policy = await founder.request('/api/decisions/policy', {
+    id: 'policy:test-only-route',
+    reviewWindowMs: 60_000,
+    basis: 'Synthetic TEST_ONLY route regression; not an operational policy.'
+  });
+  assert.equal(policy.response.status, 200, JSON.stringify(policy.body));
+
+  const bytes = '{"schema":"test.evaluation.v1","result":"TEST_ONLY route fixture"}';
+  const created = await founder.request('/api/decisions/proposals', {
+    id: 'decision:test-only-route',
+    title: 'TEST_ONLY route must remain non-authorizing',
+    evaluation: { bytes, receipt: artifactReceipt(bytes) },
+    risks: ['Synthetic test only'],
+    rollback: 'No external effect is executed by this test.',
+    proposedEffect: 'Retain a proposal without authorizing it.'
+  });
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+
+  const authorization = await founder.request('/api/decisions');
+  assert.equal(authorization.response.status, 200);
+  assert.equal(authorization.body.dispositionAuthorization.available, false);
+  assert.equal(authorization.body.dispositionAuthorization.code, 'FOUNDER_TRUST_ANCHOR_TEST_ONLY');
+
+  const syncCallsBeforeChoice = syncCalls;
+  const chosen = await founder.request('/api/decisions/choose', {
+    decisionId: 'decision:test-only-route',
+    expectedRevision: 1,
+    requestId: 'request:test-only-route',
+    action: 'APPROVE'
+  });
+  assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
+  assert.equal(chosen.body.error.code, 'FOUNDER_TRUST_ANCHOR_TEST_ONLY');
+  assert.equal(syncCalls, syncCallsBeforeChoice, 'TEST_ONLY disposition must be rejected before decision persistence');
+
+  const state = await founder.request('/api/state');
+  assert.equal(state.response.status, 200);
+  assert.equal(state.body.institution.decisionSummary.counts.PENDING, 1);
+  assert.equal(state.body.institution.decisionSummary.counts.APPROVED, 0);
+  assert.equal(state.body.institution.decisionSummary.counts.REJECTED, 0);
+  assert.equal(state.body.world.events.length, 0);
+  assert.equal(state.body.world.xp, 0);
+});
 
 test('server startup indexes large interleaved retained proposal/report history', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-indexed-history-server-'));
