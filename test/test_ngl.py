@@ -311,7 +311,7 @@ class LedgerAndClosureTests(unittest.TestCase):
             target.write_text("", encoding="utf-8")
             ledger = root / "mission.jsonl"
             os.link(target, ledger)
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(OSError):
                 ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
             self.assertEqual(target.read_text(encoding="utf-8"), "")
             self.assertEqual(ngl._verify_internal(ledger)["status"], "TAMPER_DETECTED")
