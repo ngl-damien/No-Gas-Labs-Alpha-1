@@ -129,6 +129,35 @@ class LedgerAndClosureTests(unittest.TestCase):
             anchor.write_text(json.dumps({"head_hash": entry["entry_hash"], "count": 2}), encoding="utf-8")
             self.assertEqual(ngl.verify_chain(ledger, anchor_ref=anchor)["status"], "TAMPER_DETECTED")
 
+    def test_blank_record_is_tampering_even_when_hash_chain_head_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "ledger.jsonl"
+            entry = ngl.append_event(ledger, "test", "A", "ARTIFACT_OBSERVED", {})
+            with ledger.open("a", encoding="utf-8") as stream:
+                stream.write("\n")
+
+            verification = ngl.verify_chain(ledger, expected_head=entry["entry_hash"])
+
+            self.assertEqual(verification["status"], "TAMPER_DETECTED")
+            self.assertIn("blank ledger record at line 2", verification["detail"])
+
+    def test_missing_final_newline_is_tampering_even_when_hash_chain_head_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "ledger.jsonl"
+            entry = ngl.append_event(ledger, "test", "A", "ARTIFACT_OBSERVED", {})
+            serialized = ledger.read_text(encoding="utf-8")
+            self.assertTrue(serialized.endswith("\n"))
+            ledger.write_text(serialized[:-1], encoding="utf-8")
+
+            verification = ngl.verify_chain(ledger, expected_head=entry["entry_hash"])
+
+            self.assertEqual(verification["status"], "TAMPER_DETECTED")
+            self.assertIn("not newline-terminated at line 1", verification["detail"])
+            rejected_bytes = ledger.read_bytes()
+            with self.assertRaisesRegex(RuntimeError, "Refusing append to invalid ledger"):
+                ngl.append_event(ledger, "test", "B", "ARTIFACT_OBSERVED", {})
+            self.assertEqual(ledger.read_bytes(), rejected_bytes)
+
     def test_truncation_is_detected_by_external_anchor(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "ledger.jsonl"
@@ -137,6 +166,32 @@ class LedgerAndClosureTests(unittest.TestCase):
             ledger.write_text(ledger.read_text(encoding="utf-8").splitlines()[0] + "\n", encoding="utf-8")
             self.assertEqual(ngl.verify_chain(ledger, expected_head=final["entry_hash"])["status"], "TAMPER_DETECTED")
             self.assertNotEqual(first["entry_hash"], final["entry_hash"])
+
+    def test_closure_fails_closed_on_hash_intact_non_object_terminal_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "m.jsonl"
+            entry = {
+                "seq": 0,
+                "timestamp": "2026-11-26T00:00:00+00:00",
+                "actor": "test",
+                "event_type": "GATE_EVALUATION",
+                "epistemic_label": "EXECUTION_OBSERVED",
+                "prev_hash": ngl.GENESIS,
+                "payload": None,
+            }
+            entry["entry_hash"] = ngl._hash(entry)
+            ledger.write_text(json.dumps(entry, sort_keys=True) + "\n", encoding="utf-8")
+            scheduler = root / "scheduler.json"
+            scheduler.write_text(json.dumps({"ready": True, "owner": "worker-a", "blockers": []}), encoding="utf-8")
+            pay = root / "pay.json"
+            pay.write_text(json.dumps({"artifact_sha256": "a" * 64}), encoding="utf-8")
+
+            result = ngl._closure(ledger, entry["entry_hash"], None, scheduler, "S0", pay)
+
+            self.assertEqual(result["decision"], "blocked")
+            self.assertEqual(result["reason"], "latest ledger event is not a completed gate evaluation")
+            self.assertEqual(result["verification"]["status"], "CHAIN_INTACT")
 
     def test_closure_requires_anchored_completed_gate_scheduler_and_payloop(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -271,7 +326,8 @@ class LedgerAndClosureTests(unittest.TestCase):
             lock.write_text("", encoding="utf-8")
             lock.chmod(0o600)
             current_uid = os.getuid()
-            with patch.object(ngl.os, "getuid", return_value=current_uid + 1):
+            with patch.object(ngl, "_validate_ledger_directory"), \
+                 patch.object(ngl.os, "getuid", return_value=current_uid + 1):
                 with self.assertRaisesRegex(OSError, "not owned by the current user"):
                     ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
             self.assertFalse(ledger.exists())
@@ -289,6 +345,33 @@ class LedgerAndClosureTests(unittest.TestCase):
                 ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
             self.assertEqual(target.read_text(encoding="utf-8"), "preserve")
             self.assertFalse(ledger.exists())
+
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and O_NOFOLLOW")
+    def test_symlinked_ledger_is_rejected_for_append_and_verify(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "unrelated.jsonl"
+            target.write_text("preserve\\n", encoding="utf-8")
+            ledger = root / "mission.jsonl"
+            ledger.symlink_to(target)
+            with self.assertRaises(OSError):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            self.assertEqual(ngl.verify_chain(ledger, expected_head="0" * 64)["status"], "TAMPER_DETECTED")
+            self.assertEqual(target.read_text(encoding="utf-8"), "preserve\\n")
+
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and O_NOFOLLOW")
+    def test_hard_linked_ledger_is_rejected_without_touching_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "unrelated.jsonl"
+            target.write_text("", encoding="utf-8")
+            ledger = root / "mission.jsonl"
+            os.link(target, ledger)
+            with self.assertRaises(OSError):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            self.assertEqual(target.read_text(encoding="utf-8"), "")
+            self.assertEqual(ngl._verify_internal(ledger)["status"], "TAMPER_DETECTED")
+
 
     def test_concurrent_process_appends_preserve_one_contiguous_hash_chain(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -322,33 +405,63 @@ class LedgerAndClosureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
             real_close = os.close
+            real_directory = ngl._open_ledger_directory
+            directory_fds = []
+            lock_fds = []
+
+            def tracked_directory(*args, **kwargs):
+                fd = real_directory(*args, **kwargs)
+                directory_fds.append(fd)
+                return fd
 
             def fail_unlock(fd, operation):
                 if operation == ngl.fcntl.LOCK_UN:
+                    lock_fds.append(fd)
                     raise OSError("injected unlock failure")
 
-            with patch.object(ngl.fcntl, "flock", side_effect=fail_unlock), \
+            with patch.object(ngl, "_open_ledger_directory", side_effect=tracked_directory), \
+                 patch.object(ngl.fcntl, "flock", side_effect=fail_unlock), \
                  patch.object(ngl.os, "close", wraps=real_close) as close_spy:
                 with self.assertRaisesRegex(OSError, "injected unlock failure"):
                     with ngl._ledger_lock(ledger, exclusive=True):
                         pass
-                close_spy.assert_called_once()
+                self.assertEqual(len(directory_fds), 1)
+                self.assertEqual(len(lock_fds), 1)
+                self.assertGreaterEqual(close_spy.call_count, 2)
+                for fd in directory_fds + lock_fds:
+                    with self.assertRaises(OSError):
+                        os.fstat(fd)
 
     @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and O_NOFOLLOW")
     def test_lock_descriptor_is_closed_when_lock_acquisition_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
             real_close = os.close
+            real_directory = ngl._open_ledger_directory
+            directory_fds = []
+            lock_fds = []
+
+            def tracked_directory(*args, **kwargs):
+                fd = real_directory(*args, **kwargs)
+                directory_fds.append(fd)
+                return fd
 
             def fail_acquire(fd, operation):
+                lock_fds.append(fd)
                 raise OSError("injected lock acquisition failure")
 
-            with patch.object(ngl.fcntl, "flock", side_effect=fail_acquire), \
+            with patch.object(ngl, "_open_ledger_directory", side_effect=tracked_directory), \
+                 patch.object(ngl.fcntl, "flock", side_effect=fail_acquire), \
                  patch.object(ngl.os, "close", wraps=real_close) as close_spy:
                 with self.assertRaisesRegex(OSError, "injected lock acquisition failure"):
                     with ngl._ledger_lock(ledger, exclusive=True):
                         pass
-                close_spy.assert_called_once()
+                self.assertEqual(len(directory_fds), 1)
+                self.assertEqual(len(lock_fds), 1)
+                self.assertGreaterEqual(close_spy.call_count, 2)
+                for fd in directory_fds + lock_fds:
+                    with self.assertRaises(OSError):
+                        os.fstat(fd)
 
     def test_writer_lock_is_released_when_serialization_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -358,6 +471,111 @@ class LedgerAndClosureTests(unittest.TestCase):
             entry = ngl.append_event(ledger, "test", "GOOD", "ARTIFACT_OBSERVED", {"ok": True})
             self.assertEqual(entry["seq"], 0)
             self.assertEqual(ngl._verify_internal(ledger)["status"], "CHAIN_INTACT")
+
+
+    @unittest.skipUnless(
+        ngl.fcntl is not None
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in os.supports_dir_fd
+        and os.mkdir in os.supports_dir_fd,
+        "requires POSIX directory-descriptor and no-follow support",
+    )
+    def test_symlinked_ledger_parent_is_rejected_without_creating_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "real"
+            target.mkdir()
+            alias = root / "alias"
+            alias.symlink_to(target, target_is_directory=True)
+            ledger = alias / "mission.jsonl"
+
+            with self.assertRaises(OSError):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+
+            self.assertFalse((target / "mission.jsonl.lock").exists())
+            self.assertFalse((target / "mission.jsonl").exists())
+
+    @unittest.skipUnless(
+        ngl.fcntl is not None
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in os.supports_dir_fd
+        and os.mkdir in os.supports_dir_fd,
+        "requires POSIX directory-descriptor and no-follow support",
+    )
+    def test_group_or_world_writable_nonsticky_ledger_parent_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp) / "shared"
+            parent.mkdir()
+            parent.chmod(0o777)
+            ledger = parent / "mission.jsonl"
+
+            try:
+                with self.assertRaisesRegex(OSError, "group/world writable"):
+                    ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+                self.assertFalse((parent / "mission.jsonl.lock").exists())
+                self.assertFalse(ledger.exists())
+            finally:
+                parent.chmod(0o700)
+
+    @unittest.skipUnless(
+        ngl.fcntl is not None
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in os.supports_dir_fd
+        and os.mkdir in os.supports_dir_fd,
+        "requires POSIX directory-descriptor and no-follow support",
+    )
+    def test_parent_path_with_dotdot_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            nested = root / "nested"
+            nested.mkdir()
+            ledger = nested / ".." / "mission.jsonl"
+
+            with self.assertRaisesRegex(OSError, "must not contain '..'"):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+
+            self.assertFalse((root / "mission.jsonl.lock").exists())
+            self.assertFalse((root / "mission.jsonl").exists())
+
+
+    def test_hash_rejects_non_finite_json_numbers(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    ngl._hash({"payload": {"measurement": value}})
+
+    def test_verifier_rejects_nonstandard_json_numeric_constants_without_raising(self):
+        for constant in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(constant=constant), tempfile.TemporaryDirectory() as tmp:
+                ledger = Path(tmp) / "mission.jsonl"
+                ledger.write_text(
+                    '{"seq":0,"prev_hash":"' + ngl.GENESIS +
+                    '","event_type":"EVENT","payload":{"measurement":' + constant +
+                    '},"entry_hash":"' + "0" * 64 + '"}\n',
+                    encoding="utf-8",
+                )
+                result = ngl.verify_chain(ledger, expected_head=ngl.GENESIS)
+                self.assertEqual(result["status"], "TAMPER_DETECTED")
+                self.assertIn("non-standard JSON constant", result["detail"])
+
+    def test_append_rejects_non_finite_payload_without_persisting_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "mission.jsonl"
+            with self.assertRaises(ValueError):
+                ngl.append_event(
+                    ledger, "test", "MEASUREMENT", "ARTIFACT_OBSERVED",
+                    {"measurement": float("nan")},
+                )
+            self.assertEqual(ledger.read_bytes(), b"")
+            entry = ngl.append_event(
+                ledger, "test", "MEASUREMENT", "ARTIFACT_OBSERVED",
+                {"measurement": 1.25},
+            )
+            self.assertEqual(entry["seq"], 0)
+            self.assertEqual(ngl.verify_chain(ledger, expected_head=entry["entry_hash"])["status"], "CHAIN_INTACT")
 
 
 if __name__ == "__main__":
