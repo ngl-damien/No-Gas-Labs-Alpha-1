@@ -36,20 +36,82 @@ def _hash(value: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _open_ledger_fd(ledger: Path, flags: int) -> int:
-    if not hasattr(os, "O_NOFOLLOW"):
-        raise OSError("mission-ledger access requires O_NOFOLLOW support")
-    fd = os.open(ledger, flags | os.O_NOFOLLOW, 0o600)
+def _validate_ledger_directory(directory_fd: int) -> None:
+    metadata = os.fstat(directory_fd)
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise OSError("mission-ledger parent is not a directory")
+    if hasattr(os, "getuid") and metadata.st_uid not in (0, os.getuid()):
+        raise OSError("mission-ledger parent directory is not owned by root or the current user")
+    if metadata.st_mode & 0o022 and not metadata.st_mode & stat.S_ISVTX:
+        raise OSError("mission-ledger parent directory must not be group/world writable without the sticky bit")
+
+
+def _open_ledger_directory(ledger: Path, *, create: bool = False) -> int:
+    if not hasattr(os, "O_DIRECTORY") or not hasattr(os, "O_NOFOLLOW"):
+        raise OSError("mission-ledger access requires O_DIRECTORY and O_NOFOLLOW support")
+    if not hasattr(os, "supports_dir_fd") or os.open not in os.supports_dir_fd or os.mkdir not in os.supports_dir_fd:
+        raise OSError("mission-ledger access requires directory-descriptor operations")
+    if not ledger.name or ledger.name in (".", ".."):
+        raise OSError("mission-ledger path must name a file")
+    parent = ledger.parent
+    if ".." in parent.parts:
+        raise OSError("mission-ledger parent path must not contain '..' components")
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    if ledger.is_absolute():
+        directory_fd = os.open(ledger.anchor, directory_flags)
+        components = parent.parts[1:]
+    else:
+        directory_fd = os.open(".", directory_flags)
+        components = parent.parts
+
     try:
-        metadata = os.fstat(fd)
-        if not stat.S_ISREG(metadata.st_mode):
-            raise OSError("mission-ledger path is not a regular file")
-        if metadata.st_nlink != 1:
-            raise OSError("mission-ledger file must not have hard-link aliases")
-        return fd
+        _validate_ledger_directory(directory_fd)
+        for component in components:
+            if component in ("", "."):
+                continue
+            try:
+                next_fd = os.open(component, directory_flags, dir_fd=directory_fd)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                try:
+                    os.mkdir(component, 0o700, dir_fd=directory_fd)
+                except FileExistsError:
+                    pass
+                next_fd = os.open(component, directory_flags, dir_fd=directory_fd)
+            try:
+                _validate_ledger_directory(next_fd)
+            except BaseException:
+                os.close(next_fd)
+                raise
+            os.close(directory_fd)
+            directory_fd = next_fd
+        return directory_fd
     except BaseException:
-        os.close(fd)
+        os.close(directory_fd)
         raise
+
+
+def _open_ledger_fd(ledger: Path, flags: int, directory_fd: int | None = None) -> int:
+    owns_directory = directory_fd is None
+    if owns_directory:
+        directory_fd = _open_ledger_directory(ledger)
+    try:
+        fd = os.open(ledger.name, flags | os.O_NOFOLLOW, 0o600, dir_fd=directory_fd)
+        try:
+            metadata = os.fstat(fd)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise OSError("mission-ledger path is not a regular file")
+            if metadata.st_nlink != 1:
+                raise OSError("mission-ledger file must not have hard-link aliases")
+            return fd
+        except BaseException:
+            os.close(fd)
+            raise
+    finally:
+        if owns_directory:
+            os.close(directory_fd)
 
 
 def _ledger_entries(ledger: Path, ledger_fd: int | None = None) -> list[dict]:
@@ -98,13 +160,16 @@ def _ledger_lock(ledger: Path, *, exclusive: bool):
     """Coordinate cooperating readers/writers through one persistent lock inode."""
     if fcntl is None:
         raise OSError("mission-ledger locking requires POSIX fcntl.flock; this operation is unavailable on this platform")
-    if not hasattr(os, "O_NOFOLLOW"):
-        raise OSError("mission-ledger locking requires O_NOFOLLOW support; refusing an unsafe lock path")
-    ledger.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = ledger.with_name(ledger.name + ".lock")
-    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    directory_fd = _open_ledger_directory(ledger, create=True)
+    lock_fd = None
     acquired = False
     try:
+        lock_fd = os.open(
+            ledger.name + ".lock",
+            os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory_fd,
+        )
         metadata = os.fstat(lock_fd)
         if not stat.S_ISREG(metadata.st_mode):
             raise OSError("mission-ledger lock path is not a regular file")
@@ -116,13 +181,17 @@ def _ledger_lock(ledger: Path, *, exclusive: bool):
             raise OSError("mission-ledger lock file is not owned by the current user")
         fcntl.flock(lock_fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
         acquired = True
-        yield
+        yield directory_fd
     finally:
         try:
-            if acquired:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            if lock_fd is not None:
+                try:
+                    if acquired:
+                        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(lock_fd)
         finally:
-            os.close(lock_fd)
+            os.close(directory_fd)
 
 
 def _verify_chain_unlocked(ledger: Path, expected_head: str | None = None, anchor_ref: Path | None = None, ledger_fd: int | None = None) -> dict:
@@ -162,9 +231,9 @@ def _verify_chain_unlocked(ledger: Path, expected_head: str | None = None, ancho
 def verify_chain(ledger: Path, expected_head: str | None = None, anchor_ref: Path | None = None) -> dict:
     if expected_head is None and anchor_ref is None:
         return _verify_chain_unlocked(ledger, expected_head, anchor_ref)
-    with _ledger_lock(ledger, exclusive=False):
+    with _ledger_lock(ledger, exclusive=False) as directory_fd:
         try:
-            ledger_fd = _open_ledger_fd(ledger, os.O_RDONLY)
+            ledger_fd = _open_ledger_fd(ledger, os.O_RDONLY, directory_fd)
         except FileNotFoundError:
             return {"status": "TAMPER_DETECTED", "detail": "anchored ledger file is missing"}
         except OSError as exc:
@@ -177,8 +246,8 @@ def verify_chain(ledger: Path, expected_head: str | None = None, anchor_ref: Pat
 
 def append_event(ledger: Path, actor: str, event_type: str, label: str, payload: dict) -> dict:
     # Verify and append through one validated inode while holding the logical-path lock.
-    with _ledger_lock(ledger, exclusive=True):
-        ledger_fd = _open_ledger_fd(ledger, os.O_RDWR | os.O_APPEND | os.O_CREAT)
+    with _ledger_lock(ledger, exclusive=True) as directory_fd:
+        ledger_fd = _open_ledger_fd(ledger, os.O_RDWR | os.O_APPEND | os.O_CREAT, directory_fd)
         try:
             internal = _verify_internal(ledger, ledger_fd)
             if internal["status"] != "CHAIN_INTACT":
@@ -228,9 +297,9 @@ def _load_json(path: Path) -> dict:
 def _closure(ledger: Path, expected_head: str | None, anchor_ref: Path | None,
              scheduler_preconditions: Path, pay_stage: str, pay_evidence: Path) -> dict:
     # Verify and inspect the terminal event through one opened ledger inode.
-    with _ledger_lock(ledger, exclusive=False):
+    with _ledger_lock(ledger, exclusive=False) as directory_fd:
         try:
-            ledger_fd = _open_ledger_fd(ledger, os.O_RDONLY)
+            ledger_fd = _open_ledger_fd(ledger, os.O_RDONLY, directory_fd)
         except FileNotFoundError:
             return {"decision": "blocked", "reason": "ledger file is missing"}
         try:
