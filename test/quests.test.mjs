@@ -606,15 +606,16 @@ test('quest progression rejects inherited event accessors without invoking them'
 
 test('study review projections fail closed on inherited optional-field accessors', () => {
   let inheritedReads = 0;
+  const studyActor = { id: founder.id };
   const study = {
     id: 'study-event-inherited', type: 'study', studyId: 'study-inherited',
     creationId: 'source-1', version: 2, at: '2026-10-29T12:00:00.000Z',
-    actor: founder
+    actor: studyActor
   };
   const review = {
     id: 'review-event-inherited', type: 'study-reviewed', reviewId: 'review-inherited',
     studyId: study.studyId, creationId: study.creationId, version: study.version,
-    at: '2026-10-29T12:01:00.000Z', actor: founder,
+    at: '2026-10-29T12:01:00.000Z', actor: studyActor,
     response: 'The source differs.', reflection: 'Recheck the retained bytes.'
   };
   const unrelated = {
@@ -622,13 +623,13 @@ test('study review projections fail closed on inherited optional-field accessors
     at: '2026-10-29T12:02:00.000Z'
   };
 
-  const previousDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, 'studyId');
+  const previousDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, 'role');
   assert.equal(previousDescriptor, undefined, 'fixture requires an initially unpolluted prototype');
-  Object.defineProperty(Object.prototype, 'studyId', {
+  Object.defineProperty(Object.prototype, 'role', {
     configurable: true,
     get() {
       inheritedReads += 1;
-      throw new Error('inherited study identity must not execute');
+      throw new Error('inherited actor role must not execute');
     }
   });
   try {
@@ -638,6 +639,6 @@ test('study review projections fail closed on inherited optional-field accessors
     assert.equal(inheritedReads, 0);
   } finally {
     if (previousDescriptor) Object.defineProperty(Object.prototype, 'studyId', previousDescriptor);
-    else delete Object.prototype.studyId;
+    else delete Object.prototype.role;
   }
 });
