@@ -61,6 +61,7 @@ def _ledger_entries(ledger: Path, ledger_fd: int | None = None) -> list[dict]:
                 return []
         else:
             fd = os.dup(ledger_fd)
+        os.lseek(fd, 0, os.SEEK_SET)
         with os.fdopen(fd, "r", encoding="utf-8") as stream:
             entries = []
             for number, line in enumerate(stream, 1):
