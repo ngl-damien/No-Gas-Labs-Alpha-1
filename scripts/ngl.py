@@ -114,6 +114,10 @@ def _open_ledger_fd(ledger: Path, flags: int, directory_fd: int | None = None) -
             os.close(directory_fd)
 
 
+def _reject_nonstandard_json_constant(value: str):
+    raise ValueError(f"non-standard JSON constant {value}")
+
+
 def _ledger_entries(ledger: Path, ledger_fd: int | None = None) -> list[dict]:
     try:
         if ledger_fd is None:
@@ -132,7 +136,7 @@ def _ledger_entries(ledger: Path, ledger_fd: int | None = None) -> list[dict]:
                 if not line.strip():
                     raise ValueError(f"blank ledger record at line {number}")
                 try:
-                    item = json.loads(line)
+                    item = json.loads(line, parse_constant=_reject_nonstandard_json_constant)
                 except json.JSONDecodeError as exc:
                     raise ValueError(f"malformed ledger JSON at line {number}: {exc}") from exc
                 if not isinstance(item, dict):
