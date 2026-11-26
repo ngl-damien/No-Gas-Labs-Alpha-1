@@ -10,6 +10,7 @@ except ImportError:  # Keep non-ledger CLI commands importable on non-POSIX host
 import hashlib
 import json
 import os
+import stat
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -71,15 +72,31 @@ def _ledger_lock(ledger: Path, *, exclusive: bool):
     """Coordinate cooperating readers/writers through one persistent lock inode."""
     if fcntl is None:
         raise OSError("mission-ledger locking requires POSIX fcntl.flock; this operation is unavailable on this platform")
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise OSError("mission-ledger locking requires O_NOFOLLOW support; refusing an unsafe lock path")
     ledger.parent.mkdir(parents=True, exist_ok=True)
     lock_path = ledger.with_name(ledger.name + ".lock")
-    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    acquired = False
     try:
+        metadata = os.fstat(lock_fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise OSError("mission-ledger lock path is not a regular file")
+        if metadata.st_mode & 0o077:
+            raise OSError("mission-ledger lock file permissions must exclude group and other access")
+        if metadata.st_nlink != 1:
+            raise OSError("mission-ledger lock file must not have hard-link aliases")
+        if hasattr(os, "getuid") and metadata.st_uid != os.getuid():
+            raise OSError("mission-ledger lock file is not owned by the current user")
         fcntl.flock(lock_fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        acquired = True
         yield
     finally:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        os.close(lock_fd)
+        try:
+            if acquired:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        finally:
+            os.close(lock_fd)
 
 
 def _verify_chain_unlocked(ledger: Path, expected_head: str | None = None, anchor_ref: Path | None = None) -> dict:

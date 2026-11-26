@@ -1,9 +1,11 @@
 import json
 import multiprocessing
+import os
 from queue import Empty
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -99,7 +101,7 @@ class GateRunnerTests(unittest.TestCase):
         self.assertEqual(gate_runner.UNITTESTS["ngl-invariant-core"][1:4], ["-m", "unittest", "discover"])
 
 
-POSIX_FLOCK_AND_FORK = ngl.fcntl is not None and "fork" in multiprocessing.get_all_start_methods()
+POSIX_FLOCK_AND_FORK = ngl.fcntl is not None and hasattr(ngl.os, "O_NOFOLLOW") and "fork" in multiprocessing.get_all_start_methods()
 
 
 class LedgerAndClosureTests(unittest.TestCase):
@@ -235,7 +237,59 @@ class LedgerAndClosureTests(unittest.TestCase):
         finally:
             ngl.fcntl = original
 
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock, O_NOFOLLOW, and fork multiprocessing")
+    def test_symlinked_lock_path_is_rejected_without_touching_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "mission.jsonl"
+            target = root / "unrelated.txt"
+            target.write_text("preserve", encoding="utf-8")
+            (root / "mission.jsonl.lock").symlink_to(target)
+            with self.assertRaises(OSError):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            self.assertEqual(target.read_text(encoding="utf-8"), "preserve")
+            self.assertFalse(ledger.exists())
+
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock, O_NOFOLLOW, and fork multiprocessing")
+    def test_group_or_world_accessible_lock_file_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "mission.jsonl"
+            lock = root / "mission.jsonl.lock"
+            lock.write_text("", encoding="utf-8")
+            lock.chmod(0o666)
+            with self.assertRaisesRegex(OSError, "permissions"):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            self.assertFalse(ledger.exists())
+
     @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and fork multiprocessing")
+    def test_lock_file_owned_by_another_uid_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "mission.jsonl"
+            lock = root / "mission.jsonl.lock"
+            lock.write_text("", encoding="utf-8")
+            lock.chmod(0o600)
+            current_uid = os.getuid()
+            with patch.object(ngl.os, "getuid", return_value=current_uid + 1):
+                with self.assertRaisesRegex(OSError, "not owned by the current user"):
+                    ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            self.assertFalse(ledger.exists())
+
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock, O_NOFOLLOW, and fork multiprocessing")
+    def test_hard_linked_lock_file_is_rejected_without_touching_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "mission.jsonl"
+            target = root / "unrelated.txt"
+            target.write_text("preserve", encoding="utf-8")
+            target.chmod(0o600)
+            os.link(target, root / "mission.jsonl.lock")
+            with self.assertRaisesRegex(OSError, "hard-link aliases"):
+                ngl.append_event(ledger, "test", "EVENT", "USER_STATED", {})
+            self.assertEqual(target.read_text(encoding="utf-8"), "preserve")
+            self.assertFalse(ledger.exists())
+
     def test_concurrent_process_appends_preserve_one_contiguous_hash_chain(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "mission.jsonl"
@@ -262,6 +316,39 @@ class LedgerAndClosureTests(unittest.TestCase):
             verified = ngl._verify_internal(ledger)
             self.assertEqual(verified["status"], "CHAIN_INTACT")
             self.assertEqual(verified["count"], count)
+
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and O_NOFOLLOW")
+    def test_lock_descriptor_is_closed_when_unlock_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "mission.jsonl"
+            real_close = os.close
+
+            def fail_unlock(fd, operation):
+                if operation == ngl.fcntl.LOCK_UN:
+                    raise OSError("injected unlock failure")
+
+            with patch.object(ngl.fcntl, "flock", side_effect=fail_unlock), \
+                 patch.object(ngl.os, "close", wraps=real_close) as close_spy:
+                with self.assertRaisesRegex(OSError, "injected unlock failure"):
+                    with ngl._ledger_lock(ledger, exclusive=True):
+                        pass
+                close_spy.assert_called_once()
+
+    @unittest.skipUnless(POSIX_FLOCK_AND_FORK, "requires POSIX flock and O_NOFOLLOW")
+    def test_lock_descriptor_is_closed_when_lock_acquisition_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "mission.jsonl"
+            real_close = os.close
+
+            def fail_acquire(fd, operation):
+                raise OSError("injected lock acquisition failure")
+
+            with patch.object(ngl.fcntl, "flock", side_effect=fail_acquire), \
+                 patch.object(ngl.os, "close", wraps=real_close) as close_spy:
+                with self.assertRaisesRegex(OSError, "injected lock acquisition failure"):
+                    with ngl._ledger_lock(ledger, exclusive=True):
+                        pass
+                close_spy.assert_called_once()
 
     def test_writer_lock_is_released_when_serialization_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
