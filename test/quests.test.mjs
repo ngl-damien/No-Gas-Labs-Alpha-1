@@ -676,3 +676,37 @@ test('study review projections fail closed on inherited Array.prototype method a
     Object.defineProperty(Array.prototype, 'filter', previousDescriptor);
   }
 });
+
+
+test('study review projections inspect the array iterator descriptor before destructuring method entries', () => {
+  let inheritedReads = 0;
+  const studyActor = { id: founder.id, role: founder.role };
+  const study = {
+    id: 'study-event-array-iterator', type: 'study', studyId: 'study-array-iterator',
+    creationId: 'source-1', version: 2, at: '2026-10-29T12:00:00.000Z',
+    actor: studyActor
+  };
+  const review = {
+    id: 'review-event-array-iterator', type: 'study-reviewed', reviewId: 'review-array-iterator',
+    studyId: study.studyId, creationId: study.creationId, version: study.version,
+    at: '2026-10-29T12:01:00.000Z', actor: studyActor,
+    response: 'The source differs.', reflection: 'Recheck the retained bytes.'
+  };
+  const history = [study, review];
+  const previousDescriptor = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator);
+  assert.equal(typeof previousDescriptor?.value, 'function', 'fixture requires the native array iterator');
+  Object.defineProperty(Array.prototype, Symbol.iterator, {
+    configurable: true,
+    get() {
+      inheritedReads += 1;
+      throw new Error('inherited array iterator must not execute');
+    }
+  });
+  try {
+    assert.equal(findStudyReview(study, history), null);
+    assert.equal(hasStudyReviewRecord(study, history), false);
+    assert.equal(inheritedReads, 0);
+  } finally {
+    Object.defineProperty(Array.prototype, Symbol.iterator, previousDescriptor);
+  }
+});
