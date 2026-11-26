@@ -1018,7 +1018,7 @@ public final class MainActivityTest {
                 "button.getAttribute('aria-label') === 'Walk to Founder Gate').click(); 'walk'");
 
         // The map route only approaches the institution; entering the Founder Gate is explicit.
-        enterNearbyInstitution(activity, "decision_chamber", "Decision Chamber");
+        enterNearbyInstitution(activity, "decision_chamber", "Decision Chamber", "Enter Founder Gate");
         awaitJavaScript(activity,
                 "document.getElementById('sheet').getAttribute('role') === 'dialog' && " +
                 "document.getElementById('sheet').getAttribute('aria-modal') === 'true' && " +
@@ -1722,6 +1722,10 @@ public final class MainActivityTest {
     }
 
     private void enterNearbyInstitution(MainActivity activity, String placeId, String title) throws Exception {
+        enterNearbyInstitution(activity, placeId, title, "Enter " + title);
+    }
+
+    private void enterNearbyInstitution(MainActivity activity, String placeId, String title, String entryLabel) throws Exception {
         // Activity recreation may restore the exact workbench. Reuse that visible state rather
         // than requiring a second arrival/entry gesture or treating it as a fresh interaction.
         String alreadyOpen = evaluate(activity,
@@ -1737,7 +1741,7 @@ public final class MainActivityTest {
                 "getComputedStyle(element).pointerEvents !== 'none'); " +
                 "const separate = document.getElementById('enter-institution-button'); " +
                 "const primary = document.getElementById('interact-button'); " +
-                "const expected = 'Enter " + title + "'; " +
+                "const expected = " + JSONObject.quote(entryLabel) + "; " +
                 "return document.getElementById('sheet').hidden === true && " +
                 "document.getElementById('world')?.dataset.nearbyInstitutionId === '" + placeId + "' && " +
                 "((visible(separate) && separate.getAttribute('aria-label') === expected) || " +
