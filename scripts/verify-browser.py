@@ -467,8 +467,8 @@ def basic(page,url,out,label):
     expect(page.locator('#xp-count')).to_have_text('300')
     close_sheet(page)
     page.locator('#places-button').click()
-    walk_to_location(page, "Guild Hall")
-    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+    walk_to_location(page, "Evidence Archive")
+    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
     page.get_by_role('button',name='Challenge The real comic lives here · v1 →',exact=True).click()
@@ -638,8 +638,8 @@ def institutional_locations(browser,url,out):
             assert page.locator('#xp-count').text_content()=='0', 'Selecting a location must not award XP'
         close_sheet(page)
         page.locator('#places-button').click()
-        walk_to_location(page, "Guild Hall")
-        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        walk_to_location(page, "Evidence Archive")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No published artifact is available to challenge yet')
         expect(page.locator('#contradiction-clerk-npc button')).to_have_count(0)
@@ -651,7 +651,7 @@ def institutional_locations(browser,url,out):
             ('adversary','Adversary','Evidence Archive'),
             ('synthesizer','Synthesis Clerk','Guild Hall'),
             ('tutor','Polymath Tutor','Polymath Academy'),
-            ('contradiction-clerk','The Contradiction Clerk','Guild Hall')
+            ('contradiction-clerk','The Contradiction Clerk','Evidence Archive')
         ]:
             control=page.locator(f'[data-guild-npc-control="{role}"]')
             expect(control).to_have_count(1)
@@ -1972,8 +1972,8 @@ def shared(browser,url,data,out):
         b.unroute('**/api/action',lose_report_response)
         # Safe retry closes the Journal; reach the bounded adversary through the world Guild Hall.
         close_sheet(b);b.locator('#places-button').click()
-        walk_to_location(b, "Guild Hall")
-        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        walk_to_location(b, "Evidence Archive")
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
         expect(b.get_by_role('button',name='Enter Council Chamber →',exact=True)).to_have_count(1)
