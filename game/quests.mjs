@@ -305,6 +305,44 @@ export function getLocationAction(locationId, world, viewer) {
 // to the exact retained artifact version. Event IDs must be unique across the whole
 // history; a reused ID cannot support two different claims.
 const trailRows = value => Array.isArray(value) ? value : [];
+
+// Quest progress depends on the uniqueness of event IDs across the complete
+// retained world stream. An unclassified slot is not evidence that no duplicate
+// is hidden there. Inspect descriptors only: never invoke an event ID getter.
+function hasCompleteRetainedEventIdentity(world) {
+  try {
+    const collection = world && typeof world === 'object'
+      ? Object.getOwnPropertyDescriptor(world, 'events')
+      : undefined;
+    if (!collection) return true;
+    if (!Object.hasOwn(collection, 'value') || !Array.isArray(collection.value)) return false;
+    const events = collection.value;
+    if (Object.getPrototypeOf(events) !== Array.prototype) return false;
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(events, 'length');
+    const length = lengthDescriptor?.value;
+    if (!Number.isSafeInteger(length) || length < 0 || Reflect.ownKeys(events).length !== length + 1) return false;
+    for (let index = 0; index < length; index += 1) {
+      const slot = Object.getOwnPropertyDescriptor(events, String(index));
+      if (!slot || !Object.hasOwn(slot, 'value') || !slot.enumerable) return false;
+      const event = slot.value;
+      if (!event || typeof event !== 'object' || Array.isArray(event)) return false;
+      const prototype = Object.getPrototypeOf(event);
+      if (prototype !== Object.prototype && prototype !== null) return false;
+      const keys = Reflect.ownKeys(event);
+      for (const key of keys) {
+        if (typeof key !== 'string') return false;
+        const descriptor = Object.getOwnPropertyDescriptor(event, key);
+        if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) return false;
+      }
+      const identity = Object.getOwnPropertyDescriptor(event, 'id');
+      if (!identity || !identity.enumerable || !Object.hasOwn(identity, 'value') ||
+          typeof identity.value !== 'string' || !identity.value.trim()) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 const trailUnique = values => [...new Set(values.filter(value => typeof value === 'string' && value.length > 0))];
 
 function uniqueEventIds(events) {
@@ -842,6 +880,14 @@ export function getQuestTrail(world, viewer, options = {}) {
   const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
   const actorRole = viewer?.role;
   if (!actorId || !['founder', 'witness'].includes(actorRole)) return Object.freeze([]);
+  if (!hasCompleteRetainedEventIdentity(world)) {
+    return Object.freeze([trailMilestone(
+      actorRole + '-history-identity-unavailable',
+      'Quest progress withheld · retained history identity is incomplete',
+      1, [], [], null,
+      'The retained world event stream contains a malformed, sparse, accessor-backed, or otherwise unidentifiable event. Quest progress is withheld because uniqueness cannot be established. Inspect the retained Chronicle; no activity, XP, or completion is inferred.'
+    )]);
+  }
   const events = trailRows(world?.events);
   let combatProjection = null;
   let combatHistoryBlockedReason = null;
