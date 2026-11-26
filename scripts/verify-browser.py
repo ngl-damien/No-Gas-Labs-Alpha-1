@@ -467,8 +467,8 @@ def basic(page,url,out,label):
     expect(page.locator('#xp-count')).to_have_text('300')
     close_sheet(page)
     page.locator('#places-button').click()
-    walk_to_location(page, "Guild Hall")
-    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+    walk_to_location(page, "Evidence Archive")
+    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
     page.get_by_role('button',name='Challenge The real comic lives here · v1 →',exact=True).click()
@@ -622,6 +622,9 @@ def institutional_locations(browser,url,out):
         page.locator('#start-private').click()
         page.locator('#world').wait_for(state='visible')
         expect(page.locator('#world')).to_have_attribute('data-world-renderer', 'pixel-v1')
+        world_npc_locations=page.locator('#world').get_attribute('data-world-npc-locations')
+        assert world_npc_locations is not None, 'World renderer must expose its NPC route manifest for acceptance'
+        assert world_npc_locations.split(';').count('contradiction-clerk=evidence_archive')==1, f'Contradiction Clerk must have exactly one Evidence Archive route: {world_npc_locations}'
         cases=[
             ('The Relay','Carry the question.','Draft a portable request →'),
             ('River of Receipts','The river remembers bytes.','Build a source observatory →'),
@@ -638,8 +641,8 @@ def institutional_locations(browser,url,out):
             assert page.locator('#xp-count').text_content()=='0', 'Selecting a location must not award XP'
         close_sheet(page)
         page.locator('#places-button').click()
-        walk_to_location(page, "Guild Hall")
-        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        walk_to_location(page, "Evidence Archive")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No published artifact is available to challenge yet')
         expect(page.locator('#contradiction-clerk-npc button')).to_have_count(0)
@@ -651,7 +654,7 @@ def institutional_locations(browser,url,out):
             ('adversary','Adversary','Evidence Archive'),
             ('synthesizer','Synthesis Clerk','Guild Hall'),
             ('tutor','Polymath Tutor','Polymath Academy'),
-            ('contradiction-clerk','The Contradiction Clerk','Guild Hall')
+            ('contradiction-clerk','The Contradiction Clerk','Evidence Archive')
         ]:
             control=page.locator(f'[data-guild-npc-control="{role}"]')
             expect(control).to_have_count(1)
@@ -1409,8 +1412,10 @@ def shared(browser,url,data,out):
         assert f'sha256={github_reader_sha256}' in github_reader_citation
         assert len(github_reader_citation)<=500
         assert b.locator('#source-observation-kind').input_value()=='secondary-source'
-        expect(b.locator('[data-source-observation-status]')).to_contain_text('Source class remains your selection')
-        expect(b.locator('[data-source-observation-status]')).to_contain_text('NOT_PERFORMED')
+        source_observation_status=b.locator('[data-source-observation-status]')
+        expect(source_observation_status).to_contain_text('client-reported citation metadata')
+        expect(source_observation_status).to_contain_text('NOT_PERFORMED')
+        expect(source_observation_status).to_contain_text('not authorship, primary-source status, authority or truth')
         assert github_reader_requests['count']==1
         assert not b.locator('#sheet').evaluate('(element)=>element.scrollWidth>element.clientWidth'), 'The GitHub source reader must not overflow at 320px'
         after_reader=read_state(visitor)
@@ -1831,11 +1836,11 @@ def shared(browser,url,data,out):
             count_phrase(map_notes,'linked Source Observation note','linked Source Observation notes')+', '+
             count_phrase(map_dissent,'linked dissent challenge','linked dissent challenges')+', '+
             count_phrase(map_responses,'linked author response','linked author responses')+', '+
-            '0 pending author responses and 0 retained records requiring review'
+            '0 pending author responses, and 0 retained records requiring review'
         )
         expect(a.locator('#world')).to_have_attribute(
             'aria-label',
-            re.compile(re.escape(expected_map_accessibility))
+            re.compile('.*' + re.escape(expected_map_accessibility) + '.*')
         )
         expect(b.locator('#world')).to_have_attribute('data-source-observation-counts','unavailable')
         expect(a.locator('#source-observations')).to_contain_text(challenge_text)
@@ -1970,10 +1975,10 @@ def shared(browser,url,data,out):
         assert auto_recovered['world']['xp']==auto_xp
         assert auto_recovered['viewer']['id']==auto_actor_id and auto_recovered['viewer']['role']=='witness', 'shared re-entry must preserve the original Witness identity'
         b.unroute('**/api/action',lose_report_response)
-        # Safe retry closes the Journal; reach the bounded adversary through the world Guild Hall.
+        # Safe retry closes the Journal; reach the bounded adversary at its owning Evidence Archive location.
         close_sheet(b);b.locator('#places-button').click()
-        walk_to_location(b, "Guild Hall")
-        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        walk_to_location(b, "Evidence Archive")
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
         expect(b.get_by_role('button',name='Enter Council Chamber →',exact=True)).to_have_count(1)
@@ -3013,16 +3018,16 @@ def shared(browser,url,data,out):
         def open_guild_hall(page):
             close_sheet(page)
             page.locator('#places-button').click()
-            walk_to_location(page, 'Guild Hall', enter=False)
+            walk_to_location(page, 'Evidence Archive', enter=False)
             page.bring_to_front()
             clerk_control = page.locator('[data-guild-npc-control="contradiction-clerk"]')
             try:
                 page.wait_for_function(
                     """() => {
                         const world = document.querySelector('#world');
-                        return world?.dataset.navigationTargetId === 'guild_hall' &&
+                        return world?.dataset.navigationTargetId === 'evidence_archive' &&
                             world?.dataset.navigationState === 'arrived' &&
-                            world?.dataset.nearbyInstitutionId === 'guild_hall' &&
+                            world?.dataset.nearbyInstitutionId === 'evidence_archive' &&
                             document.querySelector('#sheet')?.hidden === true &&
                             document.querySelector('#play-ui')?.hidden === false;
                     }""",
@@ -3051,11 +3056,18 @@ def shared(browser,url,data,out):
                 # when another entity could own the generic nearest-entity HUD.
                 clerk_control.press('Enter')
                 page.wait_for_function(
-                    "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'&&!document.querySelector('#sheet').hidden",
                     timeout=30000
                 )
+                # Clerk conversation belongs to Evidence Archive; the shared
+                # guild board is a separate Guild Hall capability. Visit both
+                # institutions rather than treating one NPC as the other.
+                close_sheet(page)
+                page.locator('#places-button').click()
+                walk_to_location(page, 'Guild Hall')
+                expect(page.locator('#player-guild-board')).to_be_visible()
             except Exception as error:
-                page.screenshot(path=str(out/'failed-guild-hall-arrival.png'))
+                page.screenshot(path=str(out/'failed-evidence-archive-arrival.png'))
                 diagnostics = page.evaluate("""() => {
                     const button = document.querySelector('[data-guild-npc-control="contradiction-clerk"]');
                     const world = document.querySelector('#world');
@@ -3078,7 +3090,7 @@ def shared(browser,url,data,out):
                     };
                 }""")
                 raise AssertionError(
-                    'The explicit Contradiction Clerk approach/talk path did not open Guild Hall: ' +
+                    'The explicit Contradiction Clerk approach/talk path did not open Evidence Archive: ' +
                     json.dumps(diagnostics)
                 ) from error
             expect(page.locator('#player-guild-board')).to_be_visible()
@@ -3118,7 +3130,7 @@ def shared(browser,url,data,out):
         assert clerk_after_approach_witness['world']['xp']==clerk_before_witness['world']['xp']
         clerk_control.evaluate("(button)=>button.click()")
         a.wait_for_function(
-            "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+            "()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'&&!document.querySelector('#sheet').hidden",
             timeout=30000
         )
         clerk_card=a.locator('[data-local-npc-role="contradiction-clerk"]')
@@ -3141,6 +3153,7 @@ def shared(browser,url,data,out):
         # the local Clerk before the shared player-guild board is available.
         witness_before_guild_entry=read_state(visitor)
         open_guild_hall(b)
+        open_guild_hall(a)
         witness_after_guild_entry=read_state(visitor)
         witness_guild_entry_events=assert_navigation_only_discovers(
             witness_before_guild_entry,witness_after_guild_entry,'Witness Guild Hall navigation and entry'
