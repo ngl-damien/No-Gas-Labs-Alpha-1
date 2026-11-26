@@ -128,7 +128,7 @@ def _ledger_entries(ledger: Path, ledger_fd: int | None = None) -> list[dict]:
             entries = []
             for number, line in enumerate(stream, 1):
                 if not line.strip():
-                    continue
+                    raise ValueError(f"blank ledger record at line {number}")
                 try:
                     item = json.loads(line)
                 except json.JSONDecodeError as exc:
