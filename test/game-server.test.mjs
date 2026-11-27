@@ -2219,16 +2219,18 @@ test('live Founder decision route rejects a malformed trust anchor before persis
   assert.equal(authorization.body.dispositionAuthorization.available, false);
   assert.equal(authorization.body.dispositionAuthorization.code, 'FOUNDER_TRUST_ANCHOR_MALFORMED');
 
-  const syncCallsBeforeChoice = syncCalls;
-  const chosen = await founder.request('/api/decisions/choose', {
-    decisionId: 'decision:malformed-trust-route',
-    expectedRevision: 1,
-    requestId: 'request:malformed-trust-route',
-    action: 'APPROVE'
-  });
-  assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
-  assert.equal(chosen.body.error.code, 'FOUNDER_TRUST_ANCHOR_MALFORMED');
-  assert.equal(syncCalls, syncCallsBeforeChoice, 'malformed trust must be rejected before decision persistence');
+  const syncCallsBeforeChoices = syncCalls;
+  for (const action of ['APPROVE', 'REJECT', 'DEFER']) {
+    const chosen = await founder.request('/api/decisions/choose', {
+      decisionId: 'decision:malformed-trust-route',
+      expectedRevision: 1,
+      requestId: `request:malformed-trust-route:${action.toLowerCase()}`,
+      action
+    });
+    assert.equal(chosen.response.status, 503, JSON.stringify({ action, body: chosen.body }));
+    assert.equal(chosen.body.error.code, 'FOUNDER_TRUST_ANCHOR_MALFORMED');
+    assert.equal(syncCalls, syncCallsBeforeChoices, 'malformed trust must reject every disposition before decision persistence');
+  }
 
   const state = await founder.request('/api/state');
   assert.equal(state.response.status, 200);
