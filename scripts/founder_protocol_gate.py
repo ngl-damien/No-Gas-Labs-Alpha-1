@@ -53,7 +53,32 @@ def missing_or_empty_sections(body):
     return failures
 
 
-def evaluate_pull_request(pull, changed_paths):
+def relay_history_is_append_only(base_content, head_content):
+    """Accept a non-empty initial relay or a strict byte-for-byte append."""
+    if base_content is None:
+        return isinstance(head_content, bytes) and len(head_content) > 0
+    if not isinstance(head_content, bytes):
+        return False
+    return len(head_content) > len(base_content) and head_content.startswith(base_content)
+
+
+def git_file_at_revision(revision):
+    """Return file bytes, or None only when the path does not exist at revision."""
+    pathspec = revision + ":" + RELAY_PATH
+    exists = subprocess.run(
+        ["git", "cat-file", "-e", pathspec],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if exists.returncode == 1:
+        return None
+    if exists.returncode != 0:
+        raise subprocess.CalledProcessError(exists.returncode, exists.args)
+    return subprocess.check_output(["git", "show", pathspec])
+
+
+def evaluate_pull_request(pull, changed_paths, relay_history_valid=True):
     """Return pass, fail, or grandfathered without performing I/O."""
     try:
         created_at = parse_timestamp(pull.get("created_at"))
@@ -75,6 +100,10 @@ def evaluate_pull_request(pull, changed_paths):
     if not relay_updated:
         failures.append(
             "the append-only continuity relay was not updated in this pull request"
+        )
+    elif not relay_history_valid:
+        failures.append(
+            "the continuity relay must preserve all base bytes and append new content"
         )
     return {
         "status": "fail" if failures else "pass",
@@ -120,7 +149,12 @@ def main():
         return 0
 
     paths = changed_pull_request_paths(pull)
-    result = evaluate_pull_request(pull, paths)
+    base_sha = pull["base"]["sha"]
+    head_sha = pull["head"]["sha"]
+    relay_base = git_file_at_revision(base_sha)
+    relay_head = git_file_at_revision(head_sha)
+    relay_history_valid = relay_history_is_append_only(relay_base, relay_head)
+    result = evaluate_pull_request(pull, paths, relay_history_valid)
     if result["status"] == "grandfathered":
         print("Existing PR predates 2026-11-28 UTC; grandfathered.")
         return 0
