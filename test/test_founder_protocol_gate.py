@@ -54,7 +54,7 @@ class FounderPullRequestGateTests(unittest.TestCase):
         self.assertEqual(missing_or_empty_sections(body), list(REQUIRED_SECTIONS))
 
     def test_html_comment_placeholder_is_not_substantive_content(self):
-        body = "\\n\\n".join(heading + "\\n<!-- TODO: fill this section -->" for heading in REQUIRED_SECTIONS)
+        body = "\n\n".join(heading + "\n<!-- TODO: fill this section -->" for heading in REQUIRED_SECTIONS)
         self.assertEqual(missing_or_empty_sections(body), list(REQUIRED_SECTIONS))
 
     def test_content_in_one_section_does_not_fill_the_next_section(self):
@@ -90,23 +90,23 @@ class FounderPullRequestGateTests(unittest.TestCase):
                 self.assertEqual(result["status"], "fail")
 
     def test_relay_initial_creation_requires_nonempty_content(self):
-        self.assertTrue(relay_history_is_append_only(None, b"initial relay\\n"))
+        self.assertTrue(relay_history_is_append_only(None, b"initial relay\n"))
         self.assertFalse(relay_history_is_append_only(None, b""))
         self.assertFalse(relay_history_is_append_only(None, None))
 
     def test_relay_true_append_preserves_all_previous_bytes(self):
-        base = b"# Relay\\nprior checkpoint\\n"
-        head = base + b"next checkpoint\\n"
+        base = b"# Relay\nprior checkpoint\n"
+        head = base + b"next checkpoint\n"
         self.assertTrue(relay_history_is_append_only(base, head))
 
     def test_relay_truncation_and_rewrite_are_rejected(self):
-        base = b"# Relay\\nprior checkpoint\\n"
+        base = b"# Relay\nprior checkpoint\n"
         self.assertFalse(relay_history_is_append_only(base, base[:-1]))
-        self.assertFalse(relay_history_is_append_only(base, b"# Relay\\nreplacement\\n"))
+        self.assertFalse(relay_history_is_append_only(base, b"# Relay\nreplacement\n"))
         self.assertFalse(relay_history_is_append_only(base, None))
 
     def test_relay_unchanged_content_is_not_an_append(self):
-        base = b"# Relay\\nprior checkpoint\\n"
+        base = b"# Relay\nprior checkpoint\n"
         self.assertFalse(relay_history_is_append_only(base, base))
 
     def test_changed_relay_path_still_fails_when_history_is_not_preserved(self):
