@@ -89,7 +89,7 @@ def changed_pull_request_paths(pull):
     head_sha = pull["head"]["sha"]
     number = str(pull["number"])
     subprocess.run(
-        ["git", "fetch", "origin", base_sha, "--depth=1"],
+        ["git", "fetch", "origin", base_sha],
         check=True,
     )
     subprocess.run(
