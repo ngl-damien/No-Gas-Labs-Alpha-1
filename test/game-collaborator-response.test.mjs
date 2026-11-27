@@ -1,5 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createGameServer } from '../game/server.mjs';
+import { GUILD_NPCS } from '../game/pixel-world-view.mjs';
+import { resolveGuildNpcWorkbench } from '../game/guild-npc-workbench.mjs';
 import { projectCollaboratorPackets, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS, MAX_PACKET_ID_CHARS } from '../game/collaborator-contracts.mjs';
 import { validateCollaboratorResponse, validateCollaboratorResponseSnapshot, validateRetainedCollaboratorResponse } from '../game/collaborator-response.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertGameJsonKeys } from '../game/strict-json.mjs';
@@ -677,3 +684,206 @@ test('retained Council review preserves rejected attempts and withholds forged o
   assert.equal(getterCalls, 0, 'retained review must not invoke hostile accessors');
 });
 
+
+
+test('Guild Hall Synthesis Clerk response survives server restart with exact source and byte provenance', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-guild-hall-restart-'));
+  const founderKey = 'test-founder-key-not-a-production-secret';
+  let server;
+  let origin;
+  let cookie = '';
+  t.after(async () => {
+    if (server) await server.closeGame().catch(() => {});
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  async function startServer() {
+    server = await createGameServer({ dataDir, founderKey });
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    origin = 'http://127.0.0.1:' + server.address().port;
+  }
+
+  async function request(path, body) {
+    const headers = cookie ? { cookie } : {};
+    if (body !== undefined) {
+      headers['content-type'] = 'application/json';
+      headers.origin = origin;
+    }
+    const response = await fetch(origin + path, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const setCookie = response.headers.get('set-cookie');
+    if (setCookie) cookie = setCookie.split(';')[0];
+    return { response, body: await response.json() };
+  }
+
+  await startServer();
+  const login = await request('/api/login', { key: founderKey, name: 'Damien' });
+  assert.equal(login.response.status, 200, JSON.stringify(login.body));
+  const initial = await request('/api/state');
+  assert.equal(initial.response.status, 200);
+
+  const synthesizerNpc = GUILD_NPCS.find(npc => npc.roleId === 'synthesizer');
+  assert.ok(synthesizerNpc);
+  assert.equal(synthesizerNpc.routeLocation, 'guild_hall');
+  assert.deepEqual(resolveGuildNpcWorkbench({
+    id: 'guild_hall',
+    npcRoleId: 'synthesizer'
+  }), {
+    npcId: synthesizerNpc.id,
+    roleId: 'synthesizer',
+    institutionId: 'guild_hall',
+    name: synthesizerNpc.name,
+    npcKind: 'collaborator'
+  });
+
+  const proposal = await request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'Test a durable Guild Hall collaborator exchange',
+    hypothesis: 'A bounded collaborator response can be retained with exact source and byte provenance.',
+    falsifier: 'The response or its source linkage is absent or altered after a server restart.',
+    evidenceNeeded: 'The retained proposal, attempt, exact packet and exact response bytes.'
+  });
+  assert.equal(proposal.response.status, 200, JSON.stringify(proposal.body));
+
+  const attempt = await request('/api/action', {
+    type: 'report-experiment',
+    moonshotId: proposal.body.result.moonshotId,
+    procedure: 'Record one bounded test attempt.',
+    observation: 'The server accepted the authored test record.',
+    reportedOutcome: 'inconclusive'
+  });
+  assert.equal(attempt.response.status, 200, JSON.stringify(attempt.body));
+
+  const beforeResponse = await request('/api/state');
+  assert.equal(beforeResponse.response.status, 200);
+  const packet = projectCollaboratorPackets(beforeResponse.body.world).find(candidate =>
+    candidate.id === 'synthesizer' &&
+    candidate.available === true &&
+    candidate.moonshotId === proposal.body.result.moonshotId
+  );
+  assert.ok(packet, 'the Guild Hall Synthesis Clerk must receive a source-bound packet');
+  const packetPayload = JSON.parse(packet.packetJson);
+  assert.equal(packetPayload.sourceSnapshot.status, 'identified');
+
+  const responseText = JSON.stringify({
+    scope: {
+      moonshotId: packet.moonshotId,
+      includedEventIds: [...packet.inputRefs],
+      omittedEventIds: [...packetPayload.omittedEventIds]
+    },
+    recordedSupport: [{
+      sourceEventIds: [packet.inputRefs[0]],
+      statement: 'The proposal is present in the exact supplied source packet.'
+    }],
+    contradictions: [],
+    dissentPreserved: packetPayload.inputRecords
+      .filter(record => record.type === 'experiment-challenged')
+      .map(record => record.eventId),
+    unknowns: ['The attempt is self-reported and has not been independently verified.'],
+    nextDiscriminatingExperiment: {
+      procedure: 'Repeat the attempt with a predeclared control and retained measurements.',
+      outcome: 'Compare the observed result with the stated falsifier.'
+    }
+  });
+
+  const archived = await request('/api/action', {
+    type: 'record-collaborator-response',
+    role: 'synthesizer',
+    moonshotId: packet.moonshotId,
+    packetJson: packet.packetJson,
+    sourceEventIds: [...packet.inputRefs],
+    responseText,
+    requestId: 'guild-hall-synthesizer-restart-001'
+  });
+  assert.equal(archived.response.status, 200, JSON.stringify(archived.body));
+  const retainedBeforeRestart = archived.body.world.events.at(-1);
+  assert.equal(retainedBeforeRestart.type, 'collaborator-response-recorded');
+  assert.equal(retainedBeforeRestart.role, 'synthesizer');
+  assert.equal(retainedBeforeRestart.actor.id, 'damien');
+  assert.equal(retainedBeforeRestart.actor.role, 'founder');
+  assert.equal(retainedBeforeRestart.validationStatus, 'valid-for-human-review');
+  assert.deepEqual(retainedBeforeRestart.sourceEventIds, packet.inputRefs);
+  assert.equal(retainedBeforeRestart.packetReceipt.algorithm, 'sha256');
+  assert.equal(retainedBeforeRestart.packetReceipt.digest,
+    createHash('sha256').update(packet.packetJson, 'utf8').digest('hex'));
+  assert.equal(retainedBeforeRestart.responseReceipt.algorithm, 'sha256');
+  assert.equal(retainedBeforeRestart.responseReceipt.digest,
+    createHash('sha256').update(responseText, 'utf8').digest('hex'));
+  assert.equal(archived.body.world.revision, beforeResponse.body.world.revision + 1);
+  assert.equal(archived.body.world.xp, beforeResponse.body.world.xp,
+    'archiving an advisory collaborator response grants no XP');
+
+  await server.closeGame();
+  await startServer();
+  cookie = '';
+  const reauthenticated = await request('/api/login', { key: founderKey, name: 'Damien' });
+  assert.equal(reauthenticated.response.status, 200, JSON.stringify(reauthenticated.body));
+  const restored = await request('/api/state');
+  assert.equal(restored.response.status, 200);
+
+  const retainedAfterRestart = restored.body.world.events.filter(event =>
+    event.id === retainedBeforeRestart.id
+  );
+  assert.equal(retainedAfterRestart.length, 1, 'the exact world event survives restart once');
+  assert.deepEqual(retainedAfterRestart[0], retainedBeforeRestart,
+    'actor, packet, response, source IDs, validation result and byte receipts remain unchanged');
+  assert.equal(restored.body.world.revision, archived.body.world.revision);
+  assert.equal(restored.body.world.xp, archived.body.world.xp);
+
+  const review = validateRetainedCollaboratorResponse(
+    restored.body.world,
+    retainedBeforeRestart.id,
+    restored.body.viewer
+  );
+  assert.equal(review.status, 'valid-for-human-review', review.reason);
+  assert.equal(review.role, 'synthesizer');
+  assert.equal(review.response.scope.moonshotId, packet.moonshotId);
+  assert.deepEqual(review.packetScope.includedEventIds, packet.inputRefs);
+  assert.deepEqual(review.packetScope.omittedEventIds, packetPayload.omittedEventIds);
+  assert.equal(review.response.unknowns[0],
+    'The attempt is self-reported and has not been independently verified.');
+
+  // A mobile client may lose the response after the server commits, then retry
+  // after reconnecting to a restarted process. The retained request ID must
+  // return the original result without appending a second world event.
+  const replay = await request('/api/action', {
+    type: 'record-collaborator-response',
+    role: 'synthesizer',
+    moonshotId: packet.moonshotId,
+    packetJson: packet.packetJson,
+    sourceEventIds: [...packet.inputRefs],
+    responseText,
+    requestId: 'guild-hall-synthesizer-restart-001'
+  });
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.result.responseId, archived.body.result.responseId);
+  assert.equal(replay.body.world.revision, restored.body.world.revision);
+  assert.equal(replay.body.world.events.filter(event =>
+    event.id === retainedBeforeRestart.id
+  ).length, 1, 'retry after restart must not duplicate the retained response');
+
+  const conflictingReplay = await request('/api/action', {
+    type: 'record-collaborator-response',
+    role: 'synthesizer',
+    moonshotId: packet.moonshotId,
+    packetJson: packet.packetJson,
+    sourceEventIds: [...packet.inputRefs],
+    responseText: responseText + ' ',
+    requestId: 'guild-hall-synthesizer-restart-001'
+  });
+  assert.equal(conflictingReplay.response.status, 409);
+  assert.equal(conflictingReplay.body.error.code, 'IDEMPOTENCY_CONFLICT');
+  const afterConflict = await request('/api/state');
+  assert.equal(afterConflict.response.status, 200);
+  assert.equal(afterConflict.body.world.revision, restored.body.world.revision);
+  assert.equal(afterConflict.body.world.events.filter(event =>
+    event.id === retainedBeforeRestart.id
+  ).length, 1, 'conflicting retry must not mutate or duplicate canonical history');
+});
