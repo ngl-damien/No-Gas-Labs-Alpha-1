@@ -2,7 +2,8 @@
 
 **Status:** Proposed canonical operating record and handoff mechanism  
 **Proposed canonical path:** `docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md`  
-**Initial record:** Relay v1 · 2026-11-27  
+**Initial record:** Relay v1 · 2026-11-27
+**Latest revision:** Relay v1.1 · 2026-11-27  
 **Authority:** Neophyte Founder  
 **Purpose:** Preserve transferable institutional state between agents, assistants, sessions, and execution cycles.
 
@@ -133,13 +134,17 @@ The current state is a concise index to the latest verified facts. The log prese
 
 ### Current relay state
 
-- **Relay version:** 1
+- **Relay version:** 1.1
 - **Last updated:** 2026-11-27
-- **Last agent:** Initial relay establishment
+- **Last agent:** ChatGPT execution agent — continuity relay establishment and repository handoff.
 - **Objective:** Founder-controlled, visual Android Decision Chamber → assistant continuity → explicit authorization → real GitHub state change → independent verification → close/reopen persistence.
-- **Current blocker:** The live Founder decision route is fail-closed; Founder trust is NOT_ENROLLED; the in-game GitHub gate is read-only and no write adapter/credential flow is evidenced.
-- **Active implementation owner:** Worker B for game/runtime; Worker A for cross-cutting authority review.
-- **Next recommended action:** Coordinate a bounded, game-native first slice with Worker B and Worker A: establish the supported GitHub write adapter and exact signed authorization boundary without bypassing the Founder trust prerequisite. Keep the write operation narrowly scoped (first candidate: create one issue in the canonical repository) and verify it by independently retrieving the created issue. Do not attempt production execution until authorization and credential prerequisites are met.
+- **Current blocker:** The live Founder decision route is fail-closed; Founder trust is NOT_ENROLLED; the in-game GitHub gate is read-only and no in-game write adapter/credential flow is evidenced.
+- **Continuity relay implementation:** Proposed in draft PR [#762](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/762), branch `docs/universal-institutional-continuity-relay-20261127`, exact head `dcc6a0b4d7127c395e7d843c6f6783be86056a1c`. It adds this relay and makes reading/updating it mandatory in root AGENTS and the shared scheduler protocol. It is not canonical until reviewed and merged.
+- **PR #762 exact-head checks:** Verify `45977508493` PASS; World Projection `45977508426` IN_PROGRESS; Playable World `45977508467` IN_PROGRESS. No aggregate pass is claimed while checks remain pending.
+- **PR #755 exact-head observation:** `1c3cdeeaa888fac2bead8863b1e4eff4b8c6c64e`; 10 check runs PASS, one deploy job SKIPPED, and Android emulator acceptance `45951191102` remains IN_PROGRESS; combined status PENDING. Do not transfer results from its earlier parent head.
+- **PR #761 exact-head observation:** `a8c39fbac00e2de357546cc9a25a0ff0cba84fda`; Playable World `45972900886`, World Projection `45972900854`, and Full Verify `45972900877` PASS. This is a server-restart collaborator-response subgate only; the response is test-supplied, not a live LLM interaction.
+- **Active implementation owner:** Worker B for game/runtime; Worker A for cross-cutting authority review. Do not edit Worker B's active server/game paths concurrently.
+- **Next recommended action:** Worker B and Worker A coordinate a bounded, game-native first slice: implement the GitHub write adapter and exact signed authorization boundary without bypassing the Founder trust prerequisite. Keep the first write narrowly scoped (candidate: create one issue in the canonical repository) and verify it by independently retrieving the created issue. Do not attempt production execution until authorization and credential prerequisites are met.
 
 ## 9. Append-only relay log
 
@@ -152,3 +157,18 @@ The current state is a concise index to the latest verified facts. The log prese
 **What was not done:** no production source changes; no GitHub issue creation from the game; no key generation or trust enrollment; no merge, deployment, release, external publication, credential/permission change, or spending. No physical Android device acceptance or live LLM-to-NPC continuity was tested.
 
 **Recommended handoff:** Worker B owns the next game/runtime vertical slice. Worker A should coordinate the authority integration review and ensure the signed route remains fail-closed until Founder-controlled trust enrollment is separately completed. The Founder-only enrollment prerequisite must be presented as a future, understandable in-game setup journey, not as a technical task dumped on the Founder.
+
+
+### Relay v1.1 — 2026-11-27 — First execution handoff
+
+**Work performed:** Created draft PR [#762](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/762) from canonical main. Added this continuity relay, updated root `AGENTS.md` to require it before further review/work, and updated the shared scheduler protocol to require reading and updating it on every execution cycle.
+
+**Exact proposed head:** `dcc6a0b4d7127c395e7d843c6f6783be86056a1c`. Three changed files; 181 additions / 21 deletions. The relay file, updated AGENTS, and updated protocol were fetched back from the exact branch and checked for the required bootstrap, mandatory read, and handoff/update clauses.
+
+**Verification:** Full Verify `45977508493` PASS. World Projection `45977508426` and Playable World `45977508467` were still IN_PROGRESS at the last check. No full CI pass is claimed. No local checkout or local test execution was available. PR #762 remains draft/open/unmerged; it is not yet the canonical relay.
+
+**Fresh state reconciliation:** PR #755 exact head `1c3cdeeaa888fac2bead8863b1e4eff4b8c6c64e` has ten successful check runs, one skipped deploy job, and Android emulator acceptance `45951191102` still IN_PROGRESS; combined status PENDING. PR #761 exact head `a8c39fbac00e2de357546cc9a25a0ff0cba84fda` has Playable World, World Projection, and Full Verify all PASS, but its test-supplied response is not live LLM communication.
+
+**No consequential action:** No runtime source change, GitHub issue write through the game, key generation/enrollment, merge, release, deployment, spending, credential/permission change, external publication, or Founder authority transition occurred.
+
+**Handoff:** The next runtime implementation belongs to Worker B. Worker A owns cross-cutting authority review. Re-observe both active branches before touching shared paths. The live Founder disposition route remains fail-closed, Founder trust remains NOT_ENROLLED, and the existing in-game GitHub gate remains read-only. The next meaningful product proof is one visually authorized in-game Guild Gate action that creates a narrowly scoped GitHub issue and independently verifies it, but only after the authorization and in-game credential boundaries are implemented and Founder-authorized.
