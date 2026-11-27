@@ -9,6 +9,7 @@ from scripts.founder_protocol_gate import (
     RELAY_PATH,
     REQUIRED_SECTIONS,
     evaluate_pull_request,
+    missing_or_empty_sections,
 )
 
 
@@ -16,7 +17,10 @@ class FounderPullRequestGateTests(unittest.TestCase):
     def setUp(self):
         self.pull = {
             "created_at": "2026-11-28T00:00:01Z",
-            "body": "\n".join(REQUIRED_SECTIONS),
+            "body": "\n\n".join(
+                heading + "\nSubstantive evidence-backed content."
+                for heading in REQUIRED_SECTIONS
+            ),
         }
         self.paths = [RELAY_PATH, "src/example.mjs"]
 
@@ -30,8 +34,25 @@ class FounderPullRequestGateTests(unittest.TestCase):
         result = evaluate_pull_request(pull, self.paths)
         self.assertEqual(result["status"], "fail")
         self.assertEqual(len(result["missing_sections"]), len(REQUIRED_SECTIONS))
-        self.assertTrue(any("missing required Founder-facing sections" in item
+        self.assertTrue(any("missing or empty required Founder-facing sections" in item
                             for item in result["failures"]))
+
+    def test_empty_headings_fail_closed(self):
+        body = "\n\n".join(REQUIRED_SECTIONS)
+        result = evaluate_pull_request(dict(self.pull, body=body), self.paths)
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(result["missing_sections"], list(REQUIRED_SECTIONS))
+
+    def test_whitespace_only_sections_fail_closed(self):
+        body = "\n\n".join(heading + "\n  \t " for heading in REQUIRED_SECTIONS)
+        self.assertEqual(missing_or_empty_sections(body), list(REQUIRED_SECTIONS))
+
+    def test_content_in_one_section_does_not_fill_the_next_section(self):
+        body = REQUIRED_SECTIONS[0] + "\nOnly the first section has content.\n" + "\n".join(REQUIRED_SECTIONS[1:])
+        self.assertEqual(
+            missing_or_empty_sections(body),
+            list(REQUIRED_SECTIONS[1:]),
+        )
 
     def test_missing_relay_update_fails_closed(self):
         result = evaluate_pull_request(self.pull, ["src/example.mjs"])
