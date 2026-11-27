@@ -2110,6 +2110,77 @@ test('live Founder decision route rejects TEST_ONLY trust without consuming pers
   assert.equal(state.body.world.xp, 0);
 });
 
+
+test('live Founder decision route remains fail-closed for enrolled PRODUCTION trust until signed route integration', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-production-route-'));
+  const trustPath = join(dataDir, 'founder.pub.json');
+  const { publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const jwk = publicKey.export({ format: 'jwk' });
+  const fingerprint = createHash('sha256')
+    .update(JSON.stringify({ kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y }))
+    .digest('hex');
+  await writeFile(trustPath, JSON.stringify({
+    schema: 'ngl.founder-trust-anchor.v1',
+    status: 'ENROLLED',
+    enrolled: true,
+    mode: 'PRODUCTION',
+    public_key_jwk: jwk,
+    fingerprint
+  }), { mode: 0o600 });
+
+  let syncCalls = 0;
+  const decisionSyncDirectory = async directory => {
+    syncCalls += 1;
+    const handle = await open(directory, 'r');
+    try { await handle.sync(); } finally { await handle.close(); }
+  };
+  const f = await fixture(t, dataDir, { founderTrustAnchorPath: trustPath, decisionSyncDirectory });
+  const founder = f.client();
+  await founder.login();
+
+  const policy = await founder.request('/api/decisions/policy', {
+    id: 'policy:production-route',
+    reviewWindowMs: 60_000,
+    basis: 'Synthetic PRODUCTION trust route regression; no operational trust is enrolled.'
+  });
+  assert.equal(policy.response.status, 200, JSON.stringify(policy.body));
+
+  const bytes = '{"schema":"test.evaluation.v1","result":"PRODUCTION route fixture"}';
+  const created = await founder.request('/api/decisions/proposals', {
+    id: 'decision:production-route',
+    title: 'PRODUCTION trust must not bypass missing signed-route integration',
+    evaluation: { bytes, receipt: artifactReceipt(bytes) },
+    risks: ['Synthetic test only'],
+    rollback: 'No external effect is executed by this test.',
+    proposedEffect: 'Retain a proposal without authorizing it.'
+  });
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+
+  const authorization = await founder.request('/api/decisions');
+  assert.equal(authorization.response.status, 200);
+  assert.equal(authorization.body.dispositionAuthorization.available, false);
+  assert.equal(authorization.body.dispositionAuthorization.code, 'SIGNED_DECISION_ROUTE_NOT_INTEGRATED');
+
+  const syncCallsBeforeChoice = syncCalls;
+  const chosen = await founder.request('/api/decisions/choose', {
+    decisionId: 'decision:production-route',
+    expectedRevision: 1,
+    requestId: 'request:production-route',
+    action: 'APPROVE'
+  });
+  assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
+  assert.equal(chosen.body.error.code, 'SIGNED_DECISION_ROUTE_NOT_INTEGRATED');
+  assert.equal(syncCalls, syncCallsBeforeChoice, 'the unintegrated signed route must reject before decision persistence');
+
+  const state = await founder.request('/api/state');
+  assert.equal(state.response.status, 200);
+  assert.equal(state.body.institution.decisionSummary.counts.PENDING, 1);
+  assert.equal(state.body.institution.decisionSummary.counts.APPROVED, 0);
+  assert.equal(state.body.institution.decisionSummary.counts.REJECTED, 0);
+  assert.equal(state.body.world.events.length, 0);
+  assert.equal(state.body.world.xp, 0);
+});
+
 test('server startup indexes large interleaved retained proposal/report history', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-indexed-history-server-'));
   t.after(() => rm(dataDir, { recursive: true, force: true }));
