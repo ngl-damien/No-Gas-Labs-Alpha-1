@@ -115,3 +115,11 @@ When no owner exists, record the gap and make a product decision rather than imp
 Stop before destructive, irreversible, costly, credential-sensitive, license-sensitive, external, or Founder-authority-bound actions. Stop a donor import when its tests cannot run, provenance is ambiguous, security is unresolved, it duplicates canonical state, or the smallest adapter cannot preserve Alpha-1's evidence and failure semantics.
 
 The objective is not maximum commits or maximum assimilated files. The objective is a real capability or a materially improved evidence boundary that another worker can reproduce and safely extend.
+
+## Mission coordination and role handoffs
+
+For each substantial commission, record mission ID, requester, objective, acceptance criteria, constraints, permissions, owner/coordinator, materially participating skills/tools, dependencies, evidence references, status, blockers, next action, and closure rationale. If no durable store is connected, provide a portable record and disclose the limitation. Assign only relevant roles; do not claim another skill ran without observable execution. Handoffs include purpose, inputs, expected output, evidence, constraints, and return path. Track proposed, authorized, in_progress, blocked, completed, or cancelled states without inferring authorization.
+
+## Capability selection and delivery
+
+Derive tool/plugin requirements from acceptance criteria. Inspect the actual catalog and record provider, input/output contract, permissions, limits, cost/latency when known, data handling, dependencies, and portability. Distinguish advertised, schema-inspected, connection-confirmed, invocation-observed, and result-verified capability. Recommend the smallest useful cast and explain exclusions and safe fallbacks. Availability never grants permission. Execute only authorized actions; capture calls, outputs, failures, and side effects; use independent review when material; and deliver artifacts with drafted/implemented/tested/external-acceptance/payment states kept distinct. Close only against criteria; otherwise report partial completion and next action.

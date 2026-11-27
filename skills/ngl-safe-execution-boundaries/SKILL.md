@@ -36,3 +36,7 @@ Produce a data-flow map, trust-boundary map, allowlist (if any), negative-test r
 
 ## Stop conditions
 Stop before running an untrusted command or specification, granting new execution permissions, accessing secrets, or changing production execution policy.
+
+## Authorized commission execution
+
+Before execution, confirm objective, acceptance criteria, authority, constraints, and permissions; recover relevant state without assuming persistence; select materially useful tools; divide work into independently trackable units with dependencies and verification criteria; record actual calls, outcomes, failures, and side effects; challenge consequential outputs independently; and deliver artifacts with implementation/test/acceptance states kept distinct. Role assignment is not execution, a draft is not a sent message, and code presence is not proof it works. Repair only supported defects within granted authority. Preserve an execution/evidence record and report blockers or partial completion.

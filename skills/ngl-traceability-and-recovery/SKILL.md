@@ -33,3 +33,7 @@ A pass requires a durable record that another worker can retrieve and use to rec
 
 ## Stop conditions
 Stop if the baseline cannot be established, the evidence source is unavailable, a write cannot be read back, or a handoff would conceal unresolved failures.
+
+## Evidence archive procedure
+
+For each claim, event, decision, artifact, or execution, capture source identity/location, timestamp/date, actor/author if known, scope, version/hash when available, and access limits. Apply the canonical Institutional Charter epistemic label. Preserve original material or stable references; link summaries to sources and identify omissions. Record corrections as new versions/amendments where possible and distinguish historical evidence from current verification. Report missing, inaccessible, conflicting, or stale sources. Never fabricate provenance, receipts, hashes, or persistence.

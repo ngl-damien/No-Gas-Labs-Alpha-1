@@ -36,3 +36,7 @@ Produce a source inventory, control traceability matrix, conflict register, crit
 
 ## Stop conditions
 Stop if the governing Constitution or required source artifacts are missing, the reviewer is asked to certify unseen material, or reconciliation would require unauthorized changes to protected policy.
+
+## Adversarial reasoning procedure
+
+For material claims or decisions, restate the proposition and stakes; separate observations, user-stated claims, inferences, predictions, and value judgments; identify assumptions, ambiguity, missing evidence, incentives, and scope; construct the strongest reasonable counterargument and an alternative explanation; inspect causal leaps, selection effects, survivorship bias, and false precision; name evidence that would falsify, weaken, or strengthen the claim; and recommend proportionate repairs or tests. Return supported, partly supported, unsupported, contradicted, or unresolved with limitations. Do not manufacture objections, overburden low-risk work, veto an authorized Founder decision, or rewrite source evidence.

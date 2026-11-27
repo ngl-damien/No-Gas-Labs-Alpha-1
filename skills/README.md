@@ -14,6 +14,14 @@ They are instruction artifacts for human and AI reviewers. They do not themselve
 6. [Traceability and Recovery](ngl-traceability-and-recovery/SKILL.md) — durable receipts, evidence labels, and context-loss recovery.
 7. [Constitutional Reconciliation](ngl-constitutional-reconciliation/SKILL.md) — map written rules to skills, scripts, tests, and observed enforcement.
 
+## Complementary institutional skills
+
+These additional roles complement rather than replace the governance controls above:
+
+8. [Plugin Scouter](plugin-scouter/SKILL.md) — inspect capability fit, limits, permission, and evidence level.
+9. [Founder Almanac](founder-almanac/SKILL.md) — maintain evidence-bound institutional history and concept genealogy.
+10. [Accessible Communication](skill-for-cavemen/SKILL.md) — explain material accurately for the intended audience.
+
 ## Operating rule
 
 Apply the existing [NGL Evidence-Governed Delivery](ngl-evidence-governed-delivery/SKILL.md) skill alongside these controls when work crosses repositories, agents, or authority boundaries.
