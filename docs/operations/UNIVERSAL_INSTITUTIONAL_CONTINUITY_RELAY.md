@@ -111,9 +111,19 @@ A failed prerequisite is not permission to bypass it. Continue with safe, indepe
 - `src/authority/decision.js` contains a host-configured trust/nonce authorization mechanism, but its existence does not mean the live game server invokes it.
 - `game/github-decision-gate.mjs`, blob `7094b0756e26d95597c71b7137bab70ecda26a94`, fetches public pull requests, issues, and workflow runs using GET requests. Its UI explicitly says it is read-only and does not merge, write, approve, deploy, or change repository state.
 - No source-backed in-game GitHub write adapter or credential flow was established in the inspected files. A ChatGPT GitHub connection, if available to an assistant, is not automatically available to the Android game.
+- Exact source anchors: `game/server.mjs` imports `loadTrustAnchor` but not `authorizationEvent` (lines 17–18); `/api/decisions` exposes the authorization status (1527–1532); `/api/decisions/choose` explicitly returns the fail-closed status before any decision write (1595–1600). `src/authority/decision.js` exports `authorizationEvent` at line 740; it loads host-configured trust, requires PRODUCTION, verifies using host time, consumes the durable nonce, and only then returns the authorization event (740–759). `game/github-decision-gate.mjs` uses GET at line 42 and labels the UI read-only at line 485. These are source observations, not an authorization to change them.
+- The NPC workbench's current helper is navigation/focus only. PR #761's test-supplied response is not evidence of a live LLM invocation. A real assistant transport, provider authorization, and explicit relay read/update integration remain unimplemented or unverified.
 - Do not generate, custody, enroll, export, or provision a Founder private key. Founder trust enrollment requires a Founder-controlled platform keystore, proof of possession, independent custody verification, and a separate explicit Founder decision.
 
-## 7. Operating and coordination rules
+## 7. Current blocker map
+
+1. **Founder authorization:** the cryptographic authorization primitive exists, but the live server route does not call it and production trust is NOT_ENROLLED. Founder-controlled keystore enrollment and proof of possession are Founder-only prerequisites; no agent may manufacture them.
+2. **GitHub writes:** the in-game gate is a public read-only viewer. A narrowly scoped server-side GitHub write adapter and secure credential/installation flow are not evidenced. ChatGPT's connected GitHub access is not automatically an in-game credential.
+3. **LLM collaboration:** NPC navigation and test-supplied collaborator responses exist, but live model invocation and explicit continuity relay transport are not demonstrated.
+4. **Android acceptance:** hosted emulator tests are not physical-device evidence. The current #755 emulator acceptance check remains IN_PROGRESS at the observed head; no Founder physical-device acceptance exists.
+5. **Founder usability:** the nontechnical visual invariant is authorized, but the complete journey has not been accepted by the Founder.
+
+## 8. Operating and coordination rules
 
 - The unit of work is an end-to-end Founder capability, not a repository, PR, or easy code change.
 - Prefer the smallest coherent vertical slice that proves a real user-visible outcome.
@@ -126,7 +136,7 @@ A failed prerequisite is not permission to bypass it. Continue with safe, indepe
 - If physical-device access, production trust, GitHub credentials, an LLM provider integration, or another required dependency is unavailable, record it as a blocker. Do not simulate success or route around the boundary.
 - Preserve contradictions, negative results, and uncertainty. Never rewrite an old handoff to make the history appear successful.
 
-## 8. Required update format
+## 9. Required update format
 
 At the end of each execution cycle, update the **Current relay state** below and append one entry under **Append-only relay log**.
 
@@ -146,7 +156,7 @@ The current state is a concise index to the latest verified facts. The log prese
 - **Active implementation owner:** Worker B for game/runtime; Worker A for cross-cutting authority review. Do not edit Worker B's active server/game paths concurrently.
 - **Next recommended action:** Worker B and Worker A coordinate a bounded, game-native first slice: implement the GitHub write adapter and exact signed authorization boundary without bypassing the Founder trust prerequisite. Keep the first write narrowly scoped (candidate: create one issue in the canonical repository) and verify it by independently retrieving the created issue. Do not attempt production execution until authorization and credential prerequisites are met.
 
-## 9. Append-only relay log
+## 10. Append-only relay log
 
 ### Relay v1 — 2026-11-27 — Initial institutional handoff
 
@@ -172,3 +182,12 @@ The current state is a concise index to the latest verified facts. The log prese
 **No consequential action:** No runtime source change, GitHub issue write through the game, key generation/enrollment, merge, release, deployment, spending, credential/permission change, external publication, or Founder authority transition occurred.
 
 **Handoff:** The next runtime implementation belongs to Worker B. Worker A owns cross-cutting authority review. Re-observe both active branches before touching shared paths. The live Founder disposition route remains fail-closed, Founder trust remains NOT_ENROLLED, and the existing in-game GitHub gate remains read-only. The next meaningful product proof is one visually authorized in-game Guild Gate action that creates a narrowly scoped GitHub issue and independently verifies it, but only after the authorization and in-game credential boundaries are implemented and Founder-authorized.
+
+
+### Relay v1.2 — 2026-11-27 — Source-level blocker refinement
+
+**Fresh source inspection:** On canonical main, `game/server.mjs` imports `loadTrustAnchor` but not `authorizationEvent`; the live `/api/decisions/choose` route returns the fail-closed status before calling the decision service. The separate `authorizationEvent` implementation requires host-configured enrolled PRODUCTION trust, verifies the signature with host time, consumes the durable nonce, and then returns an authorization event. The in-game GitHub viewer uses GET requests and explicitly discloses that it is read-only. Source SHAs are recorded above.
+
+**Additional blocker:** The Guild NPC workbench is navigation/focus, not live LLM invocation. PR #761's response is test-supplied. A real assistant transport and continuity read/update integration are not demonstrated.
+
+**Disposition:** These findings confirm that the first GitHub issue create/update action cannot safely be enabled by merely adding a button or reusing the ChatGPT GitHub connector. It requires a server-side GitHub credential/installation flow and the existing Founder authorization boundary to be integrated without weakening it. The Founder-only trust enrollment remains separate and untouched.
