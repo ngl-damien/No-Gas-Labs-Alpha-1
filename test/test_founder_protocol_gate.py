@@ -10,6 +10,7 @@ from scripts.founder_protocol_gate import (
     REQUIRED_SECTIONS,
     evaluate_pull_request,
     missing_or_empty_sections,
+    relay_history_is_append_only,
 )
 
 
@@ -82,6 +83,31 @@ class FounderPullRequestGateTests(unittest.TestCase):
                 pull = dict(self.pull, created_at=value)
                 result = evaluate_pull_request(pull, self.paths)
                 self.assertEqual(result["status"], "fail")
+
+    def test_relay_initial_creation_requires_nonempty_content(self):
+        self.assertTrue(relay_history_is_append_only(None, b"initial relay\\n"))
+        self.assertFalse(relay_history_is_append_only(None, b""))
+        self.assertFalse(relay_history_is_append_only(None, None))
+
+    def test_relay_true_append_preserves_all_previous_bytes(self):
+        base = b"# Relay\\nprior checkpoint\\n"
+        head = base + b"next checkpoint\\n"
+        self.assertTrue(relay_history_is_append_only(base, head))
+
+    def test_relay_truncation_and_rewrite_are_rejected(self):
+        base = b"# Relay\\nprior checkpoint\\n"
+        self.assertFalse(relay_history_is_append_only(base, base[:-1]))
+        self.assertFalse(relay_history_is_append_only(base, b"# Relay\\nreplacement\\n"))
+        self.assertFalse(relay_history_is_append_only(base, None))
+
+    def test_relay_unchanged_content_is_not_an_append(self):
+        base = b"# Relay\\nprior checkpoint\\n"
+        self.assertFalse(relay_history_is_append_only(base, base))
+
+    def test_changed_relay_path_still_fails_when_history_is_not_preserved(self):
+        result = evaluate_pull_request(self.pull, self.paths, relay_history_valid=False)
+        self.assertEqual(result["status"], "fail")
+        self.assertTrue(any("preserve all base bytes" in item for item in result["failures"]))
 
 
 if __name__ == "__main__":
