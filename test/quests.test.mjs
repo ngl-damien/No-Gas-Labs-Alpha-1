@@ -522,3 +522,68 @@ test('an unresolved review record is surfaced separately from no review attempt'
   assert.equal(hasStudyReviewRecord(study, [study, malformed]), true);
   assert.equal(findStudyReview(study, [study, malformed]), null);
 });
+
+
+test('quest progression fails closed when a retained event slot has no safely readable identity', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [
+    { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+    null
+  ];
+
+  const trail = getQuestTrail(world, founder);
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].id, 'founder-history-identity-unavailable');
+  assert.equal(trail[0].progress, 0);
+  assert.match(trail[0].blockedReason, /uniqueness cannot be established/i);
+});
+
+test('quest progression rejects accessor-backed event identity without invoking the accessor', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  let identityReads = 0;
+  const malformed = { type: 'discover', actor: founder, at: at2, locationId: 'river' };
+  Object.defineProperty(malformed, 'id', {
+    enumerable: true,
+    get() { identityReads += 1; throw new Error('unsafe event identity read'); }
+  });
+  world.events = [
+    { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+    malformed
+  ];
+
+  const trail = getQuestTrail(world, founder);
+  assert.equal(identityReads, 0);
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].id, 'founder-history-identity-unavailable');
+  assert.equal(trail[0].progress, 0);
+});
+
+
+test('quest progression rejects inherited event collections without invoking accessors', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  let eventReads = 0;
+  const prototype = {};
+  Object.defineProperty(prototype, 'events', {
+    enumerable: true,
+    get() { eventReads += 1; throw new Error('inherited event history must not be read'); }
+  });
+  delete world.events;
+  Object.setPrototypeOf(world, prototype);
+
+  const trail = getQuestTrail(world, founder);
+  assert.equal(eventReads, 0);
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].id, 'founder-history-identity-unavailable');
+  assert.equal(trail[0].progress, 0);
+});
+
+test('quest progression accepts a genuinely absent event collection on a plain world', () => {
+  const world = base();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  const trail = getQuestTrail(world, founder);
+  assert.ok(Array.isArray(trail));
+  assert.equal(trail.some(item => item.id === 'founder-history-identity-unavailable'), false);
+});
