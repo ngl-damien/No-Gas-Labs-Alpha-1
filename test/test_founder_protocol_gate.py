@@ -64,6 +64,22 @@ class FounderPullRequestGateTests(unittest.TestCase):
             list(REQUIRED_SECTIONS[1:]),
         )
 
+    def test_placeholder_only_sections_fail_closed(self):
+        placeholders = ("TODO", "TBD", "N/A", "None", "Pending", "Placeholder",
+                        "TODO: fill this in", "- TBD", "> N/A")
+        for placeholder in placeholders:
+            with self.subTest(placeholder=placeholder):
+                body = "\n\n".join(heading + "\n" + placeholder
+                                    for heading in REQUIRED_SECTIONS)
+                self.assertEqual(missing_or_empty_sections(body), list(REQUIRED_SECTIONS))
+
+    def test_substantive_content_after_placeholder_is_accepted(self):
+        body = "\n\n".join(
+            heading + "\nTODO: replace this note.\nObserved exact-head test result: PASS."
+            for heading in REQUIRED_SECTIONS
+        )
+        self.assertEqual(missing_or_empty_sections(body), [])
+
     def test_missing_relay_update_fails_closed(self):
         result = evaluate_pull_request(self.pull, ["src/example.mjs"])
         self.assertEqual(result["status"], "fail")
