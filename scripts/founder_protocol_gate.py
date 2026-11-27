@@ -21,11 +21,45 @@ RELAY_PATH = "docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md"
 
 PLACEHOLDER_ONLY_LINE = re.compile(
     r"^(?:todo|tbd|n/?a|none|pending|placeholder|"
-    r"fill(?:\s+in)?(?:\s+this)?|"
-    r"to\s+be\s+(?:completed|filled\s+in|determined)|"
-    r"not\s+yet\s+available)(?:\s*[:—-].*)?$",
+    r"fill(?:\\s+in)?(?:\\s+this)?|"
+    r"to\\s+be\\s+(?:completed|filled\\s+in|determined)|"
+    r"not\\s+yet\\s+available)(?:\\s*[:—-].*)?$",
     re.IGNORECASE,
 )
+FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
+
+def strip_fenced_code_blocks(markdown):
+    """Remove fenced code blocks before interpreting PR headings or section evidence.
+
+    An unclosed fence consumes the remainder, matching Markdown's fail-closed
+    interpretation. Closing fences must use the same marker and at least the
+    opening marker length.
+    """
+    output = []
+    fence_char = None
+    fence_length = 0
+    for line in markdown.splitlines():
+        if fence_char is None:
+            match = FENCE_OPEN.match(line)
+            if match:
+                marker = match.group(1)
+                info = match.group(2)
+                if marker[0] == "`" and "`" in info:
+                    output.append(line)
+                    continue
+                fence_char = marker[0]
+                fence_length = len(marker)
+                output.append("")
+                continue
+            output.append(line)
+            continue
+        closing = re.match(r"^ {0,3}(" + re.escape(fence_char) + r"{" + str(fence_length) + r",})[ \\t]*$", line)
+        if closing:
+            fence_char = None
+            fence_length = 0
+        output.append("")
+    return "\\n".join(output)
 
 
 def section_has_substantive_content(section_text):
@@ -35,13 +69,12 @@ def section_has_substantive_content(section_text):
     if not lines:
         return False
     for line in lines:
-        normalized = re.sub(r"^(?:[-*+]\s+|>\s*)+", "", line)
-        normalized = normalized.strip(" \t*_~#")
+        normalized = re.sub(r"^(?:[-*+]\\s+|>\\s*)+", "", line)
+        normalized = normalized.strip(" \\t*_~#")
         normalized = re.sub(r"[.!?]+$", "", normalized).strip()
         if not PLACEHOLDER_ONLY_LINE.fullmatch(normalized):
             return True
     return False
-
 
 
 def parse_timestamp(value):
@@ -60,15 +93,16 @@ def missing_or_empty_sections(body):
     """Return required headings whose own section contains no substantive text."""
     if not isinstance(body, str):
         body = ""
+    body = strip_fenced_code_blocks(body)
     failures = []
     for heading in REQUIRED_SECTIONS:
         match = re.search(
-            r"(?m)^" + re.escape(heading) + r"[ \t]*$", body
+            r"(?m)^" + re.escape(heading) + r"[ \\t]*$", body
         )
         if match is None:
             failures.append(heading)
             continue
-        next_heading = re.search(r"(?m)^##\s+", body[match.end():])
+        next_heading = re.search(r"(?m)^##\\s+", body[match.end():])
         end = match.end() + next_heading.start() if next_heading else len(body)
         section_text = body[match.end():end]
         if not section_has_substantive_content(section_text):
@@ -140,10 +174,7 @@ def changed_pull_request_paths(pull):
     base_sha = pull["base"]["sha"]
     head_sha = pull["head"]["sha"]
     number = str(pull["number"])
-    subprocess.run(
-        ["git", "fetch", "origin", base_sha],
-        check=True,
-    )
+    subprocess.run(["git", "fetch", "origin", base_sha], check=True)
     subprocess.run(
         [
             "git",
