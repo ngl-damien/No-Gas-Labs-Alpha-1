@@ -19,6 +19,30 @@ REQUIRED_SECTIONS = (
 )
 RELAY_PATH = "docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md"
 
+PLACEHOLDER_ONLY_LINE = re.compile(
+    r"^(?:todo|tbd|n/?a|none|pending|placeholder|"
+    r"fill(?:\s+in)?(?:\s+this)?|"
+    r"to\s+be\s+(?:completed|filled\s+in|determined)|"
+    r"not\s+yet\s+available)(?:\s*[:—-].*)?$",
+    re.IGNORECASE,
+)
+
+
+def section_has_substantive_content(section_text):
+    """Reject sections containing only comments, whitespace, or obvious placeholders."""
+    without_comments = re.sub(r"(?s)<!--.*?-->", "", section_text)
+    lines = [line.strip() for line in without_comments.splitlines() if line.strip()]
+    if not lines:
+        return False
+    for line in lines:
+        normalized = re.sub(r"^(?:[-*+]\s+|>\s*)+", "", line)
+        normalized = normalized.strip(" \t*_~#")
+        normalized = re.sub(r"[.!?]+$", "", normalized).strip()
+        if not PLACEHOLDER_ONLY_LINE.fullmatch(normalized):
+            return True
+    return False
+
+
 
 def parse_timestamp(value):
     if not isinstance(value, str) or not value:
@@ -47,8 +71,7 @@ def missing_or_empty_sections(body):
         next_heading = re.search(r"(?m)^##\s+", body[match.end():])
         end = match.end() + next_heading.start() if next_heading else len(body)
         section_text = body[match.end():end]
-        without_comments = re.sub(r"(?s)<!--.*?-->", "", section_text)
-        if not without_comments.strip():
+        if not section_has_substantive_content(section_text):
             failures.append(heading)
     return failures
 
