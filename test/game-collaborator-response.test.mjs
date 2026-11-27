@@ -1,5 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createGameServer } from '../game/server.mjs';
+import { GUILD_NPCS } from '../game/pixel-world-view.mjs';
+import { resolveGuildNpcWorkbench } from '../game/guild-npc-workbench.mjs';
 import { projectCollaboratorPackets, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS, MAX_PACKET_ID_CHARS } from '../game/collaborator-contracts.mjs';
 import { validateCollaboratorResponse, validateCollaboratorResponseSnapshot, validateRetainedCollaboratorResponse } from '../game/collaborator-response.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertGameJsonKeys } from '../game/strict-json.mjs';
@@ -678,13 +685,6 @@ test('retained Council review preserves rejected attempts and withholds forged o
 });
 
 
-import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { createGameServer } from '../game/server.mjs';
-import { GUILD_NPCS } from '../game/pixel-world-view.mjs';
-import { resolveGuildNpcWorkbench } from '../game/guild-npc-workbench.mjs';
 
 test('Guild Hall Synthesis Clerk response survives server restart with exact source and byte provenance', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-guild-hall-restart-'));
