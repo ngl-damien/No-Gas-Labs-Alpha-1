@@ -13,6 +13,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.webkit.WebView;
 import android.webkit.WebViewRenderProcess;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -1287,14 +1288,17 @@ public final class MainActivityTest {
 
     @Test
     public void publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress() throws Exception {
+        restoreTrace("01 test-start");
         MainActivity activity = activity();
         awaitPageLoaded(activity);
+        restoreTrace("02 page-loaded");
         assertTrue("the Android WebView must support the bounded native file bridge",
                 activity.isNativeFileBridgeSupportedForTests());
         awaitJavaScript(activity,
                 "window.__nglNativeFileBridgeInstalled === true && " +
                 "typeof window.__nglNativeRequestArtifactImport === 'function' && " +
                 "typeof window.__nglNativeRequestArtifactExport === 'function'");
+        restoreTrace("03 native-bridge-installed");
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         // WebView localStorage survives ActivityScenario recreation and can be
@@ -1304,12 +1308,15 @@ public final class MainActivityTest {
                 "localStorage.removeItem('ngl.common-ground.v2'); " +
                 "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
                 "localStorage.removeItem('ngl.common-ground.player-position.v1'); 'clean'");
+        restoreTrace("04 private-world-cleared");
         evaluate(activity, "document.getElementById('start-private').click(); 'started'");
         awaitJavaScript(activity,
                 "document.getElementById('play-ui').hidden === false && " +
                 "document.getElementById('creation-count').textContent === '0' && " +
                 "document.getElementById('xp-count').textContent === '0'");
+        restoreTrace("05 private-world-started");
         createAndPublishObservatory(activity);
+        restoreTrace("06 observatory-published");
 
         // Observe the saved position first, then the actual arrival interaction.
         // If routing stalls, the timeout diagnostic includes the persisted player
@@ -1325,6 +1332,7 @@ public final class MainActivityTest {
                 evaluate(activity,
                         "(() => { const p=JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')); " +
                         "return !!p && Math.hypot(p.x-540,p.y-700)<50; })()"));
+        restoreTrace("07 published-observatory-arrived");
         evaluate(activity, "document.getElementById('sheet-close').click(); 'close published Observatory'");
         awaitJavaScript(activity,
                 "document.getElementById('sheet').hidden && !document.body.classList.contains('modal-open')");
@@ -1335,7 +1343,9 @@ public final class MainActivityTest {
         evaluate(activity,
                 "Array.from(document.querySelectorAll('button[aria-label]')).find(button => button.getAttribute('aria-label') === 'Walk to Source Observatory').click(); 'walk'");
         // The route only approaches Source Observatory; entering its workbench is a separate action.
+        restoreTrace("08 route-to-source-observatory-requested");
         enterNearbyInstitution(activity, "source_observatory", "Source Observatory");
+        restoreTrace("09 source-observatory-workbench-open");
         awaitJavaScript(activity,
                 "document.getElementById('sheet').getAttribute('role') === 'dialog' && " +
                 "document.getElementById('sheet').getAttribute('aria-modal') === 'true' && " +
@@ -1369,10 +1379,12 @@ public final class MainActivityTest {
                 "document.querySelector('[data-native-observatory-export]') !== null && " +
                 "document.querySelector('[data-native-observatory-import]') !== null && " +
                 "document.getElementById('artifact-frame')?.getAttribute('data-ngl-input-ready') === 'true'");
+        restoreTrace("10 artifact-portal-ready");
         // The native bridge handshake follows the sandboxed srcdoc's painted signal;
         // the iframe's first load can describe about:blank before srcdoc is installed.
         awaitJavaScript(activity,
                 "document.getElementById('artifact-frame')?.dataset.nglNativeBridgeHandshakeSent === 'true'");
+        restoreTrace("11 native-bridge-handshake-complete");
         assertEquals("the native portal is attached only to the marked Source Observatory artifact",
                 "true",
                 evaluate(activity,
@@ -1404,6 +1416,7 @@ public final class MainActivityTest {
         if (backup.exists()) assertTrue("old native import fixture should be removable", backup.delete());
         if (roundTrip.exists()) assertTrue("old native round-trip export should be removable", roundTrip.delete());
         Files.write(backup.toPath(), backupEnvelope.toString(2).getBytes(StandardCharsets.UTF_8));
+        restoreTrace("12 import-fixture-written");
 
         String worldBefore = evaluate(activity, "localStorage.getItem('ngl.common-ground.v2')");
         String positionBefore = evaluate(activity, "localStorage.getItem('ngl.common-ground.player-position.v1')");
@@ -1416,6 +1429,7 @@ public final class MainActivityTest {
             awaitJavaScript(activity,
                     "document.getElementById('artifact-frame')?.dataset.nglNativeImportReceived === " +
                             JSONObject.quote(backup.getName() + ":" + backup.length()));
+            restoreTrace("13 native-import-received");
         } finally {
             instrumentation.removeMonitor(openMonitor);
         }
@@ -1431,6 +1445,7 @@ public final class MainActivityTest {
                 "panel.getAttribute('aria-label') === 'Local notebook import review' && " +
                 "preview instanceof HTMLButtonElement && preview.textContent.trim() === 'Preview backup' && " +
                 "!preview.disabled; })()");
+        restoreTrace("14 import-review-ready");
         assertEquals("native import exposes a visible, labelled parent-owned review region",
                 "true",
                 evaluate(activity,
@@ -1448,6 +1463,7 @@ public final class MainActivityTest {
                 "panel.textContent.includes('Model assertion: lead only, not evidence.') && " +
                 "panel.querySelectorAll('.native-observatory-review-item').length === 1 && " +
                 "append instanceof HTMLButtonElement && !append.disabled; })()");
+        restoreTrace("15 preview-ready");
         evaluate(activity, "document.querySelector('[data-native-observatory-append]').click(); 'append requested'");
         awaitJavaScript(activity,
                 "(() => { const panel=document.querySelector('[data-native-observatory-review]'); " +
@@ -1455,6 +1471,7 @@ public final class MainActivityTest {
                 "const append=panel?.querySelector('[data-native-observatory-append]'); " +
                 "return status?.textContent.startsWith('Added 1 local observation(s); skipped 0 exact-content duplicate(s).') && " +
                 "append instanceof HTMLButtonElement && append.disabled; })()");
+        restoreTrace("16 local-observation-appended");
 
         Instrumentation.ActivityMonitor createMonitor = monitorDocumentPicker(
                 Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(roundTrip));
@@ -1462,6 +1479,7 @@ public final class MainActivityTest {
             evaluate(activity, "document.querySelector('[data-native-observatory-export]').click(); 'save restored notebook'");
             awaitMonitor(createMonitor);
             awaitCompleteJsonFile(roundTrip);
+            restoreTrace("17 exported-file-complete");
         } finally {
             instrumentation.removeMonitor(createMonitor);
         }
@@ -1488,6 +1506,11 @@ public final class MainActivityTest {
                 "\"1\"", evaluate(activity, "document.getElementById('creation-count').textContent"));
         assertTrue("native import fixture should be removable", backup.delete());
         assertTrue("native round-trip export should be removable", roundTrip.delete());
+        restoreTrace("18 assertions-complete");
+    }
+
+    private static void restoreTrace(String stage) {
+        Log.i("NGL-RESTORE-DIAG", stage);
     }
 
     private void assertNavigationOnlyDiscovers(String beforeJson, String afterJson, String label) throws Exception {
