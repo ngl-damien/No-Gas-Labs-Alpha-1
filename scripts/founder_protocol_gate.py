@@ -4,6 +4,7 @@
 from datetime import datetime, timezone
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -31,6 +32,30 @@ def parse_timestamp(value):
     return parsed.astimezone(timezone.utc)
 
 
+def missing_or_empty_sections(body):
+    """Return required headings whose own section contains no substantive text."""
+    if not isinstance(body, str):
+        body = ""
+    failures = []
+    for heading in REQUIRED_SECTIONS:
+        match = re.search(
+            r"(?m)^" + re.escape(heading) + r"\s*$", body
+        )
+        if match is None:
+            failures.append(heading)
+            continue
+        next_heading = re.search(r"(?m)^##\s+", body[match.end():])
+        end = match.end() + next_heading.start() if next_heading else len(body)
+        section_text = body[match.end():end]
+        substantive_lines = [
+            line.strip() for line in section_text.splitlines()
+            if line.strip() and not line.lstrip().startswith(("<!--", "-->"))
+        ]
+        if not substantive_lines:
+            failures.append(heading)
+    return failures
+
+
 def evaluate_pull_request(pull, changed_paths):
     """Return pass, fail, or grandfathered without performing I/O."""
     try:
@@ -42,16 +67,15 @@ def evaluate_pull_request(pull, changed_paths):
         return {"status": "grandfathered", "failures": []}
 
     body = pull.get("body") or ""
-    missing_sections = [
-        heading for heading in REQUIRED_SECTIONS if heading not in body
-    ]
+    missing_sections = missing_or_empty_sections(body)
     failures = []
     if missing_sections:
         failures.append(
-            "missing required Founder-facing sections: "
+            "missing or empty required Founder-facing sections: "
             + ", ".join(missing_sections)
         )
-    if RELAY_PATH not in set(changed_paths):
+    relay_updated = RELAY_PATH in set(changed_paths)
+    if not relay_updated:
         failures.append(
             "the append-only continuity relay was not updated in this pull request"
         )
@@ -59,7 +83,7 @@ def evaluate_pull_request(pull, changed_paths):
         "status": "fail" if failures else "pass",
         "failures": failures,
         "missing_sections": missing_sections,
-        "relay_updated": RELAY_PATH in set(changed_paths),
+        "relay_updated": relay_updated,
     }
 
 
