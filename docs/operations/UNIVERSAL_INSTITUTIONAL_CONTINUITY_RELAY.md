@@ -150,7 +150,7 @@ The current state is a concise index to the latest verified facts. The log prese
 - **Objective:** Founder-controlled, visual Android Decision Chamber → assistant continuity → explicit authorization → real GitHub state change → independent verification → close/reopen persistence.
 - **Current blocker:** The live Founder decision route is fail-closed; Founder trust is NOT_ENROLLED; the in-game GitHub gate is read-only and no in-game write adapter/credential flow is evidenced.
 - **Continuity relay implementation:** Proposed in draft PR [#762](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/762), branch `docs/universal-institutional-continuity-relay-20261127`, exact head `dcc6a0b4d7127c395e7d843c6f6783be86056a1c`. It adds this relay and makes reading/updating it mandatory in root AGENTS and the shared scheduler protocol. The branch's current head is tracked by live PR metadata; this relay remains proposed and is not canonical until reviewed and merged.
-- **PR #762 exact-head checks:** Verify `45977508493` PASS; World Projection `45977508426` IN_PROGRESS; Playable World `45977508467` IN_PROGRESS. No aggregate pass is claimed while checks remain pending.
+- **PR #762 check history:** Initial head `dcc6a0b4d7127c395e7d843c6f6783be86056a1c`: Verify `45977508493` PASS; World Projection `45977508426` and Playable World `45977508467` IN_PROGRESS. After relay updates, observed head `975c4d6fa9487f8b956df12514fb266510aacc5d`: Verify `45977942497` PASS; World Projection `45977942506` and Playable World `45977942487` IN_PROGRESS. The live PR metadata is authoritative for the latest head; these statuses apply only to the exact SHAs named here.
 - **PR #755 exact-head observation:** `1c3cdeeaa888fac2bead8863b1e4eff4b8c6c64e`; 10 check runs PASS, one deploy job SKIPPED, and Android emulator acceptance `45951191102` remains IN_PROGRESS; combined status PENDING. Do not transfer results from its earlier parent head.
 - **PR #761 exact-head observation:** `a8c39fbac00e2de357546cc9a25a0ff0cba84fda`; Playable World `45972900886`, World Projection `45972900854`, and Full Verify `45972900877` PASS. This is a server-restart collaborator-response subgate only; the response is test-supplied, not a live LLM interaction.
 - **Active implementation owner:** Worker B for game/runtime; Worker A for cross-cutting authority review. Do not edit Worker B's active server/game paths concurrently.
@@ -183,6 +183,10 @@ The current state is a concise index to the latest verified facts. The log prese
 
 **Handoff:** The next runtime implementation belongs to Worker B. Worker A owns cross-cutting authority review. Re-observe both active branches before touching shared paths. The live Founder disposition route remains fail-closed, Founder trust remains NOT_ENROLLED, and the existing in-game GitHub gate remains read-only. The next meaningful product proof is one visually authorized in-game Guild Gate action that creates a narrowly scoped GitHub issue and independently verifies it, but only after the authorization and in-game credential boundaries are implemented and Founder-authorized.
 
+
+### Relay v1.3 — 2026-11-27 — Exact-head check reconciliation
+
+**PR #762 verification:** At observed head `975c4d6fa9487f8b956df12514fb266510aacc5d`, Full Verify `45977942497` completed PASS; World Projection `45977942506` and Playable World `45977942487` were IN_PROGRESS. The PR remained draft/open, mergeable, and unmerged. A later relay update creates a new head, so the next agent must fetch live PR metadata and exact-head checks again before claiming current status.
 
 ### Relay v1.2 — 2026-11-27 — Source-level blocker refinement
 
