@@ -105,6 +105,18 @@ class FounderPullRequestGateTests(unittest.TestCase):
                 result = evaluate_pull_request(pull, self.paths)
                 self.assertEqual(result["status"], "fail")
 
+    def test_effective_date_boundary_uses_utc_instant_not_local_date(self):
+        cases = (
+            ("2026-11-27T17:59:59-06:00", "grandfathered"),
+            ("2026-11-27T18:00:00-06:00", "fail"),
+            ("2026-11-28T00:00:01Z", "fail"),
+        )
+        for created_at, expected in cases:
+            with self.subTest(created_at=created_at):
+                pull = dict(self.pull, created_at=created_at)
+                result = evaluate_pull_request(pull, self.paths)
+                self.assertEqual(result["status"], expected)
+
     def test_relay_initial_creation_requires_nonempty_content(self):
         self.assertTrue(relay_history_is_append_only(None, b"initial relay\n"))
         self.assertFalse(relay_history_is_append_only(None, b""))
