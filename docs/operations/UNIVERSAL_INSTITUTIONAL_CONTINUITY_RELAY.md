@@ -3,7 +3,7 @@
 **Status:** Proposed canonical operating record and handoff mechanism  
 **Proposed canonical path:** `docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md`  
 **Initial record:** Relay v1 · 2026-11-27
-**Latest revision:** Relay v1.5 · 2026-11-27  
+**Latest revision:** Relay v1.6 · 2026-11-27  
 **Authority:** Neophyte Founder  
 **Purpose:** Preserve transferable institutional state between agents, assistants, sessions, and execution cycles.
 
@@ -144,7 +144,7 @@ The current state is a concise index to the latest verified facts. The log prese
 
 ### Current relay state
 
-- **Relay version:** 1.5
+- **Relay version:** 1.6
 - **Last updated:** 2026-11-27
 - **Last agent:** ChatGPT execution agent — Run 3 sequential bootstrap, fresh PR/CI/source reconciliation, Android crash-log diagnosis, and diagnostic test instrumentation.
 - **Objective:** Founder-controlled, visual Android Decision Chamber → assistant continuity → explicit authorization → real GitHub state change → independent verification → close/reopen persistence.
@@ -231,3 +231,12 @@ The current state is a concise index to the latest verified facts. The log prese
 **No consequential action:** No merge, release, deployment, external publication, GitHub write through the game, Founder approval, trust enrollment, key/credential/permission change, spending, or authority transition. Additional cash cost: $0.
 
 **Handoff:** Worker A owns #763's Android instrumentation diagnosis. Worker B retains #755 runtime/game ownership. Next priority is to use the exact #763 Android result to isolate the renderer/process crash; in parallel, Worker A may continue a read-only, fail-closed architecture review of the Guild Gate write adapter without touching Worker B's active server/game files. Recheck current heads and PR ownership before every edit. Preserve the visual, nontechnical Founder invariant.
+
+
+### Relay v1.6 — 2026-11-27 — Exact-head diagnostic verification update
+
+**New exact-head evidence:** PR #763 commit `c65591dce5e0cc718606343308ccaa7a516d5ffc`: Verify `45992590801` PASS and Genesis `45992590723` PASS. Browser `45992590781` and Android `45992590825` remained IN_PROGRESS at the latest inspection. The Android job had completed portable preflight, package-manager smoke test, SDK setup, project-state capture, and Gradle setup, and was assembling the debug APK. Do not claim the instrumentation rerun or diagnostic markers have executed until the job reaches the emulator journey and terminal status.
+
+PR #762 relay update commit `cfaa82bd9a9e2a11e682d5cb8ffcdfc5dd54c472`: Genesis `45992780201` PASS; Verify `45992780191` and Browser `45992780207` were IN_PROGRESS at last inspection. The prior exact head's Browser failure remains a stale-head observation. The #747 correction is a separate branch/PR and does not confer a pass on #762.
+
+Authority regression cross-check: PR #759 exact head `a5511db95a49297782a5c2d17c47ac9ee5a330c0` has Verify `45953174476`, Genesis `45953174534`, and Synthesis mobile `45953174489` PASS; Browser `45953174524` and Android `45953174549` FAIL. Its test-only route matrix remains negative coverage, not live authorization. PR #757 exact head `ee2eb15789f72ee76fe6746aca1f9acc17c8de8f` similarly has Verify/Genesis/Synthesis PASS and Browser/Android FAIL. Neither changes the decision to keep production authorization fail-closed while Founder trust is NOT_ENROLLED.
