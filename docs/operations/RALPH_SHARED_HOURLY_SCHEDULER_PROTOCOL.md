@@ -11,7 +11,13 @@ This is a Ralph-style loop: persistent objective, fresh observation, bounded act
 
 This protocol coordinates the two existing schedulers. It does not create a third scheduler, change either schedule, promise continuous execution between runs, or grant new authority.
 
-## Universal institutional doctrine\n\nEvery worker governed by this protocol inherits the [No_Gas_Labs™ Institutional Charter](../institution/INSTITUTIONAL-CHARTER.md). It is the canonical, provider-agnostic doctrine for every project, repository, division, experiment, and future initiative—not a Codex-specific mission. Apply its AOTA scope rule and chronological invention lifecycle to research, design, implementation, evaluation, deployment, publication, and preservation. Local task instructions may specialize but may not silently narrow or contradict it.\n\n## Shared objective
+## Universal institutional doctrine
+
+Every worker governed by this protocol inherits the [No_Gas_Labs™ Institutional Charter](../institution/INSTITUTIONAL-CHARTER.md). It is the canonical, provider-agnostic doctrine for every project, repository, division, experiment, and future initiative—not a Codex-specific mission. Apply its AOTA scope rule and chronological invention lifecycle to research, design, implementation, evaluation, deployment, publication, and preservation. Local task instructions may specialize but may not silently narrow or contradict it.
+
+Every worker must also inherit the [Universal No_Gas_Labs™ Institutional Continuity Relay Harness](UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md). After the mandatory root AGENTS → this protocol → Institutional Charter bootstrap, read the complete relay before any repository review, inspection, research, proposal, or implementation. Revalidate inherited claims against live evidence. Before ending a run or handing work to another agent, update the relay's current state and append an evidence-backed handoff entry. The relay transfers context; it grants no authority and never substitutes for fresh verification.
+
+## Shared objective
 
 Increase the real capability of No_Gas_Labs™ as both:
 1. a reliable, reusable, evidence-governed institution and engineering ecosystem; and
@@ -40,7 +46,6 @@ Do not label a prototype, single-player demo, map with clickable panels, or coll
 
 Prioritize the next unblocked gate that most increases actual player capability. Infrastructure work is justified when it removes a demonstrated blocker, closes a material risk, or directly enables a gate; otherwise it must not displace game delivery indefinitely. Worker A should hand off game-specific blockers with concrete evidence and acceptance criteria, not create parallel gameplay implementations.
 
-
 ## Division of responsibility
 
 ### Worker A — Repository Stutter-Step Loop
@@ -58,15 +63,15 @@ Both workers must inspect the other worker's latest durable results before choos
 
 ## Required loop on every run
 
-1. **Rehydrate.** Read this protocol and the [Institutional Charter](../institution/INSTITUTIONAL-CHARTER.md), then the latest repository state, relevant open pull requests and checks, and the latest durable repository checkpoint. Read the most recent available result from the other hourly worker when accessible. Treat prior reports as leads, not proof.
+1. **Rehydrate.** Complete the mandatory bootstrap sequence and read the Universal Institutional Continuity Relay Harness before any repository inspection. Then inspect the latest repository state, relevant open pull requests and checks, the latest durable repository checkpoint, and the most recent available result from the other hourly worker. Treat prior reports as leads, not proof.
 2. **Observe.** Inspect the actual source, workflow, test, issue, branch, and CI evidence relevant to the candidate task. Distinguish observed facts, user-stated requirements, inference, and unknowns.
 3. **Choose.** Rank candidate work by user-visible capability, evidence quality, reliability, autonomy, reuse, cross-project leverage, risk, and cost. Prefer a real functional improvement over a cosmetic report, new scaffolding, or easy checkmark.
 4. **Challenge.** Reinspect the proposed target and competing branches/PRs immediately before editing. Check whether the defect or opportunity is already fixed, superseded, duplicated, or blocked.
 5. **Act.** Make a bounded, substantive change on a dedicated safe branch. Reuse existing mechanisms where justified; do not copy whole repositories or invent interfaces. Keep the additional cash cost at $0 unless Damien explicitly authorizes otherwise.
 6. **Verify.** Run the most relevant available tests and inspect exact-head hosted checks/logs. Add negative tests for important failure/security boundaries. A passing test proves only what that test actually exercises. If verification cannot run, state precisely what was and was not observed.
 7. **Review.** Inspect the resulting diff and current repository state again. Look for regressions, race conditions, stale assumptions, duplicate work, and effects on the other worker's scope. Repair attributable failures within the run budget.
-8. **Preserve.** Record exact repository, branch, commit, PR, changed paths, commands, test totals, hosted run IDs/statuses, evidence links, known limits, unresolved blockers, and next best action in a durable repository checkpoint or PR description/comment.
-9. **Handoff.** If the next action belongs primarily to the other worker, leave a concise handoff with: objective, why it matters, exact source paths/refs, evidence already gathered, work completed, remaining work, acceptance criteria, risks, and whether the other worker can safely proceed. Do not merely say "coordinate."
+8. **Preserve.** Record exact repository, branch, commit, PR, changed paths, commands, test totals, hosted run IDs/statuses, evidence links, known limits, unresolved blockers, and next best action in a durable repository checkpoint or PR description/comment. Update the relay's current state with the verified facts and append the run's dated handoff entry.
+9. **Handoff.** If the next action belongs primarily to the other worker, leave a concise handoff with: objective, why it matters, exact source paths/refs, evidence already gathered, work completed, remaining work, acceptance criteria, risks, and whether the other worker can safely proceed. Do not merely say "coordinate." The continuity relay must contain this handoff before the run ends.
 10. **Repeat.** Within the available run budget, complete multiple observe → choose → challenge → act → verify → review cycles when safe and useful. Do not stop after one trivial change. Do not manufacture extra changes to satisfy an iteration count.
 
 ## Shared work coordination rules
@@ -83,7 +88,7 @@ Both workers must inspect the other worker's latest durable results before choos
 ## Evidence and state rules
 
 - A model assertion is never sufficient evidence that the state it describes is correct.
-- Separate source presence, test execution, test result, hosted CI, artifact creation, external observation, authorization, merge, release, deployment, adoption, and user outcome. Do not collapse them into "done."
+- Separate source presence, test execution, test result, hosted CI, artifact creation, external observation, authorization, merge, release, deployment, adoption, and user outcome. Do not collapse these into "done."
 - Preserve failed attempts, contradictions, rejected claims, negative results, and uncertainty. Do not rewrite history to make the loop look successful.
 - Hashes establish byte identity only; they do not establish truth, authorship, safety, authority, or execution.
 - Game XP, inventory, status, quest completion, world changes, and canonical progress must be deterministic projections of demonstrated events, never invented by an NPC, model, UI, or scheduler.
@@ -105,6 +110,7 @@ Both workers must inspect the other worker's latest durable results before choos
 Each run must leave a concise record containing:
 
 - worker identity and run timestamp;
+- relay version read and updated;
 - prior checkpoint and other-worker result inspected (or access limitation);
 - selected objective and why it ranked highest;
 - exact files/commits/PRs changed;
@@ -128,7 +134,6 @@ More commits, more files, more agent activity, and more green checks by themselv
 
 **Founder authority remains with Damien Featherstone.** This protocol coordinates work; it does not transfer sovereignty.
 
-
 ## Provider-agnostic, compute-bounded agent workforce
 
 This protocol is the shared execution contract for any capable agent entering an NGL repository, regardless of provider or interface. The workers named above are responsibility lanes, not exclusive model identities. A replacement or additional agent inherits the same objective, reads the same current instructions, inspects the same durable state, and leaves compatible evidence and handoffs.
@@ -137,4 +142,4 @@ The loop continues for the full useful execution budget of each run: rehydrate �
 
 Before claiming work, inspect other agents' latest durable results and active branches/PRs across the relevant repository portfolio. A branch/PR is a coordination claim, not a correctness guarantee. If a global work registry is unavailable, coordinate through durable branch/PR records and explicit handoffs; never pretend a global lock exists. Re-observe before resuming stale claims.
 
-Where available, run the portable preflight (npm run agent:preflight) with every intended target path and the latest checkpoint path. Preserve its machine-readable receipt. The receipt hashes the exact instruction/checkpoint bytes read; it does not prove comprehension, correctness, or execution. If the preflight is unavailable in another repository, follow the manual entry sequence and record that limitation rather than skipping instructions.
+Where available, run the portable preflight (`npm run agent:preflight`) with every intended target path and the latest checkpoint path. Preserve its machine-readable receipt. The receipt hashes the exact instruction/checkpoint bytes read; it does not prove comprehension, correctness, or execution. If the preflight is unavailable in another repository, follow the manual entry sequence and record that limitation rather than skipping it.
