@@ -5,8 +5,14 @@ import { dirname, basename, resolve, relative, posix, isAbsolute, win32, sep } f
 import { pathToFileURL } from 'node:url';
 
 const VENDOR_POINTERS = ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md'];
-const ENTRY_MARKERS = ['RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md', 'First repository operation:', 'Second repository operation:', 'Discard any pre-read observations'];
-const PROTOCOL_MARKERS = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority'];
+const CHARTER_PATH = 'docs/institution/INSTITUTIONAL-CHARTER.md';
+const RELAY_PATH = 'docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md';
+const FOUNDER_PROTOCOL_PATH = 'docs/operations/NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md';
+const ENTRY_MARKERS = ['RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md', 'INSTITUTIONAL-CHARTER.md', 'UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md', 'NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md', 'First repository operation:', 'Second repository operation:', 'Discard any pre-read observations'];
+const PROTOCOL_MARKERS = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority', 'INSTITUTIONAL-CHARTER.md', 'UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md', 'NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md'];
+const CHARTER_MARKERS = ['AOTA is the scope rule; chronology is the execution rule', 'Universal chronological invention lifecycle', "A model's assertion is never sufficient evidence that the state it describes is correct"];
+const RELAY_MARKERS = ['mandatory institutional infrastructure', 'Mandatory agent sequence', 'Evidence and authority vocabulary', 'Current relay state', 'Append-only relay log'];
+const FOUNDER_PROTOCOL_MARKERS = ["Mandatory pre-execution responsibilities","Beyond-the-request reasoning","Mandatory execution cycle","Six mandatory performance standards","Mandatory Founder-facing self-audit","Required execution record and handoff","Founder-facing communication standard","Prohibited substitutions and anti-gaming rules","Founder authority and protected boundaries","Enforcement and honest limits","Governing commitment"];
 
 function insideRoot(root, candidate) {
   const rel = relative(root, candidate);
@@ -228,8 +234,8 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
     try {
       let trustedPathSnapshot = null;
       let trustedPathLabel = null;
-      if (['root-instructions', 'shared-protocol', 'nested-instructions', 'durable-checkpoint', 'vendor-pointer'].includes(kind)) {
-        trustedPathLabel = kind === 'durable-checkpoint' ? 'durable checkpoint' : kind === 'vendor-pointer' ? 'vendor pointer' : 'trusted instruction';
+      if (['root-instructions', 'shared-protocol', 'institutional-charter', 'institutional-relay', 'founder-performance-protocol', 'nested-instructions', 'durable-checkpoint', 'vendor-pointer'].includes(kind)) {
+        trustedPathLabel = kind === 'durable-checkpoint' ? 'durable checkpoint' : kind === 'vendor-pointer' ? 'vendor pointer' : kind === 'institutional-charter' ? 'Institutional Charter' : kind === 'institutional-relay' ? 'continuity relay' : kind === 'founder-performance-protocol' ? 'Founder Above-and-Beyond Protocol' : 'trusted instruction';
         trustedPathSnapshot = [];
         const segments = relativePath.split('/');
         for (let index = 1; index <= segments.length; index += 1) {
@@ -425,6 +431,21 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
   const protocolText = protocolPath ? await inspect(protocolPath, 'shared-protocol') : null;
   if (protocolText) for (const marker of PROTOCOL_MARKERS) {
     if (!protocolText.includes(marker)) failures.push({ path: protocolPath, reason: 'missing mandatory protocol section: ' + marker });
+  }
+
+  const charterText = await inspect(CHARTER_PATH, 'institutional-charter');
+  if (charterText) for (const marker of CHARTER_MARKERS) {
+    if (!charterText.includes(marker)) failures.push({ path: CHARTER_PATH, reason: 'missing mandatory Charter section: ' + marker });
+  }
+
+  const relayText = await inspect(RELAY_PATH, 'institutional-relay');
+  if (relayText) for (const marker of RELAY_MARKERS) {
+    if (!relayText.includes(marker)) failures.push({ path: RELAY_PATH, reason: 'missing mandatory continuity relay section: ' + marker });
+  }
+
+  const founderProtocolText = await inspect(FOUNDER_PROTOCOL_PATH, 'founder-performance-protocol');
+  if (founderProtocolText) for (const marker of FOUNDER_PROTOCOL_MARKERS) {
+    if (!founderProtocolText.includes(marker)) failures.push({ path: FOUNDER_PROTOCOL_PATH, reason: 'missing mandatory Above-and-Beyond section: ' + marker });
   }
 
   for (const vendorPath of VENDOR_POINTERS) {

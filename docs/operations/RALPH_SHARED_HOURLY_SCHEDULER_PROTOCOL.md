@@ -17,6 +17,8 @@ Every worker governed by this protocol inherits the [No_Gas_Labs™ Institutiona
 
 Every worker must also inherit the [Universal No_Gas_Labs™ Institutional Continuity Relay Harness](UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md). After the mandatory root AGENTS → this protocol → Institutional Charter bootstrap, read the complete relay before any repository review, inspection, research, proposal, or implementation. Revalidate inherited claims against live evidence. Before ending a run or handing work to another agent, update the relay's current state and append an evidence-backed handoff entry. The relay transfers context; it grants no authority and never substitutes for fresh verification.
 
+Every worker must then read and apply the Neophyte Founder Above-and-Beyond Protocol (NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md) before substantive work. It requires beyond-the-request reasoning, an evidence-backed execution cycle, a six-standard performance assessment, a Founder-facing self-audit, and a factual handoff. It grants no additional authority and cannot guarantee outcomes that tools, permissions, or external dependencies do not support.
+
 ## Shared objective
 
 Increase the real capability of No_Gas_Labs™ as both:
@@ -63,7 +65,7 @@ Both workers must inspect the other worker's latest durable results before choos
 
 ## Required loop on every run
 
-1. **Rehydrate.** Complete the mandatory bootstrap sequence and read the Universal Institutional Continuity Relay Harness before any repository inspection. Then inspect the latest repository state, relevant open pull requests and checks, the latest durable repository checkpoint, and the most recent available result from the other hourly worker. Treat prior reports as leads, not proof.
+1. **Rehydrate.** Complete the mandatory bootstrap sequence, read the Universal Institutional Continuity Relay Harness, and read the Neophyte Founder Above-and-Beyond Protocol before any repository inspection. Then inspect the latest repository state, relevant open pull requests and checks, the latest durable repository checkpoint, and the most recent available result from the other hourly worker. Treat prior reports as leads, not proof.
 2. **Observe.** Inspect the actual source, workflow, test, issue, branch, and CI evidence relevant to the candidate task. Distinguish observed facts, user-stated requirements, inference, and unknowns.
 3. **Choose.** Rank candidate work by user-visible capability, evidence quality, reliability, autonomy, reuse, cross-project leverage, risk, and cost. Prefer a real functional improvement over a cosmetic report, new scaffolding, or easy checkmark.
 4. **Challenge.** Reinspect the proposed target and competing branches/PRs immediately before editing. Check whether the defect or opportunity is already fixed, superseded, duplicated, or blocked.
@@ -110,13 +112,20 @@ Both workers must inspect the other worker's latest durable results before choos
 Each run must leave a concise record containing:
 
 - worker identity and run timestamp;
-- relay version read and updated;
+- relay and Above-and-Beyond protocol versions read and updated;
 - prior checkpoint and other-worker result inspected (or access limitation);
+- Founder request, underlying objective, and intended user-visible outcome;
+- selected objective and why it ranked highest;
+- valuable opportunity considered beyond the literal request;
+- authority, constraints, ownership, and collision checks;
 - selected objective and why it ranked highest;
 - exact files/commits/PRs changed;
 - commands and verification evidence, including exact-head status;
 - observed outcome versus unverified claim;
+- what the Founder can now use or do;
 - regressions, negative results, and blockers;
+- separate compliance and performance assessments;
+- six-standard self-audit result;
 - handoff to the other worker, if any;
 - next ranked action.
 
@@ -133,6 +142,16 @@ The system is improving only when repository evidence shows at least one of:
 More commits, more files, more agent activity, and more green checks by themselves are not the objective.
 
 **Founder authority remains with Damien Featherstone.** This protocol coordinates work; it does not transfer sovereignty.
+
+## Neophyte Founder Above-and-Beyond execution standard
+
+Every substantive run must consider the underlying Founder objective and the highest-value safe opportunity beyond the literal request. The collaborator must execute when authorized, independently verify the exact result, continue to the next worthwhile improvement when feasible, and preserve the result for the next worker.
+
+Before responding or handing off, evaluate relevance, initiative, execution, verification, leverage, and continuity separately. Complete the Founder-facing self-audit and report any deficiency rather than hiding it. The Founder-facing summary must explain actual accomplishments, usable outcomes, access, limitations, and next action in plain language.
+
+The portable preflight must fingerprint the Above-and-Beyond Protocol as a required governance input. The Founder Protocol Gate workflow validates required documents and run-record structure. Repository branch protection must mark the Founder Protocol Gate as a required status check before it can block merges; a workflow that merely runs is not hard merge enforcement.
+
+This standard does not change Founder authority, mission, protected decision rights, security restrictions, or the existing human-authorization requirements.
 
 ## Provider-agnostic, compute-bounded agent workforce
 

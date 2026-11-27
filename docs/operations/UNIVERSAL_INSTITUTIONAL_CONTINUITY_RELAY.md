@@ -3,7 +3,7 @@
 **Status:** Proposed canonical operating record and handoff mechanism  
 **Proposed canonical path:** `docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md`  
 **Initial record:** Relay v1 · 2026-11-27
-**Latest revision:** Relay v1.6 · 2026-11-27  
+**Latest revision:** Relay v2.0 · 2026-11-27  
 **Authority:** Neophyte Founder  
 **Purpose:** Preserve transferable institutional state between agents, assistants, sessions, and execution cycles.
 
@@ -23,10 +23,11 @@ The relay is shared institutional memory, not an authority source. It transfers 
 2. Read `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` alone as the second repository operation.
 3. Read `docs/institution/INSTITUTIONAL-CHARTER.md` in full.
 4. Read this complete relay record in full.
-5. Read the latest durable checkpoint and the most recent relevant handoff from other active workers.
-6. Only then inspect current repository state, branches, PRs, issues, workflows, source, tests, environments, or artifacts.
-7. Revalidate inherited claims against current authoritative evidence before relying on them.
-8. Before handoff or session end, update the current-state section and append a new dated relay-log entry.
+5. Read the complete Neophyte Founder Above-and-Beyond Protocol in full and apply it before substantive work.
+6. Read the latest durable checkpoint and the most recent relevant handoff from other active workers.
+7. Only then inspect current repository state, branches, PRs, issues, workflows, source, tests, environments, or artifacts.
+8. Revalidate inherited claims against current authoritative evidence before relying on them.
+9. Before handoff or session end, update the current-state section and append a new dated relay-log entry.
 
 If a required file cannot be read in full, stop repository work and report the exact blocker. Do not claim compliance by acknowledging a document without reading it.
 
@@ -144,12 +145,14 @@ The current state is a concise index to the latest verified facts. The log prese
 
 ### Current relay state
 
-- **Relay version:** 1.9
+- **Relay version:** 2.0
 - **Last updated:** 2026-11-27
-- **Last agent:** ChatGPT execution agent — MMORPG run; sequential bootstrap, relay/checkpoint/other-worker reconciliation, two-client restart/idempotency gap analysis, new exact-restart-replay acceptance test, and handoff.
+- **Last agent:** ChatGPT execution agent — Founder protocol enforcement run; governing-document bootstrap, relay/checkpoint/Worker A and Worker B reconciliation, integration of the Above-and-Beyond standard, preflight fingerprint enforcement, CI gate proposal, and handoff.
 - **Objective:** Founder-controlled, visual Android Decision Chamber → assistant continuity → explicit authorization → real GitHub state change → independent verification → close/reopen persistence.
 - **Current blocker:** The live Founder decision route remains fail-closed; Founder trust is NOT_ENROLLED; the in-game GitHub gate remains read-only and no in-game write adapter/credential flow is evidenced. Physical-device Founder acceptance remains absent. Android diagnostic PR #763's exact-head emulator workflow now reports PASS, but that does not establish physical-device acceptance or explain every separate Android failure on other branches.
 - **Continuity relay implementation:** Proposed in draft PR [#762](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/762), branch `docs/universal-institutional-continuity-relay-20261127`. Live PR metadata, not a hash embedded in this file, is authoritative for its current head. It adds this relay and makes reading/updating it mandatory in root AGENTS and the shared scheduler protocol. This relay remains proposed and is not canonical until reviewed and merged.
+- **Above-and-Beyond Protocol:** Proposed in the same PR #762. It is required after the relay and before substantive work. The portable preflight now fingerprints the Charter, relay, and Above-and-Beyond Protocol in addition to root instructions and the shared protocol; the dedicated Founder Protocol Gate validates these inputs and new-PR handoff structure. This is proposed work until #762 is reviewed and merged.
+- **Enforcement limitation:** The repository rulesets endpoint returned an empty list. The branch-protection read endpoint returned 403 to this integration, so the existence/configuration of legacy branch protection is UNKNOWN. No permission or branch-protection change was made. The Founder Protocol Gate must be marked as a required status check by a repository administrator before it can block merges.
 - **PR #762 exact current head:** `70a4c66098ed0eac505d04d5d620ce6e80413182`; draft/open/unmerged at this observation; latest relay update is being appended on this branch. Verify `45984477179` PASS and Genesis `45984477225` PASS; Browser `45984477141` FAILs at the inherited Contradiction Clerk locator. This is superseded as a product/test-harness diagnosis by the separate #747 correction, which routes the Clerk journey to Evidence Archive; #747 Browser run `45878004416` PASS on head `081d72230fff24bb40aa08862583ec305d7c665f`. Do not transfer that pass to #762.
 - **PR #755 exact-head observation:** `1c3cdeeaa888fac2bead8863b1e4eff4b8c6c64e`; Verify, Genesis, Browser, Quest Board, Synthesis Clerk, Council, Academy, Combat Yard, Source Archive, and PWA workflows PASS; Android emulator acceptance `45951191102` FAIL. Fresh job `140427014819` confirms APK assembly and artifact preservation PASS; the 10-test instrumentation XML has an empty failure for `publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress`, then reports `Instrumentation run failed due to Process crashed`. Logcat shows WebView sandbox process PID 5760 dying, ActivityManager force-removing the app Activity, and the instrumentation run being terminated. No Java fatal exception, native signal, or causal stack appears in the retained log. Emulator graphics messages are present but do not establish causation. No physical-device acceptance is established.
 - **PR #761 exact-head observation:** `a8c39fbac00e2de357546cc9a25a0ff0cba84fda`; Playable World `45972900886`, World Projection `45972900854`, and Full Verify `45972900877` PASS. This is a server-restart collaborator-response subgate only; the response is test-supplied, not a live LLM interaction.
@@ -281,3 +284,22 @@ Authority regression cross-check: PR #759 exact head `a5511db95a49297782a5c2d17c
 ### Relay v1.9 — 2026-11-27 — Exact-head restart-replay verification
 
 PR #767 exact head `60243c6da2403163d071aa6c41f8aa373ce39591` now has Full Verify `46048769085` **PASS** and Genesis `46048769092` **PASS**. The Verify workflow definition was inspected: it runs `npm run verify`, and `scripts/verify.mjs` invokes Node `--test` automatic discovery, so the newly added `test/game-multiplayer-restart-idempotency.test.mjs` is included in the complete test stage. Browser acceptance `46048769106` remained IN_PROGRESS at the latest poll; do not infer a result. The PR description was updated with these exact-head statuses. No local test execution occurred. No merge, runtime change, release, deployment, Founder decision, authority transition, or additional spend.
+
+### Relay v2.0 — 2026-11-27 — Founder Above-and-Beyond enforcement implementation
+
+**Founder direction:** The Neophyte Founder explicitly authorized implementation of an enforceable Above-and-Beyond operating standard. The standard must reduce the Founder's burden, require initiative beyond literal task completion, distinguish compliance from performance, and preserve Founder authority.
+
+**Current worker state revalidated:** PR #762 is the existing continuity-relay proposal; this work extends that proposal rather than creating a competing governance branch. PR #723 contains a separate proposed invariant kernel and is not merged; this run does not duplicate or import its evaluator. Worker B's #767 restart-replay test has Full Verify `46048769085` and Genesis `46048769092` PASS; Browser `46048769106` was IN_PROGRESS at the latest observation. Worker A's #766 steering proposal has Verify and Genesis PASS, Browser FAIL, and Android FAIL; those failures remain distinct and are not attributed to documentation changes. #758 remains a proposed Worker B checkpoint/ledger branch, not canonical main.
+
+**Implementation proposed on this PR branch:**
+- Add `docs/operations/NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md` as the governing behavioral standard.
+- Require the protocol in root AGENTS and the shared scheduler sequence.
+- Require the relay and Above-and-Beyond protocol to be fingerprinted by portable preflight, with mandatory sections checked fail-closed.
+- Add the dedicated Founder Protocol Gate workflow. It runs preflight and governance regression tests, and for new PRs created on or after 2026-11-28 UTC requires a Founder-facing outcome, evidence, limitations, next action, self-audit, and an updated continuity relay.
+- Preserve the distinction between an automated check and a required merge gate. A repository administrator must configure the resulting status check as required; this session does not have a supported branch-protection write action.
+
+**Evidence and limitations:** Local checkout, local Node execution, and local preflight were not available through this session. Hosted exact-head CI is required to verify the implementation. The GitHub rulesets read returned an empty array; the branch-protection read returned 403, so legacy protection status is UNKNOWN. No branch protection, credentials, permissions, trust anchors, or Founder decision rights were changed. PR #762 remains proposed until reviewed and merged.
+
+**Founder-facing result:** No user-facing game capability was changed in this run. The proposed institution now has a concrete behavioral standard, a fail-closed preflight requirement, and an automated workflow intended to catch missing governance records. It is not yet canonical or a hard merge block.
+
+**Next handoff:** Recheck PR #762's exact current head and run the hosted Founder Protocol Gate and Full Verify. Inspect every failure on the exact head; do not transfer passes from parent commits. After review/merge, a repository administrator must mark `Founder Protocol Gate / founder-protocol` and the relevant verification check as required on `main`. Then validate a deliberately incomplete new PR and confirm the gate rejects it.

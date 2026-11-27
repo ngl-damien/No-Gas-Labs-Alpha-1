@@ -16,7 +16,13 @@ test('receipt descriptor paths use procfs only on Linux and fall back elsewhere'
 });
 
 const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
-const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority'].join('\n');
+const charterPath = 'docs/institution/INSTITUTIONAL-CHARTER.md';
+const relayPath = 'docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md';
+const founderProtocolPath = 'docs/operations/NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md';
+const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority', 'INSTITUTIONAL-CHARTER.md', 'UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md', 'NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md'].join('\n');
+const charterText = ['AOTA is the scope rule; chronology is the execution rule', 'Universal chronological invention lifecycle', "A model's assertion is never sufficient evidence that the state it describes is correct"].join('\n');
+const relayText = ['mandatory institutional infrastructure', 'Mandatory agent sequence', 'Evidence and authority vocabulary', 'Current relay state', 'Append-only relay log'].join('\n');
+const founderProtocolText = ["Mandatory pre-execution responsibilities","Beyond-the-request reasoning","Mandatory execution cycle","Six mandatory performance standards","Mandatory Founder-facing self-audit","Required execution record and handoff","Founder-facing communication standard","Prohibited substitutions and anti-gaming rules","Founder authority and protected boundaries","Enforcement and honest limits","Governing commitment"].join('\n');
 
 function executableOnPath(name) {
   for (const directory of (process.env.PATH ?? '').split(delimiter)) {
@@ -32,9 +38,13 @@ const mkfifoExecutable = process.platform === 'win32' ? null : executableOnPath(
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'ngl-agent-preflight-'));
   await mkdir(join(root, 'docs/operations'), { recursive: true });
+  await mkdir(join(root, 'docs/institution'), { recursive: true });
   await mkdir(join(root, '.github'), { recursive: true });
-  await writeFile(join(root, 'AGENTS.md'), 'STOP: Read this file before repository work.\nFirst repository operation: read root AGENTS.md alone.\nSecond repository operation: read the complete shared protocol alone.\nDiscard any pre-read observations and restart the baseline.\n[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)\nPreflight command: npm run agent:preflight -- --path scripts/worker.mjs --checkpoint CHECKPOINT.md\nLeave a durable, factual record.\n');
+  await writeFile(join(root, 'AGENTS.md'), 'STOP: Read this file before repository work.\nFirst repository operation: read root AGENTS.md alone.\nSecond repository operation: read the complete shared protocol alone.\nRead docs/institution/INSTITUTIONAL-CHARTER.md.\nRead docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md.\nRead docs/operations/NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md.\nDiscard any pre-read observations and restart the baseline.\n[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)\nPreflight command: npm run agent:preflight -- --path docs/operations/NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md --path scripts/worker.mjs --checkpoint CHECKPOINT.md\nLeave a durable, factual record.\n');
   await writeFile(join(root, protocolPath), protocolText);
+  await writeFile(join(root, charterPath), charterText);
+  await writeFile(join(root, relayPath), relayText);
+  await writeFile(join(root, founderProtocolPath), founderProtocolText);
   for (const path of ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md']) {
     await writeFile(join(root, path), 'Read AGENTS.md and RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md first.');
   }
@@ -76,6 +86,9 @@ test('preflight hashes root contract, protocol, scoped nested instructions and c
     const result = await runPreflight({ root, paths: ['scripts/worker.mjs'], checkpoint: 'CHECKPOINT.md' });
     assert.equal(result.status, 'ready');
     assert.equal(result.protocol, protocolPath);
+    assert.ok(result.files.some(file => file.path === charterPath && file.kind === 'institutional-charter'));
+    assert.ok(result.files.some(file => file.path === relayPath && file.kind === 'institutional-relay'));
+    assert.ok(result.files.some(file => file.path === founderProtocolPath && file.kind === 'founder-performance-protocol'));
     assert.ok(result.files.some(file => file.path === 'scripts/AGENTS.md' && file.kind === 'nested-instructions'));
     assert.ok(result.files.some(file => file.path === 'CHECKPOINT.md' && file.kind === 'durable-checkpoint'));
     const target = result.files.find(file => file.path === 'scripts/worker.mjs');
@@ -310,6 +323,46 @@ test('preflight fails closed when the canonical protocol is missing', async () =
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('preflight fails closed when the canonical Institutional Charter is missing', async () => {
+  const root = await fixture();
+  try {
+    await rm(join(root, charterPath));
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.path === charterPath));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight fails closed when the continuity relay is missing', async () => {
+  const root = await fixture();
+  try {
+    await rm(join(root, relayPath));
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.path === relayPath));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight fails closed when the Above-and-Beyond Protocol is missing', async () => {
+  const root = await fixture();
+  try {
+    await rm(join(root, founderProtocolPath));
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.path === founderProtocolPath));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight rejects the Above-and-Beyond Protocol when its self-audit requirement is removed', async () => {
+  const root = await fixture();
+  try {
+    await writeFile(join(root, founderProtocolPath), founderProtocolText.replace('Mandatory Founder-facing self-audit', 'Optional self-audit'));
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.path === founderProtocolPath && item.reason.includes('Mandatory Founder-facing self-audit')));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('preflight rejects vendor instructions that bypass the shared contract', async () => {
   const root = await fixture();
   try {
@@ -368,7 +421,7 @@ test('preflight rejects a target path whose existing parent escapes through a sy
 test('preflight supports NGL repositories with a remote protocol link when given a local pinned copy', async () => {
   const root = await fixture();
   try {
-    await writeFile(join(root, 'AGENTS.md'), 'Before any work, read this file and the canonical [shared protocol](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/main/docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md).\nFirst repository operation: read root AGENTS.md alone.\nSecond repository operation: read the complete shared protocol alone.\nDiscard any pre-read observations.\n');
+    await writeFile(join(root, 'AGENTS.md'), 'Before any work, read this file and the canonical [shared protocol](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/main/docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md).\nFirst repository operation: read root AGENTS.md alone.\nSecond repository operation: read the complete shared protocol alone.\nRead docs/institution/INSTITUTIONAL-CHARTER.md.\nRead docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md.\nRead docs/operations/NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md.\nDiscard any pre-read observations.\n');
     const result = await runPreflight({ root, protocol: protocolPath });
     assert.equal(result.status, 'ready');
     assert.equal(result.protocol, protocolPath);
