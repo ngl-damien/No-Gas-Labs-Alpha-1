@@ -2181,6 +2181,65 @@ test('live Founder decision route remains fail-closed for enrolled PRODUCTION tr
   assert.equal(state.body.world.xp, 0);
 });
 
+test('live Founder decision route rejects a malformed trust anchor before persistence', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-malformed-trust-route-'));
+  const trustPath = join(dataDir, 'founder.pub.json');
+  await writeFile(trustPath, '{', { mode: 0o600 });
+
+  let syncCalls = 0;
+  const decisionSyncDirectory = async directory => {
+    syncCalls += 1;
+    const handle = await open(directory, 'r');
+    try { await handle.sync(); } finally { await handle.close(); }
+  };
+  const f = await fixture(t, dataDir, { founderTrustAnchorPath: trustPath, decisionSyncDirectory });
+  const founder = f.client();
+  await founder.login();
+
+  const policy = await founder.request('/api/decisions/policy', {
+    id: 'policy:malformed-trust-route',
+    reviewWindowMs: 60_000,
+    basis: 'Synthetic malformed-trust route regression; not an operational policy.'
+  });
+  assert.equal(policy.response.status, 200, JSON.stringify(policy.body));
+
+  const bytes = '{"schema":"test.evaluation.v1","result":"malformed trust route fixture"}';
+  const created = await founder.request('/api/decisions/proposals', {
+    id: 'decision:malformed-trust-route',
+    title: 'Malformed Founder trust must fail closed',
+    evaluation: { bytes, receipt: artifactReceipt(bytes) },
+    risks: ['Synthetic test only'],
+    rollback: 'No external effect is executed by this test.',
+    proposedEffect: 'Retain a proposal without authorizing it.'
+  });
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+
+  const authorization = await founder.request('/api/decisions');
+  assert.equal(authorization.response.status, 200);
+  assert.equal(authorization.body.dispositionAuthorization.available, false);
+  assert.equal(authorization.body.dispositionAuthorization.code, 'FOUNDER_TRUST_ANCHOR_MALFORMED');
+
+  const syncCallsBeforeChoice = syncCalls;
+  const chosen = await founder.request('/api/decisions/choose', {
+    decisionId: 'decision:malformed-trust-route',
+    expectedRevision: 1,
+    requestId: 'request:malformed-trust-route',
+    action: 'APPROVE'
+  });
+  assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
+  assert.equal(chosen.body.error.code, 'FOUNDER_TRUST_ANCHOR_MALFORMED');
+  assert.equal(syncCalls, syncCallsBeforeChoice, 'malformed trust must be rejected before decision persistence');
+
+  const state = await founder.request('/api/state');
+  assert.equal(state.response.status, 200);
+  assert.equal(state.body.institution.decisionSummary.counts.PENDING, 1);
+  assert.equal(state.body.institution.decisionSummary.counts.APPROVED, 0);
+  assert.equal(state.body.institution.decisionSummary.counts.REJECTED, 0);
+  assert.equal(state.body.world.events.length, 0);
+  assert.equal(state.body.world.xp, 0);
+});
+
+
 test('server startup indexes large interleaved retained proposal/report history', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-indexed-history-server-'));
   t.after(() => rm(dataDir, { recursive: true, force: true }));
