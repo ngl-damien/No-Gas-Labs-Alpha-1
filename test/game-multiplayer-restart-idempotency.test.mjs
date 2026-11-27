@@ -26,11 +26,28 @@ function makeClient(origin) {
       const setCookie = response.headers.get('set-cookie');
       if (setCookie) cookie = setCookie.split(';')[0];
       return { response, body: await response.json() };
+    },
+    async sendAndDiscard(path, payload) {
+      const headers = cookie ? { cookie } : {};
+      headers.origin = origin;
+      headers['content-type'] = 'application/json';
+      const response = await fetch(origin + path, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+      const setCookie = response.headers.get('set-cookie');
+      if (setCookie) cookie = setCookie.split(';')[0];
+      const status = response.status;
+      // Do not parse, clone, or inspect the action response body. This client
+      // intentionally loses the response payload as a disconnected phone would.
+      await response.body?.cancel();
+      return { status };
     }
   };
 }
 
-test('a committed action replayed after server restart returns its original result without duplicating world history', { timeout: 20000 }, async t => {
+test('a client that loses its action response can replay safely after server restart', { timeout: 20000 }, async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-restart-idempotency-'));
   let game = await createGameServer({ dataDir, founderKey: FOUNDER_KEY });
   await new Promise(resolve => game.listen(0, '127.0.0.1', resolve));
@@ -50,18 +67,33 @@ test('a committed action replayed after server restart returns its original resu
     text: 'This action must remain exactly-once even if its response is lost during a restart.',
     requestId: 'restart-replay-commons-001'
   };
-  const committed = await client.request('/api/action', payload);
-  assert.equal(committed.response.status, 200, JSON.stringify(committed.body));
-  assert.equal(committed.body.idempotentReplay, false);
-  const originalResult = committed.body.result;
-  const originalEvent = committed.body.world.events.find(event => event.messageId === originalResult.messageId);
-  assert.ok(originalEvent, 'the accepted response must identify the retained canonical event');
-  const committedRevision = committed.body.world.revision;
-  const committedXp = committed.body.world.xp;
-  const committedEventIds = committed.body.world.events.map(event => event.id);
+  const lostResponse = await client.sendAndDiscard('/api/action', payload);
+  assert.equal(lostResponse.status, 200,
+    'the action endpoint must accept the request even though its body is discarded');
 
-  // Deliberately discard the first response as a mobile client would after a
-  // connection loss. The server has committed the event before it is stopped.
+  // This is a separate, independently observable state read—not the action
+  // response. It establishes what the server committed before it is restarted.
+  const committedState = await client.request('/api/state');
+  assert.equal(committedState.response.status, 200);
+  assert.equal(committedState.body.viewer.id, initial.body.viewer.id);
+  const committedEvent = committedState.body.world.events.find(event =>
+    event.requestId === payload.requestId
+  );
+  assert.ok(committedEvent, 'the independent state read must expose the committed event');
+  assert.equal(committedEvent.actor.id, initial.body.viewer.id);
+  assert.ok(committedEvent.messageId, 'the retained event must identify its Commons message');
+  const committedRevision = committedState.body.world.revision;
+  const committedXp = committedState.body.world.xp;
+  const committedEventIds = committedState.body.world.events.map(event => event.id);
+  assert.equal(committedRevision, initial.body.world.revision + 1);
+  assert.equal(committedXp, initial.body.world.xp,
+    'Commons communication is not earned progression');
+  assert.equal(committedState.body.world.events.filter(event =>
+    event.requestId === payload.requestId
+  ).length, 1);
+
+  // Restart against the same durable directory, retaining only the opaque
+  // client cookie and request identity—not the lost action response.
   await game.closeGame();
   game = await createGameServer({ dataDir, founderKey: FOUNDER_KEY });
   await new Promise(resolve => game.listen(0, '127.0.0.1', resolve));
@@ -81,13 +113,17 @@ test('a committed action replayed after server restart returns its original resu
   assert.equal(replay.body.idempotentReplay, true,
     'the restarted server must identify the retry as a replay');
   assert.equal(replay.body.requestId, payload.requestId);
-  assert.deepEqual(replay.body.result, originalResult,
-    'the retry must return the original action result, not mint a replacement');
+  assert.equal(replay.body.result.messageId, committedEvent.messageId,
+    'the retry must return the message identified by independent retained state');
   assert.equal(replay.body.world.revision, committedRevision);
   assert.equal(replay.body.world.xp, committedXp);
   assert.deepEqual(replay.body.world.events.map(event => event.id), committedEventIds);
-  assert.equal(replay.body.world.events.filter(event => event.id === originalEvent.id).length, 1,
-    'exactly one canonical event must exist after the retry');
+  assert.equal(replay.body.world.events.filter(event =>
+    event.requestId === payload.requestId
+  ).length, 1, 'exactly one canonical event must exist after the retry');
+  assert.equal(replay.body.world.events.find(event =>
+    event.requestId === payload.requestId
+  ).id, committedEvent.id);
 
   const conflictingReplay = await client.request('/api/action', {
     ...payload,
