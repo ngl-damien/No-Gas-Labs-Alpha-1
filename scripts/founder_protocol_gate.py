@@ -39,7 +39,7 @@ def missing_or_empty_sections(body):
     failures = []
     for heading in REQUIRED_SECTIONS:
         match = re.search(
-            r"(?m)^" + re.escape(heading) + r"\s*$", body
+            r"(?m)^" + re.escape(heading) + r"[ \t]*$", body
         )
         if match is None:
             failures.append(heading)
@@ -47,11 +47,8 @@ def missing_or_empty_sections(body):
         next_heading = re.search(r"(?m)^##\s+", body[match.end():])
         end = match.end() + next_heading.start() if next_heading else len(body)
         section_text = body[match.end():end]
-        substantive_lines = [
-            line.strip() for line in section_text.splitlines()
-            if line.strip() and not line.lstrip().startswith(("<!--", "-->"))
-        ]
-        if not substantive_lines:
+        without_comments = re.sub(r"(?s)<!--.*?-->", "", section_text)
+        if not without_comments.strip():
             failures.append(heading)
     return failures
 
