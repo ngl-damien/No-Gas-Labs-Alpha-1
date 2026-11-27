@@ -3,7 +3,7 @@
 **Status:** Proposed canonical operating record and handoff mechanism  
 **Proposed canonical path:** `docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md`  
 **Initial record:** Relay v1 · 2026-11-27
-**Latest revision:** Relay v2.2 · 2026-11-27  
+**Latest revision:** Relay v2.3 · 2026-11-27  
 **Authority:** Neophyte Founder  
 **Purpose:** Preserve transferable institutional state between agents, assistants, sessions, and execution cycles.
 
@@ -145,9 +145,12 @@ The current state is a concise index to the latest verified facts. The log prese
 
 ### Current relay state
 
-- **Relay version:** 2.2
+**Latest execution overlay — 2026-11-27:** PR #767 exact head `60243c6da2403163d071aa6c41f8aa373ce39591` has Full Verify `46048769085` PASS, Genesis `46048769092` PASS, and Browser Acceptance `46048769106` PASS. Its restart-replay test confirms persisted request replay, stable pseudonymous actor, no duplicate event/revision/XP, and altered-payload conflict rejection. Source review found the test still reads the original POST response despite claiming to discard it; the genuine lost-response simulation remains an open test-quality gap. See Relay v2.3 below. Relay update committed to the existing #762 branch at `067db5258bf9b78fd556382be478a357a95d8f2f`; #762 remains proposed/unmerged. No MMORPG runtime source or player-facing capability changed in this run.
+
+
+- **Relay version:** 2.3
 - **Last updated:** 2026-11-27
-- **Last agent:** ChatGPT execution agent — Founder protocol enforcement run; governing-document bootstrap, relay/checkpoint/Worker A and Worker B reconciliation, integration of the Above-and-Beyond standard, preflight fingerprint enforcement, CI gate proposal, and handoff.
+- **Last agent:** ChatGPT execution agent — MMORPG run; governing-document bootstrap, active PR/code/CI reconciliation, donor-mechanism inspection, #767 acceptance challenge, and relay handoff.
 - **Objective:** Founder-controlled, visual Android Decision Chamber → assistant continuity → explicit authorization → real GitHub state change → independent verification → close/reopen persistence.
 - **Current blocker:** The live Founder decision route remains fail-closed; Founder trust is NOT_ENROLLED; the in-game GitHub gate remains read-only and no in-game write adapter/credential flow is evidenced. Physical-device Founder acceptance remains absent. Android diagnostic PR #763's exact-head emulator workflow now reports PASS, but that does not establish physical-device acceptance or explain every separate Android failure on other branches.
 - **Continuity relay implementation:** Proposed in draft PR [#762](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/762), branch `docs/universal-institutional-continuity-relay-20261127`. Live PR metadata, not a hash embedded in this file, is authoritative for its current head. It adds this relay and makes reading/updating it mandatory in root AGENTS and the shared scheduler protocol. This relay remains proposed and is not canonical until reviewed and merged.
@@ -335,3 +338,5 @@ PR #767 exact head `60243c6da2403163d071aa6c41f8aa373ce39591` now has Full Verif
 **Other boundaries:** no local checkout or local Node execution was available. No Android physical-device test, multi-instance server test, distinct-human proof, live LLM interaction, Founder trust enrollment, GitHub write path, release, or deployment is established by these checks.
 
 **Next:** Worker B should correct the lost-response simulation in #767's existing branch, run exact-head Full Verify/Genesis/Browser, and preserve the original passing head as historical evidence. Worker A continues the separate authority/GitHub adapter review without touching Worker B's active game/server paths.
+
+**Process correction for Relay v2.3:** The relay file was updated before checking its nested instruction paths. Subsequent checks of `docs/AGENTS.md` and `docs/operations/AGENTS.md` returned 404, so no nested instructions were present at those paths, but the required pre-edit order was not followed. Local portable preflight and local tests were unavailable. Procedural compliance for this run is PARTIAL; do not represent the relay update as fully preflighted.
