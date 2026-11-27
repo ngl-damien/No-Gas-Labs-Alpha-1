@@ -2090,16 +2090,18 @@ test('live Founder decision route rejects TEST_ONLY trust without consuming pers
   assert.equal(authorization.body.dispositionAuthorization.available, false);
   assert.equal(authorization.body.dispositionAuthorization.code, 'FOUNDER_TRUST_ANCHOR_TEST_ONLY');
 
-  const syncCallsBeforeChoice = syncCalls;
-  const chosen = await founder.request('/api/decisions/choose', {
-    decisionId: 'decision:test-only-route',
-    expectedRevision: 1,
-    requestId: 'request:test-only-route',
-    action: 'APPROVE'
-  });
-  assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
-  assert.equal(chosen.body.error.code, 'FOUNDER_TRUST_ANCHOR_TEST_ONLY');
-  assert.equal(syncCalls, syncCallsBeforeChoice, 'TEST_ONLY disposition must be rejected before decision persistence');
+  const syncCallsBeforeChoices = syncCalls;
+  for (const action of ['APPROVE', 'REJECT', 'DEFER']) {
+    const chosen = await founder.request('/api/decisions/choose', {
+      decisionId: 'decision:test-only-route',
+      expectedRevision: 1,
+      requestId: `request:test-only-route:${action.toLowerCase()}`,
+      action
+    });
+    assert.equal(chosen.response.status, 503, JSON.stringify({ action, body: chosen.body }));
+    assert.equal(chosen.body.error.code, 'FOUNDER_TRUST_ANCHOR_TEST_ONLY');
+    assert.equal(syncCalls, syncCallsBeforeChoices, 'TEST_ONLY must reject every disposition before decision persistence');
+  }
 
   const state = await founder.request('/api/state');
   assert.equal(state.response.status, 200);
@@ -2161,16 +2163,18 @@ test('live Founder decision route remains fail-closed for enrolled PRODUCTION tr
   assert.equal(authorization.body.dispositionAuthorization.available, false);
   assert.equal(authorization.body.dispositionAuthorization.code, 'SIGNED_DECISION_ROUTE_NOT_INTEGRATED');
 
-  const syncCallsBeforeChoice = syncCalls;
-  const chosen = await founder.request('/api/decisions/choose', {
-    decisionId: 'decision:production-route',
-    expectedRevision: 1,
-    requestId: 'request:production-route',
-    action: 'APPROVE'
-  });
-  assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
-  assert.equal(chosen.body.error.code, 'SIGNED_DECISION_ROUTE_NOT_INTEGRATED');
-  assert.equal(syncCalls, syncCallsBeforeChoice, 'the unintegrated signed route must reject before decision persistence');
+  const syncCallsBeforeChoices = syncCalls;
+  for (const action of ['APPROVE', 'REJECT', 'DEFER']) {
+    const chosen = await founder.request('/api/decisions/choose', {
+      decisionId: 'decision:production-route',
+      expectedRevision: 1,
+      requestId: `request:production-route:${action.toLowerCase()}`,
+      action
+    });
+    assert.equal(chosen.response.status, 503, JSON.stringify({ action, body: chosen.body }));
+    assert.equal(chosen.body.error.code, 'SIGNED_DECISION_ROUTE_NOT_INTEGRATED');
+    assert.equal(syncCalls, syncCallsBeforeChoices, 'unintegrated production trust must reject every disposition before persistence');
+  }
 
   const state = await founder.request('/api/state');
   assert.equal(state.response.status, 200);
