@@ -110,6 +110,40 @@ test('concurrent multiplayer actions serialize, replay idempotently, and reject 
   assert.equal(collision.response.status, 409);
   assert.equal(collision.body.error?.code, 'IDEMPOTENCY_CONFLICT');
 
+  // Simulate a mobile double-submit: two in-flight copies of one actor's
+  // exact action and request ID must converge on one retained event.
+  const sameActorRaceAction = {
+    type: 'post-message',
+    text: 'One player double-submits while the mobile response is delayed.',
+    requestId: 'same-player-concurrent-retry-001'
+  };
+  const [raceFirst, raceSecond] = await Promise.all([
+    first.request('/api/action', sameActorRaceAction),
+    first.request('/api/action', sameActorRaceAction)
+  ]);
+  for (const result of [raceFirst, raceSecond]) {
+    assert.equal(result.response.status, 200, JSON.stringify(result.body));
+  }
+  assert.deepEqual(
+    [raceFirst.body.idempotentReplay, raceSecond.body.idempotentReplay].sort(),
+    [false, true],
+    'one concurrent request commits and the other returns the retained result'
+  );
+  assert.equal(raceFirst.body.result.messageId, raceSecond.body.result.messageId,
+    'both concurrent responses must identify the same canonical message');
+  const afterRace = await first.request('/api/state');
+  assert.equal(afterRace.body.world.revision, revisionAfterConcurrentActions + 1,
+    'two in-flight identical requests must advance the world by exactly one revision');
+  assert.equal(afterRace.body.world.events.filter(event =>
+    event.requestId === sameActorRaceAction.requestId
+  ).length, 1, 'same-actor concurrent retries must retain exactly one event');
+  const racedEvent = afterRace.body.world.events.find(event =>
+    event.requestId === sameActorRaceAction.requestId
+  );
+  assert.equal(racedEvent?.actor.id, firstInitial.body.viewer.id);
+  assert.equal(afterRace.body.world.xp, initialXp,
+    'Commons double-submit does not award progression XP');
+
   const [afterFirst, afterSecond] = await Promise.all([
     first.request('/api/state'),
     second.request('/api/state')
