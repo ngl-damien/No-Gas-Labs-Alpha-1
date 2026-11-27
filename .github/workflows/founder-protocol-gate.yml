@@ -1,0 +1,34 @@
+name: Founder Protocol Gate
+
+on:
+  push:
+    branches:
+      - main
+      - docs/universal-institutional-continuity-relay-20261127
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  founder-protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+      - name: Require and fingerprint all governing documents and gate implementation
+        run: npm run agent:preflight:ci -- --path docs/operations/NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md --path docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md --path scripts/founder_protocol_gate.py --path test/test_founder_protocol_gate.py
+      - name: Run governance preflight regression tests
+        run: node --test test/agent-governance.test.mjs
+      - name: Test Founder-facing pull request gate, including rejection cases
+        run: python3 -m unittest discover -s test -p 'test_founder_protocol_gate.py' -v
+      - name: Enforce Founder-facing record and continuity on new pull requests
+        run: python3 scripts/founder_protocol_gate.py
