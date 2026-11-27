@@ -323,3 +323,15 @@ PR #767 exact head `60243c6da2403163d071aa6c41f8aa373ce39591` now has Full Verif
 **Verification state:** The repair is committed to the same PR branch. New exact-head Founder Protocol Gate, Full Verify, Browser, Genesis, and Android results are pending; no pass is transferred from the failed prior head.
 
 **Next handoff:** Inspect the new exact-head workflow logs. Require all six PR-gate unit tests to execute and pass, then inspect the remaining exact-head checks. If discovery still fails, repair only the reproduced import/test-runner issue and preserve another dated record.
+
+### Relay v2.3 — 2026-11-27 — Restart-replay acceptance challenged
+
+**Fresh exact-head observation:** PR #767 head `60243c6da2403163d071aa6c41f8aa373ce39591` has Full Verify `46048769085` PASS, Genesis `46048769092` PASS, and Browser `46048769106` PASS. The Browser result has now completed successfully; no parent-head transfer was used.
+
+**Independent source challenge:** Fetched the exact #767 commit diff. Its test comment says the first action response is deliberately discarded, but the test stores and reads `committed.body.result`, revision, XP, and event IDs before restart. The test does demonstrate persisted replay, stable actor identity, no duplicate canonical event, and altered-payload conflict rejection. It does not faithfully model a client that never received the original response. This is a test-coverage/claim-scope gap, not evidence that the runtime idempotency behavior is broken. Recommended correction: never inspect the original POST response; after posting, obtain the baseline only through a separate `/api/state` read, then restart and retry the exact request. Assert the replay result is bound to the retained message/event found in that independent snapshot.
+
+**No collision or mutation:** Worker B owns the active multiplayer restart test path. This run did not edit its test or runtime files, did not create a duplicate branch/PR, and did not merge anything. The finding is handed to Worker B for incorporation into the existing #767 lineage.
+
+**Other boundaries:** no local checkout or local Node execution was available. No Android physical-device test, multi-instance server test, distinct-human proof, live LLM interaction, Founder trust enrollment, GitHub write path, release, or deployment is established by these checks.
+
+**Next:** Worker B should correct the lost-response simulation in #767's existing branch, run exact-head Full Verify/Genesis/Browser, and preserve the original passing head as historical evidence. Worker A continues the separate authority/GitHub adapter review without touching Worker B's active game/server paths.
