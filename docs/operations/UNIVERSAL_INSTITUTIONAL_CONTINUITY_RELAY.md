@@ -3,7 +3,7 @@
 **Status:** Proposed canonical operating record and handoff mechanism  
 **Proposed canonical path:** `docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md`  
 **Initial record:** Relay v1 · 2026-11-27
-**Latest revision:** Relay v1.1 · 2026-11-27  
+**Latest revision:** Relay v1.3 · 2026-11-27  
 **Authority:** Neophyte Founder  
 **Purpose:** Preserve transferable institutional state between agents, assistants, sessions, and execution cycles.
 
@@ -144,7 +144,7 @@ The current state is a concise index to the latest verified facts. The log prese
 
 ### Current relay state
 
-- **Relay version:** 1.1
+- **Relay version:** 1.3
 - **Last updated:** 2026-11-27
 - **Last agent:** ChatGPT execution agent — continuity relay establishment and repository handoff.
 - **Objective:** Founder-controlled, visual Android Decision Chamber → assistant continuity → explicit authorization → real GitHub state change → independent verification → close/reopen persistence.
@@ -184,10 +184,6 @@ The current state is a concise index to the latest verified facts. The log prese
 **Handoff:** The next runtime implementation belongs to Worker B. Worker A owns cross-cutting authority review. Re-observe both active branches before touching shared paths. The live Founder disposition route remains fail-closed, Founder trust remains NOT_ENROLLED, and the existing in-game GitHub gate remains read-only. The next meaningful product proof is one visually authorized in-game Guild Gate action that creates a narrowly scoped GitHub issue and independently verifies it, but only after the authorization and in-game credential boundaries are implemented and Founder-authorized.
 
 
-### Relay v1.3 — 2026-11-27 — Exact-head check reconciliation
-
-**PR #762 verification:** At observed head `975c4d6fa9487f8b956df12514fb266510aacc5d`, Full Verify `45977942497` completed PASS; World Projection `45977942506` and Playable World `45977942487` were IN_PROGRESS. The PR remained draft/open, mergeable, and unmerged. A later relay update creates a new head, so the next agent must fetch live PR metadata and exact-head checks again before claiming current status.
-
 ### Relay v1.2 — 2026-11-27 — Source-level blocker refinement
 
 **Fresh source inspection:** On canonical main, `game/server.mjs` imports `loadTrustAnchor` but not `authorizationEvent`; the live `/api/decisions/choose` route returns the fail-closed status before calling the decision service. The separate `authorizationEvent` implementation requires host-configured enrolled PRODUCTION trust, verifies the signature with host time, consumes the durable nonce, and then returns an authorization event. The in-game GitHub viewer uses GET requests and explicitly discloses that it is read-only. Source SHAs are recorded above.
@@ -195,3 +191,7 @@ The current state is a concise index to the latest verified facts. The log prese
 **Additional blocker:** The Guild NPC workbench is navigation/focus, not live LLM invocation. PR #761's response is test-supplied. A real assistant transport and continuity read/update integration are not demonstrated.
 
 **Disposition:** These findings confirm that the first GitHub issue create/update action cannot safely be enabled by merely adding a button or reusing the ChatGPT GitHub connector. It requires a server-side GitHub credential/installation flow and the existing Founder authorization boundary to be integrated without weakening it. The Founder-only trust enrollment remains separate and untouched.
+
+### Relay v1.3 — 2026-11-27 — Exact-head check reconciliation
+
+**PR #762 verification:** At observed head `975c4d6fa9487f8b956df12514fb266510aacc5d`, Full Verify `45977942497` completed PASS; World Projection `45977942506` and Playable World `45977942487` were IN_PROGRESS. The PR remained draft/open, mergeable, and unmerged. A later relay update creates a new head, so the next agent must fetch live PR metadata and exact-head checks again before claiming current status.
