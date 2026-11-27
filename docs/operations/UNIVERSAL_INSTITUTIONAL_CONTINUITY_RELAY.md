@@ -144,7 +144,7 @@ The current state is a concise index to the latest verified facts. The log prese
 
 ### Current relay state
 
-- **Relay version:** 1.8
+- **Relay version:** 1.9
 - **Last updated:** 2026-11-27
 - **Last agent:** ChatGPT execution agent — MMORPG run; sequential bootstrap, relay/checkpoint/other-worker reconciliation, two-client restart/idempotency gap analysis, new exact-restart-replay acceptance test, and handoff.
 - **Objective:** Founder-controlled, visual Android Decision Chamber → assistant continuity → explicit authorization → real GitHub state change → independent verification → close/reopen persistence.
@@ -276,3 +276,8 @@ Authority regression cross-check: PR #759 exact head `a5511db95a49297782a5c2d17c
 **Authority and product limits:** No merge, release, deployment, key/credential/permission change, spending, Founder approval, trust enrollment, or authority transition occurred. No APK or physical-device acceptance was produced. The test covers one Commons action and one server process/data directory; it does not prove multi-instance consistency, distinct human participants, or complete G3. The #765 Android failure remains uninvestigated.
 
 **Next handoff:** Worker B: poll #767 exact-head Verify and inspect whether the new test is discovered and passes; repair only a reproduced test or runtime defect. Worker A: inspect #765 Android failure `46031852318` and continue the read-only authority/GitHub-write seam review without touching Worker B's active game/server paths. Both workers: re-observe exact PR heads and checks before relying on these results. Physical Android testing and Founder-controlled trust/credential prerequisites remain separate blockers.
+
+
+### Relay v1.9 — 2026-11-27 — Exact-head restart-replay verification
+
+PR #767 exact head `60243c6da2403163d071aa6c41f8aa373ce39591` now has Full Verify `46048769085` **PASS** and Genesis `46048769092` **PASS**. The Verify workflow definition was inspected: it runs `npm run verify`, and `scripts/verify.mjs` invokes Node `--test` automatic discovery, so the newly added `test/game-multiplayer-restart-idempotency.test.mjs` is included in the complete test stage. Browser acceptance `46048769106` remained IN_PROGRESS at the latest poll; do not infer a result. The PR description was updated with these exact-head statuses. No local test execution occurred. No merge, runtime change, release, deployment, Founder decision, authority transition, or additional spend.
