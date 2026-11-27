@@ -848,4 +848,42 @@ test('Guild Hall Synthesis Clerk response survives server restart with exact sou
   assert.deepEqual(review.packetScope.omittedEventIds, packetPayload.omittedEventIds);
   assert.equal(review.response.unknowns[0],
     'The attempt is self-reported and has not been independently verified.');
+
+  // A mobile client may lose the response after the server commits, then retry
+  // after reconnecting to a restarted process. The retained request ID must
+  // return the original result without appending a second world event.
+  const replay = await request('/api/action', {
+    type: 'record-collaborator-response',
+    role: 'synthesizer',
+    moonshotId: packet.moonshotId,
+    packetJson: packet.packetJson,
+    sourceEventIds: [...packet.inputRefs],
+    responseText,
+    requestId: 'guild-hall-synthesizer-restart-001'
+  });
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.result.responseId, archived.body.result.responseId);
+  assert.equal(replay.body.world.revision, restored.body.world.revision);
+  assert.equal(replay.body.world.events.filter(event =>
+    event.id === retainedBeforeRestart.id
+  ).length, 1, 'retry after restart must not duplicate the retained response');
+
+  const conflictingReplay = await request('/api/action', {
+    type: 'record-collaborator-response',
+    role: 'synthesizer',
+    moonshotId: packet.moonshotId,
+    packetJson: packet.packetJson,
+    sourceEventIds: [...packet.inputRefs],
+    responseText: responseText + ' ',
+    requestId: 'guild-hall-synthesizer-restart-001'
+  });
+  assert.equal(conflictingReplay.response.status, 409);
+  assert.equal(conflictingReplay.body.error.code, 'IDEMPOTENCY_CONFLICT');
+  const afterConflict = await request('/api/state');
+  assert.equal(afterConflict.response.status, 200);
+  assert.equal(afterConflict.body.world.revision, restored.body.world.revision);
+  assert.equal(afterConflict.body.world.events.filter(event =>
+    event.id === retainedBeforeRestart.id
+  ).length, 1, 'conflicting retry must not mutate or duplicate canonical history');
 });
