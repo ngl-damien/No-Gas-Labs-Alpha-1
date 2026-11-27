@@ -559,3 +559,30 @@ test('quest progression rejects accessor-backed event identity without invoking 
   assert.equal(trail[0].id, 'founder-history-identity-unavailable');
   assert.equal(trail[0].progress, 0);
 });
+
+
+test('quest progression rejects inherited event collections without invoking accessors', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  let eventReads = 0;
+  const prototype = {};
+  Object.defineProperty(prototype, 'events', {
+    enumerable: true,
+    get() { eventReads += 1; throw new Error('inherited event history must not be read'); }
+  });
+  Object.setPrototypeOf(world, prototype);
+
+  const trail = getQuestTrail(world, founder);
+  assert.equal(eventReads, 0);
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].id, 'founder-history-identity-unavailable');
+  assert.equal(trail[0].progress, 0);
+});
+
+test('quest progression accepts a genuinely absent event collection on a plain world', () => {
+  const world = base();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  const trail = getQuestTrail(world, founder);
+  assert.ok(Array.isArray(trail));
+  assert.equal(trail.some(item => item.id === 'founder-history-identity-unavailable'), false);
+});
