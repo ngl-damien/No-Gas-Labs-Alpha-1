@@ -47,6 +47,10 @@ class FounderPullRequestGateTests(unittest.TestCase):
         body = "\n\n".join(heading + "\n  \t " for heading in REQUIRED_SECTIONS)
         self.assertEqual(missing_or_empty_sections(body), list(REQUIRED_SECTIONS))
 
+    def test_html_comment_placeholder_is_not_substantive_content(self):
+        body = "\\n\\n".join(heading + "\\n<!-- TODO: fill this section -->" for heading in REQUIRED_SECTIONS)
+        self.assertEqual(missing_or_empty_sections(body), list(REQUIRED_SECTIONS))
+
     def test_content_in_one_section_does_not_fill_the_next_section(self):
         body = REQUIRED_SECTIONS[0] + "\nOnly the first section has content.\n" + "\n".join(REQUIRED_SECTIONS[1:])
         self.assertEqual(
