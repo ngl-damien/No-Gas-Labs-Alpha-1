@@ -78,7 +78,7 @@ def git_file_at_revision(revision):
     return subprocess.check_output(["git", "show", pathspec])
 
 
-def evaluate_pull_request(pull, changed_paths, relay_history_valid=True):
+def evaluate_pull_request(pull, changed_paths, relay_history_valid=None):
     """Return pass, fail, or grandfathered without performing I/O."""
     try:
         created_at = parse_timestamp(pull.get("created_at"))
@@ -101,7 +101,7 @@ def evaluate_pull_request(pull, changed_paths, relay_history_valid=True):
         failures.append(
             "the append-only continuity relay was not updated in this pull request"
         )
-    elif not relay_history_valid:
+    elif relay_history_valid is not True:
         failures.append(
             "the continuity relay must preserve all base bytes and append new content"
         )
