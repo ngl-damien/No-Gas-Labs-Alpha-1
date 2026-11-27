@@ -570,6 +570,7 @@ test('quest progression rejects inherited event collections without invoking acc
     enumerable: true,
     get() { eventReads += 1; throw new Error('inherited event history must not be read'); }
   });
+  delete world.events;
   Object.setPrototypeOf(world, prototype);
 
   const trail = getQuestTrail(world, founder);
