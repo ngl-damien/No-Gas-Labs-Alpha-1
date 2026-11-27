@@ -11,7 +11,7 @@
       "steer_via": "github",
       "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
       "last_observed_run": "Run 8 — 2026-11-27T10:36:43-06:00",
-      "current_pr_focus": "PR #766 (draft/unmerged), branch docs/worker-a-run8-steering-refresh-20261127, head e45df19fdc5f5ca37185a5cee4b592d5ae7d9660; refreshes stale Worker A steering against current Founder Gate, Android, multiplayer and continuity evidence. Exact-head Verify/Genesis/Browser checks pending at last observation."
+      "current_pr_focus": "PR #766 (draft/unmerged), branch docs/worker-a-run8-steering-refresh-20261127; authoritative current head is the live PR head. The proposal refreshes stale Worker A steering and preserves Run 8 evidence; inspect exact-head CI before further action."
     },
     {
       "id": "6ac307e1e9bc8191ae21d22f94743802",
