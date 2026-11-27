@@ -10,8 +10,8 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
-      "last_observed_run": "2632cd6b-7888-8329-820e-885683a168e3",
-      "current_pr_focus": "#392 bounded PWA Cache Storage recovery (exact head 669dbc180fe9422acd00388913b41f57257c0670; Verify/Genesis/Browser/Synthesis/Android PASS; emulator 7/7)"
+      "last_observed_run": "Run 8 — 2026-11-27T10:36:43-06:00",
+      "current_pr_focus": "PR #766 (draft/unmerged), branch docs/worker-a-run8-steering-refresh-20261127, head e45df19fdc5f5ca37185a5cee4b592d5ae7d9660; refreshes stale Worker A steering against current Founder Gate, Android, multiplayer and continuity evidence. Exact-head Verify/Genesis/Browser checks pending at last observation."
     },
     {
       "id": "6ac307e1e9bc8191ae21d22f94743802",
