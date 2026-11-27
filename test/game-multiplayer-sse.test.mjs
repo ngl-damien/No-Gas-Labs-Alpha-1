@@ -11,6 +11,7 @@ function makeClient(origin) {
   let cookie = '';
   return {
     get cookie() { return cookie; },
+    setOrigin(next) { origin = next; },
     async request(path, payload) {
       const headers = cookie ? { cookie } : {};
       if (payload !== undefined) {
@@ -64,16 +65,16 @@ function playerById(presence, actorId) {
   return presence.find(player => player.actorId === actorId);
 }
 
-test('two independent Witness clients share authoritative world events and observe session-scoped presence', { timeout: 10000 }, async t => {
+test('two independent Witness clients share authoritative world events and recover identity and position after server restart', { timeout: 20000 }, async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-two-client-world-'));
   let movementTime = 0;
-  const game = await createGameServer({
+  let game = await createGameServer({
     dataDir,
     founderKey: FOUNDER_KEY,
     movementClock: () => movementTime
   });
   await new Promise(resolve => game.listen(0, '127.0.0.1', resolve));
-  const origin = `http://127.0.0.1:${game.address().port}`;
+  let origin = `http://127.0.0.1:${game.address().port}`;
   const first = makeClient(origin);
   const second = makeClient(origin);
   let firstStream, secondStream;
@@ -163,4 +164,69 @@ test('two independent Witness clients share authoritative world events and obser
   assert.deepEqual(firstState.body.viewer.position, { x: 220, y: 640 });
   assert.deepEqual(secondState.body.viewer.position, { x: 180, y: 640 });
   assert.equal(firstState.body.world.xp, secondState.body.world.xp);
+
+  // Simulate both mobile clients losing their streams while the authoritative
+  // process is replaced. Keep their opaque Witness cookies: the server must
+  // reconstruct the same pseudonymous identities and saved positions, not mint
+  // fresh players or infer Founder authority.
+  firstStream.close();
+  secondStream.close();
+  firstStream = undefined;
+  secondStream = undefined;
+  await game.closeGame();
+
+  game = await createGameServer({
+    dataDir,
+    founderKey: FOUNDER_KEY,
+    movementClock: () => movementTime
+  });
+  await new Promise(resolve => game.listen(0, '127.0.0.1', resolve));
+  origin = `http://127.0.0.1:${game.address().port}`;
+  first.setOrigin(origin);
+  second.setOrigin(origin);
+
+  const firstRestored = await first.request('/api/state');
+  const secondRestored = await second.request('/api/state');
+  assert.equal(firstRestored.response.status, 200);
+  assert.equal(secondRestored.response.status, 200);
+  assert.equal(firstRestored.body.viewer.id, firstInitial.body.viewer.id,
+    'the first surviving opaque cookie must recover the same pseudonymous player identity');
+  assert.equal(secondRestored.body.viewer.id, secondInitial.body.viewer.id,
+    'the second surviving opaque cookie must recover the same pseudonymous player identity');
+  assert.equal(firstRestored.body.viewer.presenceId, firstInitial.body.viewer.presenceId);
+  assert.equal(secondRestored.body.viewer.presenceId, secondInitial.body.viewer.presenceId);
+  assert.deepEqual(firstRestored.body.viewer.position, { x: 220, y: 640 });
+  assert.deepEqual(secondRestored.body.viewer.position, { x: 180, y: 640 });
+  assert.equal(firstRestored.body.world.revision, firstState.body.world.revision);
+  assert.equal(secondRestored.body.world.revision, firstState.body.world.revision);
+  assert.deepEqual(firstRestored.body.world.events.map(event => event.id),
+    secondRestored.body.world.events.map(event => event.id));
+  const restoredMessage = firstRestored.body.world.events.find(event => event.id === retained.id);
+  assert.deepEqual(restoredMessage, retained,
+    'the exact shared Commons event and actor attribution must survive process replacement');
+  assert.equal(firstRestored.body.world.xp, firstState.body.world.xp);
+  assert.equal(secondRestored.body.world.xp, secondState.body.world.xp);
+
+  firstStream = await first.stream();
+  assert.equal((await firstStream.next('world')).viewer.id, firstInitial.body.viewer.id);
+  const restoredFirstOnlyPresence = await firstStream.next('presence');
+  assert.ok(playerById(restoredFirstOnlyPresence, firstInitial.body.viewer.id));
+  assert.equal(playerById(restoredFirstOnlyPresence, secondInitial.body.viewer.id), undefined);
+
+  secondStream = await second.stream();
+  assert.equal((await secondStream.next('world')).viewer.id, secondInitial.body.viewer.id);
+  const rejoinedAtFirst = await firstStream.next('presence');
+  const rejoinedAtSecond = await secondStream.next('presence');
+  for (const presence of [rejoinedAtFirst, rejoinedAtSecond]) {
+    assert.equal(presence.length, 2,
+      'both reconnected clients must converge on the same two-player presence set');
+    assert.deepEqual(
+      { x: playerById(presence, firstInitial.body.viewer.id).x, y: playerById(presence, firstInitial.body.viewer.id).y },
+      { x: 220, y: 640 }
+    );
+    assert.deepEqual(
+      { x: playerById(presence, secondInitial.body.viewer.id).x, y: playerById(presence, secondInitial.body.viewer.id).y },
+      { x: 180, y: 640 }
+    );
+  }
 });
