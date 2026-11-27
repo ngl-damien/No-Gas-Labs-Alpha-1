@@ -3,7 +3,7 @@
 **Status:** Proposed canonical operating record and handoff mechanism  
 **Proposed canonical path:** `docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md`  
 **Initial record:** Relay v1 · 2026-11-27
-**Latest revision:** Relay v2.0 · 2026-11-27  
+**Latest revision:** Relay v2.1 · 2026-11-27  
 **Authority:** Neophyte Founder  
 **Purpose:** Preserve transferable institutional state between agents, assistants, sessions, and execution cycles.
 
@@ -145,13 +145,13 @@ The current state is a concise index to the latest verified facts. The log prese
 
 ### Current relay state
 
-- **Relay version:** 2.0
+- **Relay version:** 2.1
 - **Last updated:** 2026-11-27
 - **Last agent:** ChatGPT execution agent — Founder protocol enforcement run; governing-document bootstrap, relay/checkpoint/Worker A and Worker B reconciliation, integration of the Above-and-Beyond standard, preflight fingerprint enforcement, CI gate proposal, and handoff.
 - **Objective:** Founder-controlled, visual Android Decision Chamber → assistant continuity → explicit authorization → real GitHub state change → independent verification → close/reopen persistence.
 - **Current blocker:** The live Founder decision route remains fail-closed; Founder trust is NOT_ENROLLED; the in-game GitHub gate remains read-only and no in-game write adapter/credential flow is evidenced. Physical-device Founder acceptance remains absent. Android diagnostic PR #763's exact-head emulator workflow now reports PASS, but that does not establish physical-device acceptance or explain every separate Android failure on other branches.
 - **Continuity relay implementation:** Proposed in draft PR [#762](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/762), branch `docs/universal-institutional-continuity-relay-20261127`. Live PR metadata, not a hash embedded in this file, is authoritative for its current head. It adds this relay and makes reading/updating it mandatory in root AGENTS and the shared scheduler protocol. This relay remains proposed and is not canonical until reviewed and merged.
-- **Above-and-Beyond Protocol:** Proposed in the same PR #762. It is required after the relay and before substantive work. The portable preflight now fingerprints the Charter, relay, and Above-and-Beyond Protocol in addition to root instructions and the shared protocol; the dedicated Founder Protocol Gate validates these inputs and new-PR handoff structure. This is proposed work until #762 is reviewed and merged.
+- **Above-and-Beyond Protocol:** Proposed in the same PR #762. It is required after the relay and before substantive work. The portable preflight now fingerprints the Charter, relay, and Above-and-Beyond Protocol in addition to root instructions and the shared protocol; the dedicated Founder Protocol Gate validates these inputs and new-PR handoff structure. Its PR-record validator has negative-path unit tests for missing Founder-facing sections and missing relay updates. This is proposed work until #762 is reviewed and merged.
 - **Enforcement limitation:** The repository rulesets endpoint returned an empty list. The branch-protection read endpoint returned 403 to this integration, so the existence/configuration of legacy branch protection is UNKNOWN. No permission or branch-protection change was made. The Founder Protocol Gate must be marked as a required status check by a repository administrator before it can block merges.
 - **PR #762 exact current head:** `70a4c66098ed0eac505d04d5d620ce6e80413182`; draft/open/unmerged at this observation; latest relay update is being appended on this branch. Verify `45984477179` PASS and Genesis `45984477225` PASS; Browser `45984477141` FAILs at the inherited Contradiction Clerk locator. This is superseded as a product/test-harness diagnosis by the separate #747 correction, which routes the Clerk journey to Evidence Archive; #747 Browser run `45878004416` PASS on head `081d72230fff24bb40aa08862583ec305d7c665f`. Do not transfer that pass to #762.
 - **PR #755 exact-head observation:** `1c3cdeeaa888fac2bead8863b1e4eff4b8c6c64e`; Verify, Genesis, Browser, Quest Board, Synthesis Clerk, Council, Academy, Combat Yard, Source Archive, and PWA workflows PASS; Android emulator acceptance `45951191102` FAIL. Fresh job `140427014819` confirms APK assembly and artifact preservation PASS; the 10-test instrumentation XML has an empty failure for `publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress`, then reports `Instrumentation run failed due to Process crashed`. Logcat shows WebView sandbox process PID 5760 dying, ActivityManager force-removing the app Activity, and the instrumentation run being terminated. No Java fatal exception, native signal, or causal stack appears in the retained log. Emulator graphics messages are present but do not establish causation. No physical-device acceptance is established.
@@ -303,3 +303,13 @@ PR #767 exact head `60243c6da2403163d071aa6c41f8aa373ce39591` now has Full Verif
 **Founder-facing result:** No user-facing game capability was changed in this run. The proposed institution now has a concrete behavioral standard, a fail-closed preflight requirement, and an automated workflow intended to catch missing governance records. It is not yet canonical or a hard merge block.
 
 **Next handoff:** Recheck PR #762's exact current head and run the hosted Founder Protocol Gate and Full Verify. Inspect every failure on the exact head; do not transfer passes from parent commits. After review/merge, a repository administrator must mark `Founder Protocol Gate / founder-protocol` and the relevant verification check as required on `main`. Then validate a deliberately incomplete new PR and confirm the gate rejects it.
+
+### Relay v2.1 — 2026-11-27 — Founder Protocol Gate negative-path tests
+
+**Work performed:** Extracted the new-pull-request acceptance check into a separately testable validator. The workflow now runs six unit cases covering a complete PR, missing Founder-facing sections, missing continuity update, both failures together, legacy-PR grandfathering, and malformed/missing timestamps. The hosted gate continues to run the portable governance preflight and document regression suite before evaluating PR metadata.
+
+**Purpose of the additional test:** The first Founder Protocol Gate run proved that the workflow and document/preflight checks execute successfully. The original #762 PR predates the 2026-11-28 effective date, so its PR-description enforcement branch was correctly grandfathered. These new unit tests exercise the fail-closed PR-record logic without pretending the legacy PR was a valid new-PR test case.
+
+**Limits:** Unit tests exercise the decision logic with controlled PR data; the GitHub event fetch/diff path is exercised only on an eligible new PR after the effective date. The check remains advisory for merging until a repository administrator marks `Founder Protocol Gate / founder-protocol` as required. No branch-protection change was made.
+
+**Next handoff:** Inspect the new exact-head Founder Protocol Gate and Full Verify results. On the first eligible post-effective-date PR, verify that the workflow obtains the actual PR diff and rejects a deliberately incomplete record before accepting a complete one.

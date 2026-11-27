@@ -24,59 +24,11 @@ jobs:
         uses: actions/setup-node@v7.1.0
         with:
           node-version: 24
-      - name: Require and fingerprint all governing documents
-        run: npm run agent:preflight:ci -- --path docs/operations/NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md --path docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md
+      - name: Require and fingerprint all governing documents and gate implementation
+        run: npm run agent:preflight:ci -- --path docs/operations/NEOPHYTE_FOUNDER_ABOVE_AND_BEYOND_PROTOCOL.md --path docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md --path scripts/founder_protocol_gate.py --path test/test_founder_protocol_gate.py
       - name: Run governance preflight regression tests
         run: node --test test/agent-governance.test.mjs
-      - name: Require a Founder-facing record and relay update for new pull requests
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import subprocess
-
-          with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as stream:
-              event = json.load(stream)
-          pull = event.get("pull_request")
-          if not pull:
-              print("Push/manual run: pull-request record check is not applicable.")
-              raise SystemExit(0)
-
-          created_at = pull.get("created_at", "")
-          if created_at < "2026-11-28T00:00:00Z":
-              print("Existing PR predates the enforcement effective date; grandfathered.")
-              raise SystemExit(0)
-
-          body = pull.get("body") or ""
-          required_sections = [
-              "## Founder-facing outcome",
-              "## Evidence and verification",
-              "## What remains / limitations",
-              "## Next action",
-              "## Above-and-Beyond self-audit",
-              "## Preflight and continuity",
-          ]
-          missing = [heading for heading in required_sections if heading not in body]
-          if missing:
-              print("FAIL CLOSED: pull request is missing required Founder-facing sections:")
-              print("\\n".join("  " + heading for heading in missing))
-              raise SystemExit(1)
-
-          base_sha = pull["base"]["sha"]
-          head_sha = pull["head"]["sha"]
-          number = str(pull["number"])
-          subprocess.run(["git", "fetch", "origin", base_sha, "--depth=1"], check=True)
-          subprocess.run([
-              "git", "fetch", "origin",
-              "refs/pull/" + number + "/head:refs/remotes/origin/pr-" + number
-          ], check=True)
-          changed = subprocess.check_output(
-              ["git", "diff", "--name-only", base_sha + "..." + head_sha],
-              text=True
-          ).splitlines()
-          relay_path = "docs/operations/UNIVERSAL_INSTITUTIONAL_CONTINUITY_RELAY.md"
-          if relay_path not in changed:
-              print("FAIL CLOSED: every new substantive PR must update the append-only continuity relay.")
-              raise SystemExit(1)
-          print("Founder-facing PR record and continuity relay update are present.")
-          PY
+      - name: Test Founder-facing pull request gate, including rejection cases
+        run: python3 -m unittest test/test_founder_protocol_gate.py -v
+      - name: Enforce Founder-facing record and continuity on new pull requests
+        run: python3 scripts/founder_protocol_gate.py
