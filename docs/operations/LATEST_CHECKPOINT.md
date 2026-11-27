@@ -1,3 +1,15 @@
+## Worker B Run 11 — same-actor concurrent retry idempotency — 2026-11-27T16:15Z
+
+- **Selected G2/G3 reliability gap:** PR #765 previously covered distinct-player concurrent Commons writes, sequential same-player replay, and cross-player request-ID collision, but not two identical in-flight submissions from one player (mobile double-tap/response-loss retry).
+- **Implementation:** existing branch `test/multiplayer-concurrent-actions-20261127`, exact head `6ab0d2ba7b6a11b8efadc16ae305b04d87c55572`. Extended `test/game-multiplayer-concurrent-actions.test.mjs`: two simultaneous identical requests must both return HTTP 200 and the same message ID, exactly one original response and one idempotent replay, one revision increment, one retained event with the original actor, and no XP. Final two-client state remains convergent. The test is in portable preflight targets; no runtime code changed.
+- **Exact-head hosted verification:** Full Verify/world-projection [46031852249](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/46031852249) PASS (tests, package, bounded institutional exercise, preflight receipt and verification diagnostics steps all succeeded); Genesis Evidence Invariant [46031852259](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/46031852259) PASS; Live Source Archive [46031852282](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/46031852282) PASS. Browser [46031852209](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/46031852209), Synthesis/mobile [46031852299](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/46031852299), and Android [46031852318](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/46031852318) were still running at checkpoint update; no result inferred.
+- **Coordination:** #765 remains a draft child of #764; #764 is a child of #761/#755. Canonical main remains `21677d88cb027f3d16adacf92dbdd0ec08e96dbd`; no proposal merged. The #758 documentation branch records this run in the MMORPG ledger separately.
+- **Limitations:** one serialized server process only; not multi-instance consistency, distinct-human proof, physical Android device acceptance, or complete G3. Local checkout and portable preflight unavailable; hosted preflight completed in Full Verify. Procedural compliance PARTIAL.
+- **Authority:** no XP/quest/inventory/authority/truth/approval mutation; no merge/release/deployment/spending/credential change/Founder decision.
+- **Next:** inspect terminal Browser/Synthesis/Android results; then extend committed-but-unacknowledged server interruption recovery; only claim multi-instance consistency after implementing and testing a shared-storage/locking model.
+
+---
+
 ## Worker B — two-client shared-world SSE acceptance — 2026-11-27T06:24Z
 
 - **Runtime/integration candidate:** [PR #755](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/755), draft/open/unmerged, directly based on canonical main `21677d88cb027f3d16adacf92dbdd0ec08e96dbd`. Code/test head at this observation: `1c3cdeeaa888fac2bead8863b1e4eff4b8c6c64e`; 23 commits ahead, 0 behind, merge base exactly main; 13 paths, 750 additions / 31 deletions.
