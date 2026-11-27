@@ -26,9 +26,14 @@ class FounderPullRequestGateTests(unittest.TestCase):
         self.paths = [RELAY_PATH, "src/example.mjs"]
 
     def test_complete_new_pr_record_and_relay_pass(self):
-        result = evaluate_pull_request(self.pull, self.paths)
+        result = evaluate_pull_request(self.pull, self.paths, relay_history_valid=True)
         self.assertEqual(result["status"], "pass")
         self.assertEqual(result["failures"], [])
+
+    def test_relay_history_evidence_is_required_fail_closed(self):
+        result = evaluate_pull_request(self.pull, self.paths)
+        self.assertEqual(result["status"], "fail")
+        self.assertTrue(any("preserve all base bytes" in item for item in result["failures"]))
 
     def test_missing_founder_facing_sections_fail_closed(self):
         pull = dict(self.pull, body="## Summary\nSome code changed.")
