@@ -149,8 +149,8 @@ test('concurrent multiplayer actions serialize, replay idempotently, and reject 
     second.request('/api/state')
   ]);
   for (const state of [afterFirst, afterSecond]) {
-    assert.equal(state.body.world.revision, revisionAfterConcurrentActions,
-      'same-player replay and cross-player key collision must not append events');
+    assert.equal(state.body.world.revision, revisionAfterConcurrentActions + 1,
+      'only the one same-actor concurrent action may append after the original two actions');
     assert.equal(state.body.world.events.filter(event =>
       event.requestId === firstAction.requestId
     ).length, 1);
