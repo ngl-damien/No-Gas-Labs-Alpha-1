@@ -1,3 +1,16 @@
+## Worker B Run 12 — complete transport response loss — 2026-11-27T20:10–20:14 America/Chicago
+
+- **New test proposal:** [PR #772](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/772), draft child of #767, exact head `eb53b5bbd0340e56f801a36c0c42a3ce45acd67b`; one added test file `test/game-multiplayer-total-response-loss.test.mjs`, blob `2737b471bf93012d77e88daa5b776917018cb7c4`.
+- **Why:** #767's corrected test receives HTTP headers/status before cancelling its body. #772 injects a downstream socket reset only after the real server completes and the proxy consumes the upstream action response. The simulated phone receives no HTTP response; independent state read proves commit; process restart and identical retry preserve one event, revision, and XP; altered same-ID payload remains 409.
+- **Verification on exact #772 head:** Genesis [46096952244](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/46096952244) PASS; Full Verify [46096952199](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/46096952199) PASS (preflight failures empty, verification report `passed=true`); Browser [46096952220](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/46096952220) still running at checkpoint. No test total or Browser result inferred.
+- **Parent #767:** Full Verify 46081594612, Genesis 46081594604, Browser 46081594647 all PASS on exact parent head `42741d4a333ac20c63d73a5b9990f3d7c615e5eb`; not transferred to #772.
+- **Android:** #755 run 45951191102 failed after APK assembly and process crash at native restore (9/15); #763 run 45992590825 passed 15/15; #765 run 46031852318 later repeated the same restore process crash (9/15). No causal root cause. Retrieved #763 success log lacked the added `NGL-RESTORE-DIAG` marker lines.
+- **Coordination:** exact result and strict-response distinction recorded in comments on #767 and #758; Android cross-run comparison recorded on #763. Main unchanged; #772 is test-only, draft, and unmerged.
+- **Limitations:** no multi-instance proof, distinct-human proof, physical Moto acceptance, integrated MMORPG release, local test execution, or complete G2/G3. Local preflight unavailable; hosted preflight passed.
+- **Next:** await #772 Browser; continue Android root-cause work in #763 ownership lane; resume player-facing vertical-slice integration after these bounded reliability checks.
+
+---
+
 ## Worker B Run 11 — same-actor concurrent retry idempotency — 2026-11-27T16:15Z
 
 - **Selected G2/G3 reliability gap:** PR #765 previously covered distinct-player concurrent Commons writes, sequential same-player replay, and cross-player request-ID collision, but not two identical in-flight submissions from one player (mobile double-tap/response-loss retry).
