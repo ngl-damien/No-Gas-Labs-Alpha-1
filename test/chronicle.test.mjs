@@ -1787,7 +1787,11 @@ test("Chronicle ignores untrusted event-supplied combat outcome and XP fields", 
   assert.equal(entry.category, "COMBAT YARD");
   assert.match(entry.summary, /encounter remains active/i);
   assert.doesNotMatch(entry.summary, /victory|999/i);
-  assert.doesNotMatch(entry.detail, /999/);
+  const detailWithoutGeneratedEncounterId = entry.detail.replace(
+    /^Encounter: combat-encounter-[0-9a-f-]+/,
+    'Encounter: <generated>',
+  );
+  assert.doesNotMatch(detailWithoutGeneratedEncounterId, /999/);
 });
 
 test("Chronicle fails closed for malformed combat history instead of displaying a forged victory", async () => {
