@@ -2043,3 +2043,78 @@ test('Evidence Archive keeps the refusal register bounded and navigates to the e
   assert.match(textOf(root), /1 additional retained refusal/);
   assert.deepEqual(world, before, 'bounded browsing and continuation remain read-only');
 }));
+
+
+test('Evidence Archive withholds exact refusal navigation when malformed retained identity coverage could conceal a duplicate', () => withDocument(() => {
+  const world = createWorld({
+    id: 'evidence-archive-refusal-incomplete-identity',
+    founderName: 'Chronicle Founder',
+    now: '2026-11-25T08:00:00.000Z'
+  });
+  const eventId = 'refusal-hidden-duplicate';
+  world.events.push({
+    id: eventId,
+    type: 'field-item-transfer-declined',
+    actor: { id: 'witness-refusal-incomplete', name: 'Witness', role: 'witness' },
+    at: '2026-11-25T08:01:00.000Z',
+    offerId: 'offer-incomplete-1',
+    itemId: 'item-incomplete-1'
+  });
+  let hiddenIdentityReads = 0;
+  const malformed = { type: 'discover' };
+  Object.defineProperty(malformed, 'id', {
+    enumerable: true,
+    get() {
+      hiddenIdentityReads += 1;
+      return eventId;
+    }
+  });
+  world.events.push(malformed);
+  world.revision = world.events.length;
+  const before = structuredClone(world);
+  const root = element('main');
+
+  renderEvidenceArchive(root, {
+    world,
+    onInspectEvent: () => assert.fail('navigation must be withheld when retained identity coverage is incomplete')
+  });
+
+  const card = walk(root).find(node =>
+    node.dataset?.evidenceArchiveTransferRefusal === eventId
+  );
+  assert.ok(card, 'the valid refusal remains visible despite malformed neighboring history');
+  assert.ok(!walk(card).some(node => node.dataset?.evidenceArchiveInspectRefusal),
+    'a projected unique ID is insufficient when a malformed slot could conceal a duplicate');
+  assert.ok(walk(card).some(node => node.dataset?.evidenceArchiveRefusalNavigation === 'withheld'));
+  assert.equal(hiddenIdentityReads, 0, 'identity inspection must not invoke an accessor');
+  assert.deepEqual(world, before, 'fail-closed rendering remains read-only');
+}));
+
+test('Evidence Archive withholds exact refusal navigation when retained event history contains a sparse slot', () => withDocument(() => {
+  const world = createWorld({
+    id: 'evidence-archive-refusal-sparse-identity',
+    founderName: 'Chronicle Founder',
+    now: '2026-11-25T08:00:00.000Z'
+  });
+  const eventId = 'refusal-with-sparse-neighbor';
+  world.events.push({
+    id: eventId,
+    type: 'field-item-transfer-declined',
+    actor: { id: 'witness-refusal-sparse', name: 'Witness', role: 'witness' },
+    at: '2026-11-25T08:01:00.000Z',
+    offerId: 'offer-sparse-1',
+    itemId: 'item-sparse-1'
+  });
+  world.events.length = 2;
+  world.revision = world.events.length;
+  const root = element('main');
+
+  renderEvidenceArchive(root, { world, onInspectEvent: () => assert.fail('sparse history cannot establish unique identity') });
+
+  const card = walk(root).find(node =>
+    node.dataset?.evidenceArchiveTransferRefusal === eventId
+  );
+  assert.ok(card, 'the retained refusal remains visible');
+  assert.ok(!walk(card).some(node => node.dataset?.evidenceArchiveInspectRefusal));
+  assert.ok(walk(card).some(node => node.dataset?.evidenceArchiveRefusalNavigation === 'withheld'));
+}));
