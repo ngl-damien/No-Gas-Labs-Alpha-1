@@ -2094,7 +2094,7 @@ test('Evidence Archive withholds exact refusal navigation when malformed retaine
   assert.deepEqual(world.events[0], beforeEvent, 'rendering must not mutate the retained refusal');
 }));
 
-test('Evidence Archive withholds exact refusal navigation when retained event history contains a sparse slot', () => withDocument(() => {
+test('Evidence Archive withholds exact refusal navigation when a retained event has no identity', () => withDocument(() => {
   const world = createWorld({
     id: 'evidence-archive-refusal-sparse-identity',
     founderName: 'Chronicle Founder',
@@ -2109,11 +2109,15 @@ test('Evidence Archive withholds exact refusal navigation when retained event hi
     offerId: 'offer-sparse-1',
     itemId: 'item-sparse-1'
   });
-  world.events.length = 2;
+  world.events.push({
+    type: 'discover',
+    actor: { id: 'witness-refusal-sparse', name: 'Witness', role: 'witness' },
+    at: '2026-11-25T08:02:00.000Z'
+  });
   world.revision = world.events.length;
   const root = element('main');
 
-  renderEvidenceArchive(root, { world, onInspectEvent: () => assert.fail('sparse history cannot establish unique identity') });
+  renderEvidenceArchive(root, { world, onInspectEvent: () => assert.fail('missing identity cannot establish uniqueness') });
 
   const card = walk(root).find(node =>
     node.dataset?.evidenceArchiveTransferRefusal === eventId
