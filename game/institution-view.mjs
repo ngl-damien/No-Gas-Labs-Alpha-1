@@ -1259,7 +1259,7 @@ function worldEventIdentityCoverage(world) {
    return {complete:false,counts:new Map()};
   const keys=Reflect.ownKeys(events);
   if(keys.length!==length+1||!keys.every(key=>key==='length'||
-    (typeof key==='string'&&/^(0|[1-9]\\d*)$/.test(key)&&Number(key)<length)))
+    (typeof key==='string'&&/^(0|[1-9]\d*)$/.test(key)&&Number(key)<length)))
    return {complete:false,counts:new Map()};
   const counts=new Map();
   for(let index=0;index<length;index+=1){
