@@ -1243,11 +1243,53 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   container.append(more);
  }
 }
-function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
+function worldEventIdentityCoverage(world) {
+ try {
+  const collection=world&&typeof world==='object'
+   ?Object.getOwnPropertyDescriptor(world,'events')
+   :undefined;
+  if(!collection||!Object.hasOwn(collection,'value')||!Array.isArray(collection.value))
+   return {complete:false,counts:new Map()};
+  const events=collection.value;
+  if(Object.getPrototypeOf(events)!==Array.prototype)
+   return {complete:false,counts:new Map()};
+  const lengthDescriptor=Object.getOwnPropertyDescriptor(events,'length');
+  const length=lengthDescriptor?.value;
+  if(!Number.isSafeInteger(length)||length<0)
+   return {complete:false,counts:new Map()};
+  const keys=Reflect.ownKeys(events);
+  if(keys.length!==length+1||!keys.every(key=>key==='length'||
+    (typeof key==='string'&&/^(0|[1-9]\\d*)$/.test(key)&&Number(key)<length)))
+   return {complete:false,counts:new Map()};
+  const counts=new Map();
+  for(let index=0;index<length;index+=1){
+   const slot=Object.getOwnPropertyDescriptor(events,String(index));
+   if(!slot||!Object.hasOwn(slot,'value')||!slot.enumerable)
+    return {complete:false,counts:new Map()};
+   const event=slot.value;
+   if(!event||typeof event!=='object'||Array.isArray(event))
+    return {complete:false,counts:new Map()};
+   const prototype=Object.getPrototypeOf(event);
+   if(prototype!==Object.prototype&&prototype!==null)
+    return {complete:false,counts:new Map()};
+   const identity=Object.getOwnPropertyDescriptor(event,'id');
+   if(!identity||!Object.hasOwn(identity,'value')||!identity.enumerable||
+      typeof identity.value!=='string'||identity.value.length===0)
+    return {complete:false,counts:new Map()};
+   counts.set(identity.value,(counts.get(identity.value)||0)+1);
+  }
+  return {complete:true,counts};
+ }catch{
+  return {complete:false,counts:new Map()};
+ }
+}
+
+function renderTransferRefusalRegister(container, world, chronicle, onInspectEvent) {
  const entries=Array.isArray(chronicle?.entries)?chronicle.entries:[];
  const refusals=entries.filter(entry=>
   entry?.source==='world'&&entry.eventType==='field-item-transfer-declined'
  );
+ const identityCoverage=worldEventIdentityCoverage(world);
  const identityCounts=new Map();
  for(const entry of entries){
   if(typeof entry?.id==='string')identityCounts.set(entry.id,(identityCounts.get(entry.id)||0)+1);
@@ -1267,7 +1309,7 @@ function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
  for(const entry of visible){
   const match=/^world:([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/.exec(entry.id||'');
   const eventId=match?.[1]||'';
-  const unique=!!eventId&&identityCounts.get(entry.id)===1;
+  const unique=identityCoverage.complete&&!!eventId&&identityCoverage.counts.get(eventId)===1&&identityCounts.get(entry.id)===1;
   const card=el('article');
   card.className='field-card';
   card.dataset.evidenceArchiveTransferRefusal=eventId||'unidentified';
@@ -1310,7 +1352,7 @@ function renderTransferRefusalRegister(container, chronicle, onInspectEvent) {
   const next=refusals[visible.length];
   const match=/^world:([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/.exec(next?.id||'');
   const eventId=match?.[1]||'';
-  const unique=!!eventId&&identityCounts.get(next.id)===1;
+  const unique=identityCoverage.complete&&!!eventId&&identityCoverage.counts.get(eventId)===1&&identityCounts.get(next.id)===1;
   if(typeof onInspectEvent==='function'&&unique&&Number.isSafeInteger(next.streamPosition)&&next.streamPosition>0){
    const older=el('button','Inspect next older retained refusal in World Chronicle →');
    older.type='button';
@@ -1340,7 +1382,7 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
  }
  renderSourceObservationResponseQueue(container,world,onOpenArtifact);
  const chronicle=projectChronicle({world,kernel});
- renderTransferRefusalRegister(container,chronicle,onInspectEvent);
+ renderTransferRefusalRegister(container,world,chronicle,onInspectEvent);
  const entries=chronicle.entries.filter(entry=>{
   if(entry.source==='kernel')return shared;
   return entry.source==='world'&&!['report','contribute'].includes(entry.eventType);
