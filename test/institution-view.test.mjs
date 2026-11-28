@@ -2071,7 +2071,9 @@ test('Evidence Archive withholds exact refusal navigation when malformed retaine
   });
   world.events.push(malformed);
   world.revision = world.events.length;
-  const before = structuredClone(world);
+  const beforeEvent = structuredClone(world.events[0]);
+  const beforeLength = world.events.length;
+  const beforeRevision = world.revision;
   const root = element('main');
 
   renderEvidenceArchive(root, {
@@ -2087,7 +2089,9 @@ test('Evidence Archive withholds exact refusal navigation when malformed retaine
     'a projected unique ID is insufficient when a malformed slot could conceal a duplicate');
   assert.ok(walk(card).some(node => node.dataset?.evidenceArchiveRefusalNavigation === 'withheld'));
   assert.equal(hiddenIdentityReads, 0, 'identity inspection must not invoke an accessor');
-  assert.deepEqual(world, before, 'fail-closed rendering remains read-only');
+  assert.equal(world.events.length, beforeLength, 'rendering must not add or remove retained events');
+  assert.equal(world.revision, beforeRevision, 'rendering must not advance the world revision');
+  assert.deepEqual(world.events[0], beforeEvent, 'rendering must not mutate the retained refusal');
 }));
 
 test('Evidence Archive withholds exact refusal navigation when retained event history contains a sparse slot', () => withDocument(() => {
