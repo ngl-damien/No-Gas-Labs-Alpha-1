@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PLACES, institutionActivityCount, institutionSummaryFromState, projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
+import { createWorld, applyAction } from '../game/model.mjs';
+import { projectCharacter } from '../game/character-sheet.mjs';
 
 function sourceArchiveFailureEvent(overrides={}) {
   return {
@@ -155,6 +157,10 @@ test('canonical Alpha 1 events light up the institutions that perform their func
     { id: 'moonshot-1', type: 'moonshot-proposed' },
     { id: 'experiment-1', type: 'experiment-reported' },
     { id: 'challenge-1', type: 'experiment-challenged' },
+    { id: 'transfer-offer-1', type: 'field-item-transfer-offered' },
+    { id: 'transfer-cancel-1', type: 'field-item-transfer-cancelled' },
+    { id: 'transfer-refusal-1', type: 'field-item-transfer-declined', actor: { id: 'witness-1', role: 'witness' }, at: '2026-11-25T07:00:00.000Z' },
+    { id: 'transfer-complete-1', type: 'field-item-transferred' },
     { id: 'source-archive-failure-1', type: 'source-archive-attempt-failed', failureCode: 'GITHUB_SOURCE_UNAVAILABLE', retryable: true },
     { id: 'policy-1', type: 'policy-set' },
     { id: 'proposal-created-1', type: 'proposal-created' },
@@ -168,8 +174,9 @@ test('canonical Alpha 1 events light up the institutions that perform their func
   // One retained event can serve more than one institution; these are
   // navigational activity counts, not exclusive ownership or quest rewards.
   assert.equal(institutionActivityCount('guild_hall', world), 3);
-  assert.equal(institutionActivityCount('forge', world), 3);
-  assert.equal(institutionActivityCount('evidence_archive', world), 8, 'failed Source Archive retrievals belong to Evidence Archive history');
+  assert.equal(institutionActivityCount('forge', world), 7,
+    'Forge retains offers, cancellations, refusals, and completed transfers alongside artifact/equipment events');
+  assert.equal(institutionActivityCount('evidence_archive', world), 9, 'failed retrievals and explicit transfer refusals remain inspectable in Evidence Archive history');
   assert.equal(institutionActivityCount('decision_chamber', world), 5);
   assert.equal(institutionActivityCount('town-square', world), 6);
   assert.equal(institutionActivityCount('academy', world), 2);
@@ -582,4 +589,78 @@ test('Combat Yard map count reflects retained encounter and move events, not inv
   ] };
   assert.equal(institutionActivityCount('combat_yard', world), 2);
   assert.equal(world.xp, 0, 'map activity counts do not award XP or mutate world state');
+});
+
+
+test('a reducer-validated recipient refusal reaches Forge and Evidence Archive without changing ownership or XP', async () => {
+  const at = '2026-11-25T08:00:00.000Z';
+  const sender = { id: 'refusal-sender', name: 'Item maker', role: 'witness' };
+  const recipient = { id: 'refusal-recipient', name: 'Designated recipient', role: 'founder' };
+  const created = createWorld({ id: 'institution-refusal-projection', now: at });
+  const discovered = await applyAction(created, {
+    type: 'discover', locationId: 'river'
+  }, sender, { now: at });
+  const source = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: 'forge-field-item', slotId: 'scouting', sourceEventId: source.id
+  }, sender, { now: '2026-11-25T08:00:01.000Z' });
+  const item = forged.world.events.at(-1);
+  const xpBeforeHandoff = forged.world.xp;
+  const offered = await applyAction(forged.world, {
+    type: 'offer-field-item-transfer',
+    itemEventId: item.id,
+    recipientId: recipient.id,
+    recipientRole: recipient.role
+  }, sender, {
+    now: '2026-11-25T08:00:02.000Z',
+    allowTransfers: true,
+    requestId: 'institution-refusal-offer',
+    actionFingerprint: 'a'.repeat(64)
+  });
+  const offer = offered.world.events.at(-1);
+  const eventCountBeforeUnauthorizedDecline = offered.world.events.length;
+
+  await assert.rejects(
+    applyAction(offered.world, {
+      type: 'decline-field-item-transfer', offerId: offer.offerId
+    }, sender, {
+      now: '2026-11-25T08:00:03.000Z',
+      allowTransfers: true
+    }),
+    error => error.code === 'FIELD_ITEM_TRANSFER_NOT_ADDRESSED'
+  );
+  assert.equal(offered.world.events.length, eventCountBeforeUnauthorizedDecline,
+    'the sender cannot manufacture the recipient\'s refusal event');
+
+  const declined = await applyAction(offered.world, {
+    type: 'decline-field-item-transfer', offerId: offer.offerId
+  }, recipient, {
+    now: '2026-11-25T08:00:03.000Z',
+    allowTransfers: true,
+    requestId: 'institution-refusal-decline',
+    actionFingerprint: 'b'.repeat(64)
+  });
+  const refusal = declined.world.events.at(-1);
+  assert.equal(refusal.type, 'field-item-transfer-declined');
+  assert.equal(refusal.offerId, offer.offerId);
+  assert.deepEqual(
+    { id: refusal.actor.id, role: refusal.actor.role },
+    { id: recipient.id, role: recipient.role }
+  );
+
+  assert.equal(projectCharacter(declined.world, sender).fieldInventory.length, 1,
+    'declining does not transfer the item away from its owner');
+  assert.equal(projectCharacter(declined.world, recipient).fieldInventory.length, 0,
+    'declining does not grant the recipient ownership');
+  assert.equal(declined.world.xp, xpBeforeHandoff,
+    'offering and refusing an item do not award XP');
+
+  const beforeProjection = structuredClone(declined.world);
+  assert.equal(institutionActivityCount('forge', declined.world), 3,
+    'Forge retains the forge, offer and refusal lifecycle events');
+  assert.equal(institutionActivityCount('evidence_archive', declined.world), 1,
+    'Evidence Archive retains the exact reducer-produced refusal');
+  assert.deepEqual(declined.world, beforeProjection,
+    'institutional projection is read-only');
+  assert.equal(declined.world.xp, xpBeforeHandoff);
 });
