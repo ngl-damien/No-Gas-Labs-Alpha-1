@@ -25,7 +25,8 @@ test('Witness quests map real guide discoveries and do not invent work when the 
 });
 
 test('Witness contribution and report objectives only advance from that Witness\'s records',()=>{
-  const world=base();world.creations=[creation];
+  const world=base();world.creations=[{...creation,publishedAt:at1}];
+  world.events=[{id:'publish-c1',type:'publish',actor:founder,at:at1,creationId:'c-1',version:1}];
   world.contributions=[note('n-other',other)];
   assert.equal(getQuest(world,witness).id,'witness-discover');
   world.discoveries=[discovery('d1','river')];
@@ -274,8 +275,70 @@ test('guide action projection rejects missing and unsupported viewer identities'
   assert.equal(getLocationAction('unknown-guide', world, founder), null);
 });
 
+test('Witness quest and guide routing do not expose an unpublished private draft', () => {
+  const world = {
+    creations: [{ ...creation, kind: 'comic' }],
+    discoveries: ['relay', 'river', 'overlook', 'ruins'].map((locationId, index) =>
+      discovery('draft-discovery-' + index, locationId)),
+    events: []
+  };
+  assert.equal(getQuest(world, witness).id, 'witness-await-work');
+  assert.equal(getLocationAction('relay', world, witness).type, 'places');
+});
+
+test('malformed retained history cannot make a draft appear published to a Witness', () => {
+  const world = {
+    creations: [{ ...creation, kind: 'comic', publishedAt: at1 }],
+    discoveries: ['relay', 'river', 'overlook', 'ruins'].map((locationId, index) =>
+      discovery('malformed-discovery-' + index, locationId)),
+    events: [
+      { id: 'publish-c1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+      null
+    ]
+  };
+  assert.equal(getQuest(world, witness).id, 'witness-await-work');
+  assert.equal(getLocationAction('relay', world, witness).type, 'places');
+});
+
+test('Witness projections do not expose an unpublished current revision through an older publication', () => {
+  const world = {
+    creations: [{
+      ...creation,
+      kind: 'comic',
+      version: 2,
+      versions: [{ ...creation, kind: 'comic', version: 1, publishedAt: at1 }]
+    }],
+    discoveries: ['relay', 'river', 'overlook', 'ruins'].map((locationId, index) =>
+      discovery('older-publication-discovery-' + index, locationId)),
+    events: [
+      { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 }
+    ]
+  };
+  assert.equal(getQuest(world, witness).id, 'witness-await-work');
+  assert.equal(getLocationAction('relay', world, witness).type, 'places');
+});
+
+test('duplicate creation identities do not expose an ambiguous publication to a Witness', () => {
+  const world = {
+    creations: [
+      { ...creation, kind: 'comic', version: 1, publishedAt: at1, versions: [] },
+      { ...creation, kind: 'comic', version: 2, publishedAt: at2, versions: [] }
+    ],
+    discoveries: ['relay', 'river', 'overlook', 'ruins'].map((locationId, index) =>
+      discovery('duplicate-creation-discovery-' + index, locationId)),
+    events: [
+      { id: 'publish-c1-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 }
+    ]
+  };
+  assert.equal(getQuest(world, witness).id, 'witness-await-work');
+  assert.equal(getLocationAction('relay', world, witness).type, 'places');
+});
+
 test('guide action projection preserves Founder and Witness routes for supported viewers', () => {
-  const world = { creations: [{ id: 'c-1', kind: 'comic', version: 1 }] };
+  const world = {
+    creations: [{ id: 'c-1', kind: 'comic', version: 1, publishedAt: at1 }],
+    events: [{ id: 'publish-c1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 }]
+  };
   assert.equal(getLocationAction('relay', world, founder).type, 'workbench');
   assert.equal(getLocationAction('relay', world, witness).type, 'inspect');
 });
@@ -521,4 +584,192 @@ test('an unresolved review record is surfaced separately from no review attempt'
   assert.equal(hasStudyReviewRecord(study, [study]), false);
   assert.equal(hasStudyReviewRecord(study, [study, malformed]), true);
   assert.equal(findStudyReview(study, [study, malformed]), null);
+});
+
+
+test('quest progression fails closed when a retained event slot has no safely readable identity', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [
+    { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+    null
+  ];
+
+  const trail = getQuestTrail(world, founder);
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].id, 'founder-history-identity-unavailable');
+  assert.equal(trail[0].progress, 0);
+  assert.match(trail[0].blockedReason, /uniqueness cannot be established/i);
+});
+
+test('quest progression rejects accessor-backed event identity without invoking the accessor', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  let identityReads = 0;
+  const malformed = { type: 'discover', actor: founder, at: at2, locationId: 'river' };
+  Object.defineProperty(malformed, 'id', {
+    enumerable: true,
+    get() { identityReads += 1; throw new Error('unsafe event identity read'); }
+  });
+  world.events = [
+    { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+    malformed
+  ];
+
+  const trail = getQuestTrail(world, founder);
+  assert.equal(identityReads, 0);
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].id, 'founder-history-identity-unavailable');
+  assert.equal(trail[0].progress, 0);
+});
+
+
+test('quest progression rejects nested actor accessors without invoking them', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  let actorReads = 0;
+  const actor = {};
+  Object.defineProperty(actor, 'id', {
+    enumerable: true,
+    get() { actorReads += 1; throw new Error('unsafe nested actor identity read'); }
+  });
+  Object.defineProperty(actor, 'role', { enumerable: true, value: 'founder' });
+  world.events = [
+    { id: 'publish-v1', type: 'publish', actor, at: at1, creationId: 'c-1', version: 1 }
+  ];
+
+  const trail = getQuestTrail(world, founder);
+  assert.equal(actorReads, 0);
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].id, 'founder-history-identity-unavailable');
+  assert.equal(trail[0].progress, 0);
+  assert.match(trail[0].blockedReason, /uniqueness cannot be established/i);
+});
+
+test('quest progression rejects inherited event accessors without invoking them', () => {
+  let identityReads = 0;
+  const prototype = {};
+  Object.defineProperty(prototype, 'events', {
+    enumerable: true,
+    get() { identityReads += 1; throw new Error('inherited event history must not execute'); }
+  });
+  const world = trailFixture();
+  delete world.events;
+  Object.setPrototypeOf(world, prototype);
+  world.creations = [{ ...publishedV1, versions: [] }];
+
+  const trail = getQuestTrail(world, founder);
+  assert.equal(identityReads, 0);
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].id, 'founder-history-identity-unavailable');
+  assert.equal(trail[0].progress, 0);
+  assert.match(trail[0].blockedReason, /uniqueness cannot be established/i);
+});
+
+
+test('study review projections fail closed on inherited optional-field accessors', () => {
+  let inheritedReads = 0;
+  const studyActor = { id: founder.id };
+  const study = {
+    id: 'study-event-inherited', type: 'study', studyId: 'study-inherited',
+    creationId: 'source-1', version: 2, at: '2026-10-29T12:00:00.000Z',
+    actor: studyActor
+  };
+  const review = {
+    id: 'review-event-inherited', type: 'study-reviewed', reviewId: 'review-inherited',
+    studyId: study.studyId, creationId: study.creationId, version: study.version,
+    at: '2026-10-29T12:01:00.000Z', actor: studyActor,
+    response: 'The source differs.', reflection: 'Recheck the retained bytes.'
+  };
+  const unrelated = {
+    id: 'unrelated-event', type: 'discover', actor: founder,
+    at: '2026-10-29T12:02:00.000Z'
+  };
+
+  const previousDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, 'role');
+  assert.equal(previousDescriptor, undefined, 'fixture requires an initially unpolluted prototype');
+  Object.defineProperty(Object.prototype, 'role', {
+    configurable: true,
+    get() {
+      inheritedReads += 1;
+      throw new Error('inherited actor role must not execute');
+    }
+  });
+  try {
+    const history = [study, review, unrelated];
+    assert.equal(findStudyReview(study, history), null);
+    assert.equal(hasStudyReviewRecord(study, history), false);
+    assert.equal(inheritedReads, 0);
+  } finally {
+    if (previousDescriptor) Object.defineProperty(Object.prototype, 'role', previousDescriptor);
+    else delete Object.prototype.role;
+  }
+});
+
+
+test('study review projections fail closed on inherited Array.prototype method accessors', () => {
+  let inheritedReads = 0;
+  const studyActor = { id: founder.id, role: founder.role };
+  const study = {
+    id: 'study-event-array-inherited', type: 'study', studyId: 'study-array-inherited',
+    creationId: 'source-1', version: 2, at: '2026-10-29T12:00:00.000Z',
+    actor: studyActor
+  };
+  const review = {
+    id: 'review-event-array-inherited', type: 'study-reviewed', reviewId: 'review-array-inherited',
+    studyId: study.studyId, creationId: study.creationId, version: study.version,
+    at: '2026-10-29T12:01:00.000Z', actor: studyActor,
+    response: 'The source differs.', reflection: 'Recheck the retained bytes.'
+  };
+  const history = [study, review];
+  const previousDescriptor = Object.getOwnPropertyDescriptor(Array.prototype, 'filter');
+  assert.equal(typeof previousDescriptor?.value, 'function', 'fixture requires the native filter method');
+  Object.defineProperty(Array.prototype, 'filter', {
+    configurable: true,
+    get() {
+      inheritedReads += 1;
+      throw new Error('inherited array filter must not execute');
+    }
+  });
+  try {
+    assert.equal(findStudyReview(study, history), null);
+    assert.equal(hasStudyReviewRecord(study, history), false);
+    assert.equal(inheritedReads, 0);
+  } finally {
+    Object.defineProperty(Array.prototype, 'filter', previousDescriptor);
+  }
+});
+
+
+test('study review projections inspect the array iterator descriptor before destructuring method entries', () => {
+  let inheritedReads = 0;
+  const studyActor = { id: founder.id, role: founder.role };
+  const study = {
+    id: 'study-event-array-iterator', type: 'study', studyId: 'study-array-iterator',
+    creationId: 'source-1', version: 2, at: '2026-10-29T12:00:00.000Z',
+    actor: studyActor
+  };
+  const review = {
+    id: 'review-event-array-iterator', type: 'study-reviewed', reviewId: 'review-array-iterator',
+    studyId: study.studyId, creationId: study.creationId, version: study.version,
+    at: '2026-10-29T12:01:00.000Z', actor: studyActor,
+    response: 'The source differs.', reflection: 'Recheck the retained bytes.'
+  };
+  const history = [study, review];
+  const previousDescriptor = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator);
+  assert.equal(typeof previousDescriptor?.value, 'function', 'fixture requires the native array iterator');
+  Object.defineProperty(Array.prototype, Symbol.iterator, {
+    configurable: true,
+    get() {
+      inheritedReads += 1;
+      throw new Error('inherited array iterator must not execute');
+    }
+  });
+  try {
+    assert.equal(findStudyReview(study, history), null);
+    assert.equal(hasStudyReviewRecord(study, history), false);
+    assert.equal(inheritedReads, 0);
+  } finally {
+    Object.defineProperty(Array.prototype, Symbol.iterator, previousDescriptor);
+  }
 });

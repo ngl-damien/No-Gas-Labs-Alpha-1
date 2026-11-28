@@ -10,13 +10,24 @@ import { buildSatireIssueBody, createArtifact, GITHUB_SOURCE_ARCHIVE_INTENT_PREF
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
-const empty = { creations: [] };
-const world = { creations: [
-  { id: 'oldest', kind: 'custom', title: 'First place', version: 2, versions: [{ version: 1 }] },
-  { id: 'comic-1', kind: 'comic', title: 'Recovered comic', version: 1 },
-  { id: 'observatory-1', kind: 'observatory', title: 'Source notes', version: 1 },
-  { id: 'newest', kind: 'loom', title: 'Latest place', version: 1 }
-] };
+const empty = { creations: [], events: [] };
+const publishedAt = '2026-10-28T15:00:00.000Z';
+const world = {
+  creations: [
+    { id: 'oldest', kind: 'custom', title: 'First place', version: 2, publishedAt: '2026-10-28T15:02:00.000Z',
+      versions: [{ id: 'oldest', version: 1, publishedAt }] },
+    { id: 'comic-1', kind: 'comic', title: 'Recovered comic', version: 1, publishedAt },
+    { id: 'observatory-1', kind: 'observatory', title: 'Source notes', version: 1, publishedAt },
+    { id: 'newest', kind: 'loom', title: 'Latest place', version: 1, publishedAt }
+  ],
+  events: [
+    { id: 'publish-oldest-v1', type: 'publish', actor: founder, at: publishedAt, creationId: 'oldest', version: 1 },
+    { id: 'publish-oldest-v2', type: 'publish', actor: founder, at: '2026-10-28T15:02:00.000Z', creationId: 'oldest', version: 2 },
+    { id: 'publish-comic', type: 'publish', actor: founder, at: publishedAt, creationId: 'comic-1', version: 1 },
+    { id: 'publish-observatory', type: 'publish', actor: founder, at: publishedAt, creationId: 'observatory-1', version: 1 },
+    { id: 'publish-newest', type: 'publish', actor: founder, at: publishedAt, creationId: 'newest', version: 1 }
+  ]
+};
 
 test('Founder guide actions launch the matching institutional activity', () => {
   assert.deepEqual(
@@ -62,12 +73,22 @@ test('unknown locations fail closed and selecting an activity never mutates the 
 
 
 test('Long View only promises a version comparison when an earlier version is retained', () => {
-  const firstOnly = { creations: [{ id: 'first-only', kind: 'custom', version: 1, versions: [] }] };
+  const firstOnly = {
+    creations: [{ id: 'first-only', kind: 'custom', version: 1, publishedAt, versions: [] }],
+    events: [{ id: 'publish-first-only', type: 'publish', actor: founder, at: publishedAt, creationId: 'first-only', version: 1 }]
+  };
   assert.equal(getLocationAction('overlook', firstOnly, founder).label, 'Inspect the first version →');
   assert.equal(getLocationAction('overlook', firstOnly, witness).label, 'Inspect the first version →');
   assert.match(getLocationAction('overlook', firstOnly, witness).explanation, /no retained earlier version/i);
 
-  const retained = { creations: [{ id: 'retained', kind: 'custom', version: 2, versions: [{ version: 1 }] }] };
+  const retained = {
+    creations: [{ id: 'retained', kind: 'custom', version: 2, publishedAt: '2026-10-28T15:02:00.000Z',
+      versions: [{ id: 'retained', version: 1, publishedAt }] }],
+    events: [
+      { id: 'publish-retained-v1', type: 'publish', actor: founder, at: publishedAt, creationId: 'retained', version: 1 },
+      { id: 'publish-retained-v2', type: 'publish', actor: founder, at: '2026-10-28T15:02:00.000Z', creationId: 'retained', version: 2 }
+    ]
+  };
   assert.equal(getLocationAction('overlook', retained, founder).label, 'Inspect retained versions →');
   assert.equal(getLocationAction('overlook', retained, witness).label, 'Compare a retained version →');
 });
@@ -1687,7 +1708,8 @@ test('main quest stops repeating the generic task when every current objective h
     contributions: [{ actor: founder, creationId: 'first', version: 1 }]
   };
   const witnessWorld = {
-    creations: [{ id: 'published' }],
+    creations: [{ id: 'published', version: 1, publishedAt }],
+    events: [{ id: 'publish-witness-world', type: 'publish', actor: founder, at: publishedAt, creationId: 'published', version: 1 }],
     discoveries: ['relay', 'river', 'overlook', 'ruins'].map(locationId => ({ actor: witness, locationId })),
     contributions: [{ actor: witness, creationId: 'published', version: 1 }],
     reports: [{ actor: witness, creationId: 'published', version: 1 }]

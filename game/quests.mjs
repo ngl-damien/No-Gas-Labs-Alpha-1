@@ -35,8 +35,50 @@ function isRecognizedSourceArchiveVersion(creation, versionNumber) {
     typeof version.receipt?.digest === 'string' && /^[a-f0-9]{64}$/.test(version.receipt.digest);
 }
 
+/**
+ * These exported study-review helpers read optional event fields directly.
+ * If Object.prototype supplies any such field, an otherwise plain retained
+ * event could inherit an accessor and execute it during lookup. Refuse that
+ * ambiently polluted property scope before reading notes or history.
+ */
+const STUDY_REVIEW_FIELDS = Object.freeze([
+  'id', 'type', 'studyId', 'reviewId', 'creationId', 'version', 'at',
+  'actor', 'role', 'response', 'reflection'
+]);
+// The exported review helpers call these inherited array methods on retained
+// history. Capture their expected intrinsics before processing caller data;
+// an accessor or replacement on Array.prototype must not execute in lookup.
+const STUDY_REVIEW_ARRAY_METHODS = Object.freeze([
+  ['filter', Array.prototype.filter],
+  ['map', Array.prototype.map],
+  ['indexOf', Array.prototype.indexOf],
+  ['some', Array.prototype.some]
+]);
+const STUDY_REVIEW_ARRAY_ITERATOR = Array.prototype[Symbol.iterator];
+function hasSafeStudyReviewInputs(note, events) {
+  try {
+    for (let index = 0; index < STUDY_REVIEW_FIELDS.length; index += 1) {
+      if (Object.getOwnPropertyDescriptor(Object.prototype, STUDY_REVIEW_FIELDS[index])) return false;
+    }
+    for (let index = 0; index < STUDY_REVIEW_ARRAY_METHODS.length; index += 1) {
+      const method = STUDY_REVIEW_ARRAY_METHODS[index];
+      const name = method[0];
+      const expected = method[1];
+      const descriptor = Object.getOwnPropertyDescriptor(Array.prototype, name);
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.value !== expected) return false;
+    }
+    const iterator = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator);
+    if (!iterator || !Object.hasOwn(iterator, 'value') || iterator.value !== STUDY_REVIEW_ARRAY_ITERATOR) return false;
+    return hasCompleteRetainedEventIdentity({ events: [note] }) &&
+      hasCompleteRetainedEventIdentity({ events });
+  } catch {
+    return false;
+  }
+}
+
 /** Find one unambiguous review that follows and remains bound to this exact study note. */
 export function findStudyReview(note, events) {
+  if (!hasSafeStudyReviewInputs(note, events)) return null;
   const identifier = value => typeof value === 'string' &&
     /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) &&
     !['constructor', 'prototype', '__proto__'].includes(value);
@@ -84,6 +126,7 @@ export function findStudyReview(note, events) {
 }
 /** Detect a retained review attempt even when it cannot safely satisfy the note. */
 export function hasStudyReviewRecord(note, events) {
+  if (!hasSafeStudyReviewInputs(note, events)) return false;
   return typeof note?.studyId === 'string' && note.studyId.length > 0 &&
     rows(events).some(event => event?.type === 'study-reviewed' && event.studyId === note.studyId);
 }
@@ -95,7 +138,9 @@ export function getQuest(world, viewer) {
     copy: 'Quest progress is unavailable until a valid Founder or Witness character is selected.',
     button: 'Explore the world →', action: 'places'
   };
-  const creations = rows(world?.creations);
+  const creations = viewer.role === 'witness'
+    ? publishedCreationsForWitness(world)
+    : rows(world?.creations);
   const discoveries = mine(world?.discoveries, viewer);
   const notes = mine(world?.contributions, viewer);
   const reports = mine(world?.reports, viewer);
@@ -225,7 +270,10 @@ const hasEarlierVersion = creation => Boolean(creation && Number.isInteger(creat
 export function getLocationAction(locationId, world, viewer) {
   if (!GUIDE_LOCATIONS.has(locationId)) return null;
   if (typeof viewer?.id !== 'string' || !viewer.id || !['founder', 'witness'].includes(viewer.role)) return null;
-  const creations = rows(world?.creations).filter(creation =>
+  const creationSource = viewer.role === 'witness'
+    ? publishedCreationsForWitness(world)
+    : rows(world?.creations);
+  const creations = creationSource.filter(creation =>
     creation && typeof creation.id === 'string' && creation.id.length > 0
   );
   const oldest = creations[0] || null;
@@ -305,6 +353,68 @@ export function getLocationAction(locationId, world, viewer) {
 // to the exact retained artifact version. Event IDs must be unique across the whole
 // history; a reused ID cannot support two different claims.
 const trailRows = value => Array.isArray(value) ? value : [];
+
+// Quest progress depends on the uniqueness of event IDs across the complete
+// retained world stream. An unclassified slot is not evidence that no duplicate
+// is hidden there. Inspect descriptors only: never invoke an event ID getter.
+function hasCompleteRetainedEventIdentity(world) {
+  try {
+    const collection = world && typeof world === 'object'
+      ? Object.getOwnPropertyDescriptor(world, 'events')
+      : undefined;
+    if (!collection) {
+      // A missing own collection is an empty history only when no prototype
+      // supplies an inherited events property that a later read could execute.
+      let prototype = Object.getPrototypeOf(world);
+      while (prototype !== null) {
+        if (Object.getOwnPropertyDescriptor(prototype, 'events')) return false;
+        prototype = Object.getPrototypeOf(prototype);
+      }
+      return true;
+    }
+    if (!Object.hasOwn(collection, 'value') || !Array.isArray(collection.value)) return false;
+    const events = collection.value;
+    if (Object.getPrototypeOf(events) !== Array.prototype) return false;
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(events, 'length');
+    const length = lengthDescriptor?.value;
+    if (!Number.isSafeInteger(length) || length < 0 || Reflect.ownKeys(events).length !== length + 1) return false;
+    for (let index = 0; index < length; index += 1) {
+      const slot = Object.getOwnPropertyDescriptor(events, String(index));
+      if (!slot || !Object.hasOwn(slot, 'value') || !slot.enumerable) return false;
+      const event = slot.value;
+      if (!event || typeof event !== 'object' || Array.isArray(event)) return false;
+      const prototype = Object.getPrototypeOf(event);
+      if (prototype !== Object.prototype && prototype !== null) return false;
+      const keys = Reflect.ownKeys(event);
+      for (const key of keys) {
+        if (typeof key !== 'string') return false;
+        const descriptor = Object.getOwnPropertyDescriptor(event, key);
+        if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) return false;
+      }
+      const actor = Object.getOwnPropertyDescriptor(event, 'actor');
+      if (actor && Object.hasOwn(actor, 'value')) {
+        const actorValue = actor.value;
+        if (typeof actorValue === 'function') return false;
+        if (actorValue && typeof actorValue === 'object') {
+          const actorPrototype = Object.getPrototypeOf(actorValue);
+          if (Array.isArray(actorValue) ||
+              (actorPrototype !== Object.prototype && actorPrototype !== null)) return false;
+          for (const actorKey of Reflect.ownKeys(actorValue)) {
+            if (typeof actorKey !== 'string') return false;
+            const actorProperty = Object.getOwnPropertyDescriptor(actorValue, actorKey);
+            if (!actorProperty || !actorProperty.enumerable || !Object.hasOwn(actorProperty, 'value')) return false;
+          }
+        }
+      }
+      const identity = Object.getOwnPropertyDescriptor(event, 'id');
+      if (!identity || !identity.enumerable || !Object.hasOwn(identity, 'value') ||
+          typeof identity.value !== 'string' || !identity.value.trim()) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 const trailUnique = values => [...new Set(values.filter(value => typeof value === 'string' && value.length > 0))];
 
 function uniqueEventIds(events) {
@@ -360,6 +470,34 @@ function retainedPublicationEvents(world, actorId = null, actorRole = null) {
         ((actorId !== null && event.actor.id !== actorId) || (actorRole !== null && event.actor.role !== actorRole))) return false;
     return versionCounts.get(versionKey(event.creationId, event.version, event.at)) === 1;
   });
+}
+
+/**
+ * Witness-facing world content must be backed by a uniquely retained publication.
+ * A draft in the shared aggregate is not public work, and malformed event identity
+ * coverage cannot be treated as proof that a publication ID is unique.
+ */
+function publishedCreationsForWitness(world) {
+  if (!hasCompleteRetainedEventIdentity(world)) return [];
+  const creations = trailRows(world?.creations);
+  const idCounts = new Map();
+  for (const creation of creations) {
+    if (typeof creation?.id === 'string') {
+      idCounts.set(creation.id, (idCounts.get(creation.id) || 0) + 1);
+    }
+  }
+  const publishedCurrentIds = new Set(retainedPublicationEvents(world)
+    .filter(event => creations.some(creation =>
+      creation?.id === event.creationId &&
+      creation.version === event.version &&
+      creation.publishedAt === event.at &&
+      idCounts.get(event.creationId) === 1
+    ))
+    .map(event => event.creationId));
+  return creations.filter(creation =>
+    creation && typeof creation.id === 'string' && idCounts.get(creation.id) === 1 &&
+    publishedCurrentIds.has(creation.id)
+  );
 }
 
 function referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference) {
@@ -842,6 +980,14 @@ export function getQuestTrail(world, viewer, options = {}) {
   const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
   const actorRole = viewer?.role;
   if (!actorId || !['founder', 'witness'].includes(actorRole)) return Object.freeze([]);
+  if (!hasCompleteRetainedEventIdentity(world)) {
+    return Object.freeze([trailMilestone(
+      actorRole + '-history-identity-unavailable',
+      'Quest progress withheld · retained history identity is incomplete',
+      1, [], [], null,
+      'The retained world event stream contains a malformed, sparse, accessor-backed, or otherwise unidentifiable event. Quest progress is withheld because uniqueness cannot be established. Inspect the retained Chronicle; no activity, XP, or completion is inferred.'
+    )]);
+  }
   const events = trailRows(world?.events);
   let combatProjection = null;
   let combatHistoryBlockedReason = null;
